@@ -119,3 +119,18 @@ export type PsdFingerprint = {
     slots: PsdFingerprintSlot[];
     importedAt: number;
 };
+
+/**
+ * Why a PSD could not be read, for the one failure the wizard can say something useful about. It
+ * rides as the `code` of the failed request, beside the worker's own message - which is the parser's
+ * English, or Node's with the file's full path in it, and is only ever logged.
+ *
+ * - `PERMISSION_DENIED`: the file could not be opened for reading (the same string as
+ *   `FsRejectErrorCode.PERMISSION_DENIED`, so it reads the same way as any other refused read).
+ * - `PSD_UNREADABLE`: the bytes were read and are not a PSD this parser can read.
+ *
+ * Anything else - the worker crashing on a sheet too big for memory, a bake failing to write its
+ * scratch files - carries no code, because naming a cause there would be a guess.
+ */
+export const PSD_UNREADABLE = "PSD_UNREADABLE";
+export type PsdFailureCode = "PERMISSION_DENIED" | typeof PSD_UNREADABLE;

@@ -17,6 +17,7 @@ import type {
     TestText,
     TestVerdict,
 } from "../types";
+import { nameUniquely } from "../parameters";
 import type { BuiltInTestHost } from "./index";
 import { driveWalkthrough, type WalkthroughOutcome } from "./walkthroughDriver";
 
@@ -99,26 +100,45 @@ export function createWalkthroughTest(host: BuiltInTestHost): TestDefinition {
  * two rows may legitimately share, and a scene name repeats across stories. Built from
  * `listStoryEndings` - the one scan the compiler emits from - so the list can never offer an ending
  * the build does not have.
+ *
+ * Each row is also named for the command line, because its value is a pair of generated ids and a
+ * line has to carry something (see `TestParameterOption.name`). The name is the ending's own when no
+ * other ending shares it, and the story and then the scene are put in front only where they have to
+ * be - so `--test-parameter ending=good` works on the project that has one ending called that. An
+ * ending with no name yet is named by its story and scene, never by the placeholder the picker shows,
+ * which is a translated word.
  */
 function listEndingOptions(services: ServiceRegistry): TestParameterOption[] {
     const story = services.get<StoryService>(Services.Story);
-    const options: TestParameterOption[] = [];
+    const rows: Array<{ option: TestParameterOption; spellings: string[] }> = [];
     for (const entry of story.getLibraryIndex().stories) {
         const document = story.getLoadedStoryDocument(entry.id);
         if (!document) {
             continue;
         }
         for (const ending of listStoryEndings(document)) {
-            options.push({
-                value: encodeWalkthroughEnding(entry.id, ending.endingId),
-                label: {
-                    key: "test.builtin.walkthrough.parameter.ending.option",
-                    params: { story: entry.name, scene: ending.sceneName, ending: endingName(ending) },
+            rows.push({
+                option: {
+                    value: encodeWalkthroughEnding(entry.id, ending.endingId),
+                    label: {
+                        key: "test.builtin.walkthrough.parameter.ending.option",
+                        params: { story: entry.name, scene: ending.sceneName, ending: endingName(ending) },
+                    },
                 },
+                spellings: endingSpellings(entry.name, ending.sceneName, ending.name),
             });
         }
     }
-    return options;
+    const names = nameUniquely(rows.map(row => row.spellings));
+    return rows.map((row, index) => ({ ...row.option, name: names[index] }));
+}
+
+/** An ending's command-line names, shortest first. See {@link listEndingOptions}. */
+export function endingSpellings(story: string, scene: string, ending: string | undefined): string[] {
+    const name = ending?.trim();
+    return name
+        ? [name, `${story} / ${name}`, `${story} / ${scene} / ${name}`]
+        : [`${story} / ${scene}`];
 }
 
 /** An ending the author has not named yet still has to be pickable. */

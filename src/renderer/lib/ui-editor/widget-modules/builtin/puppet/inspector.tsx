@@ -64,6 +64,7 @@ function describeStatusKey(reason: PuppetDescriptionUnavailableReason | null | u
         case "no-model": return "widgets.puppet.describeNoModel";
         case "no-backend": return "widgets.puppet.describeNoBackend";
         case "backend-missing": return "widgets.puppet.describeBackendMissing";
+        case "distrusted": return "widgets.puppet.describeDistrusted";
         case "not-described": return "widgets.puppet.describeNotSupported";
         case "failed": return "widgets.puppet.describeFailed";
         default: return "widgets.puppet.describeOk";

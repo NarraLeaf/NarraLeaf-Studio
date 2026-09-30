@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect, type ReactNode } from "react";
+import type { GameCrashReportRequest } from "@shared/types/gameRuntime";
 
 const logged: Array<{ level: string; message: string }> = [];
-let bridge: { log: (level: string, message: string) => void } | null = null;
+const reported: GameCrashReportRequest[] = [];
+let bridge:
+    | {
+          log: (level: string, message: string) => void;
+          saveCrashReport?: (request: GameCrashReportRequest) => Promise<{ outcome: "written"; path: string }>;
+      }
+    | null = null;
 
 vi.mock("@/lib/ui-editor/runtime/gameRuntimeBridge", () => ({
     getGameRuntimeBridge: () => bridge,
@@ -18,6 +26,7 @@ vi.mock("@/lib/i18n", () => ({
 
 import { RuntimeCrashBoundary } from "./RuntimeCrashBoundary";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
+import { clearStoryPosition, recordStoryRow, recordStoryScene } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 
 function Exploding(): never {
     throw new TypeError("Cannot read properties of undefined (reading 'designSize')");
@@ -26,6 +35,8 @@ function Exploding(): never {
 describe("RuntimeCrashBoundary", () => {
     beforeEach(() => {
         logged.length = 0;
+        reported.length = 0;
+        clearStoryPosition();
         bridge = { log: (level, message) => { logged.push({ level, message }); } };
         // React prints the caught error itself; the test is not interested in its copy.
         vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -114,6 +125,37 @@ describe("RuntimeCrashBoundary", () => {
 
         expect(reload).toHaveBeenCalledTimes(3);
         expect(screen.getByText("game.crash.title")).toBeTruthy();
+    });
+
+    it("keeps where the player was, which the teardown it triggers would otherwise erase", async () => {
+        // The regression this guards: the engine unmounts its scene while the failed tree comes
+        // down, the position record cannot tell that apart from a player leaving the story, and a
+        // screen that asked for it afterwards reported that nothing had been running - for every
+        // crash in the middle of a scene, which is the crash worth reporting.
+        function PlayingScene(): ReactNode {
+            useEffect(() => () => { clearStoryPosition(); }, []);
+            return <p>the game</p>;
+        }
+        bridge = {
+            log: (level, message) => { logged.push({ level, message }); },
+            saveCrashReport: async request => {
+                reported.push(request);
+                return { outcome: "written", path: "crash-report.txt" };
+            },
+        };
+        recordStoryScene("Chapter One", "The corridor");
+        recordStoryRow("block-7");
+
+        const { rerender } = render(<RuntimeCrashBoundary><PlayingScene /></RuntimeCrashBoundary>);
+        rerender(<RuntimeCrashBoundary><Exploding /></RuntimeCrashBoundary>);
+        fireEvent.click(screen.getByText("game.crash.saveReport"));
+
+        await waitFor(() => expect(reported).toHaveLength(1));
+        expect(reported[0].story).toEqual({
+            storyName: "Chapter One",
+            sceneName: "The corridor",
+            rowId: "block-7",
+        });
     });
 
     it("keeps the player's way out reachable in a small window", () => {

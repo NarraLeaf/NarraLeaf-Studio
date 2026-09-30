@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { computePeaks, type AudioClip, type SampleRange } from "./audioClip";
 import type { LoopMarker, LoopPoints } from "./loopHistory";
+import { amplitudeLabel } from "./amplitude";
 
 /** Which marker of the loop region a gesture is about. */
 export type LoopEnd = LoopMarker;
@@ -14,6 +15,8 @@ interface WaveformViewProps {
     loop: LoopPoints;
     /** Playhead position in samples, or null when stopped at the start. */
     playhead: number | null;
+    /** Vertical magnification of the samples, 1 for true size. Display only. */
+    amplitude: number;
     onSelectionChange: (range: SampleRange | null) => void;
     onSeek: (sample: number) => void;
     /** Live during a marker drag - the editor applies these without touching undo history. */
@@ -52,9 +55,26 @@ const GRAB_TOLERANCE_PX = 6;
 /** Below this a lane is too short to read, so the channels fold into one envelope. */
 const MIN_LANE_HEIGHT = 36;
 
-function readCssColor(element: HTMLElement, token: string, fallback: string): string {
+export function readCssColor(element: HTMLElement, token: string, fallback: string): string {
     const value = getComputedStyle(element).getPropertyValue(token).trim();
     return value.length > 0 ? value : fallback;
+}
+
+/**
+ * The theme colours the media previews' canvases paint with, read off `element`'s computed style.
+ *
+ * Read at draw time rather than cached, so a theme switch takes effect on the next repaint. The
+ * fallbacks only apply to an element outside the themed tree.
+ */
+export function readCanvasPalette(element: HTMLElement) {
+    return {
+        wave: readCssColor(element, "--color-fg-muted", "#8a8a8a"),
+        subtle: readCssColor(element, "--color-fg-subtle", "#6a6a6a"),
+        primary: readCssColor(element, "--color-primary", "#40a8c4"),
+        edge: readCssColor(element, "--color-edge", "#3a3a3a"),
+        fg: readCssColor(element, "--color-fg", "#f0f0f0"),
+        sunken: readCssColor(element, "--color-surface-sunken", "#1a1a1a"),
+    };
 }
 
 /** Choose a tick spacing whose labels stay readable at the current zoom. */
@@ -93,6 +113,7 @@ export function WaveformView({
     selection,
     loop,
     playhead,
+    amplitude,
     onSelectionChange,
     onSeek,
     onLoopDrag,
@@ -111,8 +132,8 @@ export function WaveformView({
     // Latest props for the draw routine, so redrawing never re-subscribes the ResizeObserver:
     // re-observing on every prop change, while the draw itself resizes the canvas, is a feedback
     // loop that repaints (and reallocates the backing store) without end.
-    const propsRef = useRef({ clip, view, selection, loop, playhead });
-    propsRef.current = { clip, view, selection, loop, playhead };
+    const propsRef = useRef({ clip, view, selection, loop, playhead, amplitude });
+    propsRef.current = { clip, view, selection, loop, playhead, amplitude };
 
     /**
      * Last computed peaks, keyed by everything they depend on.
@@ -144,7 +165,7 @@ export function WaveformView({
         if (!canvas || !context) {
             return;
         }
-        const { clip, view, selection, loop, playhead } = propsRef.current;
+        const { clip, view, selection, loop, playhead, amplitude } = propsRef.current;
         const hover = hoverRef.current;
 
         const rect = canvas.getBoundingClientRect();
@@ -165,13 +186,14 @@ export function WaveformView({
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
         context.clearRect(0, 0, width, height);
 
-        const styleHost = canvas.parentElement ?? canvas;
-        const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
-        const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
-        const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
-        const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
-        const fgColor = readCssColor(styleHost, "--color-fg", "#f0f0f0");
-        const sunkenColor = readCssColor(styleHost, "--color-surface-sunken", "#1a1a1a");
+        const {
+            wave: waveColor,
+            subtle: subtleColor,
+            primary: primaryColor,
+            edge: edgeColor,
+            fg: fgColor,
+            sunken: sunkenColor,
+        } = readCanvasPalette(canvas.parentElement ?? canvas);
 
         const waveHeight = height - WAVE_TOP;
         const visibleSamples = Math.max(1, view.end - view.start);
@@ -219,8 +241,9 @@ export function WaveformView({
             const midline = top + laneHeight / 2;
             context.fillStyle = waveColor;
             for (let x = 0; x < width; x++) {
-                const minimum = peaks[x * 2];
-                const maximum = peaks[x * 2 + 1];
+                // Magnified samples stop at the lane's edge rather than spilling into the next one.
+                const minimum = Math.max(-1, peaks[x * 2] * amplitude);
+                const maximum = Math.min(1, peaks[x * 2 + 1] * amplitude);
                 const barTop = midline - (maximum * laneHeight) / 2;
                 const barBottom = midline - (minimum * laneHeight) / 2;
                 context.fillRect(x, barTop, 1, Math.max(1, barBottom - barTop));
@@ -372,6 +395,22 @@ export function WaveformView({
             }
         }
 
+        // While magnified, say so in the corner: a waveform drawn four times taller than the samples
+        // reads as a clip four times louder unless something on it says otherwise.
+        const magnified = amplitudeLabel(amplitude);
+        if (magnified) {
+            const textWidth = context.measureText(magnified).width;
+            const labelX = width - textWidth - 6;
+            context.fillStyle = sunkenColor;
+            context.fillRect(labelX - 2, WAVE_TOP + 2, textWidth + 4, 11);
+            context.fillStyle = edgeColor;
+            context.globalAlpha = 0.9;
+            context.fillRect(labelX - 2, WAVE_TOP + 2, textWidth + 4, 11);
+            context.globalAlpha = 1;
+            context.fillStyle = fgColor;
+            context.fillText(magnified, labelX, WAVE_TOP + 3);
+        }
+
         // Playhead last, so it is never hidden by anything else.
         if (playhead !== null) {
             const x = sampleToX(playhead);
@@ -385,7 +424,7 @@ export function WaveformView({
     // Repaint on prop changes...
     useEffect(() => {
         draw();
-    }, [draw, clip, view, selection, loop, playhead]);
+    }, [draw, clip, view, selection, loop, playhead, amplitude]);
 
     // ...and when the element is resized. The observer watches the *container*, not the canvas:
     // drawing resizes the canvas, so observing the canvas would let a repaint trigger the next

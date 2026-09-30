@@ -126,11 +126,15 @@ Launcher 看到的是 `PluginListItem`，它在 record 基础上增加 `status`�
 | 状态 | 条件 |
 | --- | --- |
 | `enabled` | 已启用，且 `grantedManifestVersion === manifest.version`，且没有 `lastError`。 |
-| `disabled` | 未启用，已完成当前版本授权，且没有 `lastError`。 |
+| `disabled` | 未启用，且已完成当前版本授权。记录里可能仍留着上一次加载失败的 `lastError`。 |
 | `needsAuthorization` | 当前 manifest 版本没有授权。 |
-| `error` | 最近一次 workspace 加载失败，错误保存在 `lastError`。 |
+| `error` | **已启用**，且最近一次 workspace 加载失败，错误保存在 `lastError`。 |
 
-状态优先级是 `error` > `needsAuthorization` > `enabled` > `disabled`。如果插件加载失败，即使 `enabled` 仍为 true，也会以 `error` 展示，并且不会再次进入 workspace descriptor，直到用户重新启用或重新安装使 `lastError` 清空。
+状态优先级是 `error` > `needsAuthorization` > `enabled` > `disabled`，其中 **`error` 只在插件仍处于启用状态时报出**。插件加载失败时 `enabled` 仍为 true，于是以 `error` 展示，并且不会再次进入 workspace descriptor，直到 `lastError` 被清空。
+
+作者把一个失败的插件关掉之后，`lastError` 按下面一段的规则留着，但状态词变成 `disabled`——**拨了开关就要看得见开关拨动了**。这一条早先写作无条件的 `error` 优先，于是插件列表说「错误」而项目依赖表的 `classifyDependencyRow`（先判 `installedEnabled === false`）对同一个插件说「已禁用」，两块屏幕对同一行给两种说法。错误文本本身没有丢：详情页照旧显示记录里的 `lastError`。
+
+清空 `lastError` 的是 `setPluginEnabled(id, true)`（授权与重新安装同理）；`setPluginEnabled(id, false)` 特意保留它。因此界面上的开关按记录的 `enabled` 给出，而不是按 `status`——`error` 挡在 `enabled`/`disabled` 前面，曾让加载失败的插件在任何界面上都没有开关可拨，内建插件因此无路可走。插件面板另外给已启用而加载失败的插件一个「重试」：它做的就是再启用一次并在本窗口重新载入，判定收在 `renderer/lib/plugins/ui/pluginRecordActions.ts`。
 
 ## 授权模型
 
@@ -235,7 +239,7 @@ runtime entry 在三个游戏执行环境加载，共用同一个 loader（`src/
 
 Dev Mode 的 suppression 与 workspace 一致：主进程读取项目 `.nlproj` 的依赖表，用共享的 `resolveDependencies` 解析——hard 依赖缺失或主版本不兼容的插件不会在该项目的 Dev Mode 会话中执行。解析失败不阻断会话（best-effort）。
 
-加载时机在游戏 boot 之前：Dev Mode 由 `useDevModeRuntimePlugins()` 门控 `GameAppHost.ready`；独立 runtime 由 `GameRuntimeApp` 的 `useRuntimePlugins()` 与资源预载共同门控。所有 runtime plugin 注册完成后 NLR/blueprint 才开始执行，保证插件节点在首个蓝图触发前可解析。
+加载时机在游戏 boot 之前：Dev Mode 由 `useDevModeRuntimePlugins()` 门控 `GameAppHost.ready`；独立 runtime 由 `GameRuntimeApp` 的 `useRuntimePlugins()` 与资产预载共同门控。所有 runtime plugin 注册完成后 NLR/blueprint 才开始执行，保证插件节点在首个蓝图触发前可解析。
 
 runtime entry 必须默认导出 `defineRuntimePlugin({ setup })`：
 
@@ -487,10 +491,10 @@ Launcher、workspace、Dev Mode 和 preload 之间使用这些 IPC：
 - 插件代码不是 sandbox；安装批准意味着用户信任该本地代码（runtime entry 还会随游戏发布）。
 - 没有在线插件商店、远程 feed、自动更新或依赖解析。
 - 没有插件间依赖排序。
-- 插件注册的 UI、widget、blueprint ID 由约定 + 注册时前缀校验保证，必须以插件 ID 为前缀。
+- 插件注册的 UI、widget、blueprint ID 由约定 + 注册时前缀校验保证，必须以插件 ID 为前缀。项目依赖扫描靠的就是这一条：插件没有载入（未安装、已停用、因版本被扣下）时，它的节点与 widget 按 type 前缀认回给它（`attributeByNamespace`），所以放宽前缀约束会让依赖表认不出这类引用。
 - runtime API 面当前是 `blueprintNodes` + `widgets` + `log`。transform 字段 / transition 预设扩展点等待核心先建立预设系统（当前核心自身也没有可插拔的预设注册点）。
 - runtime entry 不提供 `react-dom/client`：插件不得在游戏内挂载自己的 React root。
-- 静态校验依据项目依赖表（保存时由 workspace 扫描维护）；未在 workspace 中打开保存过的项目可能没有依赖表，此时打包回退为全部启用插件。
+- 静态校验依据项目依赖表。表由 workspace 扫描写入，时机是运行（Dev Mode / Preview）、导出和「重新扫描」——**不是**保存；项目里只要还有东西引用某个插件（蓝图节点、widget、故事行、插件 store），它就留在表里，与插件是否已安装、是否启用无关；最后一处引用删掉之后的下一次扫描把它去掉。只有扫描读不全文档时才一行都不删。因主版本不兼容被扣下的插件，记录的版本只有作者按「重新扫描」（Project ▸ App 或构建对话框，`DependencyScanTrigger = "rescan"`）才改成已安装版本并解除扣下；运行、导出前的自动扫描和面板打开时的预览扫描都不动它，即使项目里有它的 store 或故事行。从未被扫描过的项目可能没有依赖表，此时打包回退为全部启用插件。
 
 ## 关键实现文件
 

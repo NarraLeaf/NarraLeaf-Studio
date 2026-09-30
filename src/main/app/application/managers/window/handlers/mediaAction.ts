@@ -1,3 +1,4 @@
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode } from "@shared/types/os";
@@ -27,6 +28,13 @@ export class MediaProbeHandler extends IPCHandler<IPCEventType.mediaProbe> {
         window: AppWindow,
         { path }: IPCEvents[IPCEventType.mediaProbe]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.mediaProbe]["response"]>> {
+        // Ahead of the path grant, because this is the one the asset panel reaches on mount: it
+        // probes every clip whose support is not already cached, one ffprobe per miss. Opening
+        // somebody else's project must not be enough to start those.
+        const distrusted = refuseDistrustedWindow(window, "media inspection");
+        if (distrusted) {
+            return this.failed(new Error(distrusted));
+        }
         // The same gate every path-taking handler goes through. Handing an arbitrary renderer-named
         // path to a child process would be a way around the storage manager, and a wider one than
         // usual: ffprobe reads whatever it is pointed at, including files outside the project.
@@ -61,6 +69,10 @@ export class MediaConvertStartHandler extends IPCHandler<IPCEventType.mediaConve
         window: AppWindow,
         { request }: IPCEvents[IPCEventType.mediaConvertStart]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.mediaConvertStart]["response"]>> {
+        const distrusted = refuseDistrustedWindow(window, "media conversion");
+        if (distrusted) {
+            return this.failed(new Error(distrusted));
+        }
         const { storageManager } = window.app;
         if (!(await storageManager.isPathAllowed(window, request.sourcePath, "read"))) {
             return this.failed(

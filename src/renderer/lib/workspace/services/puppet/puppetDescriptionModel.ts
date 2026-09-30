@@ -58,6 +58,8 @@ export type PuppetDescriptionUnavailableReason =
     | "no-backend"
     /** The named backend is not installed in this project — `runtimes/puppet/<name>/index.js` is absent. */
     | "backend-missing"
+    /** The project arrived from elsewhere and has not been trusted, so its runtimes are not run. */
+    | "distrusted"
     /** The backend loaded and mounted, but implements no `describe()`. Explicitly allowed by the contract. */
     | "not-described"
     /** The backend threw, rejected, timed out, or returned something that is not a description. */

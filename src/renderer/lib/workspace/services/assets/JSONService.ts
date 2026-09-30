@@ -1,6 +1,7 @@
 import { AssetData, AssetType } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetServiceBase } from "./AssetServiceBase";
+import { ASSET_UNDECODABLE } from "./assetReadFailure";
 
 export class JSONService extends AssetServiceBase {
 
@@ -10,6 +11,7 @@ export class JSONService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read JSON file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 
@@ -42,6 +44,7 @@ export class JSONService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to parse JSON: ${error instanceof Error ? error.message : 'Invalid JSON'}`,
+                code: ASSET_UNDECODABLE,
             };
         }
     }

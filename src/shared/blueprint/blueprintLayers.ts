@@ -1,0 +1,85 @@
+/**
+ * Reading a blueprint's layers, and telling the two kinds apart.
+ *
+ * A blueprint is a list of layers and a layer is a graph or one of the author's script files. The
+ * two are siblings rather than alternatives: the dispatcher runs *every* layer that answers a
+ * dispatched event, so a script sits beside a graph in the same slot and both run. Anything that
+ * used to ask a blueprint "are you a graph or a script" is asking the wrong thing - it has to ask
+ * each layer, which is what the helpers here are for.
+ */
+
+import type {
+    Blueprint,
+    BlueprintGraphIndex,
+    BlueprintLayer,
+    BlueprintLayerScript,
+} from "@shared/types/blueprint/document";
+import { listBlueprintEventIds } from "./blueprintEventOrder";
+
+/** One layer, with the id it is stored under. */
+export type BlueprintLayerEntry = {
+    layerId: string;
+    layer: BlueprintLayer;
+};
+
+/** One script layer: the id it is stored under, and the file it runs. */
+export type ScriptLayerEntry = {
+    layerId: string;
+    script: BlueprintLayerScript;
+};
+
+/** Every layer, in the order the author arranged them rather than in key order. */
+export function listBlueprintLayers(graphs: BlueprintGraphIndex | undefined): BlueprintLayerEntry[] {
+    const events = graphs?.events ?? {};
+    return listBlueprintEventIds(graphs)
+        .map(layerId => ({ layerId, layer: events[layerId] }))
+        .filter((entry): entry is BlueprintLayerEntry => Boolean(entry.layer));
+}
+
+/** Every layer that runs one of the author's files, in authored order. */
+export function listScriptLayers(graphs: BlueprintGraphIndex | undefined): ScriptLayerEntry[] {
+    const out: ScriptLayerEntry[] = [];
+    for (const { layerId, layer } of listBlueprintLayers(graphs)) {
+        if (layer.script) {
+            out.push({ layerId, script: layer.script });
+        }
+    }
+    return out;
+}
+
+/** Whether any layer of this blueprint is a script. */
+export function hasScriptLayer(blueprint: Blueprint | undefined): boolean {
+    return Object.values(blueprint?.graphs?.events ?? {}).some(layer => Boolean(layer?.script));
+}
+
+/**
+ * The one script layer of a blueprint whose slot admits only one, or null.
+ *
+ * A story action and a value binding have a single event head between them, so their blueprint has
+ * a single layer and the question "is this slot written as a script" has an answer for them that it
+ * does not have for a widget. Both are entered through the module's default export.
+ */
+export function soleScriptLayer(blueprint: Blueprint | undefined): ScriptLayerEntry | null {
+    const scripts = listScriptLayers(blueprint?.graphs);
+    return scripts.length === 1 ? scripts[0] : null;
+}
+
+/**
+ * How a compiled module is named to everything that mounts, resolves or reports one.
+ *
+ * A layer id is unique inside its blueprint and no further - `init` is the seeded layer of every
+ * value binding in the project - so the pair is the identity, and the blueprint id alone is not.
+ * It used to be, because a script *was* a blueprint.
+ */
+export function scriptLayerKey(blueprintId: string, layerId: string): string {
+    return `${blueprintId}\u0000${layerId}`;
+}
+
+/** The blueprint and layer a {@link scriptLayerKey} names. */
+export function parseScriptLayerKey(key: string): { blueprintId: string; layerId: string } | null {
+    const at = key.indexOf("\u0000");
+    if (at < 0) {
+        return null;
+    }
+    return { blueprintId: key.slice(0, at), layerId: key.slice(at + 1) };
+}

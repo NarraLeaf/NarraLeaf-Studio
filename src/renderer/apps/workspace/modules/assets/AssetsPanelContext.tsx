@@ -166,6 +166,14 @@ interface AssetsPanelContextType {
      * place and a reference to one never changes.
      */
     mediaSupport: ReadonlyMap<string, MediaAssetSupportRecord>;
+    /**
+     * The sections whose metadata file is on disk and could not be read.
+     *
+     * A section in here draws no rows and is not empty: the file it was read from still holds every
+     * asset in it, and is left exactly as it was found. Both views say so in place of the rows,
+     * which is the only difference between this and a category the author has not used yet.
+     */
+    unreadableCategories: ReadonlySet<AssetCategory>;
     /** Opens the conversion for one asset. Refused for anything the scan did not mark. */
     handleConvertMedia: (asset: Asset) => void;
 }

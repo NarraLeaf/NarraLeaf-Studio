@@ -120,11 +120,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "ウィンドウアイコン",
-            description: "Studio のウィンドウとタスクバーボタンに表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            label: "アプリアイコン",
+            description: "Studio がタスクバーと通知領域に表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            descriptionMac: "Studio の起動中に Dock に表示するアイコン。Finder と Launchpad はインストール時のアイコンのまま",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "白地のリーフ",
+                leaf: "リーフ",
             },
             unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
@@ -170,10 +172,6 @@ export const settings = {
                 serif: "セリフ",
                 monospace: "等幅",
             },
-        },
-        editorSurfaceOpacity: {
-            label: "エディタの面の不透明度",
-            description: "ストーリー文とインスペクタの項目の背後にある面の不透明度",
         },
         maxActiveEditors: {
             label: "同時に保持するエディタの数",
@@ -341,6 +339,10 @@ export const settings = {
         keybindings: {
             label: "キーボードショートカット",
         },
+        projectTrust: {
+            label: "信頼済みプロジェクト",
+            description: "Studio が作成していないプロジェクトと、実行を許可するかどうか。",
+        },
         cacheInventory: {
             label: "キャッシュしたファイル",
         },
@@ -406,6 +408,8 @@ export const settings = {
         checking: "確認しています…",
         done: "完了",
         signOut: "サインアウト",
+        usedBy: "使用中のプロジェクト：{projects}",
+        unused: "このサインインを使うプロジェクトはない",
         signIn: "サインイン",
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
@@ -445,6 +449,23 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "読み込み中…",
+            empty: "これまでに開いたプロジェクトはすべて Studio が作成したもの。",
+            waiting: "未処理",
+            granted: "信頼済み",
+            trust: "信頼する",
+            remove: "解除",
+            reloadNote: "開いているプロジェクトは、信頼の状態が変わると読み込み直される。",
+            origin: {
+                package: "パッケージから",
+                remote: "リモートソースから",
+                opened: "フォルダーから開いた",
+                created: "Studio が作成",
+                recent: "以前に開いた",
+                commandLine: "コマンドラインから",
+            },
+        },
         cache: {
             measuring: "計測中…",
             unavailable: "取得不可",
@@ -510,7 +531,9 @@ export const settings = {
         apply: "適用",
         exportHint: "設定をそのままの JSON ファイルとして書き出す。ワークスペースの背景、コミットに記録する名前、最近のプロジェクト、統計、ウィンドウのレイアウトはこの端末に残る",
         exported: "{path} に保存した",
-        imported: "設定 {count} 件を適用した",
+        imported: {
+            other: "設定 {count} 件を適用した",
+        },
         exportFailed: "設定を保存できなかった",
         importFailed: "ファイルを読めなかった",
         planSummary: "変更 {change} 件、すでに同じ {same} 件、対象外 {skipped} 件",

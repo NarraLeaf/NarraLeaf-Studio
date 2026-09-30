@@ -81,6 +81,7 @@ export const pluginPermission = {
             node: "プラグイン自身のコードがゲームの一部として動く",
         },
         buildDependencyHosts: "{hosts} からダウンロードする",
+        studioApi: "Studio API：{capability}",
         /**
          * API 名ではなくプレイヤーのデータを主語にして書く。信頼するかどうかを決める人にとって
          * 「state.write」は何も意味しない。
@@ -94,8 +95,11 @@ export const pluginPermission = {
             savesWrite: "プレイヤーのセーブを上書きし、読み込む",
             uiOverlay: "ゲームの上に重ねて描画する",
             assets: "パッケージ内アセットの URL を解決する",
-            locale: "ゲームの言語を読み、それに合わせる",
+            locale: "ゲームの言語とプロジェクトのローカライズ文言を読む",
+            menu: "ゲームウィンドウのメニューバーを提供する",
             storyCompile: "ストーリーのコンパイルに加わり、自分が書いていない行にも演出を足す",
+            diagnostics: "ゲームのキャッシュが使っているメモリ量を読む",
+            processMemory: "ゲームが使っているコンピューターのメモリ量を読む",
         },
     },
     button: {

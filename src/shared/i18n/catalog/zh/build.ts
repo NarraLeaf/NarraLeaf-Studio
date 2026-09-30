@@ -162,6 +162,7 @@ export const build = {
                 output: "选择文件的保存位置",
                 reading: "正在读取构建目录",
                 artifact: "该目录中没有本游戏的构建",
+                artifactAccess: "用「浏览」选择该目录后才能读取",
                 dlcBaseline: "选择此 DLC 所附加的构建",
                 dlcVariant: "该构建不是此 DLC 依附的变体",
             },
@@ -293,8 +294,8 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行；"
             + "请在 {targetPlatform} 机器上构建该目标",
-        "encryption-key-unavailable": "资产保护已开启，但无法取得密钥",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
+        "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
@@ -381,6 +382,7 @@ export const build = {
         showAll: "显示全部 {count} 项",
         failure: "失败原因",
     },
+    cancelled: "已中止构建",
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
@@ -404,7 +406,7 @@ export const build = {
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
     contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。在检查器中选定场景，或在 {variant} 变体中列出其可开始的场景",
-    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
+    contentBlockedScript: "脚本 {location} 可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedPlugin: "{location} 插件可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedSummary: {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
@@ -419,10 +421,33 @@ export const build = {
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
-    contentComputedPinGap: "{location} 的资产来自计算结果，因此本次构建无法判断它需要哪个资产",
+    // 中文只用 `other`，所以两条写成同一句，不带「每个」这类随数量变的词。
     contentComputedPinSummary: {
-        one: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在引脚上选定资产，详见控制台",
-        other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
+        one: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
+        other: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
+    },
+    contentUnloadedNodeSummary: {
+        one: "构建已中止：{count} 处资产名称来自未加载的节点类型，详见控制台",
+        other: "构建已中止：{count} 处资产名称来自未加载的节点类型，详见控制台",
+    },
+    // 发行包构建中有脚本未能编译。由主进程写出，是构建失败信息的第一行；其后逐个文件跟着编译器
+    // 自己的那一行（带文件、行号与列号）。
+    scriptsNotCompiled: {
+        one: "有 {count} 个脚本无法编译",
+        other: "有 {count} 个脚本无法编译",
+    },
+    assetSet: {
+        inCharacters: "角色",
+        inInterface: "界面",
+        inBlueprint: "蓝图",
+        language: "语言「{name}」",
+        variant: "变体「{name}」",
+        unfilled: "资产集「{set}」（用于 {location}）没有{value}的文件",
+        noLanguage: "资产集「{set}」（用于 {location}）没有本项目语言的文件",
+        ambiguous: "资产集「{set}」（用于 {location}）有多个{value}的文件",
+        nested: "资产集「{set}」（用于 {location}）的某个取值下还有资产集。构建不解析嵌套的资产集",
+        noValues: "资产集「{set}」（用于 {location}）没有声明变体",
+        variantUnset: "资产集「{set}」（用于 {location}）按变体变化，{variant} 没有指定所用的美术。请在 项目 ▸ 应用 ▸ 变体 中选择",
     },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",
@@ -438,6 +463,7 @@ export const build = {
     },
     networkNodeDisallowed: "{blueprint} 发起了网络请求，本项目不允许",
     pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上无效",
+    screenshotNodeUnsupported: "{blueprint} 会保存截图，这在 {platforms} 上无效",
     networkSummary: {
         one: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除该节点",
         other: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除这些节点",

@@ -40,7 +40,7 @@ import {
     StorySceneId,
 } from "@shared/types/story";
 import { assertValidStoryId } from "@shared/utils/storyId";
-import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
+import { migrateStoryDocumentToLatest, StoryDocumentTooNewError } from "@shared/story/migrateStoryDocument";
 
 /**
  * Refuse a document this build cannot represent.
@@ -57,14 +57,15 @@ import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument
  * version", which names neither the version the document is at nor the oldest one that opens. See
  * `STORY_DOCUMENT_MIN_SUPPORTED_VERSION`.
  *
- * Called *after* {@link migrateStoryDocumentToLatest}, never instead of it. The story spec has a
- * second, earlier guard on the raw record (`rejectNewerSchema`), so a newer document is named as
- * such before anything touches it; this one is the backstop that makes the post-condition true by
- * construction rather than by inspection of the ladder.
+ * Called *after* {@link migrateStoryDocumentToLatest}, never instead of it. The ladder refuses a
+ * newer document itself, by name, and the story spec has a still earlier guard on the raw record
+ * (`rejectNewerSchema`); this one is the backstop that makes the post-condition true by
+ * construction rather than by inspection of the ladder. It throws the ladder's own error so that a
+ * reader looking for the two versions finds them whichever guard fired.
  */
 export function assertSupportedStoryDocument(document: StoryDocument): void {
     if (document.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
-        throw new Error("Story document schema is newer than this Studio version");
+        throw new StoryDocumentTooNewError(document.schemaVersion, STORY_DOCUMENT_SCHEMA_VERSION);
     }
     if (document.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
         throw new Error("Story document migration is not implemented");

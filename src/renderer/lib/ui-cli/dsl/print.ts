@@ -17,6 +17,7 @@ import type {
 } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import { printValue } from "../../blueprint-cli/dsl/values";
+import { propAssignmentKey } from "./parse";
 
 const INDENT = "    ";
 
@@ -163,7 +164,9 @@ export function printElementTree(
         lines.push(`${inner}style.${key} = ${printValue(value)}`);
     }
     for (const [key, value] of Object.entries(element.props ?? {})) {
-        lines.push(`${inner}${key} = ${printValue(value)}`);
+        // The element's own `animation` record is written further down, and only the prefix keeps a
+        // Page widget's `animation` prop - the same shape of record - from reading back as it.
+        lines.push(`${inner}${propAssignmentKey(key)} = ${printValue(value)}`);
     }
     for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
         lines.push(

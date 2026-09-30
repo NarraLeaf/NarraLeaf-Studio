@@ -165,6 +165,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             ruleId: "localization/orphan",
             messageKey: "lint.rule.localizationOrphan.message",
             messageParams: { count, locale },
+            messageParamCounts: { translations: { key: "lint.rule.localizationOrphan.translationCount", count } },
             location: { kind: "project" },
         });
     }

@@ -30,7 +30,7 @@ describe("HistoryService", () => {
     beforeEach(() => {
         frozen = null;
         history = new HistoryService();
-        history.setContext({ project: {} as never, services: {} as never });
+        history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
     });
 
     it("checkpoint + undo returns the state the checkpoint was taken at", () => {

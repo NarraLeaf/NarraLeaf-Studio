@@ -188,6 +188,14 @@ export type RichTextInputHandle = {
      * committing an empty edit.
      */
     getRuns: () => StoryRichRun[] | null;
+    /**
+     * True while an input method is mid-conversion in this field.
+     *
+     * For callers that write the row's words somewhere else on a timer: what is in the DOM during a
+     * composition is the IME's candidate, not the author's line, and it is replaced wholesale when
+     * they pick one.
+     */
+    isComposing: () => boolean;
 };
 
 export const RichTextInput = forwardRef<RichTextInputHandle, {
@@ -297,6 +305,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     // Set while we mutate the DOM ourselves. execCommand fires `beforeinput` too, and without this the
     // row would record the same edit twice — once here, once from the listener.
     const programmaticRef = useRef(false);
+    /**
+     * Set while an input method is composing into this field.
+     *
+     * The half-converted kana Chromium puts in the DOM during a conversion are not text the author
+     * has written — they are the IME's working copy, and the next keystroke can replace all of them.
+     * `onChange` still fires for each one (composition arrives as `input` events like any other
+     * edit), so anything that acts on the words rather than merely showing them has to be able to
+     * ask; see {@link RichTextInputHandle.isComposing}.
+     */
+    const composingRef = useRef(false);
     // Caret color mirrors the color mark at the caret so authors preview the color they'll type in.
     const [caretColor, setCaretColor] = useState<string | null>(null);
     const onChangeRef = useRef(props.onChange);
@@ -1258,6 +1276,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
+        isComposing: () => composingRef.current,
     }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
 
     return (
@@ -1376,6 +1395,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                         });
                     }
                 }
+            }}
+            onCompositionStart={() => {
+                composingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+                composingRef.current = false;
+                // Chromium's ordering around the end of a conversion differs between input methods,
+                // so the last `input` of a composition can arrive before this. Emitting again here
+                // costs one read of a line that has just stopped changing, and guarantees that
+                // whoever is listening hears about the finished words rather than the candidate.
+                emitChange();
             }}
             onInput={() => {
                 emitChange();

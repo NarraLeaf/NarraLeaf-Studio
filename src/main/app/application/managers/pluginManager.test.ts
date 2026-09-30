@@ -271,6 +271,75 @@ describe("PluginManager", () => {
         await expect(manager.uninstallPlugin("acme.sample-plugin")).rejects.toThrow("Built-in plugins cannot be uninstalled");
     });
 
+    it("ships the authoring built-ins switched off and remembers the author turning one on", async () => {
+        const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
+        await writePluginPackage(path.join(builtInPluginsDir, "gallery"), "1.0.0", { studio: "main.js" }, [], undefined, "narraleaf.gallery");
+
+        const manager = new PluginManager(tempDir, permissionManager as any, { builtInPluginsDir });
+        // Installed and authorized like any built-in, but not running: the author
+        // asks for the Gallery rather than every project carrying its tab.
+        await expect(manager.listPlugins()).resolves.toMatchObject([{
+            pluginId: "narraleaf.gallery",
+            builtIn: true,
+            enabled: false,
+            status: "disabled",
+            grantedManifestVersion: "1.0.0",
+        }]);
+        await expect(manager.listWorkspacePlugins()).resolves.toEqual([]);
+
+        // Authorized already, so turning it on needs no install prompt - and a
+        // later scan (a rebuild under the running app, or the next launch) must
+        // not put it back the way it shipped.
+        await expect(manager.setPluginEnabled("narraleaf.gallery", true))
+            .resolves.toMatchObject({ enabled: true, status: "enabled" });
+        await manager.refreshBuiltInPlugins();
+        await expect(manager.listPlugins()).resolves.toMatchObject([{ pluginId: "narraleaf.gallery", enabled: true }]);
+    });
+
+    /**
+     * The status word a plugin that failed to load carries, before and after the author acts on it.
+     *
+     * A failure used to hide the switch behind it for as long as the record remembered one, so the
+     * plugin list went on saying "error" about a plugin the author had just switched off - while the
+     * project's dependency table, which reads the same record's `installedEnabled` first, called it
+     * switched off. Two screens, two answers, and nothing to show the switch had taken.
+     */
+    it("reports a failure only while the plugin is switched on, and remembers the reason after", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await expect(manager.reportLoadError("acme.sample-plugin", "setup threw"))
+            .resolves.toMatchObject({ enabled: true, status: "error", lastError: "setup threw" });
+        await expect(manager.listWorkspacePlugins()).resolves.toEqual([]);
+
+        // Switched off: the word is the switch the author just pressed. The reason stays on the
+        // record, which is what the details page shows, and switching it on again forgets it.
+        await expect(manager.setPluginEnabled("acme.sample-plugin", false))
+            .resolves.toMatchObject({ enabled: false, status: "disabled", lastError: "setup threw" });
+        await expect(manager.listPlugins())
+            .resolves.toMatchObject([{ status: "disabled", lastError: "setup threw" }]);
+
+        await expect(manager.setPluginEnabled("acme.sample-plugin", true))
+            .resolves.toMatchObject({ enabled: true, status: "enabled", lastError: null });
+        await expect(manager.listWorkspacePlugins()).resolves.toHaveLength(1);
+    });
+
+    it("says a package it cannot read failed, rather than saying the author switched it off", async () => {
+        const manager = new PluginManager(tempDir, permissionManager as any);
+        await manager.installFromDirectory(sourceDir);
+        await approve(manager);
+
+        await fs.writeFile(path.join(tempDir, "plugins", "acme.sample-plugin", "manifest.json"), "{ not json", "utf-8");
+        await manager.refreshBuiltInPlugins();
+
+        // The switch is the author's; a package that stopped reading is not them having pressed it.
+        const [plugin] = await manager.listPlugins();
+        expect(plugin).toMatchObject({ enabled: true, status: "error" });
+        expect(plugin.lastError).toBeTruthy();
+        await expect(manager.listWorkspacePlugins()).resolves.toEqual([]);
+    });
+
     it("ignores staging leftovers instead of letting them shadow the installed package", async () => {
         const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
         await writePluginPackage(path.join(builtInPluginsDir, "sample"), "2.0.0");
@@ -396,6 +465,7 @@ async function writePluginPackage(
     entries: Record<string, string> = { studio: "main.js" },
     permissions: unknown[] = [{ kind: "api", capability: "bash.execute" }],
     icon?: string,
+    id = "acme.sample-plugin",
 ): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
     for (const entry of Object.values(entries)) {
@@ -403,7 +473,7 @@ async function writePluginPackage(
     }
     await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
         manifestVersion: 2,
-        id: "acme.sample-plugin",
+        id,
         name: "Sample Plugin",
         version,
         description: "Test plugin",

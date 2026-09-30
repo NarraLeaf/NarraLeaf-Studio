@@ -18,7 +18,6 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
     NETWORK_ACCESS_POLICIES,
     NETWORK_POLICY_ALLOWLIST,
-    NETWORK_POLICY_OFF,
     normalizeNetworkAccessPolicy,
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
@@ -27,6 +26,7 @@ import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NetworkAllowlistField } from "./NetworkAllowlistField";
 import { NumberField } from "./NumberField";
 import { ProjectSigningSection } from "./ProjectSigningSection";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import {
     MOBILE_CROP_ANCHORS_X,
@@ -73,21 +73,56 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     // `SettingRow` reads the freeze itself; the orientation dropdown sits in a bare `SettingShell`, so
     // it needs its own.
     const freeze = useFreezeGuard();
-    const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
-    const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
-    const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
-    const [assetCompression, setAssetCompression] = useState<AssetCompressionConfiguration>(
-        () => readAssetCompressionConfiguration(config.app),
-    );
-    const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
-    const [preload, setPreload] = useState<PreloadConfiguration>(() => normalizePreloadConfiguration(config.app?.preload));
-    const [savingCrash, setSavingCrash] = useState(false);
-    const [savingPreload, setSavingPreload] = useState(false);
-    const [savingPolicy, setSavingPolicy] = useState(false);
+    // Every group reads the panel's config and lays the author's changes still on their way over it
+    // (see `useConfigSlice`): nothing on this page greys out, or refuses a second change, because a
+    // first one is being written.
+    const app = config.app;
+    const storedNetwork = useMemo(() => normalizeNetworkConfiguration(app?.network), [app?.network]);
+    const storedSecurity = useMemo(() => normalizeSecurityConfiguration(app?.security), [app?.security]);
+    const storedMobile = useMemo(() => normalizeMobileConfiguration(app?.mobile), [app?.mobile]);
+    const storedCompression = useMemo(() => readAssetCompressionConfiguration(app), [app]);
+    const storedCrash = useMemo(() => normalizeCrashConfiguration(app?.crash), [app?.crash]);
+    const storedPreload = useMemo(() => normalizePreloadConfiguration(app?.preload), [app?.preload]);
+
+    const { value: network, commit: commitNetwork } = useConfigSlice<NetworkConfiguration>({
+        stored: storedNetwork,
+        write: patch => projectService.updateNetworkConfiguration(patch),
+        onConfigChange,
+        uiService,
+        // The policy decides `allowHttp`, so a policy still on its way shows its consequence too.
+        normalize: normalizeNetworkConfiguration,
+    });
+    const { value: security, commit: commitSecurity } = useConfigSlice<SecurityConfiguration>({
+        stored: storedSecurity,
+        write: patch => projectService.updateSecurityConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
+    const { value: mobile, commit: commitMobile } = useConfigSlice<MobileConfiguration>({
+        stored: storedMobile,
+        write: patch => projectService.updateMobileConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
+    const { value: assetCompression, commit: commitAssetCompression } = useConfigSlice<AssetCompressionConfiguration>({
+        stored: storedCompression,
+        write: patch => projectService.updateAssetCompressionConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
+    const { value: crash, commit: commitCrash } = useConfigSlice<CrashConfiguration>({
+        stored: storedCrash,
+        write: patch => projectService.updateCrashConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
+    const { value: preload, commit: commitPreload } = useConfigSlice<PreloadConfiguration>({
+        stored: storedPreload,
+        write: patch => projectService.updatePreloadConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
     const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
-    const [savingEncrypt, setSavingEncrypt] = useState(false);
-    const [savingMobile, setSavingMobile] = useState(false);
-    const [savingCompression, setSavingCompression] = useState<keyof AssetCompressionConfiguration | null>(null);
 
     /**
      * Move the project between the three positions.
@@ -96,37 +131,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
      * host, or switches the network off while testing something, has not said the list was
      * wrong; losing it on the way past would make the narrow position a thing worth avoiding.
      */
-    const setNetworkPolicy = useCallback(async (value: string | number) => {
-        if (savingPolicy) {
-            return;
-        }
-        const previous = network;
-        setSavingPolicy(true);
-        const policy = normalizeNetworkAccessPolicy(value);
-        setNetwork(current => ({ ...current, policy, allowHttp: policy !== NETWORK_POLICY_OFF }));
-        try {
-            const updated = await projectService.updateNetworkConfiguration({ policy });
-            setNetwork(normalizeNetworkConfiguration(updated.app?.network));
-            onConfigChange(updated);
-        } catch (error) {
-            setNetwork(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingPolicy(false);
-        }
-    }, [network, onConfigChange, projectService, savingPolicy, uiService]);
+    const setNetworkPolicy = useCallback((value: string | number) => {
+        void commitNetwork({ policy: normalizeNetworkAccessPolicy(value) });
+    }, [commitNetwork]);
 
     const commitAllowlist = useCallback((allowlist: string[]) => {
-        setNetwork(current => ({ ...current, allowlist }));
-        void projectService.updateNetworkConfiguration({ allowlist })
-            .then(updated => {
-                setNetwork(normalizeNetworkConfiguration(updated.app?.network));
-                onConfigChange(updated);
-            })
-            .catch(error => {
-                uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-            });
-    }, [onConfigChange, projectService, uiService]);
+        void commitNetwork({ allowlist });
+    }, [commitNetwork]);
 
     // What the installed plugins declare, read once: the panel shows them so the list answers
     // "where does my game connect" completely, and nothing here can change them.
@@ -148,107 +159,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         };
     }, []);
 
-    const setCrashPolicy = useCallback(async (next: string | number) => {
-        if (savingCrash) {
-            return;
-        }
-        const previous = crash;
-        setSavingCrash(true);
-        setCrash(normalizeCrashConfiguration({ policy: next }));
-        try {
-            const updated = await projectService.updateCrashConfiguration(
-                normalizeCrashConfiguration({ policy: next }),
-            );
-            setCrash(normalizeCrashConfiguration(updated.app?.crash));
-            onConfigChange(updated);
-        } catch (error) {
-            setCrash(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingCrash(false);
-        }
-    }, [crash, onConfigChange, projectService, savingCrash, uiService]);
+    const setCrashPolicy = useCallback((next: string | number) => {
+        void commitCrash(normalizeCrashConfiguration({ policy: next }));
+    }, [commitCrash]);
 
-    const setPreloadBehavior = useCallback(async (next: string | number) => {
-        if (savingPreload) {
-            return;
-        }
-        const previous = preload;
-        setSavingPreload(true);
-        setPreload(normalizePreloadConfiguration({ behavior: next }));
-        try {
-            const updated = await projectService.updatePreloadConfiguration({ behavior: next as PreloadBehavior });
-            setPreload(normalizePreloadConfiguration(updated.app?.preload));
-            onConfigChange(updated);
-        } catch (error) {
-            setPreload(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingPreload(false);
-        }
-    }, [onConfigChange, preload, projectService, savingPreload, uiService]);
-
-    const setEncryptAssets = useCallback(async (next: boolean) => {
-        if (savingEncrypt) {
-            return;
-        }
-        const previous = security;
-        setSavingEncrypt(true);
-        setSecurity(current => ({ ...current, encryptAssets: next }));
-        try {
-            const updated = await projectService.updateSecurityConfiguration({ encryptAssets: next });
-            setSecurity(normalizeSecurityConfiguration(updated.app?.security));
-            onConfigChange(updated);
-        } catch (error) {
-            setSecurity(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingEncrypt(false);
-        }
-    }, [security, onConfigChange, projectService, savingEncrypt, uiService]);
-
-    // One writer for the whole Mobile group: every row is the same optimistic-write-then-reconcile,
-    // and four copies of it would be four places to forget the rollback.
-    const commitMobile = useCallback(async (patch: Partial<MobileConfiguration>) => {
-        if (savingMobile) {
-            return;
-        }
-        const previous = mobile;
-        setSavingMobile(true);
-        setMobile(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateMobileConfiguration(patch);
-            setMobile(normalizeMobileConfiguration(updated.app?.mobile));
-            onConfigChange(updated);
-        } catch (error) {
-            setMobile(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingMobile(false);
-        }
-    }, [mobile, onConfigChange, projectService, savingMobile, uiService]);
-
-    const commitAssetCompression = useCallback(async (
-        field: keyof AssetCompressionConfiguration,
-        patch: Partial<AssetCompressionConfiguration>,
-    ) => {
-        if (savingCompression) {
-            return;
-        }
-        const previous = assetCompression;
-        setSavingCompression(field);
-        setAssetCompression(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateAssetCompressionConfiguration(patch);
-            setAssetCompression(readAssetCompressionConfiguration(updated.app));
-            onConfigChange(updated);
-        } catch (error) {
-            setAssetCompression(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSavingCompression(null);
-        }
-    }, [assetCompression, onConfigChange, projectService, savingCompression, uiService]);
+    const setPreloadBehavior = useCallback((next: string | number) => {
+        void commitPreload({ behavior: next as PreloadBehavior });
+    }, [commitPreload]);
 
     /**
      * Move a track between the two modes.
@@ -258,7 +175,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
      * happened to hold. Going back to auto writes nothing: the numbers are theirs now, and coming
      * back to advanced a second time must not silently replace them.
      */
-    const commitCompressionMode = useCallback(async (
+    const commitCompressionMode = useCallback((
         track: AssetCompressionTrack,
         field: keyof AssetCompressionConfiguration,
         mode: AssetCompressionMode,
@@ -266,7 +183,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         const patch: Partial<AssetCompressionConfiguration> = mode === "advanced"
             ? { [field]: mode, ...advancedSeedForTrack(assetCompression, track) }
             : { [field]: mode };
-        await commitAssetCompression(field, patch);
+        void commitAssetCompression(patch);
     }, [assetCompression, commitAssetCompression]);
 
 
@@ -350,15 +267,15 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     title={t("project.settings.networkPolicyTitle")}
                     description={t(`project.settings.networkPolicyDetail.${network.policy}` as TranslationKey)}
                     hint={t("project.settings.networkPolicyWebHint")}
-                    tooltip={freeze.writes(savingPolicy)["data-tip"]}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
                         size="sm"
                         value={network.policy}
                         options={networkPolicyOptions}
-                        disabled={freeze.writes(savingPolicy).disabled}
+                        disabled={freeze.writes().disabled}
                         ariaLabel={t("project.settings.networkPolicyTitle")}
-                        onChange={value => void setNetworkPolicy(value)}
+                        onChange={setNetworkPolicy}
                     />
                 </SettingStack>
                 {/* The matching rules sit on the hint beside the title, where an author reads them
@@ -383,8 +300,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     description={t("project.settings.encryptAssetsDescription")}
                     hint={t("project.settings.encryptAssetsWebHint")}
                     checked={security.encryptAssets}
-                    loading={savingEncrypt}
-                    onChange={value => void setEncryptAssets(value)}
+                    onChange={value => void commitSecurity({ encryptAssets: value })}
                 />
             </SettingsGroup>
 
@@ -422,9 +338,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         options={compressionModeOptions}
                         value={assetCompression.imageMode}
                         disabled={freeze.writes(
-                            !assetCompression.compressImages || savingCompression === "imageMode",
+                            !assetCompression.compressImages,
                         ).disabled}
-                        onChange={value => void commitCompressionMode(
+                        onChange={value => commitCompressionMode(
                             "images",
                             "imageMode",
                             value as AssetCompressionMode,
@@ -441,8 +357,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     title={t("project.settings.compressImagesTitle")}
                     description={t("project.settings.compressImagesDescription")}
                     checked={assetCompression.compressImages}
-                    loading={savingCompression === "compressImages"}
-                    onChange={value => void commitAssetCompression("compressImages", { compressImages: value })}
+                    onChange={value => void commitAssetCompression({ compressImages: value })}
                 />
                 {assetCompression.imageMode === "auto" ? (
                     <>
@@ -455,9 +370,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.imageQuality}
                         min={ASSET_QUALITY_MIN}
                         max={ASSET_QUALITY_MAX}
-                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageQuality").disabled}
+                        disabled={freeze.writes(!assetCompression.compressImages).disabled}
                         ariaLabel={t("project.settings.imageQualityTitle")}
-                        onCommit={value => void commitAssetCompression("imageQuality", { imageQuality: value })}
+                        onCommit={value => void commitAssetCompression({ imageQuality: value })}
                     />
                 </SettingShell>
                     </>
@@ -472,9 +387,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.imageWebpQuality}
                         min={ASSET_QUALITY_MIN}
                         max={ASSET_QUALITY_MAX}
-                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageWebpQuality").disabled}
+                        disabled={freeze.writes(!assetCompression.compressImages).disabled}
                         ariaLabel={t("project.settings.imageWebpQualityTitle")}
-                        onCommit={value => void commitAssetCompression("imageWebpQuality", { imageWebpQuality: value })}
+                        onCommit={value => void commitAssetCompression({ imageWebpQuality: value })}
                     />
                 </SettingShell>
                 <SettingShell
@@ -486,9 +401,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.imageMaxDimension}
                         min={0}
                         max={DIMENSION_CAP_MAX}
-                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageMaxDimension").disabled}
+                        disabled={freeze.writes(!assetCompression.compressImages).disabled}
                         ariaLabel={t("project.settings.imageMaxDimensionTitle")}
-                        onCommit={value => void commitAssetCompression("imageMaxDimension", { imageMaxDimension: value })}
+                        onCommit={value => void commitAssetCompression({ imageMaxDimension: value })}
                     />
                 </SettingShell>
                     </>
@@ -502,9 +417,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         options={compressionModeOptions}
                         value={assetCompression.audioMode}
                         disabled={freeze.writes(
-                            !assetCompression.compressAudio || savingCompression === "audioMode",
+                            !assetCompression.compressAudio,
                         ).disabled}
-                        onChange={value => void commitCompressionMode(
+                        onChange={value => commitCompressionMode(
                             "audio",
                             "audioMode",
                             value as AssetCompressionMode,
@@ -521,8 +436,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     title={t("project.settings.compressAudioTitle")}
                     description={t("project.settings.compressAudioDescription")}
                     checked={assetCompression.compressAudio}
-                    loading={savingCompression === "compressAudio"}
-                    onChange={value => void commitAssetCompression("compressAudio", { compressAudio: value })}
+                    onChange={value => void commitAssetCompression({ compressAudio: value })}
                 />
                 {assetCompression.audioMode === "auto" ? (
                     <>
@@ -535,9 +449,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.audioQuality}
                         min={ASSET_QUALITY_MIN}
                         max={ASSET_QUALITY_MAX}
-                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioQuality").disabled}
+                        disabled={freeze.writes(!assetCompression.compressAudio).disabled}
                         ariaLabel={t("project.settings.audioQualityTitle")}
-                        onCommit={value => void commitAssetCompression("audioQuality", { audioQuality: value })}
+                        onCommit={value => void commitAssetCompression({ audioQuality: value })}
                     />
                 </SettingShell>
                     </>
@@ -552,9 +466,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.audioBitrateKbps}
                         min={AUDIO_BITRATE_KBPS_MIN}
                         max={AUDIO_BITRATE_KBPS_MAX}
-                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioBitrateKbps").disabled}
+                        disabled={freeze.writes(!assetCompression.compressAudio).disabled}
                         ariaLabel={t("project.settings.audioBitrateKbpsTitle")}
-                        onCommit={value => void commitAssetCompression("audioBitrateKbps", { audioBitrateKbps: value })}
+                        onCommit={value => void commitAssetCompression({ audioBitrateKbps: value })}
                     />
                 </SettingShell>
                 <SettingShell
@@ -566,9 +480,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.audioSampleRateHz}
                         min={0}
                         max={AUDIO_SAMPLE_RATE_MAX}
-                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioSampleRateHz").disabled}
+                        disabled={freeze.writes(!assetCompression.compressAudio).disabled}
                         ariaLabel={t("project.settings.audioSampleRateHzTitle")}
-                        onCommit={value => void commitAssetCompression("audioSampleRateHz", { audioSampleRateHz: value })}
+                        onCommit={value => void commitAssetCompression({ audioSampleRateHz: value })}
                     />
                 </SettingShell>
                     </>
@@ -582,9 +496,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         options={compressionModeOptions}
                         value={assetCompression.videoMode}
                         disabled={freeze.writes(
-                            !assetCompression.compressVideo || savingCompression === "videoMode",
+                            !assetCompression.compressVideo,
                         ).disabled}
-                        onChange={value => void commitCompressionMode(
+                        onChange={value => commitCompressionMode(
                             "video",
                             "videoMode",
                             value as AssetCompressionMode,
@@ -601,8 +515,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                     title={t("project.settings.compressVideoTitle")}
                     description={t("project.settings.compressVideoDescription")}
                     checked={assetCompression.compressVideo}
-                    loading={savingCompression === "compressVideo"}
-                    onChange={value => void commitAssetCompression("compressVideo", { compressVideo: value })}
+                    onChange={value => void commitAssetCompression({ compressVideo: value })}
                 />
                 {assetCompression.videoMode === "auto" ? (
                     <>
@@ -615,9 +528,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.videoQuality}
                         min={ASSET_QUALITY_MIN}
                         max={ASSET_QUALITY_MAX}
-                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoQuality").disabled}
+                        disabled={freeze.writes(!assetCompression.compressVideo).disabled}
                         ariaLabel={t("project.settings.videoQualityTitle")}
-                        onCommit={value => void commitAssetCompression("videoQuality", { videoQuality: value })}
+                        onCommit={value => void commitAssetCompression({ videoQuality: value })}
                     />
                 </SettingShell>
                     </>
@@ -632,9 +545,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.videoCrf}
                         min={VIDEO_CRF_MIN}
                         max={VIDEO_CRF_MAX}
-                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoCrf").disabled}
+                        disabled={freeze.writes(!assetCompression.compressVideo).disabled}
                         ariaLabel={t("project.settings.videoCrfTitle")}
-                        onCommit={value => void commitAssetCompression("videoCrf", { videoCrf: value })}
+                        onCommit={value => void commitAssetCompression({ videoCrf: value })}
                     />
                 </SettingShell>
                 <SettingShell
@@ -646,9 +559,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         value={assetCompression.videoMaxHeight}
                         min={0}
                         max={DIMENSION_CAP_MAX}
-                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoMaxHeight").disabled}
+                        disabled={freeze.writes(!assetCompression.compressVideo).disabled}
                         ariaLabel={t("project.settings.videoMaxHeightTitle")}
-                        onCommit={value => void commitAssetCompression("videoMaxHeight", { videoMaxHeight: value })}
+                        onCommit={value => void commitAssetCompression({ videoMaxHeight: value })}
                     />
                 </SettingShell>
                     </>
@@ -661,13 +574,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.preloadBehaviorTitle")}
                     description={t(`project.settings.preloadBehaviorDetail.${preload.behavior}` as TranslationKey)}
-                    tooltip={freeze.writes(savingPreload)["data-tip"]}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
                         options={preloadBehaviorOptions}
                         value={preload.behavior}
-                        disabled={freeze.writes(savingPreload).disabled}
-                        onChange={value => void setPreloadBehavior(value)}
+                        disabled={freeze.writes().disabled}
+                        onChange={setPreloadBehavior}
                         ariaLabel={t("project.settings.preloadBehaviorTitle")}
                     />
                 </SettingShell>
@@ -680,13 +593,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.crashPolicyTitle")}
                     description={t("project.settings.crashPolicyDescription")}
-                    tooltip={freeze.writes(savingCrash)["data-tip"]}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
                         options={crashPolicyOptions}
                         value={crash.policy}
-                        disabled={freeze.writes(savingCrash).disabled}
-                        onChange={value => void setCrashPolicy(value)}
+                        disabled={freeze.writes().disabled}
+                        onChange={setCrashPolicy}
                         ariaLabel={t("project.settings.crashPolicyTitle")}
                     />
                 </SettingShell>
@@ -698,12 +611,12 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.orientationTitle")}
                     description={t("project.settings.orientationDescription")}
-                    tooltip={freeze.writes(savingMobile)["data-tip"]}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
                         options={orientationOptions}
                         value={mobile.orientation}
-                        disabled={freeze.writes(savingMobile).disabled}
+                        disabled={freeze.writes().disabled}
                         onChange={value => void commitMobile({ orientation: value as MobileOrientation })}
                         size="sm"
                         portalMenu
@@ -714,12 +627,12 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 <SettingShell
                     title={t("project.settings.stageFitTitle")}
                     description={t("project.settings.stageFitDescription")}
-                    tooltip={freeze.writes(savingMobile)["data-tip"]}
+                    tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
                         options={fitOptions}
                         value={mobile.fit}
-                        disabled={freeze.writes(savingMobile).disabled}
+                        disabled={freeze.writes().disabled}
                         onChange={value => void commitMobile({ fit: value as MobileViewportFit })}
                         size="sm"
                         portalMenu
@@ -736,12 +649,12 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorYTitle")}
                             description={t("project.settings.cropAnchorYDescription")}
-                            tooltip={freeze.writes(savingMobile)["data-tip"]}
+                            tooltip={freeze.writes()["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorYOptions}
                                 value={mobile.cropAnchorY}
-                                disabled={freeze.writes(savingMobile).disabled}
+                                disabled={freeze.writes().disabled}
                                 onChange={value => void commitMobile({ cropAnchorY: value as MobileCropAnchorY })}
                                 size="sm"
                                 portalMenu
@@ -752,12 +665,12 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         <SettingShell
                             title={t("project.settings.cropAnchorXTitle")}
                             description={t("project.settings.cropAnchorXDescription")}
-                            tooltip={freeze.writes(savingMobile)["data-tip"]}
+                            tooltip={freeze.writes()["data-tip"]}
                         >
                             <Select
                                 options={cropAnchorXOptions}
                                 value={mobile.cropAnchorX}
-                                disabled={freeze.writes(savingMobile).disabled}
+                                disabled={freeze.writes().disabled}
                                 onChange={value => void commitMobile({ cropAnchorX: value as MobileCropAnchorX })}
                                 size="sm"
                                 portalMenu

@@ -1,11 +1,13 @@
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
+import { parsePluginStore, type PluginStoreReading } from "@shared/utils/pluginStorage";
 import { isStudioStateStore } from "@shared/vcs/serviceStores";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { FileSystemService } from "./FileSystem";
 import { IServiceAssetsService, Services, WorkspaceContext } from "../services";
 import { UuidService } from "./UuidService";
+import type { FsWriteReport } from "../autosave/writeReport";
 
 export class ServiceAssetsService extends Service<ServiceAssetsService> implements IServiceAssetsService {
     private static readonly AssetFileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,6 +15,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
     private assetsDir = "";
     private servicesDir = "";
     private studioServicesDir = "";
+    private readonly storeWriteListeners = new Set<(namespace: string) => void>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -25,7 +28,15 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         await Promise.all([this.ensureAssetsDir(), this.ensureServicesDir(), this.ensureStudioServicesDir()]);
     }
 
-    public async writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>> {
+    /**
+     * `report` is how a failed write is reported - see `FsWriteReport`. The store's file is named after
+     * its namespace, which is not something an author knows, so the caller says what it is.
+     */
+    public async writeStore<T extends Record<string, any>>(
+        namespace: string,
+        data: T,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<{ path: string }>> {
         this.ensureReady();
         const filesystemService = this.getFileSystem();
         const dirResult = await filesystemService.createDir(this.resolveStoreDir(namespace));
@@ -34,12 +45,33 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         }
 
         const targetPath = this.resolveStoreFile(namespace);
-        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data), "utf-8");
+        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data), "utf-8", report);
         if (!writeResult.ok) {
             return writeResult;
         }
 
+        for (const listener of this.storeWriteListeners) {
+            try {
+                listener(namespace);
+            } catch (error) {
+                console.error(`[ServiceAssets] a listener failed after "${namespace}" was written`, error);
+            }
+        }
         return { ok: true, data: { path: targetPath } };
+    }
+
+    /**
+     * Told the namespace of every store written through {@link writeStore}, once it is on disk.
+     *
+     * A plugin's stores have no service of their own to announce a change - the plugin writes them
+     * straight through here - and some of them ship inside the game, where the assets they name are
+     * as much in use as the ones a scene names. This is how the reference index hears about it.
+     */
+    public onStoreWritten(listener: (namespace: string) => void): () => void {
+        this.storeWriteListeners.add(listener);
+        return () => {
+            this.storeWriteListeners.delete(listener);
+        };
     }
 
     public async readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>> {
@@ -47,7 +79,39 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         return this.getFileSystem().readJSON<T>(this.resolveStoreFile(namespace));
     }
 
-    public async writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>> {
+    /**
+     * Every store a plugin keeps in the project, whichever plugin and whether or not it is installed
+     * here, or null when the directory could not be listed.
+     *
+     * Attributed from the filename (`parsePluginStore`), so the answer is a property of the project
+     * rather than of this Studio's plugin list. A store that exists and will not read is reported as
+     * such rather than dropped: a reader that took the rest as the whole would claim to know what the
+     * plugin holds.
+     */
+    public async readPluginStores(): Promise<PluginStoreReading[] | null> {
+        this.ensureReady();
+        const listed = await this.getFileSystem().list(this.servicesDir);
+        if (!listed.ok) {
+            // A project that never wrote a store has no services directory yet, and nothing in it.
+            return listed.error.code === FsRejectErrorCode.NOT_FOUND ? [] : null;
+        }
+        const stores: PluginStoreReading[] = [];
+        for (const entry of listed.data) {
+            const owner = entry.type === "file" && entry.ext === ".json" ? parsePluginStore(entry.name) : null;
+            if (!owner || isStudioStateStore(entry.name)) {
+                continue;
+            }
+            const read = await this.getFileSystem().readJSON<unknown>(this.resolveVersionedStoreFile(entry.name));
+            stores.push(read.ok ? { ...owner, data: read.data } : { ...owner, unreadable: true });
+        }
+        return stores;
+    }
+
+    /**
+     * Store bytes under a fresh id. The file is named after that id, so `report` - what the bytes are
+     * to the author - is the only name a failure can be reported under.
+     */
+    public async writeFile(data: string | Buffer | Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<string>> {
         this.ensureReady();
         const bytes: Uint8Array =
             typeof data === "string"
@@ -66,7 +130,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
             return ensureDir;
         }
 
-        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes, report);
         if (!writeResult.ok) {
             return writeResult;
         }
@@ -84,7 +148,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
      *
      * Overwrites whatever is at that id. Callers hold the id precisely because they just deleted it.
      */
-    public async restoreFile(fileId: string, bytes: Uint8Array): Promise<FsRequestResult<void>> {
+    public async restoreFile(fileId: string, bytes: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         this.ensureReady();
         const targetPath = this.resolveAssetFile(fileId);
         if (!targetPath.ok) {
@@ -94,7 +158,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         if (!ensureDir.ok) {
             return ensureDir;
         }
-        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes, report);
         return writeResult.ok ? { ok: true, data: undefined } : writeResult;
     }
 

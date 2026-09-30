@@ -211,14 +211,22 @@ export type GameBuildWorkerTarget = {
     fuses: GameBuildWorkerFuses;
     /**
      * Local Electron dist to package from. Only set when the target matches
-     * the host platform; cross builds leave it unset so electron-builder
-     * downloads (and caches) the right dist.
+     * the host in platform and arch (hostElectronServesTarget); every other
+     * target leaves it unset so electron-builder downloads (and caches) the
+     * right dist. Either way, what of it ships is decided by
+     * electronRuntimeFiles.ts rather than by what the directory holds.
      */
     electronDist?: string;
     /**
-     * Absolute path of the app icon for this platform. electron-builder
-     * converts a large PNG to the native format (.icns/.ico) as needed; unset
-     * falls back to the default Electron icon.
+     * Absolute path of the app icon for this platform, already in the format
+     * that platform's packager wants - `.ico` for Windows, `.icns` for macOS, a
+     * PNG for Linux. Unset falls back to the default Electron icon.
+     *
+     * The conversion is Studio's rather than electron-builder's on purpose:
+     * handed a PNG for a platform that wants a container, electron-builder runs
+     * its converter with `process.execPath`, which inside Studio starts a second
+     * Electron and fails on any machine with no window server. See
+     * `desktopIcons.ts`.
      */
     iconPath?: string;
     /**
@@ -265,14 +273,13 @@ export type GameBuildWorkerMobileJob = {
     /** Compiled static-site dir - the same web compile the web target uses. */
     sourceDir: string;
     /**
-     * When set, every payload file is protected with this key at repack time,
-     * and the same key is written into shell-config.json for the shell's
-     * decoder. Absent for a plain build. It is all-or-nothing: the shell assumes
-     * every file under wwwRoot is protected, so a partial layout is not allowed.
-     * The compiled site on disk (`sourceDir`, shared with the web target) is
-     * never touched — the protection happens as bytes are read into the package.
+     * The key every payload file is sealed under at repack time, and that is written into
+     * shell-config.json for the shell's decoder. The container is the format a mobile package
+     * keeps its content in - it is applied to every mobile build - and not a protection: the key
+     * ships inside the package it opens. The compiled site on disk (`sourceDir`, shared with the
+     * web target) is never touched; the sealing happens as bytes are read into the package.
      */
-    contentKey?: string;
+    contentKey: string;
     /** The shell template contract, already validated by the manager. */
     templateManifest: MobileShellManifest;
     /** Home-screen name (Android label / CFBundleDisplayName) and .app dir name. */
@@ -374,6 +381,12 @@ export type GameBuildWorkerConfig = {
      * a player is meant to read cannot live inside an archive. Unset when the project has none.
      */
     copyrightFile?: string;
+    /**
+     * Absolute path to the game's `THIRD-PARTY-NOTICES.txt`, shipped beside the executable where
+     * Electron's own licence files already are, for the reason `copyrightFile` is an extra file.
+     * Every desktop build has one.
+     */
+    thirdPartyNoticesFile?: string;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /**
@@ -385,6 +398,12 @@ export type GameBuildWorkerConfig = {
     electronBuilderBinariesMirror?: string;
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
+    /**
+     * The Chromium locale packs to keep in `locales/`, derived from the languages the project
+     * offers (see `electronLanguages.ts`). Never empty - an app with no locale pack does not
+     * start - and always includes the `en-US` Chromium falls back to.
+     */
+    electronLanguages: string[];
     /** Desktop packaging jobs, one per platform (electron-builder). */
     targets: GameBuildWorkerTarget[];
     /**

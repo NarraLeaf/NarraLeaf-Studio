@@ -214,9 +214,7 @@
     - [ ] Exhaustive binding purity audits (beyond current diagnostic coverage)
     - [ ] Guided broken-binding repair workflows
     - [x] Jump/navigate toward blueprint fields from inspectors (wired through binding helpers)
-  - [ ] Shared logic assets
-    - [x] Shared blueprint asset loading participates in Dev Mode bundle assembly path
-    - [ ] Asset-manager UX completeness for blueprint assets as first-class authoring objects
+  - [ ] Reusable logic
     - [ ] Macro graphs parity
     - [ ] Exportable blueprint packages for marketplace-era sharing model
   - [ ] Runtime and debugging
@@ -294,7 +292,6 @@
 - [ ] Plugin Ecosystem
   - [ ] Plugin runtime
     - [ ] Plugin manifest
-    - [ ] Plugin discovery from `.nlstudio/plugins`
     - [ ] Plugin install, enable, disable, and uninstall
     - [ ] Plugin lifecycle events
     - [ ] Version compatibility checks
@@ -551,7 +548,7 @@
     - [ ] Motion 预设库与市场共享
     - [ ] Timeline-free micro-interactions 工作台
   - [ ] VN 常用范式
-    - [ ] Dialogue / Choice / SaveLoad / Settings / Pause / Toast / History 等「官方范式套件」（工程内可参考 `project/examples`，非模板引擎）
+    - [ ] Dialogue / Choice / SaveLoad / Settings / Pause / Toast / History 等「官方范式套件」（仓库内可参考 `project/examples`，非模板引擎）
   - [ ] 复用模型
     - [x] Surface Link（Stage Surface 链接 App Surface，共享 UIDocument）
     - [x] 剪贴板复制粘贴（粘贴路径含 blueprint 相关 **id remap**；尚无独立 remap 配置面板）
@@ -638,7 +635,7 @@
     - [ ] 插件构建钩子
     - [ ] 构建缓存
   - [ ] NarraLeaf 运行时集成
-    - [ ] `narraleaf-react` 工程生成
+    - [ ] `narraleaf-react` 项目生成
     - [ ] 运行时 UI 适配层
     - [ ] 可替换应用壳（App Shell）
     - [ ] 运行时兼容性检查
@@ -663,7 +660,6 @@
 - [ ] 插件生态
   - [ ] 插件运行时
     - [ ] 插件 manifest
-    - [ ] 从 `.nlstudio/plugins` 发现插件
     - [ ] 安装、启用、禁用与卸载
     - [ ] 插件生命周期事件
     - [ ] 版本兼容性检查

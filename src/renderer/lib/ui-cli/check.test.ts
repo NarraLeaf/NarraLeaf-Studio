@@ -11,6 +11,8 @@
 
 import { describe, expect, it } from "vitest";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import { applyCompiled } from "./apply";
 import { checkProjectDocument, checkUiSource } from "./check";
 import type { BlueprintIndex } from "./project";
 
@@ -123,5 +125,97 @@ describe("checking a document as it stands", () => {
             null,
         );
         expect(diagnostics.map(item => item.code)).toContain("ui.no_main_surface");
+    });
+});
+
+/**
+ * Page widgets: the two questions Studio's project lint asks as `ui/frame-target-missing` and
+ * `ui/frame-loop`, asked here of the same shared model - including of a Page widget inside a
+ * component definition, which both used to skip.
+ */
+describe("checking Page widgets", () => {
+    const GALLERY = `surface "Gallery" id=gallery kind=appSurface size=64x36
+    Root: nl.root @0,0 64x36
+`;
+    const PAGES = `surface "Home" id=home kind=appSurface size=64x36
+    Root: nl.root @0,0 64x36
+
+${GALLERY}`;
+
+    /** A card whose Page widget "Window" names `target`. */
+    function card(target: string): string {
+        return `component "Card" id=card size=32x18
+    Card: nl.container id=card-root @0,0 32x18
+        Window: nl.frame id=window @0,0 32x18
+            targetSurfaceId = ${target}
+`;
+    }
+
+    /** Home placing the card, and Gallery as it was. */
+    const HOME_PLACES_CARD = `surface "Home" id=home kind=appSurface size=64x36
+    Root: nl.root @0,0 64x36
+        Slot: nl.container id=slot @0,0 32x18
+            component card
+`;
+
+    /** A document holding exactly what `source` declares. */
+    function documentFrom(source: string): UIDocument {
+        const compiled = checkUiSource(source).compiled;
+        if (!compiled) {
+            throw new Error("the fixture does not compile");
+        }
+        const document: UIDocument = { schemaVersion: 12, id: "d", name: "d", surfaces: [], elements: {} };
+        applyCompiled(document, compiled);
+        return document;
+    }
+
+    function frameDiagnostics(diagnostics: { code: string; message: string }[]) {
+        return diagnostics
+            .filter(item => item.code === "ui.frame_loop" || item.code === "ui.frame_target_missing")
+            .map(item => `${item.code}: ${item.message}`);
+    }
+
+    it("refuses a card whose Page widget names the page the card is placed on, naming the card", () => {
+        const document = documentFrom(`${card("home")}\n${HOME_PLACES_CARD}`);
+
+        expect(frameDiagnostics(checkProjectDocument(document, null))).toEqual([
+            'ui.frame_loop: "Card / Window" in component "Card" embeds page "Home", which leads back to it.',
+        ]);
+    });
+
+    it("refuses a Page widget in a card that names a page the project does not have", () => {
+        const document = documentFrom(`${card("gone")}\n${PAGES}`);
+
+        expect(frameDiagnostics(checkProjectDocument(document, null))).toEqual([
+            'ui.frame_target_missing: "Card / Window" in component "Card" embeds page "gone", which this document does not have.',
+        ]);
+    });
+
+    it("says nothing about a card whose Page widget leads nowhere back", () => {
+        const document = documentFrom(`${card("gallery")}\n${HOME_PLACES_CARD}\n${GALLERY}`);
+
+        expect(frameDiagnostics(checkProjectDocument(document, null))).toEqual([]);
+    });
+
+    it("refuses a file that places a card on the page the card's Page widget names", () => {
+        // The Page widget that leads back is in the card, which the file does not mention: the file
+        // only places the card on Home. That is still this file's doing, so it is reported.
+        const existing = documentFrom(`${card("home")}\n${PAGES}`);
+        expect(frameDiagnostics(checkProjectDocument(existing, null))).toEqual([]);
+
+        const result = checkUiSource(HOME_PLACES_CARD, { existing });
+
+        expect(frameDiagnostics(result.diagnostics)).toEqual([
+            'ui.frame_loop: "Card / Window" in component "Card" embeds page "Home", which leads back to it.',
+        ]);
+        expect(result.ok).toBe(false);
+    });
+
+    it("leaves a finding the file has nothing to do with to the whole-project check", () => {
+        const existing = documentFrom(`${card("gone")}\n${PAGES}`);
+
+        const result = checkUiSource(GALLERY, { existing });
+
+        expect(frameDiagnostics(result.diagnostics)).toEqual([]);
     });
 });

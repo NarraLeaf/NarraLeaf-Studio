@@ -7,6 +7,7 @@ import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
+import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 
 interface JsonPreviewPayload {
     asset: Asset<AssetType.JSON>;
@@ -20,8 +21,9 @@ const PRETTY_PRINT_LIMIT = 1_000_000;
  *
  * Unlike the other preview editors this one does not go through `useAssetBlobUrl` — a JSON
  * asset's `fetch()` resolves to the *parsed value*, not bytes (see `JSONService`), and decoding
- * that as text throws. Malformed files fail the fetch outright, so the parse error is what we
- * render; the importer rejects them before they can get this far.
+ * that as text throws. Malformed files fail the fetch outright, and say so as "damaged or not a
+ * format Studio can open" rather than in the parser's English; the importer rejects them before
+ * they can get this far, so that is a file changed on disk since.
  */
 export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewPayload>) {
     const { t } = useTranslation();
@@ -29,7 +31,8 @@ export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewP
     const asset = payload?.asset;
     const [value, setValue] = useState<unknown>(undefined);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [failure, setFailure] = useState<AssetReadFailure | null>(null);
+    const notice = useAssetReadNotice(asset?.id, failure);
 
     useEffect(() => {
         if (!context || !asset) {
@@ -38,7 +41,7 @@ export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewP
         }
         let mounted = true;
         setLoading(true);
-        setError(null);
+        setFailure(null);
         void context.services
             .get<AssetsService>(Services.Assets)
             .fetch(asset)
@@ -47,7 +50,8 @@ export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewP
                     return;
                 }
                 if (!result.success) {
-                    setError(String(result.error ?? t("assets.previewEditor.loadFailed")));
+                    console.warn(`[assets] could not read ${asset.id}: ${result.error ?? ""}`);
+                    setFailure({ code: result.code });
                 } else {
                     setValue(result.data.data);
                 }
@@ -55,7 +59,8 @@ export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewP
             })
             .catch(fetchError => {
                 if (mounted) {
-                    setError(String(fetchError));
+                    console.warn(`[assets] could not read ${asset.id}`, fetchError);
+                    setFailure({});
                     setLoading(false);
                 }
             });
@@ -84,11 +89,11 @@ export function JsonPreviewEditor({ payload }: EditorComponentProps<JsonPreviewP
             </div>
         );
     }
-    if (error || !rendered) {
+    if (notice || !rendered) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-fg-muted">
                 <AlertCircle className="h-5 w-5 text-danger" />
-                <span>{error ?? t("assets.previewEditor.loadFailed")}</span>
+                <span>{notice ?? t("assets.previewEditor.loadFailed")}</span>
             </div>
         );
     }

@@ -3,8 +3,16 @@ import type { SaveCompatibilityStamp } from "./saveCompatibility";
 export const DEV_MODE_SAVE_TYPE_NORMAL = "save" as const;
 export const DEV_MODE_SAVE_PREVIEW_ASSET_ID_PREFIX = "dev-mode-save-preview:" as const;
 
+/**
+ * Which project a Dev Mode save, screenshot or reset request is about: the window's own, by path.
+ *
+ * Only the path, and the main process holds it against the window before touching anything. The
+ * stores are named by the project's `identifier` when it has one, but that is read by the main
+ * process out of the window's project configuration - a request used to carry it, and because it
+ * outranked the path, reporting one's own path with another project's identifier reached the other
+ * project's saves.
+ */
 export type DevModeSaveProjectRef = {
-    projectIdentifier?: string;
     projectPath: string;
 };
 

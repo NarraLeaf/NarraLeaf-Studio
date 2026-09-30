@@ -1,4 +1,5 @@
 import type { PsdFingerprint } from "@shared/types/psdImport";
+import type { StoryTransformProps } from "@shared/types/story/document";
 import type { PuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 
@@ -97,6 +98,26 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      * survives a kind switch, which discards everything the kinds do not share.
      */
     voiceTrackId?: string | null;
+    /**
+     * The transform props this character's `enter` rows fall back to, channel by channel.
+     *
+     * How big a sprite is drawn, which way it faces and where its feet land are properties of the
+     * artwork, not of the line that brings it on: the numbers come from the picture's pixel size
+     * against the stage's, so an author who has to state them on every entrance is copying one
+     * answer down the whole script. Absent means what it always meant - an entrance states
+     * everything or takes the stage's own values.
+     *
+     * A row still wins on any channel it names, and only on that channel; see
+     * `@shared/story/characterEntrance` for the merge, which channels a default may carry, and why
+     * `move` and `exit` do not inherit.
+     *
+     * On the profile rather than the appearance because a kind switch discards everything the kinds
+     * do not share, and a character is the same size on stage whichever way she is drawn.
+     *
+     * Additive: no character written before this carries one, so no schema bump - the same terms
+     * `voiceTrackId` was added on.
+     */
+    entranceTransform?: StoryTransformProps;
 }
 
 /**

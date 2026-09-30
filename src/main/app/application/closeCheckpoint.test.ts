@@ -5,6 +5,7 @@ const BASE: CloseCheckpointFacts = {
     enabled: true,
     projectPath: "/projects/demo",
     workspaceLoaded: true,
+    heldElsewhere: false,
 };
 
 describe("shouldCheckpointOnClose", () => {
@@ -16,6 +17,11 @@ describe("shouldCheckpointOnClose", () => {
         // A startup still blocked on the repository lock, and a preflight that failed, are the
         // same answer here: there is no editor, so there is nothing this session changed.
         expect(shouldCheckpointOnClose({ ...BASE, workspaceLoaded: false })).toBe(false);
+    });
+
+    it("skips a workspace whose project another Studio took over", () => {
+        // The tree is the other Studio's now, and this window wrote nothing after it was taken.
+        expect(shouldCheckpointOnClose({ ...BASE, heldElsewhere: true })).toBe(false);
     });
 
     it("skips when the author turned it off", () => {

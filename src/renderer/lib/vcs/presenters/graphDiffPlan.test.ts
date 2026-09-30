@@ -47,22 +47,17 @@ function blueprint(
         id,
         name,
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                eventIds: ["ev-1"],
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        name: "On click",
-                        graph: { nodes: Object.fromEntries(nodes.map(one => [one.id, one])), edges },
-                    },
+        graphs: {
+            eventIds: ["ev-1"],
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    name: "On click",
+                    graph: { nodes: Object.fromEntries(nodes.map(one => [one.id, one])), edges },
                 },
-                functionIds: [],
-                functions: {},
             },
+            functionIds: [],
+            functions: {},
         },
     };
 }

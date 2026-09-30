@@ -1,6 +1,9 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
+import { unpatchedFsPromises } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -21,10 +24,13 @@ import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { listScriptCompileFailures } from "../devMode/pipeline/scriptCompiler";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
+import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
+import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -37,6 +43,13 @@ type PreviewSession = {
     controlToken: string;
     process: ChildProcess | null;
     watcher: FSWatcher | null;
+    /** The asset library's own watch; see {@link watchSubtree}. Null when chokidar covers it. */
+    assetWatcher: SubtreeWatcher | null;
+    /**
+     * `mtimeMs:size` per watched file, as of the last event this project's watch accepted. Carried
+     * across relaunches rather than rebuilt with the session - see {@link PreviewManager.launchNow}.
+     */
+    fileIdentities: Map<string, string>;
     reloadTimer: ReturnType<typeof setTimeout> | null;
     artifact: GameRuntimeArtifactCompileResult | null;
 };
@@ -152,6 +165,17 @@ export class PreviewManager {
      * status change with the message dropped).
      */
     public launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<PreviewStatus> {
+        const distrusted = refuseDistrustedOperation(this.app, projectPath, "preview");
+        if (distrusted) {
+            return Promise.reject(new Error(distrusted));
+        }
+        // Another Studio has this project, and this one's workspace for it is on the error screen.
+        // A preview would still compile and run - from disk, into `.nlstudio/preview`, which is the
+        // other Studio's to write. See `projectSessionGate`.
+        const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "preview");
+        if (heldElsewhere) {
+            return Promise.reject(new Error(heldElsewhere));
+        }
         const frozen = getWorkspaceFreeze(projectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "preview");
@@ -218,6 +242,33 @@ export class PreviewManager {
         await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
     }
 
+    /**
+     * Clear a project's Preview player data: the save slots and the persistence file the preview
+     * runtime keeps beside the compiled app, at `<project>/.nlstudio/preview/userData`.
+     *
+     * Only those two, not the whole userData directory: the rest of it is the runtime's Chromium
+     * profile, which is a cache the next launch rebuilds and never the thing an author's game poisons.
+     *
+     * Refuses while a preview for this project is running or launching. That runtime is a separate
+     * process still writing to these files; deleting them under it would race a write and leave the
+     * store in whatever state the race landed on. The caller stops the preview first.
+     */
+    public async resetPlayerData(projectPath: string): Promise<void> {
+        const key = this.projectKey(projectPath);
+        const status = this.getStatus(projectPath);
+        const launching = (this.launchAttempts.get(key)?.size ?? 0) > 0;
+        // Refuse only while a preview is genuinely live - the same states `isPreviewRuntimeActive`
+        // greys the button under. A session left in "error" after a failed launch has no process
+        // writing these files, and blocking on it would strand the author the reset exists to help.
+        if (launching || (status !== "idle" && status !== "error")) {
+            throw new Error("Stop the preview before resetting its player data");
+        }
+        const userDataDir = path.join(path.resolve(projectPath), ".nlstudio", "preview", "userData");
+        // Inside the author's project, so unpatched like every other path there (see unpatchedFs.ts).
+        await unpatchedFsPromises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
+        await unpatchedFsPromises.rm(path.join(userDataDir, "persistence.json"), { force: true });
+    }
+
     private cancelLaunches(key: string): void {
         for (const attempt of this.launchAttempts.get(key) ?? []) {
             attempt.cancelled = true;
@@ -272,6 +323,12 @@ export class PreviewManager {
             controlToken: crypto.randomBytes(32).toString("hex"),
             process: null,
             watcher: null,
+            assetWatcher: null,
+            // Handed on from the session this launch replaces, because a relaunch is exactly when
+            // this matters: compiling copies every asset the preview ships, which moves their access
+            // times, and a watch that had learnt nothing yet would take each of those events as an
+            // edit and relaunch again.
+            fileIdentities: previous?.fileIdentities ?? new Map(),
             reloadTimer: null,
             artifact: null,
         };
@@ -292,15 +349,28 @@ export class PreviewManager {
             if (pluginSelection.fallbackAll && pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, "project has no plugin dependency table; packaging every enabled runtime plugin");
             }
-            if (pluginSelection.skippedPluginIds.length > 0) {
-                this.emitVerbose(session, `runtime plugins not packaged (unused by this project): ${pluginSelection.skippedPluginIds.join(", ")}`);
+            // One line per reason, never one line for both. "Unused by this project" is true of a
+            // plugin the dependency table does not name and false of one it names and could not
+            // resolve - and the second is a problem the author has to fix, reported here as though
+            // it were a choice they had made.
+            const notDeclared = pluginSelection.excluded.filter(entry => entry.reason === "notDeclared");
+            const unusable = pluginSelection.excluded.filter(entry => entry.reason === "unusable");
+            if (notDeclared.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (not a dependency of this project): ${notDeclared.map(entry => entry.pluginId).join(", ")}`);
+            }
+            if (unusable.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (a dependency of this project that cannot be loaded): ${unusable.map(entry => entry.pluginId).join(", ")}`);
             }
             if (pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);
             }
-            const encryptionKey = await this.resolveEncryptionKey(normalizedProjectPath);
-            if (encryptionKey) {
-                this.emitVerbose(session, "asset protection enabled; encrypting pack");
+            const sealing = await resolveRunSealing({
+                projectPath: normalizedProjectPath,
+                choice: { by: "preview-setting", settings: this.app.getGlobalState() },
+            });
+            const sealingLine = runSealingLogLine(sealing);
+            if (sealingLine) {
+                this.emitVerbose(session, sealingLine);
             }
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
@@ -328,7 +398,7 @@ export class PreviewManager {
                 // Which DLC this run has installed, from the same machine setting the variant comes
                 // from. Empty until the author ticks one, so a preview is the base game by default.
                 includedDlc: runDlc,
-                encryptionKey,
+                protectAssets: sealing.kind === "sealed",
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that
                 // silently lacks them, and testing a sidecar would mean a full
@@ -353,6 +423,12 @@ export class PreviewManager {
                 session,
                 `artifact compile finished: ${path.relative(normalizedProjectPath, artifact.appDir)} (${artifact.copiedAssetCount} asset(s))`,
             );
+            // A preview runs with a script that did not compile, the way Dev Mode does - it is where
+            // the author fixes one - but not in silence: the packaged runtime has no issue list, so
+            // without this line the layer would simply do nothing on screen.
+            for (const message of listScriptCompileFailures(artifact.pack?.bundle?.ui?.scripts)) {
+                this.emitWorkspaceConsoleLog(session, { level: "error", source: "Preview", message });
+            }
 
             session.status = "launching";
             // The last point at which a cancel is free. Everything from the spawn below to
@@ -434,25 +510,11 @@ export class PreviewManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
         });
-    }
-
-    /**
-     * Resolve the pack key for this project, or undefined when asset protection
-     * is off. Preview runs the same path Production will.
-     */
-    private async resolveEncryptionKey(projectPath: string): Promise<string | undefined> {
-        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
-        const enabled =
-            (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
-        if (!enabled) {
-            return undefined;
-        }
-        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
     }
 
     private async stopSession(session: PreviewSession): Promise<void> {
@@ -533,22 +595,44 @@ export class PreviewManager {
         const assetsRoot = path.join(projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
+        // One handle for the whole asset tree instead of chokidar's one per file and per directory
+        // in it - `watchSubtree` has the measurement. `assetsRoot` covers `assets/content` and the
+        // metadata shards beside it, which is why both drop out of the list below together.
+        session.assetWatcher = watchSubtree(assetsRoot, session.fileIdentities, file => {
+            this.scheduleRelaunch(session, "change", file);
+        });
+        const documentPaths = [
+            uidocPath,
+            uigraphsPath,
+            storyRoot,
+            characterStorePath,
+        ];
+        if (!session.assetWatcher) {
+            // No recursive watch to be had here. Back to what this always did.
+            documentPaths.push(blueprintMetaPath, assetsContentRoot, assetsRoot);
+        }
         session.watcher = chokidar.watch(
-            [
-                uidocPath,
-                uigraphsPath,
-                storyRoot,
-                characterStorePath,
-                blueprintMetaPath,
-                assetsContentRoot,
-                assetsRoot,
-            ],
+            documentPaths,
             // See DevModeManager: the atomic writer's scratch siblings are not project changes.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
+            // `alwaysStat` so `watchedFileChanged` has a modification time and a size to compare;
+            // without it every reported change would have to be taken at face value, and the compile
+            // this watch belongs to reads every asset in the project.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
         );
-        session.watcher.on("add", file => this.scheduleRelaunch(session, "add", file));
-        session.watcher.on("change", file => this.scheduleRelaunch(session, "change", file));
-        session.watcher.on("unlink", file => this.scheduleRelaunch(session, "unlink", file));
+        session.watcher.on("add", (file, stats) => {
+            rememberWatchedFile(session.fileIdentities, file, stats);
+            this.scheduleRelaunch(session, "add", file);
+        });
+        session.watcher.on("change", (file, stats) => {
+            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
+                return;
+            }
+            this.scheduleRelaunch(session, "change", file);
+        });
+        session.watcher.on("unlink", file => {
+            session.fileIdentities.delete(file);
+            this.scheduleRelaunch(session, "unlink", file);
+        });
     }
 
     private scheduleRelaunch(session: PreviewSession, event: string, file: string): void {
@@ -595,6 +679,10 @@ export class PreviewManager {
     }
 
     private disposeWatcher(session: PreviewSession): void {
+        if (session.assetWatcher) {
+            session.assetWatcher.close();
+            session.assetWatcher = null;
+        }
         if (!session.watcher) {
             return;
         }

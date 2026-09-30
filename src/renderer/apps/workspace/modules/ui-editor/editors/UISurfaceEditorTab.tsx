@@ -21,6 +21,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -71,8 +72,8 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { useRegistry } from "@/apps/workspace/registry";
+import { useSurfaceTabSelection } from "./useSurfaceTabSelection";
 import {
     createComponentDocumentServiceAdapter,
     getComponentEditorSurfaceId,
@@ -95,15 +96,22 @@ import {
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
+import { CANVAS_SCALE_PROPERTY, ZOOMED_TRANSPARENCY_BACKDROP } from "@/styles/transparencyBackdrop";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
 
-function getEditorSurfaceStyle(surface: UISurface | null | undefined): CSSProperties | undefined {
+function getEditorSurfaceStyle(surface: UISurface | null | undefined, isComponentEdit: boolean): CSSProperties | undefined {
     if (!surface) {
         return undefined;
+    }
+    if (isComponentEdit) {
+        // A component is drawn at its own size and paints no background (the adapter makes its
+        // surface transparent), so what the frame shows between its widgets is what a placement lets
+        // through: the page it is put on. The squares say so, and mark where the component ends.
+        return ZOOMED_TRANSPARENCY_BACKDROP;
     }
     const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
     const style: CSSProperties = {};
@@ -201,26 +209,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         return stateService.on("selectionChanged", () => setSelectionVersion(v => v + 1));
     }, [stateService]);
 
-    useEffect(() => {
-        if (!stateService || !surface) {
-            return;
-        }
-        const current = stateService.getSelection();
-        if (isUIElementSelection(current)) {
-            if (current.data.surfaceId === surface.id && current.data.elementIds.length > 0) {
-                return;
-            }
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-            return;
-        }
-        if (current.type === "scene") {
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-            return;
-        }
-        if (current.type === null) {
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-        }
-    }, [stateService, surface, uiService]);
+    // The one shared selection belongs to whichever surface tab is on screen; a hidden tab only
+    // remembers what was its own, so switching back hands that back. See `useSurfaceTabSelection`.
+    useSurfaceTabSelection({ stateService, documentService, surfaceId: surface?.id, active });
 
     const surfaceDiagnostics = useMemo(() => {
         if (!documentService || !surface) {
@@ -349,6 +340,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // enters the canvas - everything below `lib/ui-editor` takes a plain `readOnly` and knows nothing
     // about version control.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    // A separate question from the freeze above, and it reaches exactly one control: the canvas
+    // launch button. Main refuses every launch for a project that arrived from elsewhere, so the
+    // button is greyed rather than left to hand over a request that comes back refused. Affordance
+    // only - nothing here enforces anything, and the tip says which of the two causes applies.
+    const distrusted = useProjectDistrusted();
+    const distrustedTitle = useProjectDistrustedReason();
     const undoOverride = useLiveUndoOverride();
     const readOnly = useMemo<UIEditorReadOnly>(
         () => ({ active: freeze.frozen, reason: freeze.reason }),
@@ -406,7 +403,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         }
         const pid = data.primaryId ?? data.elementIds[0];
         const el = documentService.getDocument().elements[pid];
-        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
+        // A component's frame is named like any layer; only a page's own root has no name to edit.
+        if (!el || el.type === "nl.root") {
             return;
         }
         void inputDialog.showRenameDialog(el.name ?? el.type ?? t("uiEditor.editor.layerFallback"), "layer").then(name => {
@@ -466,13 +464,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!surfaceId || !runtimeBridge || !documentService) {
             return null;
         }
-        const style = getEditorSurfaceStyle(surface);
+        const style = getEditorSurfaceStyle(surface, isComponentEdit);
         // On the surface root, not on the canvas node above it: the reference frames and the layout
         // diagnostic markers beside it are Studio chrome, and stay calm with the rest of the window.
         const className = "relative nl-motion-keep";
         const rendered = isComponentEdit
             ? runtimeBridge.renderDocumentSurface({
                 document: documentService.getDocument(),
+                // A Page widget in the definition draws a project page, whose elements this
+                // editor's own document does not carry.
+                pageDocument: baseDocumentService?.getDocument(),
                 surfaceId,
                 hostAdapter,
                 className,
@@ -489,7 +490,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         }
         // Renders no node of its own, so the canvas keeps the shape the interaction layer measures.
         return <MotionConfig reducedMotion="never">{rendered}</MotionConfig>;
-    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
+    }, [baseDocumentService, documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {
@@ -712,7 +713,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const transformStyle = {
         transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.scale})`,
         transformOrigin: "top left" as const,
-    };
+        // Read by the component frame's squares, which stay screen-sized under any zoom.
+        [CANVAS_SCALE_PROPERTY]: viewport.scale,
+    } as CSSProperties;
 
     return (
         // A component being edited is the same canvas answering a different question, so the two
@@ -783,16 +786,23 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             readOnlyReason={readOnly.reason}
                             revision={`${documentVersion}:${selectionVersion}`}
                         />
-                        <SurfacePreviewFramesTrigger
-                            stateService={stateService}
-                            aspectId={previewAspectId}
-                            safeAreaId={previewSafeAreaId}
-                        />
+                        {/* A screen's ratio and safe area are about a page filling a screen, and a
+                            component never fills one - it is drawn wherever it is placed. */}
+                        {isComponentEdit ? null : (
+                            <SurfacePreviewFramesTrigger
+                                stateService={stateService}
+                                aspectId={previewAspectId}
+                                safeAreaId={previewSafeAreaId}
+                            />
+                        )}
                         <div className="mx-1 h-6 w-px bg-fill" />
                         <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
-                            data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
-                            disabled={!surfaceId || isComponentEdit}
+                            data-tip={isComponentEdit
+                                ? t("uiEditor.editor.componentDefinitionHint")
+                                : distrusted ? distrustedTitle : t("uiEditor.editor.openInDevMode")}
+                            aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
+                            disabled={!surfaceId || isComponentEdit || distrusted}
                         >
                             <Play className="w-4 h-4" />
                         </SurfaceEditorToolbarButton>
@@ -842,14 +852,16 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                             {surfaceContent}
                             {/* Design-space reference frames, under the diagnostics and interaction layers. */}
-                            <SurfacePreviewFramesOverlay
-                                designSize={surface.designSize}
-                                aspectId={previewAspectId}
-                                safeAreaId={previewSafeAreaId}
-                                mobileOrientation={mobileOrientation}
-                                stageFit={stageFit}
-                                viewportScale={viewport.scale}
-                            />
+                            {isComponentEdit ? null : (
+                                <SurfacePreviewFramesOverlay
+                                    designSize={surface.designSize}
+                                    aspectId={previewAspectId}
+                                    safeAreaId={previewSafeAreaId}
+                                    mobileOrientation={mobileOrientation}
+                                    stageFit={stageFit}
+                                    viewportScale={viewport.scale}
+                                />
+                            )}
                             {documentService ? (
                                 <SurfaceLayoutDiagnosticMarkers
                                     document={documentService.getDocument()}
@@ -858,13 +870,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             ) : null}
                         </div>
                         {/* Outside the transformed node on purpose - this one is text. */}
-                        <SurfacePreviewFramesReadout
-                            designSize={surface.designSize}
-                            aspectId={previewAspectId}
-                            safeAreaId={previewSafeAreaId}
-                            mobileOrientation={mobileOrientation}
-                            stageFit={stageFit}
-                        />
+                        {isComponentEdit ? null : (
+                            <SurfacePreviewFramesReadout
+                                designSize={surface.designSize}
+                                aspectId={previewAspectId}
+                                safeAreaId={previewSafeAreaId}
+                                mobileOrientation={mobileOrientation}
+                                stageFit={stageFit}
+                            />
+                        )}
                     </div>
 
                     {stateService && documentService ? (

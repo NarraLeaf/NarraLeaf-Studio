@@ -11,6 +11,8 @@
  * same recursive read grant on the project directory that Dev Mode does.
  */
 
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
+import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
@@ -121,6 +123,21 @@ export async function readPuppetRuntimeStamp(project: Porject, backend: string):
  * own directory.
  */
 export async function createPuppetBackendSource(project: Porject, backend: string): Promise<PuppetBackendModuleSource> {
+    // The renderer's half of stopping a distrusted project from running its own code, and the
+    // reason this check is here rather than at the three call sites: this function is the only way
+    // a workspace-side backend source comes into being, and one of those callers is an offscreen
+    // probe that no gesture starts. Main holds the other half - the `app://fs/` handler serves a
+    // distrusted project's scripts as inert text, so the `import()` below would fail on its MIME
+    // type without this - but a loader error is not a reason the author can act on, and this is.
+    if (!await isProjectTrusted(project.resolve())) {
+        // Thrown as an *unavailable* rather than a failure, because that is what it is: nothing
+        // is broken and the author has somewhere to go. Every caller treats anything else as "a
+        // runtime was found and then misbehaved" - which would put a red error box on a project
+        // that is merely new. Carrying the reason is only half of it; each caller has to read it
+        // rather than the message, and `projectPuppetRuntimes.trust.test.ts` names what all three
+        // do with it.
+        throw new SurfacePuppetUnavailableError("distrusted");
+    }
     const directory = project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
     return {
         id: backend,

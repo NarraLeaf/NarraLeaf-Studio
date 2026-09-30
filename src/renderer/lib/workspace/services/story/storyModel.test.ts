@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryExpr, StoryLibraryIndex, StoryVariableRef } from "@shared/types/story";
 import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
+    findStoryDocumentTooNewError,
+    findStoryDocumentTooOldError,
+    StoryDocumentTooNewError,
+    StoryDocumentTooOldError,
+} from "@shared/story/migrateStoryDocument";
+import {
     bindRowsToCharacter,
+    collectRowsSpokenByName,
+    setSpeakerOnBlocks,
     collectInvalidBlocks,
     collectRowsSpokenBy,
     collectTempSpeakers,
@@ -927,6 +935,51 @@ describe("repairing a row's speaker", () => {
         expect(edits[0].payload).toMatchObject({ characterId: "char-alice" });
         expect(edits[0].payload).not.toHaveProperty("speakerName");
     });
+
+    it("changes the speaker on every selected line, resolved or not", () => {
+        const document = documentWithScenes([
+            dialogue("a", { characterId: "char-alice" }),
+            dialogue("b", { speakerName: "???" }),
+            dialogue("c", { characterId: "char-bob" }),
+        ]);
+
+        const edits = setSpeakerOnBlocks(document, ["a", "b"], { characterId: "char-bob" });
+
+        // "c" was not selected, so it is not in the edits at all.
+        expect(edits.map(edit => edit.blockId).sort()).toEqual(["a", "b"]);
+        expect(edits[0].payload).toMatchObject({ characterId: "char-bob" });
+        expect(edits.find(edit => edit.blockId === "b")!.payload).not.toHaveProperty("speakerName");
+    });
+
+    it("changes them to a bare name, dropping whatever character they had", () => {
+        const document = documentWithScenes([dialogue("a", { characterId: "char-alice" })]);
+
+        const edits = setSpeakerOnBlocks(document, ["a"], { speakerName: "???" });
+
+        expect(edits[0].payload).toMatchObject({ speakerName: "???" });
+        expect(edits[0].payload).not.toHaveProperty("characterId");
+    });
+
+    it("skips rows in the selection that are not lines of speech", () => {
+        const document = documentWithScenes([
+            dialogue("a", { characterId: "char-alice" }),
+            characterEnter("stage", "char-alice"),
+        ]);
+
+        expect(setSpeakerOnBlocks(document, ["a", "stage"], { characterId: "char-bob" })
+            .map(edit => edit.blockId)).toEqual(["a"]);
+    });
+
+    it("finds the lines a bare name speaks, and leaves bound rows out of it", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { characterId: "char-alice", speakerName: "Alice" }),
+            dialogue("c", { speakerName: "Bob" }),
+        ]);
+
+        expect(collectRowsSpokenByName(document, "Alice").map(row => row.blockId)).toEqual(["a"]);
+        expect(collectRowsSpokenByName(document, "  ")).toEqual([]);
+    });
 });
 
 describe("story document migration ladder", () => {
@@ -963,6 +1016,48 @@ describe("story document migration ladder", () => {
                 .toThrow(/older than this Studio version can read/);
         },
     );
+
+    // The same refusal as data, and the two are not interchangeable. Every reader between the ladder
+    // and a surface rewraps the sentence, so a caller that wants to *say* what happened - the lint
+    // sweep, which is where an author meets this - has only the fields to go on.
+    it("refuses with the two versions as fields, not only inside the sentence", () => {
+        let thrown: unknown;
+        try {
+            normalizeStoryDocument(docAtVersion(17), "2026-07-16T00:00:00.000Z");
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(StoryDocumentTooOldError);
+        expect(findStoryDocumentTooOldError(new Error("wrapped", { cause: thrown }))).toBe(thrown);
+        expect((thrown as StoryDocumentTooOldError).version).toBe(17);
+        expect((thrown as StoryDocumentTooOldError).minimumVersion).toBe(STORY_DOCUMENT_MIN_SUPPORTED_VERSION);
+    });
+
+    /**
+     * The other end of the ladder, and the end where being wrong costs the author their work.
+     *
+     * A document above the current version used to be handed straight through: read as if it were
+     * current, the normalize pass drops every field this build has not heard of and the next save
+     * writes that back. One visit from an older Studio was enough to strip a newer one's work, with
+     * nothing on screen having said a field was lost.
+     */
+    it("refuses a document from a newer Studio rather than reading it as current", () => {
+        let thrown: unknown;
+        try {
+            normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION + 1), "2026-07-16T00:00:00.000Z");
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(StoryDocumentTooNewError);
+        expect(findStoryDocumentTooNewError(new Error("wrapped", { cause: thrown }))).toBe(thrown);
+        expect((thrown as StoryDocumentTooNewError).version).toBe(STORY_DOCUMENT_SCHEMA_VERSION + 1);
+        expect((thrown as StoryDocumentTooNewError).supportedVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("reads a document at the current version untouched", () => {
+        expect(() => normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION), "2026-07-16T00:00:00.000Z"))
+            .not.toThrow();
+    });
 
     /**
      * v21→v22: the hold becomes a length of time, and `maskWipe` retires.

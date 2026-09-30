@@ -28,6 +28,7 @@ const IN_A_SESSION = en.live.editUnavailable;
 
 vi.mock("@/apps/workspace/context", () => ({
     useWorkspace: () => ({ context: null, isInitialized: false }),
+    useOptionalWorkspace: () => null,
 }));
 
 vi.mock("@/lib/workspace/hooks/useAssetObjectUrl", () => ({

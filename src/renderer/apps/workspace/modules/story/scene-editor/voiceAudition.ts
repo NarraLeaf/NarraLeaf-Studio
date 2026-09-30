@@ -39,23 +39,30 @@ export function stopVoiceAudition(): void {
 }
 
 /**
- * Toggle audition for `key`: stop if it is already the one playing, otherwise stop whatever is and
- * start this one. `load` returns the audio bytes (or null when the clip is gone); it is awaited, so a
- * newer toggle that lands first wins and this load's result is discarded.
+ * A take ready to audition: its bytes, and the volume the game plays it at - its gain folded in by
+ * `clipVolume`, so a take turned down in the audio preview sounds turned down here too.
  */
-export async function toggleVoiceAudition(key: string, load: () => Promise<Uint8Array | null>): Promise<void> {
+export type VoiceAuditionClip = { bytes: Uint8Array; volume: number };
+
+/**
+ * Toggle audition for `key`: stop if it is already the one playing, otherwise stop whatever is and
+ * start this one. `load` returns the take (or null when the clip is gone); it is awaited, so a newer
+ * toggle that lands first wins and this load's result is discarded.
+ */
+export async function toggleVoiceAudition(key: string, load: () => Promise<VoiceAuditionClip | null>): Promise<void> {
     if (currentKey === key) {
         stopVoiceAudition();
         return;
     }
     stopVoiceAudition();
     const myGeneration = generation;
-    const bytes = await load().catch(() => null);
-    if (myGeneration !== generation || !bytes || bytes.byteLength === 0) {
+    const clip = await load().catch(() => null);
+    if (myGeneration !== generation || !clip || clip.bytes.byteLength === 0) {
         return;
     }
-    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+    const url = URL.createObjectURL(new Blob([new Uint8Array(clip.bytes)]));
     const audio = new Audio(url);
+    audio.volume = Math.max(0, Math.min(1, clip.volume));
     audio.onended = () => stopVoiceAudition();
     currentAudio = audio;
     currentUrl = url;

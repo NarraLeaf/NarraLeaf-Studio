@@ -1,7 +1,7 @@
-import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent } from "react";
+import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent, ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
+import { AlertCircle, Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
@@ -40,6 +40,14 @@ interface AssetsListViewProps {
     handleRootDrop: (event: DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => Promise<void>;
     handleImport: (category: AssetCategory) => void;
     handleImportRemote: (category: AssetCategory) => void;
+    /**
+     * Why downloading is off, or absent when it is on.
+     *
+     * Passed in rather than read here: a distrusted project is the workspace's answer and
+     * these views are also rendered outside one. Importing from disk beside it stays
+     * available - only the download is started on the project's behalf.
+     */
+    remoteImportBlockedReason?: string;
     handleCreateGroup: (category: AssetCategory) => void;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
@@ -48,6 +56,14 @@ interface AssetsListViewProps {
     disableAnimation: boolean;
     /** The panel's scroller. Each section windows its rows against it. */
     scrollElement: HTMLElement | null;
+    /**
+     * Drawn after the library's own sections, inside the same accordion.
+     *
+     * The scripts section goes here rather than being built in this file: it reads the workspace
+     * rather than the library, and this view is the library's. Passing it in keeps that seam where
+     * the difference is, and keeps this component renderable from a test with no workspace at all.
+     */
+    trailingSection?: ReactNode;
 }
 
 export function AssetsListView({
@@ -55,6 +71,7 @@ export function AssetsListView({
     handleRootDrop,
     handleImport,
     handleImportRemote,
+    remoteImportBlockedReason,
     handleCreateGroup,
     actionLoading,
     setDropTargetId,
@@ -62,6 +79,7 @@ export function AssetsListView({
     onOpenChange,
     disableAnimation,
     scrollElement,
+    trailingSection,
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     // The library's own scope: the three buttons this header carries are import, link and new
@@ -80,6 +98,7 @@ export function AssetsListView({
         draggedAssetSet,
         showContextMenu,
         publishRowOrder,
+        unreadableCategories,
     } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
@@ -190,7 +209,10 @@ export function AssetsListView({
                                             handleImportRemote(category);
                                         }}
                                         className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                                        {...freeze.writes(false, t("assets.importRemote"))}
+                                        {...freeze.writes(
+                                            Boolean(remoteImportBlockedReason),
+                                            remoteImportBlockedReason ?? t("assets.importRemote"),
+                                        )}
                                     >
                                         <Link className="w-3 h-3" />
                                     </button>
@@ -226,6 +248,16 @@ export function AssetsListView({
                             }}
                             onContextMenu={(e) => e.preventDefault()}
                         >
+                            {/* A section whose file could not be read draws this instead of rows. It
+                                is the one section with no rows that has something to say: the rows
+                                are missing because the file was not readable, not because there are
+                                none, and the file itself is untouched. */}
+                            {unreadableCategories.has(category) && (
+                                <div className="flex items-start gap-1.5 px-3 py-2 text-xs text-danger">
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t("assets.unreadable.category")}</span>
+                                </div>
+                            )}
                             {/* An empty category prints nothing. The accordion header's import buttons
                                 are the way in; announcing the absence is not information. */}
                             {rows.length > 0 && (openItems.includes(category) ? (
@@ -237,9 +269,14 @@ export function AssetsListView({
                     </AccordionItem>
                 );
             })}
+            {/* Above the trailing section, not below it: this line is about the library's own
+                sections, and under a populated scripts section it would read as describing that. */}
             {!hasAnyItems && (
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
+            {/* Last, and passed in rather than built here: the project's scripts are not in the
+                asset library, and this view is about the library. See `ProjectScriptsSection`. */}
+            {trailingSection}
         </Accordion>
     );
 }
@@ -406,7 +443,7 @@ function CategoryRows({ category, rows, scrollElement }: {
                                 // set's members stay filed in whatever folder they were imported
                                 // into and are listed there too, so the tint is what says these rows
                                 // are one thing being shown twice.
-                                row.band && "bg-fill-subtle/50",
+                                row.band && "bg-fill-subtle",
                                 row.band?.first && bandOpen && "border-t border-edge-subtle",
                                 row.band?.last && bandOpen && "border-b border-edge-subtle",
                                 dragOverGroupId && row.groupPath.includes(dragOverGroupId) && "bg-primary/20",
@@ -575,7 +612,11 @@ function AssetSetItem({ row }: { row: Extract<TreeListRow, { kind: "set" }> }) {
  * A value exactly one file answers is that file's ordinary row, marks and menu included: the only
  * thing being inside a set changes is that the file cannot be dragged out of one - a member is named
  * by its tags, and dropping it in a folder would move a row the set would go on drawing where it
- * was. Anything else is the hole the value is.
+ * was.
+ *
+ * A value with no file of its own that the fallback answers is drawn as the fallback's file, marked
+ * as the fallback's: that file is what the game shows for it, and the set's count already counts it
+ * as answered. Anything else is the hole the value is.
  */
 function AssetSetValueItem({ row }: { row: Extract<TreeListRow, { kind: "setValue" }> }) {
     const { assets, assetSetNaming, showAssetSetValueContextMenu } = useAssetsPanelContext();
@@ -601,22 +642,67 @@ function AssetSetValueItem({ row }: { row: Extract<TreeListRow, { kind: "setValu
             />
         );
     }
+    const onContextMenu = (event: React.MouseEvent) => showAssetSetValueContextMenu(event, entry, row.cell.value);
+    const inherited = row.cell.inherited && row.cell.assetId
+        ? assets[entry.category].find(candidate => candidate.id === row.cell.assetId)
+        : undefined;
+    if (inherited) {
+        return (
+            <AssetSetInheritedRow
+                asset={inherited}
+                cell={row.cell}
+                level={row.level}
+                coordinate={coordinate}
+                onContextMenu={onContextMenu}
+            />
+        );
+    }
     return (
         <AssetSetMemberRow
             cell={row.cell}
             level={row.level}
             coordinate={coordinate}
-            onContextMenu={event => showAssetSetValueContextMenu(event, entry, row.cell.value)}
+            onContextMenu={onContextMenu}
         />
     );
 }
 
 /**
- * One value of a set the library has no single file for.
+ * One value of a set that the fallback answers: the fallback's file, marked as the fallback's.
+ *
+ * Not that file's own row. The file has its own row already, at the fallback value, and a second row
+ * that marked, opened or dragged the same file would be one file drawn as two. The value's menu is
+ * the one a hole has, because what can be done here is give the value a file of its own.
+ */
+function AssetSetInheritedRow({ asset, cell, level, coordinate, onContextMenu }: {
+    asset: Asset;
+    cell: AssetSetCell;
+    level: number;
+    coordinate: string;
+    onContextMenu: (event: React.MouseEvent) => void;
+}) {
+    const { t } = useTranslation();
+    const Icon = ASSET_TYPE_ICONS[asset.type];
+    return (
+        <TreeRow
+            level={level}
+            icon={<Icon className="w-4 h-4 shrink-0 text-fg-subtle" />}
+            label={asset.name}
+            labelClassName="italic text-fg-muted"
+            meta={<span className="text-fg-subtle">{t("assets.sets.inspector.variantInherited")}</span>}
+            trailing={coordinate}
+            dataAttributes={{ "data-asset-set-member": cell.label, "data-asset-set-inherited": "" }}
+            onContextMenu={onContextMenu}
+        />
+    );
+}
+
+/**
+ * One value of a set that nothing answers: no file of its own, and no fallback file to take, or more
+ * than one file claiming it.
  *
  * Drawn rather than skipped: the value is the reason the row exists, and dropping it would leave a
- * set that is missing something looking complete. A value a file does answer is drawn as that file's
- * own row instead.
+ * set that is missing something looking complete.
  */
 function AssetSetMemberRow({ cell, level, coordinate, onContextMenu }: {
     cell: AssetSetCell;

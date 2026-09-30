@@ -9,8 +9,10 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
-import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { getWidgetLogicApi, isBuiltinWidgetLogicType } from "@shared/types/ui-editor/widgetLogic";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { uiOwningSurfaceIds } from "@shared/live/uiParts";
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
 /**
  * Keeps local instance BlueprintDocument (in uigraphs.json) aligned with UIDocument surfaces and widgets.
@@ -25,6 +27,8 @@ export class UIBlueprintLifecycleCoordinator
         await depend([uidoc, bp]);
     }
 
+    private stopWatchingWidgetTypes: (() => void) | null = null;
+
     public activate(ctx: WorkspaceContext): void {
         const uidoc = ctx.services.get<UIDocumentService>(Services.UIDocument);
         uidoc.setAfterMutateHook(() => {
@@ -35,11 +39,33 @@ export class UIBlueprintLifecycleCoordinator
             }
         });
         this.syncFromUidoc();
+        // A plugin's widget types arrive after the project has opened, and whether an element takes
+        // a blueprint of its own is its type's answer - so the answer can change without the document
+        // changing. Without this, a plugin widget already on a page got its blueprint only at the
+        // next unrelated edit, and until then its events in the properties panel opened nothing.
+        // Coalesced, because a plugin registers its widgets one after another.
+        let queued = false;
+        this.stopWatchingWidgetTypes = widgetModuleRegistry.subscribe(() => {
+            if (queued) {
+                return;
+            }
+            queued = true;
+            queueMicrotask(() => {
+                queued = false;
+                try {
+                    this.syncFromUidoc();
+                } catch (err) {
+                    console.warn("[UIBlueprintLifecycleCoordinator] sync failed", err);
+                }
+            });
+        });
     }
 
     public dispose(ctx: WorkspaceContext): void {
         const uidoc = ctx.services.get<UIDocumentService>(Services.UIDocument);
         uidoc.setAfterMutateHook(null);
+        this.stopWatchingWidgetTypes?.();
+        this.stopWatchingWidgetTypes = null;
     }
 
     public syncFromUidoc(): void {
@@ -50,9 +76,12 @@ export class UIBlueprintLifecycleCoordinator
 
         const bpDoc = localBp.getBlueprintDocument();
         for (const key of [...Object.keys(bpDoc.ownerRecords)]) {
-            const m = /^surfaceMain:(.+)$/.exec(key);
-            if (m && !surfaceIds.has(m[1])) {
-                localBp.removeSurfaceAndWidgetOwners(m[1]);
+            // Decoded rather than matched with a pattern. Every part of an owner key is escaped, so a
+            // built-in surface - whose id contains the separator - comes back from a regex still
+            // escaped, never matches a real surface id, and is reported deleted on every pass.
+            const owner = decodeBlueprintOwnerKey(key);
+            if (owner?.kind === "surfaceMain" && !surfaceIds.has(owner.surfaceId)) {
+                localBp.removeSurfaceAndWidgetOwners(owner.surfaceId);
             }
         }
 
@@ -79,6 +108,13 @@ export class UIBlueprintLifecycleCoordinator
             }
             const logicApi = getWidgetLogicApi(el.type);
             if (!logicApi?.supportsPrivateBlueprint) {
+                if (!logicApi && !isBuiltinWidgetLogicType(el.type)) {
+                    // A plugin's widget whose plugin is not loaded right now. Whether it takes a
+                    // blueprint is the plugin's to say and it cannot be asked, so a blueprint the
+                    // author already wrote on it is kept rather than collected below - switching a
+                    // plugin off must not delete the graphs its widgets carried.
+                    validWidgetKeys.add(widgetMainOwnerKey(surfaceId, elementId));
+                }
                 continue;
             }
             localBp.ensureWidgetMain(surfaceId, elementId, el.name, el.type);
@@ -88,6 +124,9 @@ export class UIBlueprintLifecycleCoordinator
             for (const [elementId, el] of Object.entries(component.elements)) {
                 const logicApi = getWidgetLogicApi(el.type);
                 if (!logicApi?.supportsPrivateBlueprint) {
+                    if (!logicApi && !isBuiltinWidgetLogicType(el.type)) {
+                        validComponentWidgetKeys.add(componentWidgetMainOwnerKey(component.id, elementId));
+                    }
                     continue;
                 }
                 localBp.ensureComponentWidgetMain(component.id, elementId, el.name, el.type);
@@ -96,13 +135,16 @@ export class UIBlueprintLifecycleCoordinator
         }
 
         for (const key of [...Object.keys(localBp.getBlueprintDocument().ownerRecords)]) {
-            const m = /^widgetMain:([^:]+):(.+)$/.exec(key);
-            if (m && !validWidgetKeys.has(key)) {
-                localBp.removeWidgetMain(m[1], m[2]);
+            // Decoded, for the reason above and for a sharper one: these ids are handed straight
+            // back to a remover that re-encodes them. An id taken off an escaped key and escaped a
+            // second time names nothing, so an orphaned record on a built-in surface was never
+            // collected - it was looked for under a name it could not have.
+            const owner = decodeBlueprintOwnerKey(key);
+            if (owner?.kind === "widgetMain" && !validWidgetKeys.has(key)) {
+                localBp.removeWidgetMain(owner.surfaceId, owner.elementId);
             }
-            const cm = /^componentWidgetMain:([^:]+):(.+)$/.exec(key);
-            if (cm && !validComponentWidgetKeys.has(key)) {
-                localBp.removeComponentWidgetMain(cm[1], cm[2]);
+            if (owner?.kind === "componentWidgetMain" && !validComponentWidgetKeys.has(key)) {
+                localBp.removeComponentWidgetMain(owner.componentId, owner.elementId);
             }
             const widgetValue = decodeWidgetValueOwnerKey(key);
             if (widgetValue && !validWidgetValueKeys.has(key)) {

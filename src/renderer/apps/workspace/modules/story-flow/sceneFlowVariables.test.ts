@@ -164,15 +164,12 @@ function blueprintDocumentWriting(
                 owner: ownerKind === "storyAction"
                     ? { kind: "storyAction", blueprintId }
                     : { kind: "surface", surfaceId: "s1" },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            e1: {
-                                graph: {
-                                    nodes: {
-                                        n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId: variableId } },
-                                    },
+                graphs: {
+                    events: {
+                        e1: {
+                            graph: {
+                                nodes: {
+                                    n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId: variableId } },
                                 },
                             },
                         },

@@ -4,7 +4,12 @@ import { EditorComponentProps } from "../../types";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
+import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
+import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
+
+/** A font file that was read and that the browser would not load as a face. */
+const UNDECODABLE_FONT: AssetReadFailure = { code: ASSET_UNDECODABLE };
 
 interface FontPreviewPayload {
     asset: Asset<AssetType.Font>;
@@ -19,9 +24,10 @@ const SAMPLE_SIZES = [32, 24, 18, 14, 12];
 export function FontPreviewEditor({ tabId, payload }: EditorComponentProps<FontPreviewPayload>) {
     const { t } = useTranslation();
     const asset = payload?.asset;
-    const { url, loading, error } = useAssetBlobUrl(asset);
+    const { url, loading, failure } = useAssetBlobUrl(asset);
     const [family, setFamily] = useState<string | null>(null);
-    const [fontError, setFontError] = useState<string | null>(null);
+    const [fontFailure, setFontFailure] = useState<AssetReadFailure | null>(null);
+    const notice = useAssetReadNotice(asset?.id, failure ?? fontFailure);
     const [sampleText, setSampleText] = useState("");
 
     useEffect(() => {
@@ -39,11 +45,14 @@ export function FontPreviewEditor({ tabId, payload }: EditorComponentProps<FontP
                 }
                 document.fonts.add(loaded);
                 setFamily(familyName);
-                setFontError(null);
+                setFontFailure(null);
             })
             .catch(cause => {
                 if (!cancelled) {
-                    setFontError(String(cause));
+                    // The browser's reason is English and says nothing an author can act on
+                    // beyond "this file is not a font it can use", which the notice says.
+                    console.warn(`[assets] could not load ${asset.id} as a font`, cause);
+                    setFontFailure(UNDECODABLE_FONT);
                 }
             });
         return () => {
@@ -56,18 +65,18 @@ export function FontPreviewEditor({ tabId, payload }: EditorComponentProps<FontP
     if (!asset) {
         return null;
     }
-    if (loading || (!family && !fontError && !error)) {
+    if (loading || (!family && !notice)) {
         return (
             <div className="flex h-full items-center justify-center text-fg-subtle">
                 <Loader2 className="h-5 w-5 animate-spin" />
             </div>
         );
     }
-    if (error || fontError) {
+    if (notice) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-fg-muted">
                 <AlertCircle className="h-5 w-5 text-danger" />
-                <span>{error ?? fontError}</span>
+                <span>{notice}</span>
             </div>
         );
     }

@@ -21,6 +21,7 @@ import { Separator } from "../../registry/types";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
+import { describePackageExportFailure } from "@/lib/workspace/project/packageExportFailure";
 
 /**
  * Global toolbar actions
@@ -128,7 +129,8 @@ export const fileActionGroup: ModuleActionGroup = {
 
                     // Refresh the plugin dependency table so the exported package
                     // records exactly which plugins this project needs. Best-effort:
-                    // a scan failure must not block the export itself.
+                    // a scan failure must not block the export itself. An automatic
+                    // scan, so a plugin held back for its version is exported held.
                     //
                     // Deferred rather than attempted while the project is frozen. Exporting is
                     // one of the two things File keeps alive on a frozen workspace, and nobody
@@ -140,7 +142,7 @@ export const fileActionGroup: ModuleActionGroup = {
                         try {
                             await context.services
                                 .get<ProjectDependencyService>(Services.ProjectDependency)
-                                .rescanAndPersist();
+                                .rescanAndPersist("automatic");
                         } catch (error) {
                             console.warn("[export] plugin dependency rescan failed", error);
                         }
@@ -151,7 +153,10 @@ export const fileActionGroup: ModuleActionGroup = {
                     const projectPath = context.project.getConfig().projectPath;
                     const result = await getInterface().workspace.exportProjectPackage(projectPath);
                     if (!result.success) {
-                        uiService.showNotification(result.error || translate("actions.export.failed"), "error");
+                        // Main's message names the export folder and the project file that failed;
+                        // it is the log's, and the author is told why from the code.
+                        console.warn("[export] the project package could not be written", result.error);
+                        uiService.showNotification(describePackageExportFailure(result.code, translate), "error");
                         return;
                     }
                     if (result.data.canceled) {

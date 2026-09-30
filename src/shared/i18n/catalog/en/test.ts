@@ -67,12 +67,16 @@ export const test = {
         rerun: "Run again",
         severityFilter: "Severity",
         filterAll: "All",
-        findings: "{errors} errors, {warnings} warnings, {infos} info",
+        // Each slot is one whole count with its noun, from `common.count.*`.
+        findingCounts: "{errors}, {warnings}, {infos}",
         durationSeconds: "{seconds}s",
         durationMinutes: "{minutes}m {seconds}s",
     },
     // Why a picker row is greyed out. An unavailable test is a normal state, not an error.
     reason: {
+        // The project arrived from a package or a remote source and nobody has vouched for it yet.
+        // Names the remedy, because there is one and it is where the author would look for it.
+        distrusted: "Not available until this project is trusted in Settings",
         frozen: "Not available while the workspace is frozen",
         alreadyRunning: "Another run is in progress",
         // A test that asks which one, in a project that has none yet. `parameter` is the
@@ -81,6 +85,7 @@ export const test = {
     },
     console: {
         channel: "Test",
+        channelDescription: "Test runs and their verdicts",
         started: "{title} started",
         finished: "{title} {status} in {duration}",
         finding: "{severity} {message}",
@@ -92,13 +97,31 @@ export const test = {
         cancelled: "{title} cancelled",
         errored: "{title} could not run",
     },
+    // Why the story checks cannot read where play begins, one finding per Start Game node. Shared by
+    // `reachableEndings` and `routeCoverage`, which ask the same question. `{origin}` is a node as its
+    // card names it, a story row, a list or a blueprint; `{target}` is one of the two words below.
+    entryPoint: {
+        target: {
+            story: "story",
+            scene: "scene",
+        },
+        assembled: "Start Game in \"{blueprint}\" takes a {target} assembled at run time (from \"{origin}\")",
+        unreadNode: "Start Game in \"{blueprint}\" takes its {target} from \"{origin}\", whose data this test does not read",
+        unreadPluginData: "Start Game in \"{blueprint}\" takes its {target} from \"{origin}\", and the {plugin} data in this project cannot be read",
+        engineRows: "Start Game in \"{blueprint}\" takes its {target} from the rows of \"{list}\", which the story fills while it plays",
+        undeclaredVariable: "Start Game in \"{blueprint}\" takes its {target} from a variable the project does not declare",
+        unreadable: "Start Game in \"{blueprint}\" takes its {target} from a value this test cannot follow",
+    },
     builtin: {
         projectDiagnostics: {
             title: "Project diagnostics",
             description: "All project check rules, run as one test",
             summary: {
                 passed: "No problems found",
-                failed: "{errors} errors, {warnings} warnings",
+                // Noun-first, like `routeCoverage` below, so the numbers read at any count: a
+                // summary is a key and bare numbers rendered later, with no way to pick "error" or
+                // "errors" per number.
+                failed: "Problems: errors {errors}, warnings {warnings}",
             },
         },
         walkthrough: {
@@ -116,7 +139,8 @@ export const test = {
                 },
             },
             log: {
-                planned: "Route planned: {scenes} scenes, {decisions} decisions",
+                // Noun-first for the same reason as `projectDiagnostics.summary.failed`.
+                planned: "Route planned: scenes {scenes}, decisions {decisions}",
                 choosing: "{scene}: choosing \"{option}\"",
                 improvised: "Answered an unplanned choice with \"{option}\"",
             },
@@ -127,8 +151,8 @@ export const test = {
                 optionMissing: "{scene} did not offer \"{option}\", so this route is not walkable",
                 otherEnding: "Reached {reached} instead of {ending}",
                 endedWithoutEnding: "The story ended without reaching {ending}",
-                stalled: "Stopped advancing after {steps} steps without reaching {ending}",
-                cancelled: "Cancelled after {steps} steps",
+                stalled: "Stopped advancing without reaching {ending}. Steps taken: {steps}",
+                cancelled: "Cancelled. Steps taken: {steps}",
                 exit: {
                     closed: "The game closed before reaching {ending}",
                     stopped: "The game was stopped before reaching {ending}",
@@ -145,7 +169,7 @@ export const test = {
             description: "Whether every scene, option and ending can be reached once conditions are read",
             skipped: {
                 noEntryPoint: "No story marks where play begins",
-                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                undecidableEntry: "Where play begins cannot be read from Start Game in \"{blueprint}\"",
                 storiesUnread: "A story could not be read",
             },
             // Each of these means the same thing in a different unit: the rows lead here, and the
@@ -170,7 +194,7 @@ export const test = {
             skipped: {
                 noEndings: "No story with an entry point marks an /ending",
                 noEntryPoint: "No story marks where play begins",
-                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                undecidableEntry: "Where play begins cannot be read from Start Game in \"{blueprint}\"",
                 storiesUnread: "A story could not be read",
             },
             finding: {

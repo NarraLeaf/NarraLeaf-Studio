@@ -77,6 +77,12 @@ const ORIGIN = "lore://team.example.lan:41337";
 const REMOTE = `${ORIGIN}/driftwood`;
 const DESTINATION = process.platform === "win32" ? "D:\\games\\driftwood" : "/games/driftwood";
 
+/**
+ * A copy made the way the wizard makes one: with the sign-in held for that server, which the new
+ * project then uses. See `VcsManager.cloneRepository`.
+ */
+const WITH_SIGN_IN = { useSignIn: true };
+
 const SESSION = {
     authUrl: "https://team.example.lan:41402",
     remoteOrigin: ORIGIN,
@@ -84,9 +90,18 @@ const SESSION = {
     signedInAt: 0,
 };
 
+/**
+ * The trust ledger as a clone leaves it, so an arrival can be asserted rather than stubbed. A row
+ * goes in before the copy and comes out again only when the copy failed without writing anything.
+ */
+const recordedImports: { path: string; origin: string }[] = [];
+
+/** The global state the last manager was given, so a test can read what it recorded. */
+let state: Map<string, unknown>;
+
 function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
     const noop = () => undefined;
-    const state = new Map<string, unknown>([["versionControl.serverSessions", sessions]]);
+    state = new Map<string, unknown>([["versionControl.serverSessions", sessions]]);
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         getGlobalState: () => ({
@@ -94,6 +109,13 @@ function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
             set: (key: string, value: unknown) => { state.set(key, value); },
         }),
         getUserDataDir: () => "D:/userData",
+        projectTrustManager: {
+            recordArrival: (path: string, origin: string) => { recordedImports.push({ path, origin }); },
+            forgetArrival: (path: string) => {
+                const index = recordedImports.findIndex((row) => row.path === path);
+                if (index >= 0) recordedImports.splice(index, 1);
+            },
+        },
     } as unknown as BaseApp;
 }
 
@@ -102,6 +124,7 @@ beforeEach(() => {
     lore.missing.count = 0;
     lore.wrote.length = 0;
     lore.writeFails.value = false;
+    recordedImports.length = 0;
     lore.signIn.mockReset().mockResolvedValue({
         authUrl: "", remoteOrigin: "", account: {}, signedInAt: 0,
     });
@@ -112,7 +135,7 @@ describe("cloning against a backend that has lost its session", () => {
     it("presents the stored token and runs the clone again", async () => {
         lore.missing.count = 1;
 
-        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
+        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN);
 
         expect(cloned.fileCount).toBe(12);
         // `history` is the prefetch that makes the copy's own past readable offline; it runs last,
@@ -132,7 +155,7 @@ describe("cloning against a backend that has lost its session", () => {
     it("gives up rather than looping when the second attempt says the same thing", async () => {
         lore.missing.count = 5;
 
-        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
             .rejects.toThrow(/No token stored/);
         expect(lore.calls).toEqual(["clone", "signIn", "clone", "release"]);
     });
@@ -140,7 +163,7 @@ describe("cloning against a backend that has lost its session", () => {
     it("does not sign in for a server this installation has no session for", async () => {
         lore.missing.count = 1;
 
-        await expect(new VcsManager(fakeApp([])).cloneRepository(REMOTE, DESTINATION))
+        await expect(new VcsManager(fakeApp([])).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
             .rejects.toThrow(/No token stored/);
         expect(lore.calls).toEqual(["clone", "release"]);
     });
@@ -149,7 +172,7 @@ describe("cloning against a backend that has lost its session", () => {
         lore.missing.count = 1;
         token.value = null;
 
-        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
             .rejects.toThrow(/No token stored/);
         expect(lore.calls).toEqual(["clone", "release"]);
     });
@@ -158,7 +181,7 @@ describe("cloning against a backend that has lost its session", () => {
         lore.missing.count = 1;
         lore.signIn.mockRejectedValue(new Error("This token has expired"));
 
-        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
             // The clone's own sentence, not the sign-in's: what the author asked for was a
             // copy, and the recovery attempt is not a thing they know happened.
             .rejects.toThrow(/No token stored/);
@@ -181,7 +204,7 @@ describe("cloning against a backend that has lost its session", () => {
         };
 
         try {
-            await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+            await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
                 .rejects.toThrow(/Not authorized/);
             expect(lore.calls).toEqual(["clone", "release"]);
         } finally {
@@ -200,7 +223,7 @@ describe("cloning against a backend that has lost its session", () => {
  */
 describe("the address a clone came from", () => {
     it("is written into the copy, whole, once nothing is holding the repository", async () => {
-        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
+        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN);
 
         expect(cloned.fileCount).toBe(12);
         expect(lore.wrote).toHaveLength(1);
@@ -211,14 +234,24 @@ describe("the address a clone came from", () => {
         // After the release, for the reason `setRemote` closes the session first: the backend
         // reads this file when it opens a store.
         expect(lore.calls.indexOf("writeRemote")).toBeGreaterThan(lore.calls.indexOf("release"));
+        // A clone is somebody else's working tree, so it arrives distrusted like any other import.
+        // Recorded once, ahead of the copy, and marked as having come from a server rather than
+        // a file.
+        expect(recordedImports).toHaveLength(1);
+        expect(recordedImports[0]!.origin).toBe("remote");
+        expect(recordedImports[0]!.path.replace(/\\/g, "/")).toContain("driftwood");
     });
 
-    it("is not written for a clone that failed, which has no copy to write it into", async () => {
+    it("is taken back for a clone that failed before writing anything", async () => {
         lore.missing.count = 5;
 
-        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
             .rejects.toThrow(/No token stored/);
         expect(lore.wrote).toHaveLength(0);
+        // Recorded ahead of the copy and forgotten again: there is no copy on disk to distrust,
+        // and a row for a folder that does not exist would sit in the settings list waiting for
+        // a decision nothing needs.
+        expect(recordedImports).toHaveLength(0);
     });
 
     it("does not turn a clone that worked into one that failed", async () => {
@@ -227,9 +260,44 @@ describe("the address a clone came from", () => {
         // The files are on disk. Reporting a failure would leave the author with a destination
         // that is no longer empty and a wizard that will not clone into it again; the project
         // opens, and the server can still be set from the version rail.
-        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
+        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN);
 
         expect(cloned.fileCount).toBe(12);
         expect(lore.wrote).toHaveLength(0);
+    });
+});
+
+/**
+ * Which copies are made with the sign-in.
+ *
+ * A clone is a new (server, project) pair. The wizard makes one because the author picked that
+ * server and that project, so the copy uses the sign-in and the project keeps it; anything else
+ * makes an anonymous copy, and the stored token is not presented for it however the backend
+ * answers.
+ */
+describe("the sign-in a copy is made with", () => {
+    it("is recorded for the new project when the copy is made with it", async () => {
+        await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN);
+
+        const uses = state.get("versionControl.serverSessionProjects") as Array<{ remoteOrigin: string; userId: string }>;
+        expect(uses).toEqual([expect.objectContaining({ remoteOrigin: ORIGIN, userId: "u1" })]);
+    });
+
+    it("is not presented for a copy made without it", async () => {
+        lore.missing.count = 1;
+
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+            .rejects.toThrow(/No token stored/);
+        // The token stayed sealed: no sign-in, and no second attempt.
+        expect(lore.calls).toEqual(["clone", "release"]);
+        expect(state.get("versionControl.serverSessionProjects")).toBeUndefined();
+    });
+
+    it("is taken back when the copy fails and leaves nothing behind", async () => {
+        lore.missing.count = 5;
+
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION, WITH_SIGN_IN))
+            .rejects.toThrow(/No token stored/);
+        expect(state.get("versionControl.serverSessionProjects")).toEqual([]);
     });
 });

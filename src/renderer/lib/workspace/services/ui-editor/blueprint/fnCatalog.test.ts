@@ -52,11 +52,9 @@ function graphBlueprint(id: string, owner: BlueprintOwnerRef, ir: BlueprintGraph
         id,
         name: id,
         owner,
-        frontend: "visual",
-        programKind: "graph",
         members: { variables: {}, fields: {}, functions: {} },
         bindings: {},
-        program: { kind: "graph", graphs: { events: { main: { id: "main", graph: ir } }, functions: {} } },
+        graphs: { events: { main: { id: "main", graph: ir } }, functions: {} },
     };
 }
 
@@ -92,16 +90,13 @@ function testDocument(): BlueprintDocument {
         blueprints,
         ownerRecords: {
             [ownerRefToIndexKey({ kind: "globalMain" })]: {
-                activeBlueprintId: "bp-global",
-                privateBlueprintIds: ["bp-global"],
+                blueprintId: "bp-global",
             },
             [ownerRefToIndexKey({ kind: "surfaceMain", surfaceId: "s1" })]: {
-                activeBlueprintId: "bp-s1",
-                privateBlueprintIds: ["bp-s1"],
+                blueprintId: "bp-s1",
             },
             [ownerRefToIndexKey({ kind: "widgetMain", surfaceId: "s1", elementId: "button" })]: {
-                activeBlueprintId: "bp-w1",
-                privateBlueprintIds: ["bp-w1", "bp-w1-stale"],
+                blueprintId: "bp-w1",
             },
         },
     };

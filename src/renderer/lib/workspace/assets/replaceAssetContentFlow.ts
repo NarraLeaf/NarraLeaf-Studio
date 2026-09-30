@@ -1,7 +1,8 @@
 import { getInterface } from "@/lib/app/bridge";
 import { AssetExtensions, isBundleAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { AssetsService, REPLACE_REFUSED_IN_SESSION } from "@/lib/workspace/services/core/AssetsService";
+import { describeAssetImportRefusal } from "./importFailure";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import type { Translator } from "@shared/i18n";
@@ -56,7 +57,14 @@ export async function runReplaceAssetContentFlow(
     const assetsService = context.services.get<AssetsService>(Services.Assets);
     const result = await assetsService.replaceAssetContent(asset, sourcePath);
     if (!result.success) {
-        uiService.showAlert(t("assets.replace.failedTitle"), result.error || t("assets.unknownError"));
+        // Why, in the author's terms: the same refusals an import words. The service's own `error` is
+        // English and names both the picked file and the asset's storage path, so it goes to the log -
+        // except a live session's refusal, which is written for the author already.
+        console.warn("[assets] could not replace the contents", result.error);
+        const reason = describeAssetImportRefusal(result.refusal, t)
+            ?? (result.code === REPLACE_REFUSED_IN_SESSION ? result.error : undefined)
+            ?? t("assets.unknownError");
+        uiService.showAlert(t("assets.replace.failedTitle"), reason);
         return "failed";
     }
 

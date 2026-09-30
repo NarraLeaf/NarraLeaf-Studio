@@ -16,12 +16,15 @@
  */
 
 import type { ReactElement } from "react";
+import type { GameMenuSpec } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type {
     BlueprintOpenExternalRequest,
     BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
 import type {
     RuntimePluginEventMap,
+    RuntimePluginImageCacheStats,
     RuntimePluginSaveMetadata,
     RuntimePluginStateChange,
     RuntimePluginStateScope,
@@ -85,6 +88,26 @@ export type RuntimePluginOverlayBackend = {
 export type RuntimePluginLocaleBackend = {
     current(): string;
     onChange(listener: (locale: string) => void): RuntimePluginHostUnsubscribe;
+    /**
+     * One of the project's own localization keys, in the language the game is running in.
+     *
+     * The same table the `Get Text` node reads, resolved through the same fallback chain, because a
+     * plugin that shows the player a word has to say it in the language the story is being read in
+     * - and a plugin carrying its own copy of the author's wording would be a second table for a
+     * translator to find. `null` when the key is not one the project declared.
+     */
+    text(key: string): string | null;
+};
+
+/**
+ * The window's menu bar, declared whole.
+ *
+ * The spec is authored data, so it is handed over as it stands: what a row says is the plugin's,
+ * what it means is the game's (see `runtime/app/gameMenu`), and what it looks like is the shell's.
+ * Absent on every environment without a bar to own.
+ */
+export type RuntimePluginMenuBackend = {
+    set(spec: GameMenuSpec): Promise<void>;
 };
 
 export type RuntimePluginAssetsBackend = {
@@ -132,6 +155,26 @@ export type RuntimePluginNavigationBackend = {
  * sidecar, Dev Mode may not wire saves, and a bare test harness supplies none of
  * it.
  */
+/**
+ * The diagnostics backend: what the running game is holding, or null when nothing is running.
+ *
+ * A getter rather than a subscription on purpose. What it reports changes on every fetch and every
+ * eviction, so an event for each would be a firehose that costs more to deliver than the numbers are
+ * worth; a profiler samples it on its own clock.
+ */
+export type RuntimePluginDiagnosticsBackend = {
+    imageCache(): RuntimePluginImageCacheStats | null;
+};
+
+/**
+ * The process backend: what the game's processes hold in memory, read by the process that can see
+ * them. Present only on a shell that has processes to count, which is what makes `app.game.process`
+ * absent on the web export rather than present and empty.
+ */
+export type RuntimePluginProcessBackend = {
+    memory(): Promise<GameProcessMemoryReading>;
+};
+
 export type RuntimePluginHost = {
     store?: RuntimePluginStoreBackend;
     events?: RuntimePluginEventBackend;
@@ -142,4 +185,7 @@ export type RuntimePluginHost = {
     assets?: RuntimePluginAssetsBackend;
     sidecar?: RuntimePluginSidecarBackend;
     navigation?: RuntimePluginNavigationBackend;
+    menu?: RuntimePluginMenuBackend;
+    diagnostics?: RuntimePluginDiagnosticsBackend;
+    process?: RuntimePluginProcessBackend;
 };

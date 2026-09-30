@@ -10,6 +10,24 @@ import { buildDiagnosticsFileName, buildDiagnosticsReport } from "@/lib/app/diag
 interface ErrorScreenProps {
     error: Error;
     onRetry?: () => void;
+    /**
+     * A heading for a failure that has a name of its own. The default says the workspace could not
+     * be initialized, which is true of everything that lands here and describes none of it.
+     */
+    title?: string;
+    /**
+     * Whether recovery mode is one of the answers.
+     *
+     * It is not always an answer, and offering it where it is not is worse than not offering it at
+     * all: recovery mode opens the project in a shell that skips the checks this screen is standing
+     * on, so a failure that is *about* those checks would be walked straight past.
+     */
+    allowRecovery?: boolean;
+    /**
+     * Whether the stack is worth disclosing. A failure whose message is a full account of what
+     * happened has nothing behind it but the line that threw.
+     */
+    showStackTrace?: boolean;
 }
 
 const REPORT_SCOPE = "workspace-init";
@@ -31,7 +49,7 @@ type Feedback = { kind: "ok" | "bad"; text: string; transient?: boolean } | null
  * file. Everything here goes through the base app bridge rather than a workspace service, because
  * by definition no workspace service came up.
  */
-export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
+export function ErrorScreen({ error, onRetry, title, allowRecovery = true, showStackTrace = true }: ErrorScreenProps) {
     const { t } = useTranslation();
     const [projectPath, setProjectPath] = React.useState<string | null>(null);
     const [feedback, setFeedback] = React.useState<Feedback>(null);
@@ -151,8 +169,12 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
         }
     };
 
+    // The exit that brings the launcher up, which is what the button says. A plain close is a
+    // different request since the two were split: it hands the decision to the last-window
+    // handling, so on the only window left it closed this one and left Studio running in the tray
+    // with nothing on screen at all.
     const handleOpenLauncher = () => {
-        void getInterface().workspace.close();
+        void getInterface().workspace.returnToLauncher();
     };
 
     /**
@@ -190,7 +212,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                 <div className="w-full max-w-2xl">
                     <div className="flex items-center gap-3 mb-4">
                         <AlertCircle className="w-8 h-8 text-danger flex-shrink-0" />
-                        <h1 className="text-2xl font-bold text-fg">{t("workspace.shell.errorTitle")}</h1>
+                        <h1 className="text-2xl font-bold text-fg">{title ?? t("workspace.shell.errorTitle")}</h1>
                     </div>
 
                     {projectPath && (
@@ -216,8 +238,11 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                         >
                             {copied ? <ClipboardCheck className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
                         </button>
-                        <p className="pr-8 text-sm text-danger font-mono whitespace-pre-wrap break-all">{error.message}</p>
-                        {error.stack && (
+                        {/* `break-words`, not `break-all`: a path or a stack frame with no space in
+                            it still breaks where it would overflow, and a sentence - the lock
+                            screens are whole sentences - no longer splits in the middle of a word. */}
+                        <p className="pr-8 text-sm text-danger font-mono whitespace-pre-wrap break-words">{error.message}</p>
+                        {showStackTrace && error.stack && (
                             <details className="mt-3">
                                 <summary className="text-xs text-danger cursor-default hover:text-danger/80">
                                     {t("workspace.shell.showStackTrace")}
@@ -243,10 +268,12 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
                             the answer when it is not - and it belongs here rather than below with
                             the small links, because on this screen it is the only thing that leads
                             anywhere the author's own project still exists. */}
-                        <Button variant="secondary" size="md" onClick={() => void handleRecovery()} disabled={busy}>
-                            <LifeBuoy className="w-4 h-4" />
-                            <span>{t("workspace.recovery.enter")}</span>
-                        </Button>
+                        {allowRecovery && (
+                            <Button variant="secondary" size="md" onClick={() => void handleRecovery()} disabled={busy}>
+                                <LifeBuoy className="w-4 h-4" />
+                                <span>{t("workspace.recovery.enter")}</span>
+                            </Button>
+                        )}
                         <Button variant="secondary" size="md" onClick={handleOpenLauncher} disabled={busy}>
                             <LogOut className="w-4 h-4" />
                             <span>{t("workspace.shell.openLauncher")}</span>

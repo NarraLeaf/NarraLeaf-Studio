@@ -25,6 +25,10 @@ export const characters = {
         namePlaceholder: "キャラクター名を入力",
         groupNamePlaceholder: "グループ名を入力",
         deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
+        renameSpokenRowsConfirm: {
+            other: "「{name}」を話者とする {count} 行も変更するか",
+        },
+        renameSpokenRowsDetail: "これらの行が持つのはキャラクターではなく名前で、「{name}」になる",
         // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
         // 取り返しのつかなさではなく結果のほう。しかもその結果は行ごとに違う。セリフは名前だけを
         // 残して話者になるが、キャラクターを舞台に出す行にはその形がなく、解決できない参照が残る。
@@ -35,6 +39,7 @@ export const characters = {
     // これらの削除が履歴に残す名前（「キャラクター ひより の削除を元に戻す」）。
     history: {
         deleteCharacter: "キャラクター {name} の削除",
+        renameCharacter: "キャラクター {name} の名前変更",
         deleteGroup: "グループ {name} の削除",
     },
     // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。
@@ -85,6 +90,7 @@ export const characters = {
             describeNoModel: "読むモデルがない",
             describeNoBackend: "ランタイムを選んでいない",
             describeBackendMissing: "このプロジェクトにランタイムが入っていない",
+            describeDistrusted: "プロジェクトは信頼されていない",
             describeNotSupported: "このランタイムは何も列挙しない",
             describeFailed: "モデルを読めなかった",
             redescribe: "モデルを読み直す",
@@ -184,9 +190,14 @@ export const characters = {
             title: "PSD を読み込む",
             choose: "PSD を選ぶ…",
             canvas: "ドキュメントの大きさ",
-            cost: "{layers} レイヤー · 約 {megabytes} MB",
+            costCounts: "{layers} · 約 {megabytes} MB",
+            layerCount: {
+                other: "{count} レイヤー",
+            },
             mapping: "レイヤー",
-            axis: "軸、タグ {count} 個",
+            axis: {
+                other: "軸、タグ {count} 個",
+            },
             blends: "エンジンが再現できないブレンドモード",
             merge: "下に統合",
             skip: "スキップ",
@@ -200,6 +211,7 @@ export const characters = {
             import: "読み込む",
             importing: "読み込んでいる…",
             failed: "読み込みに失敗",
+            readFailed: "この PSD を読み込めなかった",
             reason: {
                 hidden: "Photoshop で非表示",
                 blendSkipped: "スキップ",
@@ -254,6 +266,12 @@ export const characters = {
         // ボイスの下に選べるものが何も無いときだけ出す。つまり、セレクトでは解決できず、
         // 先にバスを作りに行くしかない場面。
         voiceTrackEmpty: "このキャラクター専用の音量を持たせるには、「プロジェクト ▸ ゲーム」でボイスの下にバスを追加する",
+        // 登場の行が書いていないチャンネルはここに戻る。行に出ている動詞（`charOp.enter`）と
+        // 同じ言い方にしてある。
+        entrance: "登場時の既定値",
+        entranceEmpty: "未設定の間、登場の行はステージの既定値を使う",
+        entranceDrag: "ドラッグで配置",
+        entranceZoom: "ドラッグで拡大縮小",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

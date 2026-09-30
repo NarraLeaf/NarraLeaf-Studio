@@ -134,7 +134,11 @@ export type ListViewRow<T extends AssetSetRows = AssetSetRows> = {
         kind: "setValue";
         entry: T;
         cell: RowCellOf<T>;
-        /** The single file answering this value, or null when the value is a hole. */
+        /**
+         * The single file carrying this value's own tags, or null when none does. The value is then
+         * drawn as the fallback's file when the fallback answers it (see `AssetSetCell.inherited`),
+         * and as a hole when nothing does.
+         */
         assetId: string | null;
     }
     | { kind: "group"; group: AssetGroup }
@@ -207,9 +211,11 @@ export function listViewCategoryRows<T extends AssetSetRows>(
                 pushSet(child, level + 1, groupPath, band, { entry, cell }, cellPath);
                 return;
             }
-            // A value answered by exactly one file is that file's ordinary row, marks included. A
-            // value with no file, or with several, is drawn as the hole it is and carries no key:
-            // there is no single row for a range to reach.
+            // A value answered by exactly one file is that file's ordinary row, marks included. Any
+            // other value carries no key. One with no file of its own is drawn as the fallback's file
+            // when the fallback answers it, and that file already has its row at the fallback value -
+            // a range reaching it twice would mark one file as two rows. One that nothing answers, or
+            // that several files claim, is the hole it is: there is no single row for a range to reach.
             const assetId = cell.assetIds.length === 1 ? cell.assetIds[0] : null;
             rows.push({
                 kind: "setValue",
@@ -298,7 +304,8 @@ export function iconViewRowOrder(sections: readonly IconViewSection[]): string[]
     for (const section of sections) {
         for (const cell of section.setCells) {
             // Inside a set: one tile per value it promises. A value answered by a sub-set is that
-            // set's tile, and a value nothing answers is the hole; neither is selectable.
+            // set's tile, a value the fallback answers is the fallback's file drawn again, and a value
+            // nothing answers is the hole; none of them is selectable.
             if (cell.childSetIds.length === 1) {
                 continue;
             }

@@ -2,7 +2,7 @@ import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
 } from "@shared/types/blueprint/graph";
-import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
@@ -10,7 +10,13 @@ import {
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
 import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
-import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import {
+    buildUIFrameGraph,
+    getUIFrameWidgetProps,
+    listUIFrameSites,
+    UI_FRAME_ELEMENT_TYPE,
+    type UIFrameSite,
+} from "@shared/types/ui-editor/frame";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -18,6 +24,7 @@ import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { listBlueprintGraphSites } from "../blueprintSites";
@@ -38,11 +45,14 @@ import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
  *  - **A null document is not an empty one.** `ctx.uiDocument` / `ctx.blueprintDocument` are `null`
  *    when the service could not be read, and a rule that treated that as "the project has no
  *    graphs" would report every page in the project as unreachable off one failed read.
- *  - **Only what a surface holds is swept.** A component *definition* is not a page: its elements
- *    have no surface to file a finding under, and one definition placed on four pages would report
- *    the same defect from a location the report cannot navigate to. Component instances are skipped
- *    for the mirror-image reason - their wiring lives in the definition, where this sweep is not
- *    looking, so judging them would be judging evidence it does not have.
+ *  - **Only what a surface holds is swept - except by the Page widget rules.** A component
+ *    *definition* is not a page, and one definition placed on four pages would report the same
+ *    defect four times from places the author did not write it. Component instances are skipped for
+ *    the mirror-image reason - their wiring lives in the definition, where this sweep is not
+ *    looking, so judging them would be judging evidence it does not have. The Page widget rules
+ *    sweep definitions too, and file what they find under the definition, once
+ *    (`componentLocation`): a Page widget in a card draws a page wherever the card is placed, and a
+ *    card's Page widget naming the page the card sits on is exactly the loop those rules exist for.
  *  - **Runtime semantics decide what counts as wired, not the inspector.** A click travels: an
  *    element with no listener hands the event to its parent (`isPointerPositionElementEvent`), a
  *    list row's clicks belong to the list, and an `On Element Click` head anywhere in the project
@@ -85,6 +95,39 @@ export function surfaceLocation(surface: UISurface, element?: UIElement): LintLo
 
 export function surfaceTarget(surface: UISurface): SearchJumpTarget {
     return { kind: "uiSurface", surfaceId: surface.id };
+}
+
+/** A widget inside a component definition, filed under the definition by its name. */
+function componentLocation(component: UIComponentDefinition, element?: UIElement): LintLocation {
+    const name = element?.name?.trim();
+    return {
+        kind: "component",
+        componentId: component.id,
+        componentName: component.name.trim(),
+        ...(element ? { elementId: element.id } : {}),
+        ...(name ? { elementName: name } : {}),
+    };
+}
+
+function componentTarget(component: UIComponentDefinition): SearchJumpTarget {
+    return { kind: "uiComponent", componentId: component.id };
+}
+
+/** Where a Page widget's finding is filed and what opening it opens, or null for a host that is gone. */
+function frameSiteLocation(
+    document: UIDocument,
+    site: UIFrameSite,
+): { location: LintLocation; target: SearchJumpTarget } | null {
+    if (site.host.kind === "surface") {
+        const surfaceId = site.host.surfaceId;
+        const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
+        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface) } : null;
+    }
+    const componentId = site.host.componentId;
+    const component = (document.components ?? []).find(candidate => candidate.id === componentId);
+    return component
+        ? { location: componentLocation(component, site.element), target: componentTarget(component) }
+        : null;
 }
 
 /**
@@ -229,6 +272,16 @@ function clipLiteral(text: string): string {
  * A widget that opted in through `localizable` is bound just as firmly as one naming a key: the
  * implicit unit `ui:<elementId>.<prop>` is a row in every target locale's document. Both are
  * "translatable"; neither is reported.
+ *
+ * **Nor is a prop whose words come from a value binding** - a list row's field or a value blueprint.
+ * The binding writes the prop before the widget draws it, so the literal is a placeholder no player
+ * reads (the inspector hides it for a row field for that reason), and the words that do arrive are
+ * translated where they come from: a backlog row's line is a story line, a choice row's text a
+ * choice. Following this rule's advice there would break the widget, not translate it: a key or the
+ * implicit unit is resolved after the binding has written the prop, so it replaces the bound words
+ * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
+ * no list draws the element, or the list no longer declares the field - leaves the literal on
+ * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
  */
 function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -255,7 +308,8 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
         }
         const boundToKey = readStringProp(props, site.keyProp).trim().length > 0;
         const boundToUnit = site.optInProp !== undefined && props[site.optInProp] === true;
-        if (boundToKey || boundToUnit) {
+        const boundToValue = element.valueBindings?.[site.textProp] !== undefined;
+        if (boundToKey || boundToUnit || boundToValue) {
             continue;
         }
         findings.push({
@@ -558,6 +612,53 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
 }
 
 /**
+ * A widget whose type the project cannot load.
+ *
+ * The interface counterpart of `blueprint/unknown-node`, and it arises the same way: widget types
+ * beyond Studio's own come from plugins, so an unknown one means the plugin that defined it is
+ * uninstalled, switched off for this project, or failed to load. The canvas already draws the
+ * element as unknown and keeps its data; what this rule adds is the refusal, because a build that
+ * shipped it would ship a page with a hole where the author placed a control.
+ *
+ * An error rather than a warning for that reason: nothing draws, so what ships is not what was
+ * written, and both gestures that answer it are the author's to make - install the plugin, or
+ * remove the element.
+ *
+ * Naming the type rather than the element: the type is what says which plugin is missing, and an
+ * element id is a generated id nobody can look up.
+ *
+ * The registry is asked as the editor asks it, so a plugin that is loaded and drawing produces no
+ * finding at all. Only the stage pool is swept, for the reason at the head of this file.
+ *
+ * An empty registry is not a project with no widgets, and is treated the way a null document is:
+ * `Service.initializeAll` loads the widget catalogue before any workspace service exists, so
+ * nothing registered at all means a caller that is not a workspace - and judging that would report
+ * every element in the project. The catalogue is deliberately not loaded from here: it is the whole
+ * built-in widget tree, and a rule that pulled it in would cost seconds in a sweep that is meant to
+ * be cheap.
+ */
+function runUnknownWidget(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document || widgetModuleRegistry.list().length === 0) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        if (widgetModuleRegistry.has(site.element.type)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/unknown-widget",
+            messageKey: "lint.rule.uiUnknownWidget.message",
+            messageParams: { type: site.element.type },
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
+/**
  * An instance of a library component the project does not have.
  *
  * A linked instance holds nothing of its own - its whole appearance is the definition it points at,
@@ -608,6 +709,10 @@ function runComponentMissing(ctx: LintContext): LintFinding[] {
  *
  * A frame with no target at all is a frame the author has not finished placing, not a broken one -
  * it is skipped, so a page under construction is never reported.
+ *
+ * A Page widget inside a component definition is swept too, and reported once under the definition:
+ * it draws the page it names wherever the component is placed, so a missing one is a hole in every
+ * page that places it.
  */
 function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -616,19 +721,66 @@ function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
     }
     const known = new Set((document.surfaces ?? []).map(surface => surface.id));
     const findings: LintFinding[] = [];
-    for (const site of listSurfaceElements(document)) {
-        if (site.element.type !== UI_FRAME_ELEMENT_TYPE) {
-            continue;
-        }
+    for (const site of listUIFrameSites(document)) {
         const target = getUIFrameWidgetProps(site.element).targetSurfaceId;
         if (!target || known.has(target)) {
+            continue;
+        }
+        const filed = frameSiteLocation(document, site);
+        if (!filed) {
             continue;
         }
         findings.push({
             ruleId: "ui/frame-target-missing",
             messageKey: "lint.rule.uiFrameTargetMissing.message",
-            location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            ...filed,
+        });
+    }
+    return findings;
+}
+
+/**
+ * A Page widget embedding a page that leads back to it.
+ *
+ * Drawing that page would draw the widget again inside it, without end; what the game draws instead
+ * is a "Page loop blocked" placeholder where the page was meant to be. "Leads back" counts every way
+ * one tree draws another: a Page widget naming a page, and a component placed on the way - so a card
+ * whose Page widget names the page the card is placed on is caught, and so is the same card placed in
+ * a list row, or inside another component.
+ *
+ * Every widget on a loop is reported, each where it is, rather than one per loop: which of them the
+ * game blocks depends on which page the player opens first, and any one of them is where the loop can
+ * be broken. A widget in a component definition is reported once under the definition, however many
+ * times the component is placed.
+ *
+ * The inspector's page picker does not let one be picked, so this is what a document reaches by
+ * other routes - a paste, a script, a page restructured under a widget that already named it, or a
+ * project from before the picker could see through components.
+ */
+function runFrameLoop(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const graph = buildUIFrameGraph(document);
+    const findings: LintFinding[] = [];
+    for (const site of listUIFrameSites(document)) {
+        const reason = graph.targetInvalidReason({
+            host: site.host,
+            frameElementId: site.element.id,
+            targetSurfaceId: getUIFrameWidgetProps(site.element).targetSurfaceId,
+        });
+        if (reason !== "self" && reason !== "cycle") {
+            continue;
+        }
+        const filed = frameSiteLocation(document, site);
+        if (!filed) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/frame-loop",
+            messageKey: "lint.rule.uiFrameLoop.message",
+            ...filed,
         });
     }
     return findings;
@@ -813,6 +965,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         run: ctx => runEmptyBehavior(ctx),
     },
     {
+        id: "ui/unknown-widget",
+        category: "ui",
+        // An error, and the same standing `blueprint/unknown-node` has: the type is not in the
+        // build, so the element draws nothing and the game diverges from the page the author sees.
+        defaultSeverity: "error",
+        slug: "uiUnknownWidget",
+        run: ctx => runUnknownWidget(ctx),
+    },
+    {
         id: "ui/component-missing",
         category: "ui",
         // An error, like every other dangling reference: the widget draws nothing and says nothing,
@@ -827,6 +988,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "uiFrameTargetMissing",
         run: ctx => runFrameTargetMissing(ctx),
+    },
+    {
+        id: "ui/frame-loop",
+        category: "ui",
+        // An error, like the missing page beside it: the game draws a "Page loop blocked" placeholder
+        // where the author placed a page, which is the game diverging from the page they built.
+        defaultSeverity: "error",
+        slug: "uiFrameLoop",
+        run: ctx => runFrameLoop(ctx),
     },
     {
         id: "ui/list-item-field-missing",

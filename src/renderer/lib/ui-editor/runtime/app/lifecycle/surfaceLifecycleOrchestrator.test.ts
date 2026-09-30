@@ -151,6 +151,21 @@ describe("SurfaceLifecycleOrchestrator", () => {
         expect(tokens(commands)).toEqual([...LIFECYCLE_CONTRACT.beforeExit]);
     });
 
+    it("a layer brought back mid-exit reads as entering, and arrives again when its return ends", () => {
+        const orchestrator = new SurfaceLifecycleOrchestrator();
+        orchestrator.surfaceReady("scope-1", "surface-a");
+        orchestrator.enterComplete("scope-1", "surface-a");
+        orchestrator.beforeExit("scope-1", "surface-a");
+
+        const back = orchestrator.returned("scope-1");
+
+        expect(tokens(back)).toEqual([...LIFECYCLE_CONTRACT.returned]);
+        expect(back[0]).toMatchObject({ state: { isEntering: true, isExiting: false } });
+        expect(tokens(orchestrator.enterComplete("scope-1", "surface-a"))).toEqual([
+            ...LIFECYCLE_CONTRACT.enterComplete,
+        ]);
+    });
+
     it("unmount before ready still emits the unmount pair (cancelled frame-wait case)", () => {
         const orchestrator = new SurfaceLifecycleOrchestrator();
         const commands = orchestrator.surfaceUnmounted("scope-never-opened", "surface-a");

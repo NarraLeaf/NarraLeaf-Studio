@@ -1,20 +1,20 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../utils/unpatchedFs";
 import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";
 import { WindowAppType } from "@shared/types/window";
+import type { AppEventToken } from "@shared/types/app";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import type { BuildPreflightCode, BuildPreflightFinding } from "@shared/types/gameBuild";
 import { currentGameBuildPlatform, type GameBuildPlatform } from "@shared/types/gameBuild";
 import {
     COMMAND_LINE_BUILD_EXIT_CODES,
     COMMAND_LINE_BUILD_REPORT_SCHEMA,
-    type CommandLineBuildEvent,
-    type CommandLineBuildLogLine,
     type CommandLineBuildOutcome,
     type CommandLineBuildReport,
     type CommandLineBuildReportExperimental,
 } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent, CommandLineRunLogLine, CommandLineRunPlugin } from "@shared/types/commandLineRun";
 import { experimentalCondition } from "@shared/types/experimental";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { BuildCommandLineOptions } from "./commandLine";
@@ -23,13 +23,21 @@ import {
     resolveCommandLineBuildExperimental,
     type CommandLineBuildPlan,
 } from "./commandLineBuildPlan";
+import { readCommandLineSigning, type CommandLineSigningCredential } from "./commandLineSigning";
+import { signingPlatformForTarget } from "./managers/build/preflight";
 import { resolveStartupProject } from "./startupProject";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
-import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
+import { findCommandLineVariant, namesReleaseVariant } from "./utils/commandLineVariant";
+import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
+import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
  * `narraleaf-studio --build <project>`: one build, no interface, an exit code.
+ *
+ * The flags, the exit codes and the report are set out for an operator in
+ * `docs/command-line-builds.md`; what follows is why they are what they are.
  *
  * ## What this is, and what it deliberately is not
  *
@@ -57,12 +65,32 @@ import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
  *
  * ## Signing
  *
- * This round builds no credential path. What it does do is refuse to *quietly* produce an unsigned
- * artifact: a target that could carry a signature and has no credential configured reports an
- * `unsigned` finding, which the Build dialog shows an author before they commit and which a command
- * line has nobody to show. So the run stops unless `--build-allow-unsigned` says the caller knows.
- * A credential that *is* configured and cannot be used here is already an error finding, and the
- * pipeline throws on it besides - see `resolveSigningForBuild`.
+ * Two halves. `--build-signing` names a file of credentials for this run - see
+ * `commandLineSigning.ts` for the shape and for why a job needs one at all - and they override what
+ * the project selected for every platform the file names. Nothing is imported, so a machine that
+ * built once can still not sign anything on its own.
+ *
+ * The other half is refusing to *quietly* produce an unsigned artifact. A target that could carry a
+ * signature and has no credential - from either side - reports an `unsigned` finding, which the
+ * Build dialog shows an author before they commit and which a command line has nobody to show. So
+ * the run stops unless `--build-allow-unsigned` says the caller knows. A credential that *is*
+ * configured and cannot be used here is already an error finding, and the pipeline throws on it
+ * besides - see `resolveSigningForBuild`.
+ *
+ * ## The profile, and the settings that come with it
+ *
+ * `--build-user-data-dir` gives the run a profile of its own, which is what lets it start at all on
+ * a machine whose owner has Studio open: Electron keys the single-instance lock on that directory.
+ * It is acted on long before this file - `BaseApp.setupUserDataDir` - because everything else reads
+ * through it.
+ *
+ * The cost is that a scratch profile has none of the machine's settings, and a build reads a few:
+ * which Electron mirror to download from, where the packager's own binaries come from.
+ * `--build-setting` puts those back for the run without writing them anywhere.
+ *
+ * Nor has it the plugins an author switches on by hand - Gallery and Menu Bar ship switched off - so
+ * a project that declares one ends the run with exit 4. `--build-plugin` switches one on for this run,
+ * again without writing it anywhere: see `utils/commandLinePlugins.ts`.
  *
  * ## Experimental mode
  *
@@ -113,18 +141,8 @@ const UNSIGNED_FINDING_CODES: readonly BuildPreflightCode[] = ["unsigned", "unsi
  */
 const SIGNABLE_PLATFORMS: readonly GameBuildPlatform[] = ["windows", "macos", "android", "ios"];
 
-/**
- * How long the workspace may say nothing at all before the run gives up on it.
- *
- * An idle deadline rather than a total one, and reset by every line the build writes: a real build
- * of a large project takes as long as it takes - a first cross-build downloads an Electron runtime -
- * and a total deadline would cancel exactly the runs that most needed to finish. What this catches
- * is the other shape: a window that opened, said nothing, and is never going to.
- */
-const WORKSPACE_SILENCE_TIMEOUT_MS = 15 * 60 * 1000;
-
 export class CommandLineBuildRun {
-    private readonly log: CommandLineBuildLogLine[] = [];
+    private readonly log: CommandLineRunLogLine[] = [];
     private readonly startedAt = Date.now();
     private reportPath: string | null = null;
     private projectPath: string | null = null;
@@ -132,6 +150,10 @@ export class CommandLineBuildRun {
     private plan: CommandLineBuildPlan | null = null;
     private findings: BuildPreflightFinding[] = [];
     private finished = false;
+    /** What `--build-signing` handed over, so the report can say where the signature came from. */
+    private signingCredentials: CommandLineSigningCredential[] = [];
+    /** The plugins the line switched on for this run, once they were found. For the job and the report. */
+    private plugins: CommandLineRunPlugin[] = [];
     /**
      * What the report says about experimental mode.
      *
@@ -161,6 +183,10 @@ export class CommandLineBuildRun {
         // Resolved first, so that even a line this method refuses in its next statement leaves the
         // report file the caller is going to look for.
         this.reportPath = options.reportPath ? path.resolve(process.cwd(), options.reportPath) : null;
+        // From here on a failure outside this run's own flow - a fatal error in the main process, a
+        // window that asks something, the watchdog - ends the build through this run's own finish,
+        // with its log and its report. See `commandLineRunEnd.ts`.
+        getCommandLineRunEnd()?.attach(sentence => this.finish("studio-failed", sentence));
 
         if (options.error) {
             return this.finish("invocation", options.error);
@@ -193,8 +219,14 @@ export class CommandLineBuildRun {
         this.projectPath = resolution.projectPath;
         this.projectName = (await readProjectConfigFromDir(resolution.projectPath).catch(() => null))?.name;
 
+        const variant = await this.resolveVariant(options.variant);
+        if (!variant.ok) {
+            return this.finish(variant.outcome, variant.reason);
+        }
+
         const planned = planCommandLineBuild({
             options,
+            variant: variant.variant,
             projectPath: resolution.projectPath,
             hostPlatform: currentGameBuildPlatform(),
             hostArch: process.arch,
@@ -205,22 +237,85 @@ export class CommandLineBuildRun {
         }
         this.plan = planned.plan;
 
-        const unknownVariant = await this.refuseUnknownVariant(planned.plan.variantId);
-        if (unknownVariant) {
-            return this.finish("invocation", unknownVariant);
+        // Before the checks, because the checks read them: a credential given here is what decides
+        // whether this build is signed, and a mirror given here is what decides whether it can
+        // download an Electron dist at all.
+        const overrides = await this.applyBuildOverrides(planned.plan);
+        if (overrides) {
+            return this.finish("invocation", overrides);
+        }
+
+        // Before the checks as well: they read which plugins are on - a plugin's required build
+        // fields, what the game will pack - and a plugin this run switches on has to count.
+        getCommandLineRunEnd()?.waitingOn("the plugins this line names to be found");
+        const plugins = await enableCommandLinePlugins(this.app.pluginManager, options.plugins, "--build-plugin");
+        if (!plugins.ok) {
+            return this.finish("studio-failed", plugins.reason);
+        }
+        this.plugins = plugins.plugins;
+        if (plugins.plugins.some(plugin => plugin.enabledForRun)) {
+            // What switching a plugin on in the plugin list does next, for a plugin that brings a
+            // language of its own.
+            await this.app.refreshPluginLocales();
         }
 
         this.emit("info", `building ${this.projectName ?? path.basename(resolution.projectPath)}`
-            + ` as variant "${planned.plan.variantId}"`
+            + ` as variant "${planned.plan.variantName}"`
             + ` for ${planned.plan.platform} (${planned.plan.format}${planned.plan.arch ? `, ${planned.plan.arch}` : ""})`);
         this.emit("info", `output folder: ${planned.plan.outputDir}`);
 
+        getCommandLineRunEnd()?.waitingOn("the build checks");
         const refusal = await this.runPreflight(planned.plan);
         if (refusal) {
             return this.finish(refusal.outcome, refusal.reason);
         }
 
         return this.runInWorkspace(planned.plan);
+    }
+
+    /**
+     * Hand the build manager the credentials and settings this launch carries, or say what is wrong
+     * with them.
+     *
+     * Refused as a bad invocation rather than reported as a build failure: a credentials file that
+     * will not parse is a mistake in the line, and it costs a second to say so rather than the
+     * minutes it takes to find out at the far end of a build.
+     *
+     * The settings are logged by key alone. Their values are URLs a job assembled, and a mirror URL
+     * carrying an access token is a token in a report file somebody archives.
+     */
+    private async applyBuildOverrides(plan: CommandLineBuildPlan): Promise<string | null> {
+        if (plan.signingPath) {
+            let document: unknown;
+            try {
+                document = JSON.parse(await fs.readFile(plan.signingPath, "utf8"));
+            } catch (error) {
+                return `The --build-signing file could not be read: ${describeError(error)}`;
+            }
+            const read = await readCommandLineSigning({
+                document,
+                // Against the file's own directory: see `commandLineSigning.ts`.
+                directory: path.dirname(plan.signingPath),
+                env: process.env,
+                exists: candidate => fs.access(candidate).then(() => true, () => false),
+            });
+            if (!read.ok) {
+                return read.reason;
+            }
+            this.signingCredentials = read.credentials;
+            for (const credential of read.credentials) {
+                this.emit("info", `--build-signing carries a ${credential.kind} credential for ${credential.platform}`);
+            }
+        }
+        const settingKeys = Object.keys(plan.settings);
+        if (settingKeys.length > 0) {
+            this.emit("info", `reading ${settingKeys.join(", ")} from the command line rather than this profile`);
+        }
+        this.app.getGameBuildManager().useCommandLineBuildOverrides({
+            signing: this.signingCredentials,
+            settings: plan.settings,
+        });
+        return null;
     }
 
     /**
@@ -250,30 +345,42 @@ export class CommandLineBuildRun {
     }
 
     /**
-     * Refuse a `--build-variant` the project does not have, before anything is opened.
+     * The variant `--build-variant` names, found by name in the project's own list before anything
+     * is opened - the rule `--test-variant` follows, from the same function (see
+     * `utils/commandLineVariant.ts`).
      *
-     * The pipeline refuses it too - `resolveBuildVariant` throws rather than falling back on the
-     * release identity, which is the one way this can be wrong without anyone noticing - but it does
-     * so several minutes in, after the project has been opened and its checks have run, and it
-     * reports a build failure rather than a mistyped flag. Asked here as well, the same mistake
-     * costs a second and exits as what it is.
+     * A name the project does not have is refused here rather than left to the pipeline. The
+     * pipeline would refuse an unknown variant too - `resolveBuildVariant` throws rather than
+     * falling back on the release identity - but several minutes in, after the checks have run, and
+     * as a build failure rather than a mistyped flag. Asked here, the same mistake costs a second and
+     * exits as what it is.
      *
-     * A variant file that cannot be read is not an answer, so it is left to the pipeline: refusing on
-     * a read that failed would turn an unreadable file into "no such variant", which sends the caller
-     * looking for the wrong thing.
+     * The document is read only when the line named a variant other than `main`: the release build
+     * needs no document to be found, and must not be refused because one is broken. A document that
+     * is there and cannot be read is not the line's mistake, so it is not refused as one - the run
+     * cannot say which variant was meant, and says why, as `--test-variant` does.
      */
-    private async refuseUnknownVariant(variantId: string): Promise<string | null> {
-        let appTags: ProjectAppTag[];
+    private async resolveVariant(name: string | null): Promise<
+        | { ok: true; variant: { id: string; name: string } }
+        | { ok: false; outcome: CommandLineBuildOutcome; reason: string }
+    > {
+        if (name === null || namesReleaseVariant(name)) {
+            return { ok: true, variant: { id: RELEASE_APP_TAG.id, name: RELEASE_APP_TAG.name } };
+        }
+        let stored: ProjectAppTag[];
         try {
-            appTags = await readProjectAppTagsFromDir(this.projectPath!);
-        } catch {
-            return null;
+            stored = await readProjectAppTagsFromDir(this.projectPath!);
+        } catch (error) {
+            return {
+                ok: false,
+                outcome: "studio-failed",
+                reason: `Could not read the project's build variants to find "${name.trim()}": ${describeError(error)}`,
+            };
         }
-        if (hasAppTag(appTags, variantId)) {
-            return null;
-        }
-        const known = appTags.map(tag => tag.id).join(", ");
-        return `The project has no build variant "${variantId}"${known ? `. It has: ${known}.` : "."}`;
+        const found = findCommandLineVariant(stored, name, "--build-variant");
+        return found.ok
+            ? { ok: true, variant: { id: found.variant.id, name: found.variant.name } }
+            : { ok: false, outcome: "invocation", reason: found.reason };
     }
 
     /**
@@ -333,30 +440,38 @@ export class CommandLineBuildRun {
     private async runInWorkspace(plan: CommandLineBuildPlan): Promise<void> {
         const projectPath = this.projectPath!;
         let workspace: AppWindow<WindowAppType.Workspace>;
+        const end = getCommandLineRunEnd();
         try {
-            await this.app.ensureLauncher({ deferShow: true });
+            end?.waitingOn("the window the project is opened from to load");
+            await this.app.ensureLauncher({ unattended: true });
             const launcher = this.app.findLauncherWindow();
             if (!launcher) {
                 return this.finish("studio-failed", "Studio could not prepare a window to open the project from.");
             }
+            end?.waitingOn("the project's workspace window to load");
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
-                commandLineBuild: { request: plan.request },
+                commandLineRun: { kind: "build", request: plan.request, plugins: this.plugins },
             });
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
         }
+        end?.waitingOn("the workspace to report");
+        const silenceMs = COMMAND_LINE_RUN_SILENCE_MS.build;
 
         await new Promise<void>(resolve => {
             let settled = false;
             let deadline: ReturnType<typeof setTimeout>;
+            // Assigned by the subscription below, which can settle the run before it returns: what
+            // the page said before the run was listening is handed over as the run subscribes.
+            let token: AppEventToken | null = null;
             const settle = (run: () => Promise<void>) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 clearTimeout(deadline);
-                token.cancel();
+                token?.cancel();
                 void run().then(resolve, resolve);
             };
             const armDeadline = () => {
@@ -364,13 +479,13 @@ export class CommandLineBuildRun {
                 deadline = setTimeout(() => {
                     settle(() => this.finish(
                         "studio-failed",
-                        `The workspace said nothing for ${Math.round(WORKSPACE_SILENCE_TIMEOUT_MS / 60000)} minutes, so the build was abandoned.`,
+                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes, so the build was abandoned.`,
                     ));
-                }, WORKSPACE_SILENCE_TIMEOUT_MS);
+                }, silenceMs);
             };
             armDeadline();
 
-            const token = workspace.onCommandLineBuildEvent(event => {
+            token = workspace.onCommandLineRunEvent(event => {
                 armDeadline();
                 if (event.kind === "log") {
                     const { kind: _kind, ...line } = event;
@@ -379,6 +494,9 @@ export class CommandLineBuildRun {
                 }
                 settle(() => this.finishFromWorkspace(event));
             });
+            if (settled) {
+                token.cancel();
+            }
 
             // "closed", not "close": a page process that died is `destroy()`ed rather than closed,
             // and that is exactly the case this is here to catch.
@@ -402,7 +520,7 @@ export class CommandLineBuildRun {
 
     /** Turn the workspace's own verdict into an outcome. */
     private async finishFromWorkspace(
-        event: Extract<CommandLineBuildEvent, { kind: "finished" }>,
+        event: Extract<CommandLineRunEvent, { kind: "finished" }>,
     ): Promise<void> {
         if (event.ok) {
             for (const artifact of event.artifacts ?? []) {
@@ -416,6 +534,13 @@ export class CommandLineBuildRun {
                 this.emit("success", `wrote the output to ${event.outputDir ?? this.plan?.outputDir ?? "the output folder"}`);
             }
             return this.finish("success", null, event);
+        }
+        // Before either half is asked about: a build this profile could not have made whole - a
+        // plugin the project declares that is not running here - or one that stopped on a question
+        // nobody was there to answer is a machine to look at rather than a project to change,
+        // whichever half it was in.
+        if (event.refusal === "environment") {
+            return this.finish("studio-failed", event.error ?? "Studio could not run this build here.", event);
         }
         // Which half failed is not something the renderer can say - a check refuses without ever
         // reaching the main process, and a pipeline failure looks the same from up there. The
@@ -435,13 +560,17 @@ export class CommandLineBuildRun {
     private async finish(
         outcome: CommandLineBuildOutcome,
         error: string | null,
-        event?: Extract<CommandLineBuildEvent, { kind: "finished" }>,
+        event?: Extract<CommandLineRunEvent, { kind: "finished" }>,
     ): Promise<void> {
         if (this.finished) {
             return;
         }
         this.finished = true;
         const exitCode = COMMAND_LINE_BUILD_EXIT_CODES[outcome];
+        // The outcome is decided, and only the teardown is left - which is bounded, so a process
+        // still alive well past its bound exits with this code rather than waiting on it.
+        const end = getCommandLineRunEnd();
+        end?.finishing(exitCode, this.app.getShutdownDeadlineMs());
         // Unless the build has just said it. A refusing check writes its own sentence to the console
         // and the same sentence reaches this as the failure, so printing it here again reads as two
         // problems where there is one.
@@ -452,6 +581,11 @@ export class CommandLineBuildRun {
 
         const finishedAt = Date.now();
         const signable = this.plan !== null && SIGNABLE_PLATFORMS.includes(this.plan.platform);
+        // Only a build that ran can have carried a signature, and it carried one exactly when the
+        // platform could and nothing reported that it would not.
+        const signed = signable
+            && outcome === "success"
+            && !this.findings.some(finding => UNSIGNED_FINDING_CODES.includes(finding.code));
         const report: CommandLineBuildReport = {
             schema: COMMAND_LINE_BUILD_REPORT_SCHEMA,
             result: outcome,
@@ -464,7 +598,7 @@ export class CommandLineBuildRun {
             ...(this.plan
                 ? {
                     request: {
-                        variant: this.plan.variantId,
+                        variant: this.plan.variantName,
                         platform: this.plan.platform,
                         formats: [this.plan.format],
                         ...(this.plan.arch ? { arch: this.plan.arch } : {}),
@@ -477,14 +611,12 @@ export class CommandLineBuildRun {
             durationMs: finishedAt - this.startedAt,
             signing: {
                 signable,
-                // Only a build that ran can have carried a signature, and it carried one exactly
-                // when the platform could and nothing reported that it would not.
-                signed: signable
-                    && outcome === "success"
-                    && !this.findings.some(finding => UNSIGNED_FINDING_CODES.includes(finding.code)),
+                signed,
                 unsignedAccepted: this.plan?.allowUnsigned ?? false,
+                ...(signed ? { credentialSource: this.credentialSource() } : {}),
             },
             experimental: this.experimental,
+            plugins: this.plugins,
             findings: this.findings,
             artifacts: (event?.artifacts ?? []).map(artifactPath => {
                 const size = event?.artifactSizes?.find(entry => entry.path === artifactPath);
@@ -494,8 +626,11 @@ export class CommandLineBuildRun {
             log: this.log,
         };
 
+        end?.waitingOn("the report to be written");
         await this.writeReport(report);
+        end?.waitingOn("the open project to be put down");
         await this.app.drainForShutdown();
+        end?.waitingOn("standard output to drain");
         await flushStandardOutput();
         this.app.electronApp.exit(exitCode);
     }
@@ -512,6 +647,20 @@ export class CommandLineBuildRun {
             // carry, and losing the report must not turn a good build into a failed one.
             process.stderr.write(`[error] could not write the build report to ${this.reportPath}: ${describeError(error)}\n`);
         }
+    }
+
+    /**
+     * Which side of the two supplied the credential this build signed with.
+     *
+     * The plan names one platform, so there is one answer. The GPG slot is not it: Linux is not a
+     * signable platform here (`SIGNABLE_PLATFORMS`), so a run that only gpg-signed never reaches
+     * this.
+     */
+    private credentialSource(): "vault" | "command-line" {
+        const slot = this.plan ? signingPlatformForTarget(this.plan.platform) : null;
+        return slot !== null && this.signingCredentials.some(credential => credential.platform === slot)
+            ? "command-line"
+            : "vault";
     }
 
     private readStudioVersion(): string {
@@ -535,8 +684,10 @@ export class CommandLineBuildRun {
      * Nothing a script needs is read off this stream - see the report - so it is free to be the
      * build's own words in the build's own language.
      */
-    private record(line: CommandLineBuildLogLine): void {
+    private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
+        // Every line is progress, to the watchdog as to the run's own deadline.
+        getCommandLineRunEnd()?.progress();
         const source = line.source ? `${line.source}: ` : "";
         process.stdout.write(`[${line.level}] ${source}${line.message}\n`);
     }

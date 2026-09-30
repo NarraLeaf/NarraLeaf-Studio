@@ -280,6 +280,21 @@ describe("story/stage-object-missing", () => {
         ])).toEqual([]);
     });
 
+    /**
+     * A `show` row naming its own source is a declaration, so it is not a reference at all - and the
+     * object it leaves behind answers every later row. The rule that made this worth writing down is
+     * the one directly above it: a `show` with a name and no source is still a dangling reference, so
+     * the source is the whole of the difference.
+     */
+    it("treats a show row that names its own source as the row that creates it", async () => {
+        expect(await reportedRows("story/stage-object-missing", [
+            actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+            actionBlock("hide", { action: "image", operation: "hide", objectName: "sunset" }),
+            actionBlock("clip", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
+            actionBlock("play", { action: "video", operation: "play", objectName: "intro" }),
+        ])).toEqual([]);
+    });
+
     it("does not run at all when the project switches it off", async () => {
         const ctx = createTestLintContext({
             stories: [storyEntry([actionBlock("show", { action: "image", operation: "show", objectName: "poster" })])],
@@ -324,6 +339,15 @@ describe("story/declared-never-shown", () => {
             actionBlock("create", { action: "video", operation: "create", objectName: "opening", assetId: "asset-video" }),
             actionBlock("play", { action: "video", operation: "play", objectName: "opening" }),
         ])).toEqual(["create"]);
+    });
+
+    it("says nothing about a show row that names its own source", async () => {
+        // The one-row form declares and reveals together, so there is no later row for it to be
+        // waiting on - reporting it would put a warning on every `/show <asset>` in a project.
+        expect(await reportedRows("story/declared-never-shown", [
+            actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+            actionBlock("clip", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
+        ])).toEqual([]);
     });
 
     it("leaves a layer alone, since a layer is visible the moment it exists", async () => {

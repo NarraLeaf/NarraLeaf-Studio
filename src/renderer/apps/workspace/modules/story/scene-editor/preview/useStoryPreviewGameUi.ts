@@ -19,11 +19,13 @@ import {
 import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
+import { usePluginElementRenderers } from "@/lib/ui-editor/widget-modules/pluginElementRenderers";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleOrchestrator } from "@/lib/ui-editor/runtime/app/lifecycle/surfaceLifecycleOrchestrator";
 import type { GameUiSlotHostOptions } from "@/lib/ui-editor/runtime/app/StageSlotSurfaceShell";
+import type { GameHostCapabilities } from "@/lib/ui-editor/runtime/app/gameHostApiOptions";
 import { createChoiceMenus } from "@/lib/ui-editor/runtime/app/choiceMenus";
 import {
     createGameUiSlotComponents,
@@ -36,6 +38,8 @@ import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReade
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
+import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -45,6 +49,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
+import type { TranslationKey } from "@shared/i18n";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
 
@@ -71,7 +76,7 @@ export type StoryPreviewGameUiHost = {
     /** Build a per-session NLR Game rendering the project's custom Game UI slots. */
     createPreviewGame: (input: {
         sessionId: string;
-        requireLiveGame: (operation: string) => LiveGame;
+        requireLiveGame: (asker: TranslationKey | null) => LiveGame;
         getLiveGame: () => LiveGame | null;
         /** Invert a dialog-avatar URL back to its asset id, from this compile's own inverse. */
         resolveAvatarAssetId?: (url: string) => string | null;
@@ -98,13 +103,16 @@ export function useStoryPreviewGameUi(input: {
     onIssueRef.current = onIssue;
 
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
+    // The preview draws the author's Game UI, so it draws plugin widgets through the plugin's
+    // studio entry - the same path the interface canvas uses. The game's own runtime entries are
+    // loaded in the Dev Mode window, not in this one.
+    usePluginElementRenderers(rendererRegistry);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
+    // The table itself, written before the state by every writer; see `WidgetPatchesByScope` for why
+    // it is never copied back from the state.
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
-    useEffect(() => {
-        widgetPatchesByScopeRef.current = widgetPatchesByScope;
-    }, [widgetPatchesByScope]);
 
     // Refs shared by the Game UI slots and the LiveGame callbacks across a session.
     const choiceMenus = useMemo(() => createChoiceMenus(), []);
@@ -131,6 +139,9 @@ export function useStoryPreviewGameUi(input: {
      * The blueprint-facing character table, read straight off the character service rather than off
      * the summaries above. The summary shape is the story compiler's, and it carries only what the
      * *engine* needs; the accent colour is editor data the compiler has no use for.
+     *
+     * The avatar is the one field that does come off a summary: which picture stands for a character
+     * is `resolveDefaultCharacterAvatarAssetId`'s answer, and it needs the appearance to give it.
      */
     const characterTable = useMemo((): BlueprintCharacterInfo[] => {
         if (!context || !enabled) {
@@ -138,15 +149,30 @@ export function useStoryPreviewGameUi(input: {
         }
         const characterService = context.services.get<CharacterService>(Services.Character);
         return characterService.listCharacter().flatMap(character => {
+            const id = character.profile.getId();
             const info = toBlueprintCharacterInfo({
-                id: character.profile.getId(),
+                id,
                 name: character.profile.getName(),
                 color: character.profile.getColor(),
-                avatarAssetId: character.profile.getDefaultAvatarAssetId(),
+                avatarAssetId: resolveDefaultCharacterAvatarAssetId(
+                    characters.find(summary => summary.id === id),
+                ),
             });
             return info ? [info] : [];
         });
-    }, [context, enabled]);
+    }, [characters, context, enabled]);
+
+    /**
+     * The backlog's picture per line, by the source name a history entry records. Parity with the
+     * Dev Mode host, resolved from the same summaries the table above uses.
+     */
+    const resolveSpeakerAvatar = useCallback((sourceName: string): BlueprintImageAsset | null => {
+        return toBlueprintImageAsset(
+            resolveDefaultCharacterAvatarAssetId(characters.find(entry => entry.name === sourceName)),
+        );
+    }, [characters]);
+    const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
+    resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
 
     // Snapshot the uidoc/blueprints into a synthetic bundle when the preview opens.
     const bundle = useMemo((): DevModeBundle | null => {
@@ -167,7 +193,6 @@ export function useStoryPreviewGameUi(input: {
                 uidoc: uiDocumentService.getDocument(),
                 uigraphs: uiGraphService.getDocument(),
                 localBlueprints: localBlueprintService.getBlueprintDocument(),
-                sharedBlueprints: [],
                 persistentVariables: buildPersistentRuntimeTable(registry),
                 savedVariables: buildSavedRuntimeTable(registry),
                 saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),
@@ -211,7 +236,7 @@ export function useStoryPreviewGameUi(input: {
 
     const createPreviewGame = useCallback((gameInput: {
         sessionId: string;
-        requireLiveGame: (operation: string) => LiveGame;
+        requireLiveGame: (asker: TranslationKey | null) => LiveGame;
         getLiveGame: () => LiveGame | null;
         resolveAvatarAssetId?: (url: string) => string | null;
     }): StoryPreviewGame => {
@@ -229,9 +254,115 @@ export function useStoryPreviewGameUi(input: {
             choiceMenus,
             currentDialogNametagRef,
             dialogClickTargets,
+            resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
         });
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);
+        };
+        /**
+         * What the blueprint nodes may ask of a scene preview.
+         *
+         * The same shape a real session's host builds, and every key has to be named - so what this
+         * host cannot do is written down as `undefined` rather than left out. That distinction is
+         * the whole point: an omission used to be indistinguishable from a forgotten forward, and
+         * five capabilities reached a running game's pages and not its dialogue box that way.
+         *
+         * What is genuinely absent here is absent because the preview is a Studio panel showing one
+         * scene, not a game: no window to resize, no playthrough to save or carry, no story to
+         * start, and no dub of the author's project loaded to play a line from.
+         */
+        const hostCapabilities: GameHostCapabilities = {
+            // Navigation, application, and save APIs do not exist inside the editor preview;
+            // blueprint calls reach these stubs and surface as execution.error debug events.
+            onOpenSurface: async () => undefined,
+            onPageBack: async () => undefined,
+            onClearPages: undefined,
+            onClearGameOverlay: undefined,
+            onQuitApplication: async () => undefined,
+            // The preview renders into a Studio panel, not an application window.
+            onGetFullscreen: notAvailable("Get Fullscreen"),
+            onSetFullscreen: notAvailable("Set Fullscreen"),
+            onGetWindowScaleOptions: undefined,
+            onGetWindowScale: undefined,
+            onSetWindowScale: undefined,
+            onGetWindowSize: undefined,
+            onSetWindowSize: undefined,
+            // Layers belong to the surface stack a game app owns; this preview draws one scene.
+            onShowLayer: undefined,
+            onHideLayer: undefined,
+            onHideLayerGroup: undefined,
+            onWaitLayer: undefined,
+            onCloseOwnLayer: undefined,
+            onIsLayerMounted: undefined,
+            onCaptureRun: undefined,
+            onReadSaveGame: undefined,
+            onIsInGame: () => true,
+            onQuitGame: notAvailable("Quit Game"),
+            onWriteSave: notAvailable("Save Game"),
+            onLoadSave: notAvailable("Load Save"),
+            onDeleteSave: notAvailable("Delete Save"),
+            onListSaveIds: async () => [],
+            onGetSaveMetadata: async () => null,
+            onGetSaveTimes: async () => null,
+            onGetSaveLine: async () => null,
+            onGetSaveStory: async () => null,
+            onGetSavePlaytime: async () => null,
+            onGetSavePreview: async () => null,
+            // The editor preview keeps no stopwatch: what it runs is an author checking a scene,
+            // not a playthrough, and counting it would put working time into a player's total.
+            onGetPlaytime: () => 0,
+            onGetTotalPlaytime: () => 0,
+            onWriteAutoSave: notAvailable("Auto Save"),
+            onListAutoSaves: async () => [],
+            onIsCurrentTextRead: undefined,
+            onIsTextRead: undefined,
+            onClearTextRead: undefined,
+            onIsSceneVisited: undefined,
+            // The preview settles one scene's stage; there is no playthrough behind it, so a
+            // saved variable has no value to report and nowhere to be written.
+            onGetSavedVariable: () => ({ value: null, found: false }),
+            onSetSavedVariable: () => {
+                throw new Error("Set Saved Var: game runtime is not available");
+            },
+            onIsOptionPicked: undefined,
+            onClearVisited: undefined,
+            onIsEndingReached: undefined,
+            onIsDlcInstalled: undefined,
+            onListEndings: undefined,
+            onClearEndingState: undefined,
+            onClearEndings: undefined,
+            // No audio transport, no network, no shell: the sound nodes degrade to their warned
+            // no-op and the rest report the refusal the author's graph can hear.
+            onPlaySound: undefined,
+            onStopSound: undefined,
+            onPauseSound: undefined,
+            onResumeSound: undefined,
+            onSetSoundVolume: undefined,
+            onSeekSound: undefined,
+            onIsSoundPlaying: undefined,
+            onGetTrackVolume: undefined,
+            onSetTrackVolume: undefined,
+            onNetworkFetch: undefined,
+            onMovePointer: undefined,
+            onOpenExternal: undefined,
+            onSaveScreenshot: undefined,
+            onOpenScreenshotsFolder: undefined,
+            onIsWindowFocused: undefined,
+            onGetAudioOutputGain: undefined,
+            onExportProgress: undefined,
+            onImportProgress: undefined,
+            onStorageDurability: undefined,
+            audioTracks: undefined,
+            onSubscribeGamePreferences: undefined,
+            // Changing the language restarts the application and returns to the save it wrote, and
+            // there is no application here to restart.
+            onLocaleChanged: undefined,
+            onPlayVoice: undefined,
+            onPlayChoiceVoice: undefined,
+            localizationConfig: null,
+            voiceConfig: null,
+            widgetRuntimeStore,
+            ...liveGameCallbacks,
         };
         // Frozen once per session - hostApi memos key off this object's identity.
         const slotHostOptions: GameUiSlotHostOptions = {
@@ -250,43 +381,11 @@ export function useStoryPreviewGameUi(input: {
                     set: (key: string, value: unknown) => store.set(key, value),
                 };
             },
-            // Navigation, application, and save APIs do not exist inside the editor preview;
-            // blueprint calls reach these stubs and surface as execution.error debug events.
-            openSurfaceWithTransition: async () => undefined,
-            goBackWithTransition: async () => undefined,
-            quitApplication: async () => undefined,
-            // The preview renders into a Studio panel, not an application window.
             resolveAvatarAssetId: gameInput.resolveAvatarAssetId,
-            getFullscreen: notAvailable("Get Fullscreen"),
-            setFullscreen: notAvailable("Set Fullscreen"),
-            startStoryInGame: notAvailable("Start Story"),
-            writeSaveInGame: notAvailable("Save Game"),
-            loadSaveInGame: notAvailable("Load Save"),
-            deleteSaveInGame: notAvailable("Delete Save"),
-            listSaveIds: async () => [],
-            getSaveMetadata: async () => null,
-            getSaveTimes: async () => null,
-            getSaveLine: async () => null,
-            getSavePlaytime: async () => null,
-            getSavePreview: async () => null,
-            // The editor preview keeps no stopwatch: what it runs is an author checking a scene,
-            // not a playthrough, and counting it would put working time into a player's total.
-            getPlaytime: () => 0,
-            getTotalPlaytime: () => 0,
-            writeAutoSaveInGame: notAvailable("Auto Save"),
-            listAutoSaves: async () => [],
-            isInGame: () => true,
-            quitGame: notAvailable("Quit Game"),
-            // The preview settles one scene's stage; there is no playthrough behind it, so a
-            // saved variable has no value to report and nowhere to be written.
-            getSavedVariableInGame: () => ({ value: null, found: false }),
-            setSavedVariableInGame: () => {
-                throw new Error("Set Saved Var: game runtime is not available");
-            },
-            ...liveGameCallbacks,
+            host: hostCapabilities,
+            startStory: notAvailable("Start Story"),
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
-            widgetRuntimeStore,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,

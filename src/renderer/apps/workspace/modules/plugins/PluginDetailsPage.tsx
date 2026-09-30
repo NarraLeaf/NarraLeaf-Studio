@@ -3,12 +3,13 @@ import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { PluginDetailsBody } from "@/lib/plugins/ui/PluginDetailsBody";
 import { hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
-import type { PluginActivity } from "./useWorkspacePluginActivity";
+import { canReloadInWorkspace, type PluginActivity } from "./useWorkspacePluginActivity";
 
 export interface PluginDetailsPageProps {
     installed: PluginListItem | null;
@@ -37,6 +38,8 @@ export interface PluginDetailsPageProps {
     onUninstall: (pluginId: string) => void;
     onInstall: (pluginId: string) => void;
     onReload: (pluginId: string) => void;
+    /** Forget a recorded failure and start the plugin here again, reporting what happened. */
+    onRetry: (pluginId: string) => void;
 }
 
 /**
@@ -60,6 +63,7 @@ export function PluginDetailsPage({
     onUninstall,
     onInstall,
     onReload,
+    onRetry,
 }: PluginDetailsPageProps) {
     const { t } = useTranslation();
 
@@ -67,11 +71,17 @@ export function PluginDetailsPage({
     const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
+    const actions = installed ? pluginRecordActions(installed, canReload) : null;
+    // Every control on the row below has to be one that does something when it is pressed. Reload is
+    // the one with a state that made it look otherwise - see `canReloadInWorkspace`. A record that
+    // carries a failure is the second: the main process serves a descriptor only for a plugin whose
+    // status is `enabled`, so there is nothing for a reload to fetch, and Try again is what starts
+    // one of those. Asked of the record as well as of the activity, because this window's copy of
+    // the record can be a moment behind a load that has just failed.
     const reloadable = canReload
         && Boolean(installed?.manifest.entries.studio)
-        && activity !== null
-        && activity !== "off"
-        && activity !== "runtimeOnly";
+        && canReloadInWorkspace(activity)
+        && installed?.status !== "error";
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
@@ -99,18 +109,24 @@ export function PluginDetailsPage({
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-edge px-3 py-2">
-                {installed && installed.status === "needsAuthorization" ? (
+                {installed && actions?.authorize ? (
                     <Button size="sm" variant="primary" disabled={busy} onClick={() => onAuthorize(installed.pluginId)}>
                         {t("plugins.authorize")}
                     </Button>
-                ) : installed && installed.status !== "error" ? (
+                ) : null}
+                {installed && actions?.retry ? (
+                    <Button size="sm" variant="primary" disabled={busy} onClick={() => onRetry(installed.pluginId)}>
+                        {t("common.retry")}
+                    </Button>
+                ) : null}
+                {installed && actions?.toggle ? (
                     <Button
                         size="sm"
                         variant="secondary"
                         disabled={busy}
-                        onClick={() => onSetEnabled(installed.pluginId, !installed.enabled)}
+                        onClick={() => onSetEnabled(installed.pluginId, actions.toggle === "enable")}
                     >
-                        {installed.enabled ? t("common.disable") : t("common.enable")}
+                        {actions.toggle === "enable" ? t("common.enable") : t("common.disable")}
                     </Button>
                 ) : null}
                 {updateAvailable ? (

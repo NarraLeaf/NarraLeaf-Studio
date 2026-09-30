@@ -42,6 +42,8 @@ import { devMode } from "./devMode";
 import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
 import { serverTrust } from "./serverTrust";
+import { projectTrust } from "./projectTrust";
+import { serverSession } from "./serverSession";
 import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -56,6 +58,7 @@ import { brand } from "./brand";
 import { dictionary } from "./dictionary";
 import { game } from "./game";
 import { crash } from "./crash";
+import { documents } from "./documents";
 
 export const en = {
     common,
@@ -92,6 +95,8 @@ export const en = {
     developer,
     pluginPermission,
     serverTrust,
+    projectTrust,
+    serverSession,
     plugins,
     dialogs,
     defaultDoc,
@@ -106,4 +111,5 @@ export const en = {
     dictionary,
     game,
     crash,
+    documents,
 } as const;

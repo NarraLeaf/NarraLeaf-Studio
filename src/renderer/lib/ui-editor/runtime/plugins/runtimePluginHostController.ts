@@ -21,7 +21,13 @@
 
 import type { Game, LiveGame, Scene } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
-import { LOCALE_STORAGE_KEY } from "@shared/types/localization";
+import {
+    LOCALE_STORAGE_KEY,
+    localizationKeyUnitId,
+    resolveLocalizedUnitText,
+} from "@shared/types/localization";
+import type { GameMenuSpec } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { CompiledNlrStory } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
@@ -84,6 +90,16 @@ export type RuntimePluginShellBackends = {
         readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
         writable?: boolean;
     };
+    /**
+     * Whether this shell has a menu bar of its own to hand over.
+     *
+     * A flag rather than a backend for the reason `saves.writable` is one: the bar is drawn against
+     * the running game (ticks, grey-outs, the languages this build ships), and none of that exists
+     * when this object is built. A shell that says yes gets `app.game.menu` backed by whatever the
+     * game app attaches; every other shell has no such member, which is the honest report that this
+     * environment has nowhere to put a menu.
+     */
+    menuBar?: boolean;
     /** Synchronous asset id → URL. Shells that can only resolve async omit it. */
     assetUrl?: (assetId: string) => string;
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
@@ -111,6 +127,12 @@ export type RuntimePluginShellBackends = {
      * would be a shell refusing something it can do rather than a shell that lacks the machinery.
      */
     navigation?: RuntimePluginNavigationBackend;
+    /**
+     * What the game's processes hold in memory, asked of the process that can see them. Absent on
+     * a shell with no processes of its own - the web export - which is what removes
+     * `app.game.process` there.
+     */
+    processMemory?: () => Promise<GameProcessMemoryReading>;
     log?: (level: RuntimePluginLogLevel, message: string) => void;
 };
 
@@ -139,6 +161,30 @@ const ENGINE_EVENTS: readonly EventKey[] = [
 
 function describeError(error: unknown): string {
     return error instanceof Error ? (error.stack ?? error.message) : String(error);
+}
+
+/**
+ * One request at a time to the far side, however often it is asked.
+ *
+ * A call made while another is still on its way gets that one's answer rather than a second trip:
+ * two readings a few milliseconds apart are the same reading, and a plugin polling faster than the
+ * main process can answer would otherwise stack requests behind each other without bound.
+ */
+export function coalesceInFlight<T>(read: () => Promise<T>): () => Promise<T> {
+    let inFlight: Promise<T> | null = null;
+    return () => {
+        if (!inFlight) {
+            const request = read();
+            inFlight = request;
+            const clear = () => {
+                if (inFlight === request) {
+                    inFlight = null;
+                }
+            };
+            request.then(clear, clear);
+        }
+        return inFlight;
+    };
 }
 
 /**
@@ -210,6 +256,17 @@ export type RuntimePluginSaveActions = {
 };
 
 /**
+ * The game app's menu seam, as plugins reach it.
+ *
+ * One function, and deliberately the same one the game app drives its own controller through: a
+ * plugin declaring a bar and the game resolving one must not be two paths that can disagree about
+ * what is on screen.
+ */
+export type RuntimePluginMenuActions = {
+    setSpec(spec: GameMenuSpec | null): void;
+};
+
+/**
  * Built by each shell, handed to `loadRuntimePlugins` as `options.host`, and
  * driven by the game app as the session comes and goes.
  */
@@ -223,6 +280,9 @@ export class RuntimePluginHostController {
 
     private attachment: RuntimePluginRuntimeAttachment | null = null;
     private saveActions: RuntimePluginSaveActions | null = null;
+    private menuActions: RuntimePluginMenuActions | null = null;
+    /** The last menu a plugin declared, kept for the game app that has not mounted yet. */
+    private menuSpec: GameMenuSpec | null = null;
     private session: RuntimePluginStorySession | null = null;
     private sceneIdByScene = new Map<Scene, string>();
     private unsubscribePersistence: (() => void) | null = null;
@@ -338,6 +398,27 @@ export class RuntimePluginHostController {
         this.sceneMusicAssetIdBySceneId = {};
         this.pendingDialogueTextId = null;
         this.engineSnapshot = { scene: new Map(), saved: new Map() };
+    }
+
+    /**
+     * Publish the game app's menu controller.
+     *
+     * Held outside the session attachment for the same reason the save paths are: the bar outlives
+     * any one playthrough - it is on screen at the title too - and it is dropped on unmount so a
+     * plugin cannot declare a menu into a game that has gone.
+     */
+    public attachMenuActions(actions: RuntimePluginMenuActions): () => void {
+        this.menuActions = actions;
+        // Whatever a plugin declared before there was a game to draw it against. Replayed rather
+        // than dropped, because the plugin published once at boot and will not publish again.
+        if (this.menuSpec) {
+            actions.setSpec(this.menuSpec);
+        }
+        return () => {
+            if (this.menuActions === actions) {
+                this.menuActions = null;
+            }
+        };
     }
 
     /**
@@ -574,6 +655,28 @@ export class RuntimePluginHostController {
 
     private lastLocale = "";
 
+    /**
+     * One of the project's localization keys, in the language the game is running in.
+     *
+     * Deliberately the same resolution the `Get Text` node performs - the key's unit id through the
+     * bundle's tables, falling back to the source text - rather than a second reading of the same
+     * document. A key the project does not declare answers `null`, which is what lets a caller tell
+     * "not translated" from "translated to an empty string".
+     */
+    private readLocalizedText(key: string): string | null {
+        const bundle = this.attachment?.bundle.localization;
+        const name = typeof key === "string" ? key.trim() : "";
+        if (!bundle || !name || !(name in (bundle.keys ?? {}))) {
+            return null;
+        }
+        const translated = resolveLocalizedUnitText(
+            { sourceLocale: bundle.sourceLocale, locales: bundle.locales, tables: bundle.tables ?? {} },
+            this.readLocale(),
+            localizationKeyUnitId(name),
+        );
+        return translated ?? bundle.keys?.[name] ?? null;
+    }
+
     private readLocale(): string {
         const attachment = this.attachment;
         if (!attachment) {
@@ -646,6 +749,17 @@ export class RuntimePluginHostController {
             overlay: {
                 mount: (ownerPluginId, render) => this.overlays.mount(ownerPluginId, render),
             },
+            diagnostics: {
+                /**
+                 * Straight off the live session, and null whenever there is not one.
+                 *
+                 * Nothing is cached or sampled here: a profiler asks on its own clock and wants the
+                 * reading at the moment it asked, and holding a copy would only let it go stale
+                 * between two evictions. The optional chain covers the ordinary gaps - no session
+                 * during boot, no game state before the player mounts - rather than any failure.
+                 */
+                imageCache: () => this.session?.liveGame.getGameState()?.getImageCache()?.getStats() ?? null,
+            },
             locale: {
                 current: () => this.readLocale(),
                 onChange: listener => {
@@ -654,8 +768,33 @@ export class RuntimePluginHostController {
                         this.localeListeners.delete(listener);
                     };
                 },
+                text: key => this.readLocalizedText(key),
             },
         };
+
+        if (this.shell.menuBar) {
+            host.menu = {
+                /*
+                 * Held, not refused, when the game app is not up yet.
+                 *
+                 * `setup()` runs during boot - ahead of the game app, by design - so a plugin whose
+                 * whole job is the menu bar would be declaring it into nothing on every launch.
+                 * The spec is authored data and does not go stale, so the honest answer is to keep
+                 * the last one and hand it over the moment there is something to hand it to. That
+                 * is also what makes it survive a relaunch: the plugin's declaration stays, the
+                 * session underneath it is replaced.
+                 */
+                set: async spec => {
+                    this.menuSpec = spec;
+                    this.menuActions?.setSpec(spec);
+                },
+            };
+        }
+
+        const processMemory = this.shell.processMemory;
+        if (processMemory) {
+            host.process = { memory: coalesceInFlight(processMemory) };
+        }
 
         const persistence = this.shell.persistence;
         if (persistence) {

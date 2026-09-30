@@ -254,6 +254,48 @@ describe("generic verbs", () => {
         expect(build("/show overlay")).toMatchObject({ payload: { action: "displayable", operation: "show", target: { kind: "layer", name: "overlay" } } });
     });
 
+    it("/show names a picture or a clip out of the library, creating what it reveals", () => {
+        // The name the element takes is the file's own, which is what every later row addresses.
+        expect(build("/show night")).toMatchObject({
+            payload: { action: "image", operation: "show", objectName: "night", assetId: "i2" },
+        });
+        expect(build("/show intro")).toMatchObject({
+            payload: { action: "video", operation: "show", objectName: "intro", assetId: "v1" },
+        });
+        // Placed and faded exactly as `/image` places and fades one: the placement wins, because a
+        // transform holds one preset and `pos=` is the more specific instruction.
+        expect(build("/show night pos=left")).toMatchObject({
+            payload: { transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } },
+        });
+        expect(build("/show night in=fade d=0.5")).toMatchObject({
+            payload: { transform: { durationMs: 500 } },
+        });
+        expect(build("/show night name=backdrop")).toMatchObject({
+            payload: { action: "image", operation: "show", objectName: "backdrop", assetId: "i2" },
+        });
+    });
+
+    it("/show means the thing on stage when one answers to the name", () => {
+        // `hero` is on stage and is not a file; `night` is a file and is not on stage. The only way a
+        // line can mean the file while something on stage shares its word is to name the element it
+        // is creating, which is what `name=` says.
+        expect(build("/show hero")).toMatchObject({
+            payload: { action: "image", operation: "show", objectName: "hero" },
+        });
+        expect(build("/show clip")).toMatchObject({ payload: { action: "video", operation: "show", objectName: "clip" } });
+    });
+
+    it("refuses name= on a subject that is already on stage", () => {
+        // The key names the element the row creates, so on something that exists it would be stored
+        // and read by nobody.
+        expect(issuesOf("/show hero name=backdrop")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show Alice name=backdrop")).toEqual(["unsupportedParam"]);
+    });
+
+    it("/hide reads no library, because nothing unseen can be concealed", () => {
+        expect(issuesOf("/hide night")).toEqual(["unknownTarget"]);
+    });
+
     it("rejects a target nothing answers to, and an unsupported word for the resolved context", () => {
         expect(issuesOf("/show nobody")).toEqual(["unknownTarget"]);
         // Every subject `/show` reaches now animates through the SAME reveal table, so a word outside

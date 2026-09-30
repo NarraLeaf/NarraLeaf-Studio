@@ -12,7 +12,8 @@
 
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { anchorComponentId } from "@shared/blueprint/ownerShape";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     validateBlueprintDocumentGraphs,
@@ -20,6 +21,9 @@ import {
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import type { BpDiagnostic } from "./dsl/ast";
 import { compileBlueprintDocument } from "./dsl/compile";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { createAssetNameDescriber } from "@services/references/assetNameCatalog";
+import { findAssetNameGaps, type AssetNameGap, type StoryVariableWrite } from "@services/references/assetNameGaps";
 import { parseBlueprintText } from "./dsl/parse";
 
 export type CheckOptions = {
@@ -39,6 +43,26 @@ export type CheckOptions = {
      * one of them as not allowed here - 150-odd refusals on a project that is fine.
      */
     resolveWidgetElement?: (owner: BlueprintOwnerRef) => { element: unknown; surfaceId?: string } | undefined;
+    /**
+     * Every element in the project, by id.
+     *
+     * A handful of node scopes are a fact about where an element sits rather than about what it is -
+     * the list row a node reads is the one there is - and both the palette and the validator answer
+     * those by walking this. Without it neither refuses such a node, because nothing established
+     * that the scope is out of reach.
+     */
+    uiElements?: Readonly<Record<string, UIElement>>;
+    /**
+     * The rest of the project an asset name can travel through: the interface (its lists and the
+     * properties bound to a value) and what every story row writes into a variable.
+     *
+     * Without it the check still follows every graph, and answers as if the project had no interface
+     * and no stories - which is exactly right for a file checked on its own.
+     */
+    assetNameContext?: {
+        uiDocument?: UIDocument | null;
+        storyWrites?: readonly StoryVariableWrite[];
+    };
 };
 
 export type CheckResult = {
@@ -57,6 +81,7 @@ export function checkBlueprintSource(source: string, options: CheckOptions = {})
         newId: options.newId,
         resolveWidgetElementType: options.resolveWidgetElementType,
         resolveElementType: options.resolveElementType,
+        uiElements: options.uiElements,
     });
     diagnostics.push(...compiled.diagnostics);
 
@@ -89,6 +114,7 @@ export function checkProjectDocument(
     options: Omit<CheckOptions, "existing"> = {},
 ): BpDiagnostic[] {
     const out: BpDiagnostic[] = [];
+    const assetNameGaps = projectAssetNameGaps(document, options);
     // Some findings are about the blueprint rather than about one graph in it - a duplicate Fn name
     // is the same fact however many layers were walked to notice it - and the validator reports them
     // once per graph. Deduplicated here so a project report counts problems, not passes over them.
@@ -97,7 +123,7 @@ export function checkProjectDocument(
         for (const finding of validateBlueprintDocumentGraphs(
             document,
             blueprint.id,
-            validationOptions(blueprint.owner, options),
+            { ...validationOptions(blueprint.owner, options), assetNameGaps },
         )) {
             const message = `${blueprint.name}: ${finding.message}`;
             const key = JSON.stringify([finding.severity, finding.code, message]);
@@ -130,17 +156,19 @@ function runGraphValidation(
         // stops `apply` writing it - so the graph could never be written at all, and the way out
         // was to hand-edit the JSON this tool exists to keep people out of.
         document.ownerRecords[ownerRefToIndexKey(blueprint.owner)] = {
-            activeBlueprintId: blueprint.id,
-            privateBlueprintIds: [blueprint.id],
+            blueprintId: blueprint.id,
         };
     }
 
     const out: BpDiagnostic[] = [];
+    // Over the document as `apply` would leave it, so a gap the file introduces and a gap it closes
+    // are both answered about the project rather than about the file on its own.
+    const assetNameGaps = projectAssetNameGaps(document, options);
     for (const blueprint of blueprints) {
         for (const finding of validateBlueprintDocumentGraphs(
             document,
             blueprint.id,
-            validationOptions(blueprint.owner, options),
+            { ...validationOptions(blueprint.owner, options), assetNameGaps },
         )) {
             // The compiler already reported this one, with the value types and the line the author
             // wrote it on. Two warnings for one edge would only make the second easier to ignore.
@@ -165,12 +193,25 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         persistentVariables: options.persistentVariables,
         savedVariables: options.savedVariables,
         widgetElement: widget?.element as UIElement | undefined,
+        uiDocument: options.uiElements ? { elements: options.uiElements } : null,
         widgetSurfaceId: widget?.surfaceId,
         // Told rather than derived from the owner inside the validator, because it is the same flag
         // the runtime bridge takes (`componentDefinitionMode`): a definition's graph addresses its
         // own elements and reads its instance's params, and both are refused anywhere else.
-        isComponentDefinitionGraph: owner.kind === "componentWidgetMain",
+        isComponentDefinitionGraph: anchorComponentId(owner) !== null,
     };
+}
+
+/**
+ * Where the project picks an asset by a value its package cannot carry - the judgement the canvas
+ * reads from the reference index and the build refuses on, made here from the document in hand.
+ */
+function projectAssetNameGaps(document: BlueprintDocument, options: Pick<CheckOptions, "assetNameContext">): AssetNameGap[] {
+    return findAssetNameGaps({
+        blueprintDocument: document,
+        uiDocument: options.assetNameContext?.uiDocument ?? null,
+        storyWrites: options.assetNameContext?.storyWrites ?? [],
+    }, createAssetNameDescriber(blueprintNodeRegistry));
 }
 
 /** Blueprint name plus node id, as one lookup key that cannot be spelled two ways. */

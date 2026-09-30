@@ -66,42 +66,35 @@ describe("collectSurfaceFlushElementIds", () => {
                     id: "flush-bp",
                     name: "Flush logic",
                     owner: { kind: "widgetMain", surfaceId: "dialog", elementId: "flush" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                flush: {
-                                    id: "flush",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
-                                                params: {},
-                                            },
-                                            value: {
-                                                id: "value",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "ok" },
-                                            },
+                    graphs: {
+                        events: {
+                            flush: {
+                                id: "flush",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+                                            params: {},
                                         },
-                                        edges: [],
+                                        value: {
+                                            id: "value",
+                                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                            params: { value: "ok" },
+                                        },
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 [widgetMainOwnerKey("dialog", "flush")]: {
-                    activeBlueprintId: "flush-bp",
-                    privateBlueprintIds: ["flush-bp"],
-                    initializedFrontend: "visual",
+                    blueprintId: "flush-bp",
                 },
             },
         };

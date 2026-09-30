@@ -14,7 +14,8 @@ import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
 import { changeIndexRowName, ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
 import { opensAsSplitComparison } from "@/lib/vcs/compare/splitDocuments";
-import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import { useDocumentNames } from "@/lib/vcs/nameSources";
+import { elideGeneratedIdentifiers } from "@/lib/vcs/identifierDisplay";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
@@ -113,13 +114,16 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     );
 
     /**
-     * What the rows are called, which for a story is a title in a document beside it.
+     * What the rows are called, which for a story, a motion or an asset's bytes is a name in a
+     * library beside it.
      *
      * Read against the same two sides the presenters draw, so the index and the file it opens agree
-     * about what a scene is called. A story whose title cannot be read is named for what it is plus
-     * the id in its path, never after the file - see `lib/vcs/documentName.ts`.
+     * about what a scene is called - and read again whenever the comparison is, since the button in
+     * the header re-reads a working tree whose names may have changed since. A thing whose name
+     * cannot be read is named for what it is, never after its file or its id - see
+     * `lib/vcs/documentName.ts`.
      */
-    const names = useDocumentNames(comparison);
+    const names = useDocumentNames(comparison, { refreshKey: result });
 
     const index = useMemo(
         () => buildChangeIndex(result?.documents ?? [], {
@@ -199,7 +203,9 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                 // Above everything, because the empty list underneath it means the opposite of what
                 // an empty list usually means (docs §4.29).
                 <p className="shrink-0 px-3 pt-2 text-xs text-danger">
-                    {t("documentDiff.tab.readFailure", { error: result.readFailure })}
+                    {/* The read's own words, which name the file it failed on - a story's folder
+                        or an asset's shard, so its ids are drawn as an ellipsis. */}
+                    {t("documentDiff.tab.readFailure", { error: elideGeneratedIdentifiers(result.readFailure) })}
                 </p>
             )}
             {result && !result.complete && (
@@ -217,7 +223,7 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                     {t("documentDiff.rows.loading")}
                 </p>
             )}
-            {diff.error && <p className="shrink-0 px-3 py-2 text-xs text-danger">{diff.error}</p>}
+            {diff.error && <p className="shrink-0 px-3 py-2 text-xs text-danger">{elideGeneratedIdentifiers(diff.error)}</p>}
             {/* Null with no error is the one answer that is about the INSTALLATION rather than
                 about this project: version control ships no backend for some hosts, and that is
                 a fact rather than a failure. */}

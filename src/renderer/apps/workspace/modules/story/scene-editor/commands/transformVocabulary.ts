@@ -641,7 +641,14 @@ function positionWord(position: StoryAlignPositionValue | undefined): string | u
     if (position.xoffset !== undefined || position.yoffset !== undefined) {
         return undefined;
     }
-    return `${numberWord(position.xalign)},${numberWord(position.yalign)}`;
+    const xalign = numberWord(position.xalign);
+    const yalign = numberWord(position.yalign);
+    // Both axes or neither. A bag holding one of them - which the inspector writes whenever an author
+    // drags a portrait along a single axis - used to interpolate the missing half straight into the
+    // pair, so the row printed `pos=0.45,undefined`: a value `parsePositionValue` rejects, and one
+    // the author was reading on their own line. Nothing is the honest answer, and it is the same one
+    // the offset case above already gives.
+    return xalign !== undefined && yalign !== undefined ? `${xalign},${yalign}` : undefined;
 }
 
 /**

@@ -50,11 +50,14 @@ export function normalizePreloadConfiguration(value: unknown): PreloadConfigurat
 }
 
 /**
- * The engine's `GameConfig.preloadGate` for a behavior.
+ * Whether this behaviour holds the first painted frame for the whole opening scene.
  *
  * One translation point, so the two vocabularies stay separable: the setting is named for what an
- * author chooses, the engine option for what it gates on.
+ * author chooses, and this is named for what the warming does. It used to answer with the engine's
+ * own `preloadGate`, which is what steered the engine while the engine still decided what to warm;
+ * Studio now plans the warming itself (see `createStudioPreloadScheduler`) and this is the one
+ * thing about that plan the author gets a say in.
  */
-export function preloadGateFor(behavior: PreloadBehavior): "firstFrame" | "scene" {
-    return behavior === "blocking" ? "scene" : "firstFrame";
+export function preloadGatesWholeScene(behavior: PreloadBehavior): boolean {
+    return behavior === "blocking";
 }

@@ -269,6 +269,20 @@ describe("a project row", () => {
         expect(rowText()).toContain("Ada Blackwood");
     });
 
+    it("names a version merged under this account's id by the account, and one under another id by nobody", async () => {
+        // A sync used to commit its own merges under the signed-in account's id, and those
+        // versions keep their bytes: the id is drawn as whoever this installation is signed in as.
+        open([project({ history: { lastAt: Date.UTC(2026, 7, 20), lastBy: "u-1" } })]);
+        await waitFor(() => expect(rowText()).toContain("launcher.servers.lastVersionBy"));
+        expect(rowText()).toContain("Ada Blackwood <ada@example.com>");
+        expect(rowText()).not.toContain("u-1");
+
+        cleanup();
+        open([project({ history: { lastAt: Date.UTC(2026, 7, 20), lastBy: "3f2a9c1e-5b7d-4c5e-9a10-77b3c0d1e2f4" } })]);
+        await waitFor(() => expect(rowText()).toContain("launcher.servers.lastVersion("));
+        expect(rowText()).not.toContain("3f2a9c1e");
+    });
+
     it("leaves the author out of the line when only the time was given", async () => {
         open([project({ history: { lastAt: Date.UTC(2026, 7, 20), revisions: 12 } })]);
 

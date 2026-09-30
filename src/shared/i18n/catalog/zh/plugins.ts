@@ -60,6 +60,9 @@ export const plugins = {
         uninstalled: "插件已卸载",
         reloading: "正在重新载入插件…",
         reloaded: "插件已重新载入",
+        // 载入失败的插件重试：记录清除失败，插件重新被载入。
+        starting: "正在启动插件…",
+        started: "插件已启动",
     },
     error: {
         load: "加载插件失败",
@@ -70,6 +73,27 @@ export const plugins = {
         registry: "无法连接到插件注册表",
         download: "下载插件失败",
     },
+    dependencies: {
+        title: "项目依赖",
+        unavailable: {
+            one: "本项目需要的 {count} 个插件不可用",
+            other: "本项目需要的 {count} 个插件不可用",
+        },
+        allReady: "本项目需要的插件均可用",
+        open: "打开依赖",
+        installAll: "全部安装",
+        updated: "已更新",
+        authorized: "已授权",
+        notInRegistry: "不在注册表中",
+        noCompatibleVersion: "无兼容版本",
+        // 因版本被停用的插件：解除停用的「重新扫描」在「项目 ▸ 应用」中，不在此处。
+        rescanInProject: "点击「项目 ▸ 应用」中的「重新扫描」以使用已安装的版本",
+        task: {
+            running: "正在安装依赖…",
+            done: "依赖已安装",
+            partial: "部分插件未安装",
+        },
+    },
     workspace: {
         reload: "在此工作区重新载入",
         activity: {
@@ -78,10 +102,10 @@ export const plugins = {
             runtimeOnly: "仅游戏运行时",
             runtimeOnlyHint: "该插件只扩展运行中的游戏，在编辑器中没有可执行的部分",
             suppressed: "已为本项目停用",
-            suppressedHint: "已安装的版本与本项目所依赖的版本不兼容；更新插件，或在「项目 ▸ 应用」中重新扫描依赖表",
+            // 解除停用的只有「重新扫描」，所以提示写明按钮名与位置。
+            suppressedHint: "已安装的版本与本项目所依赖的版本不兼容；点击「项目 ▸ 应用」中的「重新扫描」以使用已安装的版本",
             failed: "载入失败",
         },
-        suppressedNotice: "本项目未载入这些插件：{names}；已安装的版本与项目所依赖的版本不兼容，详见「插件」面板",
         pendingReopen: "下次打开本项目时生效",
         restartHint: "部分插件修改可能需要重启工作区才能生效",
         restart: "重启",

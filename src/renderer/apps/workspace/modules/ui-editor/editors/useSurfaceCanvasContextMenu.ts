@@ -33,8 +33,6 @@ import type {
     EditorStateService,
     EditorUIService,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
@@ -98,11 +96,9 @@ export function useSurfaceCanvasContextMenu(params: {
             const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
             const hitElementId = hit?.dataset.uiElementId ?? null;
             const hitElement = hitElementId ? documentService.getDocument().elements[hitElementId] : null;
-            if (isComponentEditorRootElement(hitElement)) {
-                selectSurfaceForProperties(stateService, surface.id, uiService);
-            }
-            lastContextHitElementId.current =
-                hitElement && !isComponentEditorRootElement(hitElement) ? hitElementId : null;
+            // A component's frame is hit like any element: its menu offers what the frame allows and
+            // greys out what it refuses (see `isComponentEditorRootElement`).
+            lastContextHitElementId.current = hitElement ? hitElementId : null;
 
             const curSel = stateService.getSelection();
             if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
@@ -175,7 +171,7 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         const pid = menuSel.primaryId ?? menuSel.elementIds[0];
                         const el = doc.elements[pid];
-                        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
+                        if (!el || el.type === "nl.root") {
                             return;
                         }
                         void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
@@ -190,7 +186,7 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         for (const id of menuSel.elementIds) {
                             const el = doc.elements[id];
-                            if (el && el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
+                            if (el && el.type !== "nl.root") {
                                 documentService.updateElementLayout(id, { visible });
                             }
                         }

@@ -1,5 +1,6 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
+import type { BlueprintOpenScreenshotsResult, BlueprintScreenshotResult } from "./blueprint/screenshot";
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
@@ -10,15 +11,51 @@ import type {
     GameProgressExportResult,
     GameProgressImportResult,
 } from "./gameProgress";
+import type { GameMenuModel } from "./gameMenu";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
 
 export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 2 as const;
+
+/**
+ * The schema version a pack claims when it is one this build does not read, or null when the pack
+ * is readable.
+ *
+ * A pack from a newer Studio can reach an older game in one way: as a patch or a DLC dropped
+ * beside it, made by a Studio that has since changed what a pack holds. Read as though it were
+ * current, whatever the newer format carries would be missing from what plays, with nothing to
+ * say so - a scene that ends early, a page whose widgets are gone. So a shipped game asks this of
+ * its base pack and of every layer before reading either, and refuses the one that answers.
+ *
+ * Only a number strictly greater than the build's own is refused. A pack that states no version
+ * was written before packs stated one, and every build reads it as it always has.
+ */
+export function newerRuntimePackSchemaVersion(pack: unknown): number | null {
+    if (!pack || typeof pack !== "object" || Array.isArray(pack)) {
+        return null;
+    }
+    const version = (pack as { schemaVersion?: unknown }).schemaVersion;
+    return typeof version === "number" && Number.isFinite(version) && version > GAME_RUNTIME_PACK_SCHEMA_VERSION
+        ? version
+        : null;
+}
+
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
+/**
+ * Main -> renderer push when the window gains or loses the player's attention.
+ *
+ * From the main process rather than from the page's own `focus`/`blur`, which are a different
+ * question with a different answer: a window whose title bar is being dragged, or whose developer
+ * tools have the keyboard, is one the player is plainly still in and the page is plainly not.
+ */
+export const GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL = "runtime:window:focusChanged" as const;
+/** Main -> renderer push naming the menu item the player picked. */
+export const GAME_RUNTIME_MENU_COMMAND_CHANNEL = "runtime:menu:command" as const;
 /**
  * Main -> renderer request when the user asks to close the window, carrying a `requestId`. The
  * renderer runs its blueprints and replies on {@link GAME_RUNTIME_CLOSE_DECISION_CHANNEL} with the
@@ -229,6 +266,20 @@ export type GameRuntimePackPuppetRuntimeEntry = {
     files: string[];
 };
 
+/**
+ * Where the project stood when a build was made, as version control records it.
+ *
+ * The branch is deliberately not here. A revision id is opaque and identifies the state on its own,
+ * while a branch is a name the author wrote - and this record ships to every player, so a build made
+ * on `chapter-4-secret-route` would be announcing it. The id is what restores the state; the number
+ * is what the history rail shows it under, so an author reading one can find it without looking a
+ * hex string up.
+ */
+export type GameRuntimeProjectRevision = {
+    id: string;
+    number: number;
+};
+
 export type GameRuntimePackV1 = {
     schemaVersion: typeof GAME_RUNTIME_PACK_SCHEMA_VERSION;
     generatedAt: string;
@@ -241,7 +292,45 @@ export type GameRuntimePackV1 = {
      * alongside the same marker in the loose app manifest.
      */
     debuggable?: boolean;
+    /**
+     * The version of **Studio** that produced this pack, despite the name.
+     *
+     * It is also written as the packaged app's `version` (see `buildAppManifest`), which is why it
+     * is spelled this way and why renaming it is not free. What it does NOT say is which engine the
+     * game runs on - that is {@link engineVersion}, and the two move independently.
+     */
     runtimeVersion: string;
+    /**
+     * The narraleaf-react version bundled into the runtime this pack ships with.
+     *
+     * The engine is an ordinary dependency of Studio, inlined into `dist/runtime` when that is
+     * built, so a pack's engine is decided by the Studio that compiled it and not by anything in
+     * the project. Read straight off the runtime build's own manifest rather than resolved here:
+     * the version that matters is the one that went into the bundle being copied, and a second
+     * lookup could answer for a different install of the package.
+     *
+     * This is the field a patch export compares - a patch cannot replace the engine, so a patch
+     * built by a newer Studio ships content into a game that keeps running the old one.
+     *
+     * Absent on packs produced before this field existed and on packs compiled against a runtime
+     * build that predates it. Both mean "this build does not state its engine", which readers must
+     * report as unchecked rather than as a match.
+     */
+    engineVersion?: string;
+    /**
+     * The version-control revision the project stood at when this build was made.
+     *
+     * Written only by the build and the patch export, both of which record a checkpoint before they
+     * read anything, so the revision named here describes the project the pack was compiled from
+     * rather than merely the last thing the author happened to commit. A preview or a test run
+     * carries nothing: neither is an artifact anybody can be holding when they report a bug.
+     *
+     * Absent on every project that is not under version control, and on any run whose checkpoint
+     * could not be recorded. There is deliberately no stand-in for those: an author who reads a
+     * revision here can go to it, and a field that answered "unknown" would be a field they had to
+     * learn to distrust.
+     */
+    projectRevision?: GameRuntimeProjectRevision;
     project: {
         name: string;
         identifier?: string;
@@ -500,6 +589,16 @@ export const GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM = "nlpolicy";
 
 export const GAME_RUNTIME_LOG_PATH_QUERY_PARAM = "nllog";
 
+/**
+ * When the game's process started and what it did before the page existed, for the page's own
+ * performance timeline (see `@shared/types/gameLaunchTiming`).
+ *
+ * On the address for the reason the two above are: it has to be readable before anything else is,
+ * and it describes the process rather than any one page - so a page reloaded after a crash carries
+ * the same launch, which is still when this process began.
+ */
+export const GAME_RUNTIME_LAUNCH_QUERY_PARAM = "nllaunch";
+
 export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
 
 export type GameCrashPolicy = typeof GAME_CRASH_POLICIES[number];
@@ -711,6 +810,61 @@ export type GameSessionClaim = "granted" | "taken";
  */
 export type GameStorageDurability = "durable" | "evictable" | "unknown";
 
+/**
+ * Set the menu bar, and hear which item was picked.
+ *
+ * The model is already resolved - labels, ticks and grey-outs (see `@shared/types/gameMenu`) - so
+ * the shell decides nothing about what the menu says. `set` with an empty model takes the bar away.
+ */
+export type GameRuntimeMenuBridge = {
+    set(model: GameMenuModel): Promise<void>;
+    /** Subscribe to picks. Returns an unsubscribe function. */
+    onCommand(listener: (itemId: string) => void): () => void;
+};
+
+/**
+ * Where the story had got to, as the crash screen is able to state it.
+ *
+ * Names rather than ids wherever a name exists: the reader is the author, opening the file in a
+ * text editor. The row keeps its id because it has no name of its own and because that id is what
+ * finds the line in the project.
+ *
+ * Null when nothing was running - a failure during boot, or a page the shell drew after the display
+ * process died, which knows nothing about the run that ended with it.
+ */
+export type GameCrashStoryPosition = {
+    storyName: string;
+    sceneName: string;
+    rowId?: string;
+};
+
+/**
+ * What only the page can say about a crash, on its way to the file the player sends.
+ *
+ * Everything else in that file - the build, the machine, the log - is known to the process that
+ * writes it, and is deliberately not stated here: a renderer that has just stopped drawing is the
+ * worst available source for facts something else already holds.
+ */
+export type GameCrashReportRequest = {
+    /** The failure as the crash screen has it, stack included. */
+    details: string;
+    /** The language the shell is speaking, which is the machine's rather than the game's. */
+    language: string;
+    /** Where the story had got to, or null when nothing was running. */
+    story: GameCrashStoryPosition | null;
+};
+
+/**
+ * Whether the report was written, and where it went.
+ *
+ * `path` so the screen can name the file it just made; the message on failure so the player can
+ * repeat it to whoever they are talking to. Neither outcome changes anything else on that screen -
+ * the failure, the copy button and the log path stand whatever this answers.
+ */
+export type GameCrashReportResult =
+    | { outcome: "written"; path: string }
+    | { outcome: "failed"; error: string };
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -787,6 +941,44 @@ export type GameRuntimePreloadBridge = {
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
+     * Whether this shell's window is the one the player is working in.
+     *
+     * Every shell answers honestly and differently: a desktop window asks the process that owns it,
+     * and a page asks whether it is visible and has focus. Which is why this is here rather than
+     * behind {@link capabilities} - nobody has to fake it.
+     */
+    isWindowFocused(): Promise<boolean>;
+    /** Subscribe to that changing. Returns an unsubscribe function. */
+    onWindowFocusChanged(listener: (isFocused: boolean) => void): () => void;
+    /**
+     * Write a picture of the frame the player is looking at, and say where it went.
+     *
+     * Absent behaviour rather than an absent method, reported through {@link capabilities}.
+     * `screenshot`: the desktop shell captures its window and writes beside the player's saves; the
+     * web export can do neither and answers a `failed` result the graph branches on. The caller
+     * never names the file - see `@shared/types/blueprint/screenshot`.
+     */
+    saveScreenshot(): Promise<BlueprintScreenshotResult>;
+    /** Show the player the folder those go in. Inert on the same shell, for the same reason. */
+    openScreenshotsFolder(): Promise<BlueprintOpenScreenshotsResult>;
+    /**
+     * Write one file about the crash the player is looking at, and show it to them.
+     *
+     * The last step of a crash screen that already showed the failure, offered a copy button and
+     * named the log: the player had a folder path and a clipboard, and the author got whatever they
+     * managed to paste. This produces the single file they can send instead - the log, plus what the
+     * shell knows about the build it came from.
+     *
+     * Absent on the web export, and absence is the whole signal: a page has no log file to gather
+     * and nowhere to leave one, so the crash screen draws no button there rather than a button that
+     * apologises. Absent, too, wherever the preload never ran - which is the case the rest of that
+     * screen is built to survive, and why nothing else on it depends on this.
+     *
+     * Nothing about the file is decided by the caller. The path, the contents and what is left out
+     * of them belong to the process that writes it; see `runtime/main/crashReport`.
+     */
+    saveCrashReport?(request: GameCrashReportRequest): Promise<GameCrashReportResult>;
+    /**
      * Register a handler consulted when the user asks to close the window. The main process holds
      * the close open until every registered handler resolves, and closes only if all of them
      * answered `true` — any single `false` cancels it. Handlers accumulate rather than replace, so
@@ -808,6 +1000,12 @@ export type GameRuntimePreloadBridge = {
          * page is the window and no script may resize it.
          */
         windowScale: boolean;
+        /**
+         * Whether {@link saveScreenshot} can ever write a file. False on the web export, which has
+         * no window to picture and nowhere to leave one; a game reads the absence and offers no
+         * screenshot button there rather than offering one that apologises.
+         */
+        screenshot: boolean;
     };
     /**
      * Claim this shell's one game session, before the game reads or writes anything.
@@ -869,6 +1067,23 @@ export type GameRuntimePreloadBridge = {
      * is missing, and `app.game.sidecar` then does not exist for plugins.
      */
     sidecar?: GameRuntimeSidecarBridge;
+    /**
+     * The window's own menu bar, on shells that have window chrome to hang one from.
+     *
+     * Absent on the web export, and absence is the whole signal here too: a page has no menu bar to
+     * own, so `app.game.menu` simply does not exist for plugins there rather than existing and
+     * doing nothing. Dev Mode omits it for a different reason - that window is Studio's, with
+     * Studio's own menu on it - which is why the capability is checked and not assumed.
+     */
+    menu?: GameRuntimeMenuBridge;
+    /**
+     * What this game's processes hold in memory, as the operating system counts it - see
+     * `@shared/types/gameProcessMemory` for why the main process is the one that has to answer.
+     *
+     * Absent on the web export, which is one tab of somebody else's browser and has no processes of
+     * its own to count; `app.game.process` then does not exist for plugins there.
+     */
+    processMemory?: () => Promise<GameProcessMemoryReading>;
 };
 
 declare global {

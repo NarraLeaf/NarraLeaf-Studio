@@ -51,18 +51,26 @@ export const AUTO_FORWARD_DEFAULT_PAUSE_MAX = 30000;
  * existed carries nothing, and every reader is entitled to a number without repeating the fallback.
  */
 export function normalizeDialogueConfiguration(value: unknown): DialogueConfiguration {
-    if (!value || typeof value !== "object") {
-        return { ...DEFAULT_DIALOGUE_CONFIGURATION };
-    }
-    const record = value as Record<string, unknown>;
-    const pause = record.autoForwardDefaultPause;
-    if (typeof pause !== "number" || !Number.isFinite(pause)) {
-        return { ...DEFAULT_DIALOGUE_CONFIGURATION };
-    }
+    const record = (value && typeof value === "object") ? value as Record<string, unknown> : {};
     return {
-        autoForwardDefaultPause: Math.min(
+        autoForwardDefaultPause: clamp(
+            record.autoForwardDefaultPause,
+            DEFAULT_DIALOGUE_CONFIGURATION.autoForwardDefaultPause,
+            AUTO_FORWARD_DEFAULT_PAUSE_MIN,
             AUTO_FORWARD_DEFAULT_PAUSE_MAX,
-            Math.max(AUTO_FORWARD_DEFAULT_PAUSE_MIN, Math.round(pause)),
         ),
     };
+}
+
+/**
+ * One stored field as a whole number in range, or the default where there is nothing usable.
+ *
+ * Per field rather than per configuration: a project written when this held one setting carries
+ * only that one, and reading it must not cost the others their defaults.
+ */
+function clamp(value: unknown, fallback: number, min: number, max: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.round(value)));
 }

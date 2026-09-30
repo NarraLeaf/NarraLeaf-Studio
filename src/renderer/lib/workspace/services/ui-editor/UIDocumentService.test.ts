@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { ProjectDocumentTooNewError } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import {
     UI_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -12,6 +15,8 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { UIDocumentService } from "./UIDocumentService";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -40,17 +45,15 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
         case "globalMain":
             return "globalMain";
         case "surfaceMain":
-            return `surfaceMain:${owner.surfaceId}`;
+            return encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: owner.surfaceId });
         case "widgetMain":
-            return `widgetMain:${owner.surfaceId}:${owner.elementId}`;
+            return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: owner.surfaceId, elementId: owner.elementId });
         case "widgetValue":
-            return `widgetValue:${owner.surfaceId}:${owner.elementId}:${encodeURIComponent(owner.propPath)}`;
+            return encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: owner.surfaceId, elementId: owner.elementId, propPath: owner.propPath });
         case "componentWidgetMain":
-            return `componentWidgetMain:${owner.componentId}:${owner.elementId}`;
-        case "sharedAsset":
-            return `sharedAsset:${owner.assetId}`;
+            return encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: owner.componentId, elementId: owner.elementId });
         case "storyAction":
-            return `storyAction:${owner.blueprintId}`;
+            return encodeBlueprintOwnerKey({ kind: "storyAction", blueprintId: owner.blueprintId });
         default: {
             const _exhaustive: never = owner;
             return _exhaustive;
@@ -64,6 +67,7 @@ type RecordedHistoryCall = { surfaceId: string; mergeKey?: string };
 function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
+    const projectHistory = new HistoryService();
     const historyCalls: RecordedHistoryCall[] = [];
     const historyService = {
         // Enough of the real service for the recording decision: the snapshots themselves are
@@ -85,14 +89,9 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
             id,
             name,
             owner,
-            frontend: "visual",
-            programKind: "graph",
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {},
-                    functions: {},
-                },
+            graphs: {
+                events: {},
+                functions: {},
             },
             members: {
                 variables: {},
@@ -104,11 +103,10 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
         const ownerKey = ownerKeyForTest(owner);
         const prev = blueprintDocument.ownerRecords[ownerKey];
         blueprintDocument.ownerRecords[ownerKey] = {
-            activeBlueprintId: id,
+            blueprintId: id,
             privateBlueprintIds: prev?.privateBlueprintIds?.includes(id)
                 ? prev.privateBlueprintIds
                 : [...(prev?.privateBlueprintIds ?? []), id],
-            initializedFrontend: prev?.initializedFrontend ?? "visual",
         };
         return id;
     };
@@ -127,7 +125,7 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
                 propPath: input.propPath,
             });
             const blueprint = blueprintDocument.blueprints[id];
-            blueprint.program.graphs.events.init = blueprint.program.graphs.events.init ?? {
+            blueprint.graphs.events.init = blueprint.graphs.events.init ?? {
                 id: "init",
                 name: "Init",
                 graph: { nodes: {}, edges: [] },
@@ -155,15 +153,22 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
                 if (options.withHistory && serviceId === Services.UIEditorHistory) {
                     return historyService;
                 }
+                // The workspace-wide stack, which is a different service from the interface
+                // editor's own per-surface history above. Reordering the surface list is the one
+                // thing this service puts there.
+                if (serviceId === Services.History) {
+                    return projectHistory;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     });
 
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls };
+    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls, projectHistory };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -296,8 +301,8 @@ describe("UIDocumentService surface creation", () => {
         expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]).toBeUndefined();
         const contentBlueprint = blueprintDocument.blueprints[`widget-main-${stack.id}`];
         expect(contentBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: stack.id });
-        expect(Object.keys(contentBlueprint.program.graphs.events)).toEqual(["dialogNext"]);
-        const nextGraph = contentBlueprint.program.graphs.events.dialogNext.graph;
+        expect(Object.keys(contentBlueprint.graphs.events)).toEqual(["dialogNext"]);
+        const nextGraph = contentBlueprint.graphs.events.dialogNext.graph;
         const nextNodes = Object.values(nextGraph.nodes) as any[];
         expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         const elementClickTargets = nextNodes
@@ -324,8 +329,8 @@ describe("UIDocumentService surface creation", () => {
         expect(nametag.valueBindings?.text).toBeUndefined();
         const nametagBlueprint = blueprintDocument.blueprints[`widget-main-${nametag.id}`];
         expect(nametagBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: nametag.id });
-        expect(Object.keys(nametagBlueprint.program.graphs.events)).toEqual(["nametagUpdate"]);
-        const nametagGraph = nametagBlueprint.program.graphs.events.nametagUpdate.graph;
+        expect(Object.keys(nametagBlueprint.graphs.events)).toEqual(["nametagUpdate"]);
+        const nametagGraph = nametagBlueprint.graphs.events.nametagUpdate.graph;
         const nametagNodeTypes = new Set(Object.values(nametagGraph.nodes).map((node: any) => node.type));
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
@@ -338,8 +343,8 @@ describe("UIDocumentService surface creation", () => {
 
         const avatarBlueprint = blueprintDocument.blueprints[`widget-main-${avatar.id}`];
         expect(avatarBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: avatar.id });
-        expect(Object.keys(avatarBlueprint.program.graphs.events)).toEqual(["avatarUpdate"]);
-        const avatarGraph = avatarBlueprint.program.graphs.events.avatarUpdate.graph;
+        expect(Object.keys(avatarBlueprint.graphs.events)).toEqual(["avatarUpdate"]);
+        const avatarGraph = avatarBlueprint.graphs.events.avatarUpdate.graph;
         const avatarNodeTypes = new Set(Object.values(avatarGraph.nodes).map((node: any) => node.type));
         expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
         expect(avatarNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
@@ -380,7 +385,7 @@ describe("UIDocumentService surface creation", () => {
         expect(itemText.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
 
         const valueBlueprint = blueprintDocument.blueprints[`widget-value-${itemText.id}-text`];
-        const valueGraph = valueBlueprint.program.graphs.events.init.graph;
+        const valueGraph = valueBlueprint.graphs.events.init.graph;
         const valueNodes = Object.values(valueGraph.nodes) as any[];
         expect(valueNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS)).toBe(true);
         expect(valueNodes.some((node: any) =>
@@ -411,14 +416,14 @@ describe("UIDocumentService surface creation", () => {
         expect(itemText.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
 
         const valueBlueprint = blueprintDocument.blueprints[`widget-value-${itemText.id}-text`];
-        const valueNodes = Object.values(valueBlueprint.program.graphs.events.init.graph.nodes) as any[];
+        const valueNodes = Object.values(valueBlueprint.graphs.events.init.graph.nodes) as any[];
         expect(valueNodes.some((node: any) =>
             node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_GET && node.params?.path === "text"
         )).toBe(true);
 
         const listBlueprint = blueprintDocument.blueprints[`widget-main-${list.id}`];
-        expect(Object.keys(listBlueprint.program.graphs.events)).toEqual(["choiceSelect"]);
-        const selectGraph = listBlueprint.program.graphs.events.choiceSelect.graph;
+        expect(Object.keys(listBlueprint.graphs.events)).toEqual(["choiceSelect"]);
+        const selectGraph = listBlueprint.graphs.events.choiceSelect.graph;
         const selectNodes = Object.values(selectGraph.nodes) as any[];
         expect(selectNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
         expect(selectNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(true);
@@ -455,7 +460,7 @@ describe("UIDocumentService surface creation", () => {
         expect(nametag.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
 
         const valueBlueprint = blueprintDocument.blueprints[`widget-value-${nametag.id}-text`];
-        const valueNodes = Object.values(valueBlueprint.program.graphs.events.init.graph.nodes) as any[];
+        const valueNodes = Object.values(valueBlueprint.graphs.events.init.graph.nodes) as any[];
         expect(valueNodes.some((node: any) =>
             node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_GET && node.params?.path === "nametag"
         )).toBe(true);
@@ -464,8 +469,8 @@ describe("UIDocumentService surface creation", () => {
         // collection widget without a Mouse Click head.
         expect(blueprintDocument.blueprints[`widget-main-${list.id}`]).toBeUndefined();
         const panelBlueprint = blueprintDocument.blueprints[`widget-main-${panel.id}`];
-        expect(Object.keys(panelBlueprint.program.graphs.events)).toEqual(["nvlNext"]);
-        const nextGraph = panelBlueprint.program.graphs.events.nvlNext.graph;
+        expect(Object.keys(panelBlueprint.graphs.events)).toEqual(["nvlNext"]);
+        const nextGraph = panelBlueprint.graphs.events.nvlNext.graph;
         const nextNodes = Object.values(nextGraph.nodes) as any[];
         expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(true);
         expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
@@ -617,6 +622,38 @@ describe("UIDocumentService surface creation", () => {
         },
     );
 
+    it("refuses a newer document by naming both versions and the file", () => {
+        const { service } = createHarness();
+        const version = UI_DOCUMENT_SCHEMA_VERSION + 1;
+
+        let thrown: unknown;
+        try {
+            (service as any).migrateIfNeeded({ ...service.getDocument(), schemaVersion: version });
+        } catch (error) {
+            thrown = error;
+        }
+
+        // "Newer than this Studio version" on its own cannot tell an author a damaged file from a
+        // project a newer Studio has already opened, and those call for opposite actions - restore
+        // the file, or update Studio. Both numbers and the file's own path are what separates them.
+        const message = (thrown as Error).message;
+        expect(message).toContain("editor/ui/uidoc.json");
+        expect(message).toContain(`v${version}`);
+        expect(message).toContain(`v${UI_DOCUMENT_SCHEMA_VERSION}`);
+
+        // The same refusal value every other project document throws, carried as the cause: a
+        // caller that wants to act on this failure matches on the type rather than on the sentence.
+        const cause = (thrown as Error).cause;
+        expect(cause).toBeInstanceOf(ProjectDocumentTooNewError);
+        expect((cause as ProjectDocumentTooNewError).kind).toBe("uiDocument");
+        expect((cause as ProjectDocumentTooNewError).version).toBe(version);
+        expect((cause as ProjectDocumentTooNewError).supportedVersion).toBe(UI_DOCUMENT_SCHEMA_VERSION);
+
+        // And it is the one wording, not a second one written here: the story document's refusal
+        // says the same thing about a different file.
+        expect(message).toBe(describeProjectDocumentTooNew(cause as ProjectDocumentTooNewError));
+    });
+
     it("renames the main Page display name while preserving the main surface id", () => {
         const { service } = createHarness();
         const mainSurface = service.getDocument().surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
@@ -741,7 +778,7 @@ describe("UIDocumentService surface creation", () => {
             mode: "replace",
             status: "active",
         };
-        surfaceBlueprint.program.graphs.events.init = {
+        surfaceBlueprint.graphs.events.init = {
             id: "init",
             graph: {
                 nodes: {
@@ -778,7 +815,7 @@ describe("UIDocumentService surface creation", () => {
             mode: "replace",
             status: "active",
         };
-        widgetBlueprint.program.graphs.events.click = {
+        widgetBlueprint.graphs.events.click = {
             id: "click",
             graph: {
                 nodes: {
@@ -826,7 +863,7 @@ describe("UIDocumentService surface creation", () => {
         expect(duplicatedDoc.components).toHaveLength(1);
 
         const duplicatedWidgetBlueprintId =
-            blueprintDocument.ownerRecords[`widgetMain:${duplicated.id}:${duplicatedButton.id}`]?.activeBlueprintId;
+            blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: duplicated.id, elementId: duplicatedButton.id })]?.blueprintId;
         expect(duplicatedWidgetBlueprintId).toBeTruthy();
         if (!duplicatedWidgetBlueprintId) {
             throw new Error("Expected the duplicated button to own a blueprint");
@@ -834,7 +871,7 @@ describe("UIDocumentService surface creation", () => {
         const duplicatedLabelBinding = duplicatedButton.valueBindings?.label;
         const duplicatedValueBlueprintId =
             duplicatedLabelBinding?.kind === "blueprintValue" ? duplicatedLabelBinding.blueprintId : undefined;
-        const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[`surfaceMain:${duplicated.id}`]?.activeBlueprintId;
+        const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: duplicated.id })]?.blueprintId;
 
         expect(duplicatedSurfaceBlueprintId).toBeTruthy();
         expect(duplicatedSurfaceBlueprintId).not.toBe(surfaceBlueprintId);
@@ -845,13 +882,13 @@ describe("UIDocumentService surface creation", () => {
             throw new Error("Expected duplicated value blueprint binding");
         }
 
-        expect(blueprintDocument.ownerRecords[`surfaceMain:${source.id}`]?.activeBlueprintId).toBe(surfaceBlueprintId);
-        expect(blueprintDocument.ownerRecords[`widgetMain:${source.id}:${button.id}`]?.activeBlueprintId).toBe(widgetBlueprintId);
-        expect(blueprintDocument.ownerRecords[`widgetValue:${source.id}:${button.id}:label`]?.activeBlueprintId).toBe(valueBlueprintId);
-        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${component.rootElementId}`]?.activeBlueprintId)
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: source.id })]?.blueprintId).toBe(surfaceBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: source.id, elementId: button.id })]?.blueprintId).toBe(widgetBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: source.id, elementId: button.id, propPath: "label" })]?.blueprintId).toBe(valueBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: component.rootElementId })]?.blueprintId)
             .toBe(componentBlueprintId);
         expect(Object.keys(blueprintDocument.ownerRecords).filter(key => key.startsWith("componentWidgetMain:")))
-            .toEqual([`componentWidgetMain:${component.id}:${component.rootElementId}`]);
+            .toEqual([encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: component.rootElementId })]);
 
         const duplicatedSurfaceBlueprint = blueprintDocument.blueprints[duplicatedSurfaceBlueprintId];
         expect(duplicatedSurfaceBlueprint.owner).toEqual({ kind: "surfaceMain", surfaceId: duplicated.id });
@@ -860,7 +897,7 @@ describe("UIDocumentService surface creation", () => {
             elementId: duplicatedButton.id,
         });
         expect(duplicatedSurfaceBlueprint.bindings["bind-surface"].source.blueprintId).toBe(duplicatedSurfaceBlueprintId);
-        expect(duplicatedSurfaceBlueprint.program.graphs.events.init.graph.nodes["node-self"].params).toMatchObject({
+        expect(duplicatedSurfaceBlueprint.graphs.events.init.graph.nodes["node-self"].params).toMatchObject({
             surfaceId: duplicated.id,
             targetSurfaceId: duplicated.id,
             elementId: duplicatedButton.id,
@@ -878,7 +915,7 @@ describe("UIDocumentService surface creation", () => {
             elementId: duplicatedButton.id,
         });
         expect(duplicatedWidgetBlueprint.bindings["bind-widget"].source.blueprintId).toBe(duplicatedWidgetBlueprintId);
-        expect(duplicatedWidgetBlueprint.program.graphs.events.click.graph.nodes["node-target"].params).toMatchObject({
+        expect(duplicatedWidgetBlueprint.graphs.events.click.graph.nodes["node-target"].params).toMatchObject({
             surfaceId: duplicated.id,
             elementId: duplicatedLabel.id,
             blueprintId: duplicatedWidgetBlueprintId,
@@ -1053,36 +1090,29 @@ describe("UIDocumentService component library", () => {
             id: "bp-hit",
             name: "Hit area",
             owner: { kind: "widgetMain", surfaceId: surface.id, elementId: hit.id },
-            frontend: "visual",
-            programKind: "graph",
             members: { variables: {}, fields: {}, functions: {} },
             bindings: {},
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        click: {
-                            id: "click",
-                            graph: {
-                                nodes: {
-                                    ref: {
-                                        id: "ref",
-                                        type: "blueprint.element.ref",
-                                        params: { surfaceId: surface.id, elementId: hit.id, elementType: "nl.container" },
-                                    },
+            graphs: {
+                events: {
+                    click: {
+                        id: "click",
+                        graph: {
+                            nodes: {
+                                ref: {
+                                    id: "ref",
+                                    type: "blueprint.element.ref",
+                                    params: { surfaceId: surface.id, elementId: hit.id, elementType: "nl.container" },
                                 },
-                                edges: [],
                             },
+                            edges: [],
                         },
                     },
-                    functions: {},
                 },
+                functions: {},
             },
         } as never;
-        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${hit.id}`] = {
-            activeBlueprintId: "bp-hit",
-            privateBlueprintIds: ["bp-hit"],
-            initializedFrontend: "visual",
+        blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: surface.id, elementId: hit.id })] = {
+            blueprintId: "bp-hit",
         } as never;
 
         const component = service.createComponentFromElements(surface.id, [hit.id], "Save slot")!;
@@ -1091,7 +1121,7 @@ describe("UIDocumentService component library", () => {
         // The blueprint follows the element into the component, as a clone rather than the original:
         // an owner record still naming `bp-hit` would run the surface's blueprint from inside the
         // component and drive the element still out there.
-        const boundId = blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId;
+        const boundId = blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id })]?.blueprintId;
         expect(boundId).toBeTruthy();
         expect(boundId).not.toBe("bp-hit");
 
@@ -1100,7 +1130,7 @@ describe("UIDocumentService component library", () => {
 
         // The whole point of the remap: an element ref inside the clone points at the component's
         // copy. Left alone it would reach back out and drive the element still on the surface.
-        const refParams = (cloned.program as never as {
+        const refParams = (cloned as never as {
             graphs: { events: Record<string, { graph: { nodes: Record<string, { params: Record<string, string> }> } }> };
         }).graphs.events.click.graph.nodes.ref.params;
         expect(refParams.elementId).toBe(copy.id);
@@ -1138,16 +1168,12 @@ describe("UIDocumentService component library", () => {
             id: "bp-empty",
             name: "Box",
             owner: { kind: "widgetMain", surfaceId: surface.id, elementId: box.id },
-            frontend: "visual",
-            programKind: "graph",
             members: { variables: {}, fields: {}, functions: {} },
             bindings: {},
-            program: { kind: "graph", graphs: { events: { click: { id: "click", graph: { nodes: {}, edges: [] } } }, functions: {} } },
+            graphs: { events: { click: { id: "click", graph: { nodes: {}, edges: [] } } }, functions: {} },
         } as never;
-        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${box.id}`] = {
-            activeBlueprintId: "bp-empty",
-            privateBlueprintIds: ["bp-empty"],
-            initializedFrontend: "visual",
+        blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: surface.id, elementId: box.id })] = {
+            blueprintId: "bp-empty",
         } as never;
 
         const component = service.createComponentFromElements(surface.id, [box.id], "Box")!;
@@ -1345,18 +1371,14 @@ describe("UIDocumentService template import: components and naming", () => {
                             componentId: "tpl-component",
                             elementId: "tpl-component-root",
                         },
-                        frontend: "visual",
-                        programKind: "graph",
-                        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                        graphs: { events: {}, functions: {} },
                         members: { variables: {}, fields: {}, functions: {} },
                         bindings: {},
                     },
                 },
                 ownerRecords: {
                     "componentWidgetMain:tpl-component:tpl-component-root": {
-                        activeBlueprintId: "tpl-bp",
-                        privateBlueprintIds: ["tpl-bp"],
-                        initializedFrontend: "visual",
+                        blueprintId: "tpl-bp",
                     },
                 },
                 persistentVariables: {},
@@ -1761,5 +1783,82 @@ describe("UIDocumentService input model normalization", () => {
 
         expect(Object.keys(loaded.actions ?? {})).toEqual(["advance"]);
         expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: "advance" }]);
+    });
+});
+
+/**
+ * Reordering the surface list is the panel's drag, and the only edit this service puts on the
+ * workspace-wide stack: it belongs to no single surface, so the editor's own per-surface history has
+ * nowhere to hold it.
+ */
+describe("UIDocumentService.reorderSurfaces", () => {
+    const names = (service: UIDocumentService) => service.getDocument().surfaces.map(surface => surface.name);
+
+    function seedPages(service: UIDocumentService) {
+        service.createSurface({ kind: "appSurface", host: "app", name: "Second" });
+        service.createSurface({ kind: "appSurface", host: "app", name: "Third" });
+    }
+
+    it("puts the surfaces in the order given", () => {
+        const { service } = createHarness();
+        seedPages(service);
+        const [main, second, third] = service.getDocument().surfaces.map(surface => surface.id);
+        const mainName = names(service)[0];
+
+        service.reorderSurfaces([third, main, second]);
+
+        expect(names(service)).toEqual(["Third", mainName, "Second"]);
+    });
+
+    it("keeps a surface the order does not name rather than dropping it", () => {
+        const { service } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+
+        // A stale order, written before "Third" existed. It states position, never deletion.
+        service.reorderSurfaces([ids[1], ids[0]]);
+
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[1], ids[0], ids[2]]);
+    });
+
+    it("undoes and redoes the move on the project stack", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        const original = [...ids];
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces([ids[2], ids[0], ids[1]], ids[2]);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[2], ids[0], ids[1]]);
+
+        expect(projectHistory.undo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual(original);
+        expect(projectHistory.redo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[2], ids[0], ids[1]]);
+    });
+
+    it("names the step after the surface that moved", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces([ids[2], ids[0], ids[1]], ids[2]);
+
+        expect(projectHistory.peekUndo(projectHistoryScope())).toEqual({
+            key: "uiEditor.history.moveSurface",
+            params: { name: "Third" },
+        });
+    });
+
+    it("records nothing when the order it is handed is the order it already has", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces(ids, ids[0]);
+
+        expect(projectHistory.canUndo(projectHistoryScope())).toBe(false);
     });
 });

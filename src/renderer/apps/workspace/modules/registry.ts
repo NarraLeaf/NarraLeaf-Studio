@@ -23,6 +23,7 @@ import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { storyVariablesPanelModule } from "./story-variables";
+import { storySnapshotPanelModule } from "./story-snapshots";
 import { dictionaryPanelModule } from "./dictionary";
 import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
@@ -51,6 +52,7 @@ export const builtInPanels: PanelModule[] = [
     assetsBottomModule,
     propertiesModule,
     storyVariablesPanelModule,
+    storySnapshotPanelModule,
     dictionaryPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
@@ -102,6 +104,7 @@ export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
 export { storyVariablesPanelModule } from "./story-variables";
+export { storySnapshotPanelModule } from "./story-snapshots";
 export { dictionaryPanelModule, openDictionaryPanel, DICTIONARY_PANEL_ID } from "./dictionary";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";

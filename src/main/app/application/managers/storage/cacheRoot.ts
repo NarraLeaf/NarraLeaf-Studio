@@ -1,5 +1,4 @@
-import fs from "fs";
-import fsp from "fs/promises";
+import { unpatchedFs as fs, unpatchedFsPromises as fsp } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { CACHE_ROOT_DIR_NAME, CacheNamespace } from "@shared/types/constants";
 

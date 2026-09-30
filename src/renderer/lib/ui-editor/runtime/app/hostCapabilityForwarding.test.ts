@@ -19,10 +19,12 @@
  * Source-level for the reason `runtimeImportBoundary` and `builtinRendererParity` are: the defect
  * lives in wiring, and wiring is what a type checker is least able to insist on.
  *
- * It counts rather than searches. `GameApp` builds the options in two places - the stage host and
- * the nested-surface host - and a capability wired in one of them is exactly as broken as one wired
- * in neither, for whichever surface got the other. The first draft used `includes`, passed with one
- * of the two sites deleted, and would have shipped that.
+ * It counts rather than searches. `GameApp` used to build the options in two places - the stage
+ * host and the nested-surface host - and a capability wired in one of them was exactly as broken as
+ * one wired in neither, for whichever surface got the other. The first draft used `includes`,
+ * passed with one of the two sites deleted, and would have shipped that. There is one site now -
+ * `gameHostCapabilities`, which every surface of a game is built from - so the count is one, but
+ * counting is still what keeps this honest the day somebody adds a second.
  */
 
 import fs from "fs/promises";
@@ -175,19 +177,23 @@ describe("host capability forwarding", () => {
 
     it("hands the options GameApp owns to every bridge it builds, and to the slot shell", async () => {
         // Options wired from `GameApp`'s own state rather than from a host field. The check above
-        // cannot see them - it pairs `onFoo` with `host.foo` - and they break in exactly the same
-        // silent way: a language picker in a settings page would restart the game while the same
-        // picker in a quick menu changed the language under a running playthrough and left it
-        // showing two.
+        // cannot see them - it pairs `onFoo` with `host.foo` - and they used to break in exactly
+        // the same silent way: a language picker in a settings page would restart the game while
+        // the same picker in a quick menu changed the language under a running playthrough and left
+        // it showing two.
+        //
+        // A slot surface no longer has options of its own to be short of: `GameApp` builds one
+        // `gameHostCapabilities` and hands the slot shell that same value. So what is checked here
+        // is the seam that makes it so. Break either half - stop putting the capabilities into the
+        // slot options, or have the shell build its host from something else - and a quick menu is
+        // once again reaching a different game from the page beside it.
         const { appSource } = await readAll();
         const shellSource = await fs.readFile(path.join(HERE, "StageSlotSurfaceShell.tsx"), "utf-8");
         const blocks = occurrences(appSource, "onNetworkFetch: host.networkFetch");
 
         expect(occurrences(appSource, "onLocaleChanged: handleLocaleChanged")).toBe(blocks);
-        // The third bridge in the runtime, built per Game UI slot surface, wired from the option
-        // `GameApp` passes it.
-        expect(shellSource).toContain("onLocaleChanged: options.localeChangedInGame");
-        expect(appSource).toContain("localeChangedInGame: handleLocaleChanged");
+        expect(appSource).toContain("host: gameHostCapabilities");
+        expect(shellSource).toContain("buildGameHostApiOptions(options.host,");
     });
 
     it("has both game shells able to restart themselves", async () => {
@@ -205,6 +211,31 @@ describe("host capability forwarding", () => {
             }
         }
         expect(missing, `these shells cannot restart: ${missing.join(", ")}`).toEqual([]);
+    });
+
+    it("has the menu bar wired end to end on the shell that has one", async () => {
+        // Another pair no bridge option names, and one that breaks in halves: a host that can set a
+        // menu but never reports a click draws rows nothing happens on, and one that reports clicks
+        // it was never asked to draw reports nothing at all. Both halves are checked together.
+        const { hostSource, appSource } = await readAll();
+        const hostFields = hostFieldsFrom(hostSource);
+        expect(hostFields.has("setApplicationMenu")).toBe(true);
+        expect(hostFields.has("subscribeMenuCommand")).toBe(true);
+
+        const packaged = await fs.readFile(GAME_SHELL_FILES["packaged runtime"]!, "utf-8");
+        expect(packaged).toContain("setApplicationMenu");
+        expect(packaged).toContain("subscribeMenuCommand");
+
+        // Dev Mode is deliberately not checked: that window is Studio's own and already carries
+        // Studio's menu, so the honest answer there is to leave both halves absent - which is what
+        // makes `app.game.menu` missing for plugins in Dev Mode rather than present and inert.
+        const devMode = await fs.readFile(GAME_SHELL_FILES["Dev Mode"]!, "utf-8");
+        expect(devMode).not.toContain("setApplicationMenu");
+
+        // And the middle hop: `GameApp` has to both draw through the host and listen back through
+        // it, or the menu is one of the two broken halves above.
+        expect(appSource).toContain("host.setApplicationMenu");
+        expect(appSource).toContain("host.subscribeMenuCommand?.(");
     });
 
     it("keeps the nothing-to-offer allowlist honest", async () => {

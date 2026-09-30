@@ -59,7 +59,16 @@ export class DevModeService extends Service<DevModeService> {
         return this.status;
     }
 
-    public async launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus> {
+    /**
+     * Start a Dev Mode session on this window's project.
+     *
+     * Which project that is, is not an argument. These three used to take an optional path that
+     * defaulted to the window's own and that nothing ever passed; the main process now takes the
+     * project from the window regardless, so an argument here could only ever name a project the
+     * call would be refused for. A parameter whose every value but one is rejected is a place a
+     * caller is invited to make a mistake.
+     */
+    public async launch(entry: DevModeEntry): Promise<DevModeStatus> {
         this.launchInFlight = true;
         // Flip to a running state up front so the toolbar Run button and the status bar react the
         // instant the user clicks — not after the flush and compile the launch entails.
@@ -72,8 +81,7 @@ export class DevModeService extends Service<DevModeService> {
                 this.updateStatus("error");
                 return this.status;
             }
-            const path = projectPath ?? this.projectPath();
-            const result = await getInterface().devMode.launch(path, entry);
+            const result = await getInterface().devMode.launch(this.projectPath(), entry);
             if (result.success) {
                 this.updateStatus(result.data.status);
             } else {
@@ -102,22 +110,40 @@ export class DevModeService extends Service<DevModeService> {
         await character.flushPendingChanges();
     }
 
-    public async stop(projectPath?: string): Promise<DevModeStatus> {
-        const result = await getInterface().devMode.stop(projectPath ?? this.projectPath());
+    public async stop(): Promise<DevModeStatus> {
+        const result = await getInterface().devMode.stop(this.projectPath());
         if (result.success) {
             this.updateStatus(result.data.status);
         }
         return this.status;
     }
 
-    public async reload(projectPath?: string): Promise<DevModeStatus> {
-        const result = await getInterface().devMode.reload(projectPath ?? this.projectPath());
+    public async reload(): Promise<DevModeStatus> {
+        const result = await getInterface().devMode.reload(this.projectPath());
         if (result.success) {
             this.updateStatus(result.data.status);
         } else {
             this.updateStatus("error");
         }
         return this.status;
+    }
+
+    /**
+     * Clear this project's Dev Mode save slots and persistence store.
+     *
+     * Only the path travels. The stores are named by the project's identifier when it has one, and
+     * the main process reads that out of this window's project for this call and for every save the
+     * running game makes, so the two cannot name different stores. Rejects on a failing call so the
+     * caller can report it; leaves the running state untouched, since this touches disk rather than
+     * the game.
+     */
+    public async resetData(): Promise<void> {
+        const result = await getInterface().devMode.resetData({
+            projectPath: this.projectPath(),
+        });
+        if (!result.success) {
+            throw new Error(result.error ?? "Failed to reset Dev Mode data");
+        }
     }
 
     /** This window's project - every Dev Mode call is scoped to it, never to "whatever is running". */

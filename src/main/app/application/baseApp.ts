@@ -14,7 +14,6 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { getLocaleRegistryVersion, setLocaleContributions } from "@shared/i18n";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
-import { readJson } from "@shared/utils/json";
 import { safeExecuteFn } from "@shared/utils/os";
 import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
@@ -37,6 +36,7 @@ import {
     type CacheRootResolution,
 } from "./managers/storage/cacheRoot";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
+import { ProjectTrustManager } from "./managers/projectTrustManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
@@ -44,6 +44,7 @@ import {
     isMainDevMode,
     parseMainCommandLine,
     type BuildCommandLineOptions,
+    type CheckCommandLineOptions,
     type ExperimentalCommandLineOptions,
 } from "./commandLine";
 import {
@@ -55,6 +56,10 @@ import {
     type ExperimentalState,
 } from "@shared/types/experimental";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
+import { createCrashSequence, type CrashSaveOutcome, type CrashSequence } from "./crashSequence";
+import { describeFatalErrorForCommandLine, endCommandLineRunOnFailure } from "./commandLineRunEnd";
+import { decideStartupExtras, type StartupExtras } from "./startupExtras";
+import { markSessionRunning } from "./sessionMarker";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
 import { getMainTranslator } from "./i18n";
@@ -93,6 +98,13 @@ export class BaseApp {
     public readonly storageManager: StorageManager;
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
+    /**
+     * Which projects arrived from elsewhere and are therefore not allowed to cause effects.
+     *
+     * Held here rather than on a window because the answer must not depend on which renderer is
+     * asking - the untrusted code runs in one.
+     */
+    public readonly projectTrustManager: ProjectTrustManager;
     public readonly pluginManager: PluginManager;
     public readonly pluginIconCache: PluginIconCache;
     public readonly uiTemplatePosterCache: UITemplatePosterCache;
@@ -111,6 +123,12 @@ export class BaseApp {
     private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
+    /**
+     * The fatal error being handled, if one is. Non-null is the whole of the re-entrancy guard in
+     * {@link crash}: the failure that got here is usually still happening, and the handling is now
+     * asynchronous, so more of them arrive while the first is still writing the windows out.
+     */
+    private crashSequence: CrashSequence | null = null;
     private debugServer: StudioDebugServer | null = null;
     /**
      * Cleared by the first workspace window that asks for the experimental notice, so the warning
@@ -156,6 +174,7 @@ export class BaseApp {
         this.events = new EventEmitter();
 
         this.configureCdp();
+        this.configureHeadlessBuild();
         this.setupUserDataDir();
         this.setupLogging();
         this.reportExperimentalMode();
@@ -174,6 +193,7 @@ export class BaseApp {
         // the answer is fixed for the rest of the session.
         this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
+        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir());
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
@@ -315,8 +335,8 @@ export class BaseApp {
         }
 
         // Like the zoom above and unlike the theme: there is no single switch to flip. Each window
-        // carries its own icon and the tray carries a third, so the new mark has to be pushed to
-        // all of them.
+        // carries its own icon, the tray carries another and the Dock a third, so the new mark has
+        // to be pushed to all of them.
         if (key === WINDOW_ICON_KEY) {
             this.refreshWindowIcons();
         }
@@ -446,7 +466,7 @@ export class BaseApp {
      * The file the current icon preference resolves to, or null where there is nothing to set.
      *
      * macOS returns null because it has no per-window icon at all - `BrowserWindow.setIcon` does
-     * not exist there, and the Dock tile is application-wide (`configurePlatformAppIcon`).
+     * not exist there, and the Dock tile is application-wide (`getDockIconPath`).
      */
     public getWindowIconPath(): string | null {
         if (process.platform === "darwin") {
@@ -456,7 +476,7 @@ export class BaseApp {
         // Windows prefers the .ico, whose several sizes let the taskbar pick one rather than
         // downsample a single bitmap; everything else prefers the PNG. Each entry offers both, and
         // the default mark is appended behind the chosen one - so an icon whose files never made
-        // it into the build leaves Studio wearing NarraLeaf's mark rather than Electron's.
+        // it into the build leaves Studio wearing its own default rather than Electron's.
         const order = (entry: WindowIconEntry): string[] =>
             process.platform === "win32" ? [entry.ico, entry.png] : [entry.png, entry.ico];
         const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
@@ -483,7 +503,7 @@ export class BaseApp {
      *
      * The open windows are the obvious half. The tray is the half that gets forgotten: it is built
      * once at startup and holds its own copy of the image, so a window-only refresh leaves Studio
-     * wearing two different marks at once.
+     * wearing two different marks at once. The Dock is the macOS half, and the only one there.
      */
     public refreshWindowIcons(): void {
         for (const window of this.windowManager.getWindows()) {
@@ -493,14 +513,26 @@ export class BaseApp {
         }
 
         this.trayManager?.refreshIcon();
+        this.configurePlatformAppIcon();
     }
 
+    /**
+     * The Dock tile the current icon preference resolves to, or null off macOS.
+     *
+     * The Apple-grid PNG rather than the .icns Studio is installed with: `app.dock.setIcon` takes one
+     * bitmap and draws it as given, with no mask and no inset, so the image has to carry the grid
+     * itself. It lasts while Studio runs - Finder, Launchpad and a Dock tile of a Studio that is not
+     * running show the installed icon, which no running app can change without breaking its own
+     * signature. The default is appended behind the chosen one for the reason `getWindowIconPath`
+     * gives.
+     */
     public getDockIconPath(): string | null {
         if (process.platform !== "darwin") {
             return null;
         }
 
-        return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
+        const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
+        return this.resolveExistingResource(...new Set([chosen.png, resolveWindowIcon(null).png]));
     }
 
     /**
@@ -516,7 +548,7 @@ export class BaseApp {
     public getDefaultGameIconPath(opaque = false): string | null {
         return opaque
             ? this.resolveExistingResource("app-icon-opaque.png", "app-icon.png")
-            : this.resolveExistingResource("app-icon.png", "app-icon.ico");
+            : this.resolveExistingResource("app-icon.png", "studio-icon/leaf.ico");
     }
 
     public getDistDir(): string {
@@ -578,7 +610,9 @@ export class BaseApp {
      * items, two update checks, and two processes writing the same `globalState.json`.
      *
      * Must be called after {@link setupUserDataDir}: Electron keys the lock on the userData
-     * directory, and development redirects that path.
+     * directory, and both development and `--build-user-data-dir` redirect that path. The latter is
+     * what lets a command-line build run on a machine whose owner has Studio open - see
+     * {@link setupUserDataDir}, and `index.ts` for what a build does when it loses the lock anyway.
      *
      * Development is exempt. `dev-electron.js` restarts this process on every rebuild, and a new
      * instance starting before the old one has finished exiting would lose the lock and quit -
@@ -623,48 +657,112 @@ export class BaseApp {
      * Everything here is written so that failing to ask still exits. The prompt reads global state
      * for the language and talks to the window server, both of which can be exactly what has just
      * broken, so a failure anywhere in it falls through to the same exit.
+     *
+     * What happens *before* the prompt is the windows writing out whatever they had not written
+     * yet; see `crashSequence`. That makes the exit asynchronous, which is why this returns as soon
+     * as the sequence has been handed the failure rather than when the process ends.
      */
     public crash(error: string | Error): void {
-        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-        this.logger.error("[App] Fatal error, terminating:", message);
-        try {
-            if (this.electronApp.isReady()) {
-                if (this.askToRestartAfterCrash(message)) {
-                    this.electronApp.relaunch();
-                }
-            } else {
-                console.error(message);
-            }
-        } catch (promptError) {
-            console.error(message);
-            console.error("Failed to report the fatal error:", promptError);
-        } finally {
-            this.electronApp.exit(1);
+        // Latched before anything that can fail, the logger included. Whatever throws below comes
+        // back through the process-level `uncaughtException` handler and into this method again,
+        // and a second sequence would restart the wait the first one is already serving out.
+        // `console.error` rather than the logger: the logger writes to a file sink, and a sink that
+        // has just thrown would send this straight back here.
+        if (this.crashSequence) {
+            console.error("A further fatal error while the first one was being handled:", error);
+            return;
         }
+
+        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+        // A command-line run has nobody to ask about restarting, and the question is a synchronous
+        // message box - which would stop the very thread every one of the run's deadlines runs on,
+        // leaving a job waiting on a dialog nobody will see. The run ends instead, as `studio-failed`
+        // with the failure on its log; its own ending writes the open workspaces out, as the
+        // sequence below would have. The ending is idempotent, so it is its own re-entrancy guard.
+        if (endCommandLineRunOnFailure(describeFatalErrorForCommandLine(message, this.logsDirForCrash()))) {
+            this.logger.error("[App] Fatal error, ending the command-line run:", message);
+            return;
+        }
+        this.crashSequence = createCrashSequence({
+            pendingSaveFlushes: () => this.collectPendingSaveFlushes(),
+            askToRestart: (outcome) => {
+                if (!this.electronApp.isReady()) {
+                    // No window server, so no dialog to put up - and no window that could have been
+                    // holding an unwritten edit either.
+                    console.error(message);
+                    return false;
+                }
+                return this.askToRestartAfterCrash(message, outcome);
+            },
+            relaunch: () => this.electronApp.relaunch(),
+            exit: () => this.electronApp.exit(1),
+            warn: (text, warnError) => {
+                if (warnError === undefined) {
+                    this.logger.warn(`[App] ${text}`);
+                } else {
+                    this.logger.warn(`[App] ${text}`, warnError);
+                }
+            },
+        });
+        this.logger.error("[App] Fatal error, terminating:", message);
+        this.crashSequence.begin();
+    }
+
+    /**
+     * The pending writes a crash still has a chance of settling, one thunk per window that owes any.
+     *
+     * Empty here: this class knows the windows but not what is inside them. `App` overrides it with
+     * the open workspaces, which are the only windows holding work that has not reached the disk.
+     */
+    protected collectPendingSaveFlushes(): readonly (() => Promise<unknown>)[] {
+        return [];
     }
 
     /**
      * The native prompt behind {@link crash}. Returns whether to come back up.
      *
-     * Synchronous, because the process is on its way out and there is nothing left to await in.
-     * Only the first line of the failure is shown: the rest is a stack trace, which belongs in the
-     * log this names rather than wrapped across a message box.
+     * Synchronous, because by this point the process is on its way out and there is nothing left to
+     * await in. Only the first line of the failure is shown: the rest is a stack trace, which
+     * belongs in the log this names rather than wrapped across a message box.
+     *
+     * The line about unwritten changes reuses the crash screen's own wording rather than restating
+     * it: an author who sees both must not be told two different things about whether their last
+     * edits survived.
      */
-    private askToRestartAfterCrash(message: string): boolean {
+    /**
+     * Where the log a fatal error is written to lives, for the sentence that points at it. Best
+     * effort: the profile may be exactly what failed.
+     */
+    private logsDirForCrash(): string | null {
+        try {
+            return path.join(this.getUserDataDir(), "logs");
+        } catch {
+            return null;
+        }
+    }
+
+    private askToRestartAfterCrash(message: string, outcome: CrashSaveOutcome): boolean {
         const logsDir = path.join(this.getUserDataDir(), "logs");
         const headline = message.split("\n", 1)[0] ?? message;
         let title = `${APP_DISPLAY_NAME}: Fatal Error`;
         let body = headline;
+        let saveLine = outcome === "saved"
+            ? "Unsaved changes were written to disk."
+            : "Unsaved changes could not be written to disk.";
         let detail = `The report is in ${logsDir}.`;
         let buttons = ["Restart", "Quit"];
         try {
             const { t } = getMainTranslator(this);
             title = t("crash.fatal.title");
             body = `${t("crash.fatal.message")}\n\n${headline}`;
+            saveLine = outcome === "saved" ? t("crash.screen.saved") : t("crash.screen.saveFailed");
             detail = t("crash.fatal.detail", { path: logsDir });
             buttons = [t("crash.fatal.restart"), t("crash.fatal.quit")];
         } catch (translationError) {
             this.logger.warn("[App] Could not translate the fatal error prompt:", translationError);
+        }
+        if (outcome !== "none") {
+            detail = `${saveLine}\n\n${detail}`;
         }
 
         const choice = dialog.showMessageBoxSync({
@@ -801,6 +899,49 @@ export class BaseApp {
     }
 
     /**
+     * What `--test` or `--lint` asked for, or null when this launch asked for neither.
+     *
+     * The same rules {@link getCommandLineBuild} is written under, for the same reasons: not
+     * dev-gated, and answered whenever one of the two flags appeared at all, so a launch that meant
+     * to check something and mistyped a flag ends as a bad invocation rather than on the home
+     * screen with nobody there to read it.
+     */
+    public getCommandLineCheck(): CheckCommandLineOptions | null {
+        return this.commandLine.check.requested ? this.commandLine.check : null;
+    }
+
+    /**
+     * Whether this launch is a command-line run - `--build`, `--test` or `--lint`.
+     *
+     * The one question everything Studio starts *for the person in front of it* has to ask before
+     * it starts: a run is a tool, and a tool does the job it was given, says what happened and
+     * leaves nothing behind. No status-bar item flashing up on an operator's screen for the seconds
+     * it lasts, no request the line never asked for, nothing written into a profile that was only
+     * lent to it.
+     *
+     * Deliberately the same `requested` the parser answers `--build`/`--test`/`--lint` with, so this
+     * can never disagree with `commandLineRunEnd.ts` about what kind of launch this is - including on
+     * a line that named a run and then got something else wrong. It is the run's own knowledge of
+     * being unattended rather than a second flag saying so, for the reason `AppWindow.isUnattended`
+     * reads the same thing: a second way to say it is a second way to get it wrong.
+     */
+    public isCommandLineRun(): boolean {
+        return this.commandLine.build.requested || this.commandLine.check.requested;
+    }
+
+    /**
+     * What this launch starts at boot besides the thing it was launched to do - the status-bar
+     * item, the update check, the crash handler, the session marker, the development conveniences.
+     *
+     * Answered from {@link decideStartupExtras}, which is where the list and the reasoning live.
+     * Computed on each call rather than held, because the two facts it reads are fixed for the
+     * life of the process and this is asked six times in all.
+     */
+    public getStartupExtras(): StartupExtras {
+        return decideStartupExtras({ commandLineRun: this.isCommandLineRun(), devMode: this.isDevMode() });
+    }
+
+    /**
      * What the command line asked experimental mode for, before anything decided whether it could
      * be honoured.
      *
@@ -853,8 +994,10 @@ export class BaseApp {
             this.logger.warn("[Logging] Could not redirect Electron's log path:", error);
         }
         // Collect native crash dumps next to the log. Never uploaded - this is for the user handing
-        // us a folder, not telemetry.
-        crashReporter.start({ uploadToServer: false });
+        // us a folder, not telemetry. Not started by a command-line run; see `startupExtras.ts`.
+        if (this.getStartupExtras().nativeCrashDumps) {
+            crashReporter.start({ uploadToServer: false });
+        }
     }
 
     /**
@@ -879,50 +1022,120 @@ export class BaseApp {
     }
 
     /**
-     * Leave a file behind for as long as this session is running, and find out whether the last
-     * one managed to remove its own.
-     *
-     * The failures worth knowing about are the ones that write nothing: a process killed by the
-     * system, a native fault below JavaScript, a machine that lost power. All of them leave a log
-     * that simply stops, which reads the same as a clean quit. This is the one line that tells the
-     * two apart, and it is in the log every support bundle carries.
-     *
-     * Best-effort throughout. A profile directory that cannot be written is a problem for other
-     * reasons, and none of them are made better by refusing to start.
+     * Leave a file behind for as long as this session is running, so the next launch can tell a
+     * session that died apart from one that quit. The whole of it, including why a command-line
+     * run leaves none, is in `sessionMarker.ts`.
      */
     private markSessionRunning(): void {
-        const marker = path.join(this.getUserDataDir(), "session.running");
-        try {
-            if (fs.existsSync(marker)) {
-                this.logger.warn(
-                    "[Crash] The previous session did not shut down cleanly."
-                    + " Anything it had not written to disk was lost.",
-                );
-            }
-            fs.mkdirSync(path.dirname(marker), { recursive: true });
-            fs.writeFileSync(marker, new Date().toISOString(), "utf-8");
-        } catch (error) {
-            this.logger.warn("[Crash] Could not record the session marker:", error);
-            return;
-        }
-
-        // `will-quit` rather than `before-quit`: the latter fires on quits that are still
-        // cancellable, and removing the marker there would call a cancelled quit a clean exit.
-        this.electronApp.on("will-quit", () => {
-            try {
-                fs.rmSync(marker, { force: true });
-            } catch (error) {
-                this.logger.warn("[Crash] Could not clear the session marker:", error);
-            }
-        });
+        markSessionRunning(
+            { userDataDir: this.getUserDataDir(), wanted: this.getStartupExtras().sessionMarker },
+            {
+                exists: file => fs.existsSync(file),
+                write: (file, text) => {
+                    fs.mkdirSync(path.dirname(file), { recursive: true });
+                    fs.writeFileSync(file, text, "utf-8");
+                },
+                remove: file => fs.rmSync(file, { force: true }),
+                warn: (message, error) => {
+                    if (error === undefined) {
+                        this.logger.warn(message);
+                    } else {
+                        this.logger.warn(message, error);
+                    }
+                },
+                onWillQuit: handler => {
+                    this.electronApp.on("will-quit", handler);
+                },
+                now: () => new Date(),
+            },
+        );
     }
 
+    /**
+     * Point this process at the profile directory it will use, before anything reads one.
+     *
+     * Three cases, in order. A `--build` launch that named a profile gets it; a development launch
+     * gets its own, so a checkout never writes into an installed Studio's; everything else keeps
+     * the platform's default.
+     *
+     * ## Why a build may name one
+     *
+     * Electron keys the single-instance lock on this directory, so a second Studio on the same
+     * profile is refused and exits - which is right for a launch that wants a window and useless
+     * for one that wants an exit code. On a machine that is both a build agent and somebody's
+     * computer, that made a command-line build impossible while its owner had Studio open. A
+     * profile of its own gives the build its own lock.
+     *
+     * **A different profile is a different everything.** The signing vault lives under it, and so
+     * do the machine's build settings; a scratch profile has neither, which is what `--build-signing`
+     * and `--build-setting` are for. Whether the *download* caches come with it depends on the
+     * install: `resolveCacheRoot` puts them beside the executable only where the platform allows
+     * that, so a scratch profile costs an Electron download on macOS and costs nothing on an
+     * ordinary Windows install.
+     *
+     * Build-only, for the reason `--project` is development-only: in a packaged build argv is where
+     * shortcuts and file associations arrive, and answering one of those by silently pointing
+     * Studio at an empty profile would look exactly like every project the author had being gone.
+     * The parser refuses the flag outright when no build was asked for.
+     */
     private setupUserDataDir(): void {
+        // Whichever headless entry point asked for one. They cannot both be on the same line - the
+        // parser refuses that - so there is exactly one answer here, and the flag families are kept
+        // apart only so each reads as a flag of the job it belongs to.
+        const build = this.commandLine.build;
+        const check = this.commandLine.check;
+        const requested = build.requested && build.userDataDir
+            ? build.userDataDir
+            : check.requested && check.userDataDir
+                ? check.userDataDir
+                : null;
+        if (requested) {
+            const userDataPath = path.resolve(process.cwd(), requested);
+            // Created here rather than left to Electron: the log sink, the global state and the
+            // vault all open files under it within the next few statements. A folder that cannot be
+            // made is the operator's to fix, so the failure names the folder and the flag that
+            // named it rather than leaving them to work it out from an `mkdir` error.
+            try {
+                fs.mkdirSync(userDataPath, { recursive: true });
+            } catch (error) {
+                const flag = build.requested && build.userDataDir
+                    ? "--build-user-data-dir"
+                    : `--${check.kind ?? "lint"}-user-data-dir`;
+                throw new Error(
+                    `the profile folder ${userDataPath} (${flag}) could not be created: `
+                    + (error instanceof Error ? error.message : String(error)),
+                );
+            }
+            this.electronApp.setPath("userData", userDataPath);
+            this.logger.info(`[App] Command-line profile: ${userDataPath}`);
+            return;
+        }
         if (!this.electronApp.isPackaged) {
             const userDataPath = path.join(this.getDevTempDir(), "userData-dev");
             this.electronApp.setPath("userData", userDataPath);
             this.logger.info(`[App] Setting up dev userData path: ${userDataPath}`);
         }
+    }
+
+    /**
+     * Take the GPU out of a headless command-line run.
+     *
+     * A `--build`, `--test` or `--lint` run draws nothing anybody will see: its one window is
+     * created hidden and the process exits when the run ends. What it does do is run wherever the job runs, and a
+     * machine reached over SSH has no window server for a GPU process to attach to - on macOS that
+     * is `GPU process isn't usable. Goodbye.` and a launch that never reaches `ready`.
+     *
+     * Software rendering costs a hidden window nothing worth measuring, so this is unconditional
+     * for a build rather than a flag somebody has to know to pass. Every other launch keeps the
+     * GPU: they have a person in front of them.
+     *
+     * Must happen before `ready`, which is why it is in the constructor beside `configureCdp`.
+     */
+    private configureHeadlessBuild(): void {
+        if (!this.isCommandLineRun()) {
+            return;
+        }
+        this.electronApp.disableHardwareAcceleration();
     }
 
     /**
@@ -998,6 +1211,8 @@ export class BaseApp {
         this.menuManager.initialize();
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
+        // The recent list is what the migration vouches for when the ledger turns fail-closed.
+        void this.projectTrustManager.initialize(() => this.globalState.recentlyOpened.list());
         this.pluginManager.initialize();
         // Feed plugin language packs into the locale registry and rebuild the
         // native menu once they resolve (best-effort; never blocks startup).
@@ -1005,7 +1220,13 @@ export class BaseApp {
 
         if (this.isDevMode()) {
             this.logger.info("App is running in development mode");
+        }
+        // Both are conveniences for somebody sitting in front of a checkout, and a command-line run
+        // from a checkout is still a tool; see `startupExtras.ts`.
+        if (this.getStartupExtras().developmentReloadSocket) {
             void this.setupDevReloadSocket();
+        }
+        if (this.getStartupExtras().developmentDebugServer) {
             this.startDebugServer();
         }
 
@@ -1153,13 +1374,18 @@ export class BaseApp {
     }
 
     private async constructAppInfo(): Promise<AppInfo> {
-        const pkg = await readJson<{ version: string }>(path.resolve(this.getAppPath(), "package.json"));
-        if (!pkg.ok) {
-            throw new Error(`Failed to load app info: ${pkg.error}`);
+        // Studio's own package.json, which a packaged build keeps inside app.asar - so it is read with
+        // the patched `fs`, the one module that reaches inside the archive. `Fs` deliberately does not
+        // (see unpatchedFs.ts), and reading this through it stops a packaged Studio before any window.
+        let pkg: { version: string };
+        try {
+            pkg = JSON.parse(await fs.promises.readFile(path.resolve(this.getAppPath(), "package.json"), "utf-8"));
+        } catch (error) {
+            throw new Error(`Failed to load app info: ${error instanceof Error ? error.message : String(error)}`);
         }
 
         return {
-            version: pkg.data.version,
+            version: pkg.version,
             experimental: this.getExperimentalState(),
         };
     }

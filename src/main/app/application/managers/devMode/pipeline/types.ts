@@ -18,6 +18,12 @@ export type DevModeBundleLoadContext = {
     bundleId: string;
     revision: number;
     /**
+     * How many times this session has seen an asset file change. Copied onto the bundle for the
+     * window that reads it; see {@link DevModeBundle.assetRevision}. Absent for a host that does not
+     * watch anything, which is every host but Dev Mode.
+     */
+    assetRevision?: number;
+    /**
      * The build variant these bytes are being produced as.
      *
      * Absent is the release variant, which is what Dev Mode and Preview pass: there is no variant to
@@ -78,8 +84,14 @@ export type DevModeBundleLoadContext = {
     /**
      * The language a failure this assembly reports is written in.
      *
-     * Only the blueprint variant refusal uses it, and only a build ever supplies it: Dev Mode and the
-     * preview never refuse, because neither of them packages anything. Absent falls back to English.
+     * Supplied by a build, whose report and whose console are written in the author's language.
+     * Dev Mode and the preview leave it absent and get English, which is what every other line
+     * either of them prints is written in - a single translated sentence inside an English frame
+     * reads as a fault rather than as a courtesy.
+     *
+     * Three failures use it: the blueprint variant refusal and a script that did not compile, which
+     * only a package can produce, and a project document written by a newer Studio, which any host
+     * can meet.
      */
     locale?: LocaleCode;
     /**
@@ -107,7 +119,15 @@ export type DevModeBundleLoadContext = {
      */
     onAssetSetCollapse?: () => void;
     compiled?: Record<string, unknown>;
-    blueprintCompiledScripts?: Record<string, string>;
-    blueprintScriptsCompileOk?: boolean;
-    blueprintScriptsCompileErrors?: string[];
+    /**
+     * Where the author's compiled scripts are written, and how each file is named to the host that
+     * will import it.
+     *
+     * A host has to say, because a script only reaches a page through a URL that host serves - no
+     * Content-Security-Policy here admits `blob:` or `data:`. Absent means Dev Mode's answer: under
+     * the project's own `.nlstudio/`, named as `file:` URLs, which the Dev Mode document admits. A
+     * pack writes where it is being assembled and names each file relative to the page that loads
+     * it, which is what lets one name work for every shell that serves a pack.
+     */
+    scriptOutput?: { directory: string; toUrl: (filePath: string) => string };
 };

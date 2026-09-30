@@ -1,5 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -20,7 +21,12 @@ export class GameTestLaunchHandler extends IPCHandler<IPCEventType.gameTestLaunc
         // compile) travels as a successful call carrying `{ok:false, reason}`, never as an IPC
         // error: the caller is a test that has to put the reason in its own report, and an IPC
         // failure loses everything but the message.
-        return this.tryUse(() => window.getApp().getGameTestManager().launch(request));
+        return this.tryUse(() => window.getApp().getGameTestManager().launch({
+            ...request,
+            // The window's project, not the payload's - see `PreviewLaunchHandler`, which starts
+            // the same process for the same reason.
+            projectPath: requireWindowProject(window, request.projectPath),
+        }));
     }
 }
 
@@ -39,8 +45,11 @@ export class GameTestSendCommandHandler extends IPCHandler<IPCEventType.gameTest
         window: AppWindow,
         { projectPath, sessionId, command }: IPCEvents[IPCEventType.gameTestSendCommand]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameTestSendCommand]["response"]>> {
+        // The window's project, not the payload's: a command drives a game some window launched, and
+        // only that window's project has a session this one may steer.
         return this.tryUse(() => ({
-            delivered: window.getApp().getGameTestManager().sendCommand(projectPath, sessionId, command),
+            delivered: window.getApp().getGameTestManager()
+                .sendCommand(requireWindowProject(window, projectPath), sessionId, command),
         }));
     }
 }
@@ -54,7 +63,8 @@ export class GameTestStopHandler extends IPCHandler<IPCEventType.gameTestStop> {
         { projectPath, sessionId }: IPCEvents[IPCEventType.gameTestStop]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameTestStop]["response"]>> {
         return this.tryUse(async () => {
-            await window.getApp().getGameTestManager().stop(projectPath, sessionId);
+            // The window's project, not the payload's - the same reason as the two above.
+            await window.getApp().getGameTestManager().stop(requireWindowProject(window, projectPath), sessionId);
             return {};
         });
     }

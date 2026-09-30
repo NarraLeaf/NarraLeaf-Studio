@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIEditorFontFaceService } from "@/lib/workspace/services/ui-editor/UIEditorFontFaceService";
 import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import {
     getActiveProjectFontIds,
     resolveFontStackIds,
@@ -206,13 +207,29 @@ function resolveBuiltinFont(assetId: string): ResolvedFont | null {
  * face is registered here. Cached for the window's lifetime - Dev Mode has no asset events to
  * invalidate against, and a reload builds a fresh window anyway.
  */
+/**
+ * Register a project font in Dev Mode's registry before any widget asks for it.
+ *
+ * The same registry the widgets read (`devModeFontCache`), so a text widget mounting afterwards finds
+ * the face already there instead of loading its own. Throws when the face cannot be had, so a caller
+ * warming a screen can count it as failed rather than as done.
+ */
+export async function warmDevModeFont(assetId: string): Promise<void> {
+    const resolved = await resolveDevModeFont(assetId);
+    if (!resolved.cssFamily) {
+        throw new Error(resolved.error ?? `Font could not be loaded: ${assetId}`);
+    }
+}
+
 async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
     const cached = devModeFontCache.get(assetId);
     if (cached) {
         return { assetId, cssFamily: cached.cssFamily, error: null };
     }
     try {
-        const url = resolveGameRuntimeAssetUrl(assetId) ?? await resolveDevModeFontUrl(assetId);
+        const url = resolveGameRuntimeAssetUrl(assetId)
+            ?? resolveDevModeAssetUrl(assetId)
+            ?? await resolveDevModeFontUrl(assetId);
         const cssFamily = devModeCssFamilyForAssetId(assetId);
         const fontFace = new FontFace(cssFamily, `url(${url})`);
         await fontFace.load();

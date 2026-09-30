@@ -11,7 +11,7 @@
  * `@shared/types/saveCompatibility`.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -21,6 +21,7 @@ import {
     type SaveCompatibilityConfiguration,
 } from "@/lib/workspace/project/configuration";
 import { SettingStack } from "./settingRows";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -32,32 +33,16 @@ export function ProjectSaveCompatibilitySection({
 }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const [policy, setPolicy] = useState<SaveCompatibilityConfiguration>(
+    const stored = useMemo(
         () => normalizeSaveCompatibilityConfiguration(config.app?.saveCompatibility),
+        [config.app?.saveCompatibility],
     );
-    const [saving, setSaving] = useState<keyof SaveCompatibilityConfiguration | null>(null);
-
-    const commit = useCallback(async (
-        field: keyof SaveCompatibilityConfiguration,
-        patch: Partial<SaveCompatibilityConfiguration>,
-    ) => {
-        if (saving) {
-            return;
-        }
-        const previous = policy;
-        setSaving(field);
-        setPolicy(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateSaveCompatibilityConfiguration(patch);
-            setPolicy(normalizeSaveCompatibilityConfiguration(updated.app?.saveCompatibility));
-            onConfigChange(updated);
-        } catch (error) {
-            setPolicy(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [onConfigChange, policy, projectService, saving, uiService]);
+    const { value: policy, commit } = useConfigSlice<SaveCompatibilityConfiguration>({
+        stored,
+        write: patch => projectService.updateSaveCompatibilityConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     const compatibleOptions = useMemo<SelectOption[]>(() => [
         { value: "resume", label: t("project.game.saveResume") },
@@ -93,9 +78,9 @@ export function ProjectSaveCompatibilitySection({
                     className="min-w-0"
                     options={compatibleOptions}
                     value={policy.compatible}
-                    disabled={freeze.writes(saving === "compatible").disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.game.saveCompatibleTitle")}
-                    onChange={value => void commit("compatible", {
+                    onChange={value => void commit({
                         compatible: value as SaveCompatibilityConfiguration["compatible"],
                     })}
                 />
@@ -113,9 +98,9 @@ export function ProjectSaveCompatibilitySection({
                     className="min-w-0"
                     options={incompatibleOptions}
                     value={policy.incompatible}
-                    disabled={freeze.writes(saving === "incompatible").disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.game.saveIncompatibleTitle")}
-                    onChange={value => void commit("incompatible", {
+                    onChange={value => void commit({
                         incompatible: value as SaveCompatibilityConfiguration["incompatible"],
                     })}
                 />

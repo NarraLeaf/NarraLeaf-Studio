@@ -7,7 +7,16 @@ import {
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
-import { readProjectPackageInto, writeProjectPackage } from "../../../utils/projectPackageFile";
+import { ProjectPackageExportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import {
+    classifyPackFailure,
+    ProjectPackageExportError,
+    ProjectPackageImportError,
+    readProjectPackageInto,
+    writeProjectPackage,
+} from "../../../utils/projectPackageFile";
+import { directoryHoldsNothing } from "../../../utils/directoryHoldsNothing";
+import type { ProjectTrustManager } from "../../projectTrustManager";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -26,8 +35,8 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.workspaceExportProjectPackage]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportProjectPackage]["response"]>> {
+        const projectRoot = path.resolve(projectPath);
         try {
-            const projectRoot = path.resolve(projectPath);
             if (!await window.app.storageManager.isPathAllowed(window, projectRoot, "read")) {
                 return this.failed(`File system access is not allowed for project: ${projectRoot}`);
             }
@@ -47,7 +56,10 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
 
             const exportDir = path.resolve(selection.filePaths[0]);
             if (await window.app.storageManager.isPathProtected(exportDir)) {
-                return this.failed("Selected export folder is inside protected Studio storage.");
+                return this.failed(new ProjectPackageExportError(
+                    ProjectPackageExportErrorCode.FolderProtected,
+                    "Selected export folder is inside protected Studio storage.",
+                ));
             }
             window.app.storageManager.grantFileSystemAccess(
                 window,
@@ -78,7 +90,9 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
                 skippedCount: written.skippedCount,
             });
         } catch (error) {
-            return this.failed(error);
+            // Reading the project's configuration happens before the dialog, and a refusal there is
+            // the project's; `writeProjectPackage` has already coded everything after it.
+            return this.failed(classifyPackFailure(error, projectRoot));
         }
     }
 }
@@ -111,13 +125,16 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
 
             const resolvedTarget = path.resolve(targetDir);
             if (await window.app.storageManager.isPathProtected(resolvedTarget)) {
-                return this.failed("Selected import folder is inside protected Studio storage.");
+                return this.failed(new ProjectPackageImportError(
+                    ProjectPackageImportErrorCode.FolderProtected,
+                    "Selected import folder is inside protected Studio storage.",
+                ));
             }
             if (!await window.app.storageManager.isPathAllowed(window, resolvedTarget, "write")) {
                 return this.failed(`File system access is not allowed for import folder: ${resolvedTarget}`);
             }
 
-            const result = await readProjectPackageInto(resolvedPackage, resolvedTarget);
+            const result = await unpackAsArrival(window.app.projectTrustManager, resolvedPackage, resolvedTarget);
             return this.success({
                 projectPath: resolvedTarget,
                 projectName: result.projectName,
@@ -169,6 +186,42 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
             "session",
         );
         return this.success({ dest: packagePath });
+    }
+}
+
+/**
+ * Unpack a package into a folder, with the folder on the trust ledger before a byte of it lands.
+ *
+ * The order is the point. A project unpacked from somebody else's file ships executable code - a
+ * puppet backend is `import()`ed the moment anything shows a model - and the row is what says it
+ * is somebody else's. Recording after the copy left a window in which the copy was on disk and
+ * the row was not; a copy that finished unrecorded would be met later as a mere folder rather
+ * than as an import. Recording first closes that: whatever else fails, the folder is known for
+ * what it is from before it has contents.
+ *
+ * Two consequences are handled here. The folder has to be empty for the unpack to start, so the
+ * row is only written when it is - recording first must never mark something the author already
+ * had at that path. And an unpack that fails takes back what it wrote, and with it the row, so the
+ * settings list does not show a project waiting for a decision that no folder exists to receive;
+ * one whose writing could not all be taken back keeps it, because a half-written tree is still
+ * somebody else's tree.
+ */
+async function unpackAsArrival(
+    trust: ProjectTrustManager,
+    packagePath: string,
+    targetDir: string,
+): ReturnType<typeof readProjectPackageInto> {
+    const recorded = await directoryHoldsNothing(targetDir);
+    if (recorded) {
+        trust.recordArrival(targetDir, "package", new Date().toISOString());
+    }
+    try {
+        return await readProjectPackageInto(packagePath, targetDir);
+    } catch (error) {
+        if (recorded && await directoryHoldsNothing(targetDir)) {
+            trust.forgetArrival(targetDir);
+        }
+        throw error;
     }
 }
 

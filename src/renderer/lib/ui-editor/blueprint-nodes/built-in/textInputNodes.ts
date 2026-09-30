@@ -4,7 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
@@ -14,12 +14,15 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_SET_VALUE,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type { BlueprintTextInputPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -29,7 +32,7 @@ const TEXT_INPUT_MAGIC_TARGET: NonNullable<BlueprintNodeDef["magicElementTarget"
     elementTypes: [TEXT_INPUT_ELEMENT_TYPE],
 };
 const TEXT_INPUT_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: [TEXT_INPUT_ELEMENT_TYPE],
 };
 
@@ -71,10 +74,13 @@ function readNode(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     target: "self" | "element";
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: elementTarget ? "Element" : "Text Input",
         keywords: input.keywords,
@@ -112,14 +118,7 @@ function writeNode(input: {
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
@@ -128,29 +127,23 @@ function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], ta
     if (ref) {
         if (ref.elementType !== TEXT_INPUT_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError(
-                "Text Input node requires an nl.textInput element",
+                translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(TEXT_INPUT_ELEMENT_TYPE) }),
                 ctx.node.id,
             );
         }
         if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-            throw new BlueprintGraphExecutionError(
-                "Text Input node can only target the current Surface",
-                ctx.node.id,
-            );
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
         }
-        return { api, elementId: buildUIWidgetAddress(ref.elementId, ctx.instanceKey) };
+        return { api, elementId: addressWidgetFromExecution(ctx, ref.elementId) };
     }
     if (target === "element") {
-        throw new BlueprintGraphExecutionError(
-            "Text Input Element node requires a Text Input input",
-            ctx.node.id,
-        );
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("Text Input node requires a Text Input target", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
-    return { api, elementId: buildUIWidgetAddress(elementId, ctx.instanceKey) };
+    return { api, elementId: addressWidgetFromExecution(ctx, elementId) };
 }
 
 function toStringValue(raw: unknown): string {
@@ -173,6 +166,7 @@ async function patchCurrentTextInput(
 export const textInputBlueprintNodes: BlueprintNodeDef[] = [
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "input", "get", "value", "content"],
         pins: [stringOut("value", "Value"), intOut("length", "Length")],
@@ -196,6 +190,7 @@ export const textInputBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "input", "get", "value", "element"],
         pins: [stringOut("value", "Value"), intOut("length", "Length")],

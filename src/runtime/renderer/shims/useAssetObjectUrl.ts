@@ -28,7 +28,7 @@ export function useAssetObjectUrl(assetId?: string | null, _assetType?: AssetPoo
 
     useEffect(() => {
         if (!assetId) {
-            setState({ url: null, metadata: null, loading: false, error: null });
+            setState(keepIfSame({ url: null, metadata: null, loading: false, error: null }));
             return;
         }
         const previewUrl = resolveDevModeSavePreviewImageUrl(assetId);
@@ -37,15 +37,33 @@ export function useAssetObjectUrl(assetId?: string | null, _assetType?: AssetPoo
         const runtimeUrl = previewUrl
             ?? resolveCharacterAvatarAssetUrl(assetId)
             ?? resolveGameRuntimeAssetUrl(assetId);
-        setState({
+        setState(keepIfSame({
             url: runtimeUrl,
             metadata: null,
             loading: false,
             error: runtimeUrl ? null : `Runtime asset not found: ${assetId}`,
-        });
+        }));
     }, [assetId]);
 
     return state;
+}
+
+/**
+ * The state as it was when the effect arrives at the same answer.
+ *
+ * This effect runs on mount for every widget that could draw an asset, and most of them have none,
+ * so it answers "no picture" into a state that already says so. A new object there is a render of
+ * the widget - and of everything it places - that changes nothing; a settings page paid about two
+ * hundred of them the moment it mounted.
+ */
+function keepIfSame(next: AssetObjectUrlState): (previous: AssetObjectUrlState) => AssetObjectUrlState {
+    return previous =>
+        previous.url === next.url
+        && previous.metadata === next.metadata
+        && previous.loading === next.loading
+        && previous.error === next.error
+            ? previous
+            : next;
 }
 
 /**

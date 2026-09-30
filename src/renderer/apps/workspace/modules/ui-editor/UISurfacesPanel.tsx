@@ -30,6 +30,7 @@ import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/free
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
+import { reorderSurfacesForDrop, type SurfaceDropGap } from "./panel/surfaceReorder";
 import {
     useOpenBlueprintTarget,
     type BlueprintOpenOptions,
@@ -114,6 +115,19 @@ export function createSurfaceEditorTab(surface: UISurface) {
         icon: <PanelsTopLeft className="w-4 h-4" />,
         component: UISurfaceEditorTab,
         payload: { surfaceId: surface.id },
+        closable: true,
+        modified: false,
+    };
+}
+
+/** The editor tab for a component definition - the one the component library opens. */
+export function createComponentEditorTab(component: UIComponentDefinition) {
+    return {
+        id: getComponentTabId(component.id),
+        title: component.name,
+        icon: <PanelsTopLeft className="w-4 h-4" />,
+        component: UISurfaceEditorTab,
+        payload: { componentId: component.id },
         closable: true,
         modified: false,
     };
@@ -211,7 +225,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [surfaces]);
     const globalBlueprintId = useMemo(() => {
         const blueprintDocument = localBlueprintService?.getBlueprintDocument();
-        return blueprintDocument?.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+        return blueprintDocument?.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
     }, [blueprintRevision, localBlueprintService]);
     const globalBlueprintPreviewModel = useMemo(
         () => resolveFirstBlueprintLayerPreview(localBlueprintService, nodeCatalog, globalBlueprintId),
@@ -255,15 +269,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [context, panelId]);
 
     const handleOpenComponent = useCallback((component: UIComponentDefinition) => {
-        openEditorTab({
-            id: getComponentTabId(component.id),
-            title: component.name,
-            icon: <PanelsTopLeft className="w-4 h-4" />,
-            component: UISurfaceEditorTab,
-            payload: { componentId: component.id },
-            closable: true,
-            modified: false,
-        });
+        openEditorTab(createComponentEditorTab(component));
         // The same bargain a page card makes: opening it also makes it the panel's subject. For a
         // component that subject is where its params are declared - its root is the outline's root
         // and so not selectable, leaving nothing inside it to hang them on.
@@ -297,6 +303,23 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         (surface: UISurface) => documentService?.getSurfaceContentRevision(surface.id) ?? 0,
         [documentService],
     );
+
+    /**
+     * A card dropped somewhere else in the list.
+     *
+     * The list states the move as a gap between the cards it draws - one kind - and the order that
+     * has to be written is the whole document's, so the two are joined here. See
+     * {@link reorderSurfacesForDrop} for why the other kind's cards must not shift.
+     */
+    const handleReorderSurfaces = useCallback((draggedId: string, gap: SurfaceDropGap) => {
+        if (!documentService) {
+            return;
+        }
+        const order = reorderSurfacesForDrop(documentService.getDocument().surfaces, kind, draggedId, gap);
+        if (order) {
+            documentService.reorderSurfaces(order, draggedId);
+        }
+    }, [documentService, kind]);
 
     // A project with no page at all gets one the moment this panel opens - a write no author asked
     // for, and the third shape `isDeferredWriteAllowed` exists for: there is no control to grey out
@@ -654,6 +677,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 getSurfaceContentRevision={getSurfaceContentRevision}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
+                onReorder={documentService && !freeze.frozen ? handleReorderSurfaces : undefined}
             />
             <ComponentLibraryPanel
                 documentService={documentService}

@@ -1,9 +1,9 @@
 import type { AssetTransferManifestEntry } from "@shared/types/assetTransfer";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement, UIElementId } from "@shared/types/ui-editor/document";
-import { collectSubtreeElementIds, filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { filterToEditableTopLevel, isSurfaceRootElement } from "./uiEditorSelection";
 
 export const UI_EDITOR_CLIPBOARD_VERSION = 1 as const;
 
@@ -165,10 +165,9 @@ export function buildUiEditorClipboardPayload(input: {
     if (!effectiveRootId) {
         return null;
     }
-    const topLevel = filterToTopLevelMovers(document, selectedElementIds).filter(id => {
-        const el = document.elements[id];
-        return el && el.type !== "nl.root" && !isComponentEditorRootElement(el);
-    });
+    // Never the surface itself: a page's root, or a component's frame in its own editor. Left out
+    // before the top level is taken, so the frame selected with things inside it copies those.
+    const topLevel = filterToEditableTopLevel(document, selectedElementIds);
     if (topLevel.length === 0) {
         return null;
     }
@@ -179,7 +178,7 @@ export function buildUiEditorClipboardPayload(input: {
 
     for (const id of subtree) {
         const el = document.elements[id];
-        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
+        if (!el || isSurfaceRootElement(el)) {
             continue;
         }
         elements[id] = JSON.parse(JSON.stringify(el)) as UIElement;
@@ -257,7 +256,7 @@ function readBlueprintTable(value: unknown): Record<string, Blueprint> {
             continue;
         }
         const blueprint = entry as Partial<Blueprint>;
-        if (!blueprint.owner || !blueprint.program) {
+        if (!blueprint.owner || !blueprint.graphs) {
             continue;
         }
         blueprints[id] = { ...(blueprint as Blueprint), id };

@@ -30,9 +30,6 @@ import { VcsManager } from "./VcsManager";
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
 
 const STORY = "editor/story/stories/prologue/storydoc.json";
-const BLUEPRINT_SHARD = "assets/assets.metadata.blueprint.json";
-const BLUEPRINT_ID = "2d44332f-18b9-4892-b269-c6f02ad31d95";
-const BLUEPRINT_CONTENT = "assets/content/2d/44/332f18b94892b269c6f02ad31d95";
 /** An image, i.e. exactly what the snapshot deliberately leaves in the repository. */
 const IMAGE_CONTENT = "assets/content/ff/ee/0123456789abcdef0123456789ab";
 /** Excluded by the working-set policy; must not appear in a snapshot either. */
@@ -66,8 +63,6 @@ beforeAll(async () => {
 
     write("project.json", JSON.stringify({ name: "prologue" }));
     write(STORY, JSON.stringify({ version: 9, scenes: ["FIRST"] }));
-    write(BLUEPRINT_SHARD, JSON.stringify({ [BLUEPRINT_ID]: { id: BLUEPRINT_ID, name: "shared" } }));
-    write(BLUEPRINT_CONTENT, JSON.stringify({ blueprint: "FIRST" }));
     write(IMAGE_CONTENT, Buffer.alloc(64 * 1024, 1));
     write(THUMBNAIL, "THUMB");
     await initRepository(globals, { identity: "author@narraleaf" });
@@ -77,7 +72,6 @@ beforeAll(async () => {
     first = history[0].revision;
 
     write(STORY, JSON.stringify({ version: 9, scenes: ["SECOND"] }));
-    write(BLUEPRINT_CONTENT, JSON.stringify({ blueprint: "SECOND" }));
     second = (await manager.commit(root, { message: "second" })).revision;
 
     // Uncommitted, so the working tree differs from BOTH revisions. Without this a snapshot that
@@ -134,12 +128,9 @@ describe.skipIf(!supported)("materialising a revision", () => {
         expect(status.files.some((file) => file.path.replace(/\\/g, "/").includes(".nlstudio"))).toBe(false);
     }, 120_000);
 
-    it("carries the shared blueprint content the compile path reads, and leaves the media", async () => {
+    it("leaves the media in the repository", async () => {
         const snapshot = await manager.materializeRevisionSnapshot(root, first);
 
-        // `loadSharedBlueprints` opens this one. A snapshot without it assembles a bundle whose shared
-        // blueprints are silently empty - a game that behaves differently with nothing to say so.
-        expect(JSON.parse(read(snapshot.directory, BLUEPRINT_CONTENT)).blueprint).toBe("FIRST");
         // Nothing in the compile path opens an image, and the Dev Mode window resolves asset URLs
         // through its workspace window, which serves the working tree. Copying it would be the whole art
         // budget of the project per launch for no behavioural difference.

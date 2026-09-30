@@ -4,6 +4,8 @@
  * Comments in English per project convention.
  */
 
+import { chineseScriptOf } from "@shared/i18n/chineseScript";
+
 export const LOCALIZATION_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export type LocalizationDocumentVersion = typeof LOCALIZATION_DOCUMENT_SCHEMA_VERSION;
 
@@ -455,11 +457,21 @@ export function resolveLocalizedStoredText(
  *
  * `candidates` arrives in the player's own order of preference (`navigator.languages`), and that
  * order outranks how closely a code matches: the first candidate the project can serve at all wins.
- * Each one is tried exact (case-insensitive) and then by prefix in both directions ("zh-CN" system
- * ↔ "zh" config and vice versa) before the next candidate is considered. Scoring a whole pass at a
- * time instead would let a language the player put last beat one they put first - a Chinese player
- * whose list begins "zh-CN" and ends "ja", reading a project that offers `zh`, would be handed
- * Japanese.
+ * Each one is tried exact (case-insensitive), then by prefix in both directions ("zh-CN" system
+ * ↔ "zh" config and vice versa), then - for Chinese - by script, before the next candidate is
+ * considered. Scoring a whole pass at a time instead would let a language the player put last beat one
+ * they put first - a Chinese player whose list begins "zh-CN" and ends "ja", reading a project that
+ * offers `zh`, would be handed Japanese.
+ *
+ * The script pass exists because Chinese is spelled two ways that neither match as text: by script
+ * (`zh-Hans`, which is how a project is likely to name it, and how Windows and macOS list it) and by
+ * region (`zh-CN`, which is how Linux lists it and how Chromium names the locale that leads
+ * `navigator.languages`). A candidate and a project language whose scripts agree match, with the
+ * region standing for the script it writes - see `chineseScriptOf`, the same table that decides which
+ * Chromium locale pack a shipped game keeps. So a Linux player on `zh_CN` gets a `zh-Hans` game in
+ * Chinese, one on `zh_HK` gets a `zh-Hant` or a `zh-TW` one, and a `zh-Hans-CN` system gets a project
+ * that says `zh-CN`. A script that disagrees is not a match: Simplified and Traditional are two
+ * languages to a reader, as the project listing them separately says.
  *
  * Returns null when nothing matches.
  */
@@ -481,6 +493,11 @@ export function matchSystemLocale(
         });
         if (prefixed) {
             return prefixed.code;
+        }
+        const script = chineseScriptOf(candidate);
+        const sameScript = script === null ? undefined : locales.find(locale => chineseScriptOf(locale.code) === script);
+        if (sameScript) {
+            return sameScript.code;
         }
     }
     return null;

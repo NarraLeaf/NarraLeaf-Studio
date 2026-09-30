@@ -32,6 +32,25 @@ export const actions = {
             // is, and DLC are what is beside it.
             runWithDlc: "Run with DLC",
             dlcCount: "{active} of {total}",
+        // Whether a preview of this project holds its content the way a protected build does. Only
+        // offered where the project protects its assets; off unless this machine turns it on.
+        previewAsShipped: "Preview as shipped",
+        previewAsShippedDetail: "Preview runs the protected form players receive, and takes longer to start.",
+        // The same choice on the Run button, so a preview that seals is never mistaken for an
+        // ordinary one.
+        asShipped: "As shipped",
+        // Clears the save slots and persistent data a run leaves behind, for when the author's own
+        // game poisons that state and crashes on launch. Dev Mode and Preview keep theirs apart, so
+        // the submenu resets one without touching the other.
+        resetData: "Reset player data",
+        // The row for the mode that is running now, disabled: resetting under a live process would
+        // race its next write.
+        resetWhileRunning: "Stop it to reset its data",
+        resetDevModeConfirm: "Reset Dev Mode player data?",
+        resetPreviewConfirm: "Reset Preview player data?",
+        resetDetail: "Every save slot and all persistent data for this project are removed.",
+        resetDone: "Player data reset.",
+        resetFailed: "Could not reset player data.",
     },
     file: {
         label: "File",
@@ -74,7 +93,19 @@ export const actions = {
     },
     export: {
         chooseFolder: "Choose a folder for the exported project package.",
-        failed: "Failed to export project.",
+        failed: "Could not export the project.",
+        failedWithReason: "{headline} {reason}",
+        // Why an export failed, from the code the main process answered with. The project being
+        // read and the folder being written are the two sides, so each sentence is about one of them.
+        reason: {
+            folderProtected: "The chosen folder is inside Studio's own storage. Choose another folder.",
+            folderReadOnly: "Studio is not allowed to write to the chosen folder.",
+            folderMissing: "The chosen folder no longer exists.",
+            diskFull: "The disk is full.",
+            projectUnreadable: "Studio is not allowed to read some of the project's files.",
+            projectFileBusy: "A file in the project is in use by another program.",
+            projectChanged: "A file in the project was moved or deleted during the export. Export again.",
+        },
         success: {
             one: "Exported project package with {count} file.",
             other: "Exported project package with {count} files.",

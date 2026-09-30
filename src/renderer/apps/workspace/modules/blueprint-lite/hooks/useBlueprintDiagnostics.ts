@@ -18,9 +18,11 @@ export function useBlueprintDiagnostics(
             blueprintId,
             revision,
             options?.widgetElement,
+            options?.uiDocument,
             options?.widgetSurfaceId,
             options?.widgetBlueprintEvents,
             options?.isComponentDefinitionGraph,
+            options?.assetNameGaps,
         ],
     );
 }

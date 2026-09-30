@@ -99,7 +99,6 @@ export const PACK_MERGE_PLAN: PackMergeNode = fields({
                 blueprintDocument: BLUEPRINT_DOCUMENT,
             }),
             localBlueprints: BLUEPRINT_DOCUMENT,
-            sharedBlueprints: list("assetId"),
             persistentVariables: map(),
             savedVariables: map(),
             saveSchema: list("id"),

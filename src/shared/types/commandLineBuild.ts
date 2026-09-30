@@ -1,9 +1,8 @@
-import type { DevModeConsoleLogLevel } from "./devMode";
+import type { CommandLineRunLogLine, CommandLineRunPlugin } from "./commandLineRun";
 import type { ExperimentalConditionId } from "./experimental";
 import type {
     BuildPreflightFinding,
     GameBuildArch,
-    GameBuildArtifactSize,
     GameBuildFormat,
     GameBuildPlatform,
 } from "./gameBuild";
@@ -72,39 +71,12 @@ export const COMMAND_LINE_BUILD_EXIT_CODES: Record<CommandLineBuildOutcome, numb
 /** Report format version. Bumped when a field changes meaning, never when one is added. */
 export const COMMAND_LINE_BUILD_REPORT_SCHEMA = 1;
 
-/** One line of the build log, as the Build console recorded it. */
-export type CommandLineBuildLogLine = {
-    timestamp: number;
-    level: DevModeConsoleLogLevel;
-    /** Which part of the pipeline spoke - "Build", "Lint". Absent for lines that carry no source. */
-    source?: string;
-    message: string;
-};
-
-/**
- * What the workspace tells the main process while a command-line build runs.
- *
- * One event with a discriminated payload rather than two, because the two halves are one stream:
- * the log lines and the outcome arrive in order and are written to one report. A second IPC event
- * would be a second thing to keep in step for no gain.
- */
-export type CommandLineBuildEvent =
-    | ({ kind: "log" } & CommandLineBuildLogLine)
-    | {
-        kind: "finished";
-        /** Whether the build produced its artifacts. */
-        ok: boolean;
-        /** The pipeline's or the refusing check's own message, when it failed. */
-        error?: string;
-        outputDir?: string;
-        artifacts?: string[];
-        artifactSizes?: GameBuildArtifactSize[];
-        startedAt?: number;
-        finishedAt?: number;
-    };
-
 /** What the launch was asked to produce, restated in the report so the file stands alone. */
 export type CommandLineBuildReportRequest = {
+    /**
+     * The variant's name, as the project spells it - `main` for the release build. Never its stored
+     * id: that is a generated uuid no surface of Studio shows, and a report is read by people too.
+     */
     variant: string;
     platform: GameBuildPlatform;
     formats: GameBuildFormat[];
@@ -217,6 +189,15 @@ export type CommandLineBuildReport = {
         signed: boolean;
         /** Whether the launch passed `--build-allow-unsigned`. */
         unsignedAccepted: boolean;
+        /**
+         * Where the credential came from. Absent when nothing was signed.
+         *
+         * Worth recording for the same reason `experimental` is: a job that keeps its own
+         * credential and a machine that has one imported produce artifacts that look identical,
+         * and "which key signed this" is a question somebody eventually has to answer from the
+         * archive rather than from memory.
+         */
+        credentialSource?: "vault" | "command-line";
     };
     /**
      * What experimental mode did to this run.
@@ -226,10 +207,17 @@ export type CommandLineBuildReport = {
      * debuggable artifact has no contract at all.
      */
     experimental: CommandLineBuildReportExperimental;
+    /**
+     * The plugins the line named with `--build-plugin`, each by the name the plugin gives itself, in
+     * the order the line named them. `enabledForRun` says which of them the line switched on and
+     * which this profile already ran. Empty when the line named none, and when a name found no
+     * plugin to switch on - `error` says which.
+     */
+    plugins: CommandLineRunPlugin[];
     /** Everything the build reported about the project's configuration, blocking or not. */
     findings: BuildPreflightFinding[];
     artifacts: Array<{ path: string; bytes?: number }>;
     /** One sentence saying what went wrong, or null on success. */
     error: string | null;
-    log: CommandLineBuildLogLine[];
+    log: CommandLineRunLogLine[];
 };

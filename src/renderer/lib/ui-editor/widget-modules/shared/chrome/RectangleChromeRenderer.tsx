@@ -4,6 +4,7 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { useAssetResolutionReport } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
 import {
@@ -114,6 +115,8 @@ function assignMotionTransition(
 
 export function RectangleChromeRenderer({
     element,
+    surface,
+    instanceKey,
     children,
     hostAdapter,
     clipContent = true,
@@ -148,13 +151,13 @@ export function RectangleChromeRenderer({
 
     const normalizedFillOpacity = Math.max(0, Math.min(1, props.fillOpacity));
     const parsedBg = parseColorValue(String(props.backgroundColor ?? ""), { hex: "#FFFFFF", alpha: 1 });
-    const colorFill =
-        props.fillVisible && props.fillType === "color"
-            ? colorValueToCss({
-                  hex: parsedBg.hex,
-                  alpha: normalizedFillOpacity * (parsedBg.alpha ?? 1),
-              })
-            : "transparent";
+    // No fill is the fill's own colour at zero alpha, not the keyword `transparent`: motion cannot
+    // interpolate a keyword, so a fill that fades in on hover with a transition the author declared
+    // would jump instead (and say so in the console), in both directions.
+    const colorFill = colorValueToCss({
+        hex: parsedBg.hex,
+        alpha: props.fillVisible && props.fillType === "color" ? normalizedFillOpacity * (parsedBg.alpha ?? 1) : 0,
+    });
 
     const cornerRadii: FillLayerRadii = {
         borderTopLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTL,
@@ -437,23 +440,31 @@ export function RectangleChromeRenderer({
               }
             : null;
 
+    /**
+     * Per-side properties only - never `border`, `borderWidth` or `borderColor`.
+     *
+     * When the stroke transitions, motion animates it one side at a time (`borderTopColor`, ...), and
+     * a shorthand in the same style would be written over the sides motion is tweening on every
+     * render that changed it: React warns about exactly that on each hover, and the stroke snaps to
+     * its end colour for a frame before the tween takes over. The stroke node is a plain `div` with
+     * no border of its own, so nothing needs resetting for the inside and fallback cases either.
+     */
     if (strokeStyle) {
-        strokeStyle.borderStyle = props.borderStyle;
         if (props.strokeAlign === "center") {
             const sideWidth = (side: StrokeEdge) =>
                 strokeSideApplies(props.strokeSide, side) ? `${props.borderWidth}px` : "0px";
 
-            strokeStyle.borderWidth = "0px";
+            strokeStyle.borderStyle = props.borderStyle;
             strokeStyle.borderTopWidth = sideWidth("top");
             strokeStyle.borderRightWidth = sideWidth("right");
             strokeStyle.borderBottomWidth = sideWidth("bottom");
             strokeStyle.borderLeftWidth = sideWidth("left");
-            strokeStyle.borderColor = strokeColor;
+            strokeStyle.borderTopColor = strokeColor;
+            strokeStyle.borderRightColor = strokeColor;
+            strokeStyle.borderBottomColor = strokeColor;
+            strokeStyle.borderLeftColor = strokeColor;
         } else if (props.strokeAlign === "inside") {
-            strokeStyle.border = "none";
             strokeStyle.boxShadow = `inset 0 0 0 ${props.borderWidth}px ${strokeColor}`;
-        } else {
-            strokeStyle.border = "none";
         }
     }
 
@@ -465,9 +476,41 @@ export function RectangleChromeRenderer({
     // project-wide table for a reader to enumerate. In the editor there is no map and the hook hands
     // the id straight through, where `useAssetObjectUrl` resolves the set against the live library.
     const fillAssetId = useLocalizedAssetId(element, activeFill?.assetId ?? null);
-    const { url: assetUrl } = useAssetObjectUrl(fillAssetId ?? null);
+    const assetAnswer = useAssetObjectUrl(fillAssetId ?? null);
+    const assetUrl = assetAnswer.url;
     const displayUrl = assetUrl ?? (legacyImageUrl ? legacyImageUrl : null);
     const shouldRenderImage = props.fillType === "image";
+
+    /**
+     * The asset URL the `<img>` below could not load or decode, if it failed.
+     *
+     * A URL is not a picture: a file removed from disk after its grant was minted, or bytes that are
+     * not an image, both resolve and then fail in the element. Only the asset's own URL is recorded -
+     * a legacy `backgroundImage` string standing in for it is not an asset, and its failure is not
+     * this slot's to report.
+     */
+    const [imageLoadFailedUrl, setImageLoadFailedUrl] = useState<string | null>(null);
+    const onImageError = assetUrl && displayUrl === assetUrl ? () => setImageLoadFailedUrl(assetUrl) : undefined;
+    // Only in a running game - the editor canvas mounts no reporter, and this does nothing there.
+    // Only while the fill is actually drawn: an image fill left behind under a colour fill, or one
+    // the author has hidden, cannot fail anyone.
+    useAssetResolutionReport(
+        surface
+            ? {
+                  surfaceId: surface.id,
+                  elementId: element.id,
+                  ownerName: element.name?.trim() || element.type,
+                  slot: "imageFill",
+                  instanceKey: instanceKey ?? "",
+              }
+            : null,
+        {
+            requested: fillAssetId ?? null,
+            wanted: shouldRenderImage && props.fillVisible && Boolean(activeMode),
+            answer: assetAnswer,
+            loadFailedUrl: imageLoadFailedUrl,
+        },
+    );
     const isCropEditing =
         Boolean(activeMode) &&
         activeMode !== "tile" &&
@@ -643,6 +686,7 @@ export function RectangleChromeRenderer({
                         src={displayUrl}
                         alt=""
                         draggable={false}
+                        onError={onImageError}
                         initial={false}
                         animate={cropMotionAnimate}
                         transition={imageTransition}
@@ -667,6 +711,7 @@ export function RectangleChromeRenderer({
                     src={displayUrl}
                     alt=""
                     draggable={false}
+                    onError={onImageError}
                     style={cropStaticStyle}
                 />
             );
@@ -698,6 +743,7 @@ export function RectangleChromeRenderer({
                     src={displayUrl}
                     alt=""
                     draggable={false}
+                    onError={onImageError}
                     initial={false}
                     animate={imageAnimate}
                     transition={imageTransition}
@@ -723,6 +769,7 @@ export function RectangleChromeRenderer({
                 src={displayUrl}
                 alt=""
                 draggable={false}
+                onError={onImageError}
                 style={fillStaticStyle}
             />
         );

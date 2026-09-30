@@ -43,6 +43,11 @@ export const blueprint = {
         addLayer: "Add layer",
         selectLayer: "Select a layer on the left.",
         previewUnavailable: "Preview unavailable",
+        unknownNode: "Unknown node",
+        unknownNodeDeleted: {
+            one: "Deleted the unknown node and its {count} hidden connection. Undo to restore.",
+            other: "Deleted the unknown node and its {count} hidden connections. Undo to restore.",
+        },
     },
     /**
      * A paste of nodes copied in another project.
@@ -147,7 +152,12 @@ export const blueprint = {
         node: {
             contextInvalid: "Node \"{name}\" is not allowed in this {ownerKind} {graphKind} graph.{hint}",
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
+            contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
+            inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
+            stepLimit: "\"{head}\" stopped at \"{node}\" after {steps} steps without a wait.",
+            stepLimitGlobal: "\"{head}\" in the global blueprint stopped at \"{node}\" after {steps} steps without a wait.",
+            unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
             savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
@@ -172,6 +182,89 @@ export const blueprint = {
             missingField: "Missing field \"{id}\".",
         },
     },
+    /**
+     * Why a blueprint stopped while the game was running: what a node, the host it calls or the
+     * executor throws, which the Dev Mode issues list shows as it is. `{node}` and `{head}` are node
+     * titles as the canvas shows them, `{pin}` a pin label, `{element}` a widget's own name and
+     * `{kind}` a widget kind. No placeholder here ever carries an id: an author cannot act on one.
+     */
+    runtimeError: {
+        // Where the graph is running cannot do what the node asks.
+        needsHost: "This node runs only in a running game. Open Dev Mode to run it.",
+        needsHostScript: "Scripts run only in a running game. Open Dev Mode to run them.",
+        needsGame: "“{node}” needs a running game.",
+        needsGameAny: "This node needs a running game.",
+        needsSaves: "Saves are not available here.",
+        needsWindow: "The game window is not available here.",
+        needsLayers: "Layers are not available here.",
+        needsStory: "This node runs only inside a story.",
+        needsChoiceRow: "“{node}” runs only inside a choice list row.",
+        needsCloseRequest: "“{node}” runs only below “{head}”.",
+        cannotRunHere: "This node cannot run here.",
+        // Something the author left unset.
+        pickStory: "“{node}”: pick a story.",
+        pickScene: "“{node}”: pick a scene.",
+        pickPage: "“{node}”: pick a page.",
+        pickFunction: "“{node}”: pick a function.",
+        pickTrack: "“{node}”: pick a track.",
+        pickClip: "“{node}”: pick a clip.",
+        pickField: "“{node}”: pick a field.",
+        pickSceneVariable: "This node has no scene variable selected.",
+        pickSavedVariable: "This node has no saved variable selected.",
+        pickPersistentVariable: "This node has no persistent variable selected.",
+        noPage: "No page is selected.",
+        noSave: "This node has no save to act on.",
+        inputEmpty: "“{node}”: “{pin}” is empty.",
+        // A value the node cannot use.
+        valueNotNumber: "“{name}” must be a number.",
+        valueNotBoolean: "“{name}” must be a boolean.",
+        valueAbove: "“{name}” must be greater than {min}.",
+        valueAtLeast: "“{name}” must be {min} or greater.",
+        valueNotIndex: "“{name}” must be a whole number, 0 or greater.",
+        voiceEndModeInvalid: "“{name}” must be “fade”, “stop” or “none”.",
+        preferenceUnknown: "“{key}” is not a game preference.",
+        noLanguages: "This project has no languages configured.",
+        unknownLanguage: "“{language}” is not one of this project's languages.",
+        noVoiceLanguages: "This project has no voice languages configured.",
+        unknownVoiceLanguage: "“{language}” is not one of this project's voice languages.",
+        // The element a node acts on.
+        noElement: "This node has no element to act on.",
+        elementWrongKind: "This node acts only on widgets of type {kind}.",
+        elementUnsupported: "This node cannot act on this kind of widget.",
+        elementOutOfScope: "This node can only act on elements of its own page or component.",
+        elementNotFound: "The element was not found on this page.",
+        widgetWrongKind: "“{element}” is not a widget of type {kind}.",
+        unnamedWidget: "Unnamed widget",
+        noVariants: "“{element}” has no variants.",
+        unknownVariant: "“{element}” has no such variant.",
+        pageNotFound: "The page was not found in this project.",
+        notALayer: "“{node}”: this page is not a layer, so nothing was closed.",
+        // Variables, saves and captured games.
+        persistentVariableMissing: "The persistent variable this node uses no longer exists.",
+        persistentVariableNoKey: "The persistent variable “{name}” has no storage key.",
+        slotIsRunningGame: "This node needs a save in storage. The slot it received is the running game, which only “{node}” can inherit from.",
+        saveNotStored: "The save named by “{pin}” is not in storage.",
+        captureNotHeld: "“{pin}” names a captured game this run does not hold. Run “{capture}” in the same chain as “{start}”.",
+        captureRepeated: "“{node}” has already captured this run several times. Capture it once, not once per loop.",
+        noGameToCapture: "“{node}”: there is no running game to capture.",
+        responseGone: "“{node}”: the response is no longer available. A response can only be read by the run that fetched it.",
+        // The graph itself.
+        pureOnExecPath: "This node only produces values and cannot run in sequence.",
+        nodeMissing: "The blueprint refers to a node that no longer exists.",
+        nodeTypeMissing: "This node is not available. Its plugin may be uninstalled or disabled.",
+        stepLimitSync: "This blueprint stopped after {steps} steps without finishing.",
+        asyncInSyncGraph: "A node that waits cannot run here.",
+        valueNodeUnavailable: "A node in this Blueprint Value is not available. Its plugin may be uninstalled or disabled.",
+        valueNodeNotAllowed: "This Blueprint Value contains a node that is not allowed in a Blueprint Value.",
+        fnDepth: "Function calls went deeper than {depth} levels and were stopped.",
+        fnMissing: "The function this node calls no longer exists.",
+        fnOutOfScope: "The function “{name}” is not available in this scope.",
+        // A script layer that will not run. `{file}` is the author's file, `{detail}` their own
+        // error text, `{exported}` and `{names}` export names.
+        scriptLoadFailed: "“{file}” could not be loaded: {detail}",
+        scriptExportsUncalled: "“{file}” exports {exported}, none of which this layer calls. Handlers it calls: {names}.",
+        scriptExportsNoHandler: "“{file}” exports no handler this layer calls. Handlers it calls: {names}.",
+    },
     variableScope: {
         page: "Page",
         blueprint: "Blueprint",
@@ -186,11 +279,29 @@ export const blueprint = {
         selectDataType: "Select data type",
     },
     eventLayer: {
-        createTitle: "Create event layer",
-        createInvalid: "Select an event and name the layer before creating it.",
-        event: "Event",
+        createTitle: "Add layer",
+        createInvalid: "Name the layer before creating it.",
         layerName: "Layer name",
         defaultName: "Layer {index}",
+    },
+    /**
+     * Choosing what a new layer is.
+     *
+     * The two words are the whole distinction an author holds - a graph on a canvas, or a file they
+     * own - so neither modifies the other and neither names a language.
+     */
+    layerDialog: {
+        graphDescription: "Wire nodes together on the canvas.",
+        scriptDescription: "Run one of your own files.",
+        scriptPickerLabel: "Which file this layer runs",
+        newScript: "New script…",
+        newScriptDetail: "Writes a starter file under scripts/",
+        // A file two layers run is a legitimate arrangement, so it is offered like any other and
+        // says what already runs it.
+        alreadyRun: {
+            one: "Already run by {count} layer",
+            other: "Already run by {count} layers",
+        },
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
     owner: {
@@ -209,6 +320,8 @@ export const blueprint = {
         renameLayerTitle: "Rename layer",
         layerNamePlaceholder: "Layer name",
         deleteLayer: "Delete layer…",
+        /** Removing a layer never removes a file: the disk owns a script from the moment it exists. */
+        deleteScriptLayer: "Remove layer (the file stays)",
         deleteLayerConfirm: "Delete this layer?",
         deleteLayerDetail: "Linked UI events will be cleared.",
         deleteVariableLabel: "Delete variable \"{name}\"",
@@ -232,18 +345,14 @@ export const blueprint = {
         defaultVariableName: "Variable",
         defaultPersistentName: "Persistent",
     },
-    revisions: {
-        sharedAssetSingle: "One revision per shared asset.",
-        title: "Revisions",
-        active: "· active",
-        // A revision nobody named. Numbered by its place in the list rather than spelled with its
-        // id, which is a UUID and names nothing an author can recognize.
-        unnamed: "Revision {index}",
-        newTypeScript: "New TypeScript revision",
-        newVisual: "New Visual revision",
-    },
+    /**
+     * What a revision is written in, and the whole of the distinction an author has to hold: a
+     * blueprint is a graph on a canvas, a script is a TypeScript file they own. Neither word is
+     * ever used for the other.
+     */
     frontend: {
-        visual: "Visual",
+        visual: "Blueprint",
+        script: "Script",
     },
     literal: {
         string: "String",
@@ -408,9 +517,32 @@ export const blueprint = {
         // Same job as the character stand-in above, for an action the project no longer declares.
         missingInputAction: "Missing action",
     },
-    tsPane: {
-        importHint: "Allowed import: \"narraleaf-studio\"",
-        sourceLabel: "TypeScript blueprint source",
+    script: {
+        fileLabel: "Script file",
+        open: "Open in editor",
+        /** {editor} is the editor's own name, which is the same in every locale. */
+        openIn: "Open in {editor}",
+        reveal: "Show in file manager",
+        /**
+         * The folder rather than the file, in every target. A script resolves its types from the
+         * tsconfig and declarations that sit beside it, so an editor opened on one file resolves
+         * neither.
+         */
+        openFolder: "Open scripts folder",
+        missing: "This file is missing.",
+        /** Re-pointing a script, which is also how a file renamed outside Studio is reconnected. */
+        changeFile: "Use another file",
+        changeFileEmpty: "No other file under scripts/",
+        /** Monaco's own read-only tooltip says the editor is read only. This says where writing happens. */
+        readOnly: "Scripts are edited in your own editor.",
+        /** The section heading in the panel where a project's own files are listed. */
+        sectionTitle: "Scripts",
+        /** The tab a script opens in. A script is not a blueprint and is never titled as one. */
+        tabTitle: "Script",
+        sectionEmpty: "No scripts yet. Open the logic of a page or a component, add a layer, and choose Script.",
+        unbound: "Nothing runs this file",
+        boundTo: "Runs as {name}",
+        boundToMany: "Runs as {name} and {count} more",
     },
     tool: {
         select: "Select tool",
@@ -500,6 +632,7 @@ export const blueprint = {
         assetId: "Asset Id",
         autoForward: "Auto Forward",
         autoForwardDelay: "Auto Forward Delay",
+        textRevealDuration: "Text Fade In",
         avatar: "Avatar",
         bgmVolume: "BGM Volume",
         error: "Error",
@@ -636,6 +769,7 @@ export const blueprint = {
         isEntering: "Is Entering",
         isExiting: "Is Exiting",
         isFullscreen: "Is Fullscreen",
+        isFocused: "Is Focused",
         isPicked: "Is Picked",
         isRead: "Is Read",
         isInstalled: "Is Installed",
@@ -715,6 +849,7 @@ export const blueprint = {
         scene: "Scene",
         sender: "Sender",
         sentenceSpeedCps: "Sentence Speed (CPS)",
+        textFadeIn: "Text Fade In",
         sfxVolume: "SFX Volume",
         shift: "Shift",
         show: "Show",
@@ -724,6 +859,7 @@ export const blueprint = {
         skipDelay: "Skip Delay",
         skipInterval: "Skip Interval",
         skipReadText: "Skip Read Text",
+        muteWhenUnfocused: "Mute When Unfocused",
         skipping: "Skipping",
         slider: "Slider",
         sound: "Sound",
@@ -733,6 +869,7 @@ export const blueprint = {
         status: "Status",
         step: "Step",
         story: "Story",
+        storyName: "Story Name",
         success: "Success",
         string: "String",
         switch: "Switch",
@@ -860,6 +997,7 @@ export const blueprint = {
         checkStorageDurability: "Check Storage Durability",
         getAutoForward: "Get Auto Forward",
         getAutoForwardDelay: "Get Auto Forward Delay",
+        getTextRevealDuration: "Get Text Fade In",
         getBgmVolume: "Get BGM Volume",
         getButtonEnabled: "Get Button Enabled",
         getButtonLabel: "Get Button Label",
@@ -892,6 +1030,7 @@ export const blueprint = {
         getSkipDelay: "Get Skip Delay",
         getSkipInterval: "Get Skip Interval",
         getSkipReadText: "Get Skip Read Text",
+        getMuteWhenUnfocused: "Get Mute When Unfocused",
         getSkipping: "Get Skipping",
         getSliderEnabled: "Get Slider Enabled",
         getSliderVisible: "Get Slider Visible",
@@ -908,6 +1047,7 @@ export const blueprint = {
         playSound: "Play Sound",
         setAutoForward: "Set Auto Forward",
         setAutoForwardDelay: "Set Auto Forward Delay",
+        setTextRevealDuration: "Set Text Fade In",
         setBgmVolume: "Set BGM Volume",
         setButtonEnabled: "Set Button Enabled",
         setButtonLabel: "Set Button Label",
@@ -938,6 +1078,7 @@ export const blueprint = {
         setSkipDelay: "Set Skip Delay",
         setSkipInterval: "Set Skip Interval",
         setSkipReadText: "Set Skip Read Text",
+        setMuteWhenUnfocused: "Set Mute When Unfocused",
         setSkipping: "Set Skipping",
         setSliderEnabled: "Set Slider Enabled",
         setSliderVisible: "Set Slider Visible",
@@ -1202,11 +1343,15 @@ export const blueprint = {
         onGameReady: "On Game Ready",
         onFullscreenChanged: "On Fullscreen Changed",
         onWindowCloseRequested: "On Window Close Requested",
+        onWindowFocusChanged: "On Window Focus Changed",
         onAction: "On Action",
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",
         onPreferenceChanged: "On Preference Changed",
         openLink: "Open Link",
+        openScreenshotsFolder: "Open Screenshots Folder",
+        saveScreenshot: "Save Screenshot",
+        isWindowFocused: "Is Window Focused",
         openPage: "Open page",
         or: "Or",
         padEnd: "Pad End",
@@ -1345,6 +1490,7 @@ export const blueprint = {
         getTimeZone: "Get Time Zone",
         getSaveTime: "Get Save Time",
         getSaveLine: "Get Save Line",
+        getSaveStory: "Get Save Story",
         getSavePlaytime: "Get Save Playtime",
         getPlaytime: "Get Playtime",
         getTotalPlaytime: "Get Total Playtime",

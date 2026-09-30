@@ -103,6 +103,15 @@ jobs:
       - name: Oxlint
         run: yarn lint:oxc
 
+      # The other half of the same problem, for the declarations a script's author
+      # imports. They are generated from Studio's own source and checked in, and the
+      # `--check` this runs existed from the first day with nothing calling it: the file
+      # reached develop stale at least once, which means an author completing against
+      # members the runtime did not have. Cheap to keep honest, 30s, and it is the only
+      # thing standing between a changed context type and a wrong `script.d.ts`.
+      - name: Script API declarations
+        run: yarn check:script-api
+
       # Regenerates the published plugin API declarations and fails if they no
       # longer compile on their own. Without this, a refactor that leaks an
       # unexportable internal type into the plugin surface would only be caught

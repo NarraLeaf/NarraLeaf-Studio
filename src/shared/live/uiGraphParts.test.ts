@@ -35,38 +35,31 @@ function document(): UIGraphDocument {
                     id: "bp-1",
                     name: "Start",
                     owner: { kind: "widgetMain", surfaceId: "s1", elementId: "btn-1" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            eventIds: ["ev-1"],
-                            events: {
-                                "ev-1": {
-                                    id: "ev-1",
-                                    name: "Click",
-                                    graph: {
-                                        nodes: { "n-1": node("n-1"), "n-2": node("n-2", 200) },
-                                        edges: [{ from: { nodeId: "n-1", port: "then" }, to: { nodeId: "n-2", port: "in" } }],
-                                    },
+                    graphs: {
+                        eventIds: ["ev-1"],
+                        events: {
+                            "ev-1": {
+                                id: "ev-1",
+                                name: "Click",
+                                graph: {
+                                    nodes: { "n-1": node("n-1"), "n-2": node("n-2", 200) },
+                                    edges: [{ from: { nodeId: "n-1", port: "then" }, to: { nodeId: "n-2", port: "in" } }],
                                 },
                             },
-                            functionIds: [],
-                            functions: {},
                         },
+                        functionIds: [],
+                        functions: {},
                     },
                 },
                 "bp-2": {
                     id: "bp-2",
                     name: "Other",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { eventIds: [], events: {}, functionIds: [], functions: {} } },
+                    graphs: { eventIds: [], events: {}, functionIds: [], functions: {} },
                 },
             },
             ownerRecords: {
-                "widgetMain:s1:btn-1": { activeBlueprintId: "bp-1", privateBlueprintIds: ["bp-1"] },
+                "widgetMain:s1:btn-1": { blueprintId: "bp-1" },
             },
         },
     } as unknown as UIGraphDocument;
@@ -78,10 +71,7 @@ function clone(value: UIGraphDocument): UIGraphDocument {
 
 function eventGraph(doc: UIGraphDocument, blueprintId = "bp-1", graphId = "ev-1") {
     const blueprint = doc.blueprintDocument.blueprints[blueprintId];
-    if (blueprint.program.kind !== "graph") {
-        throw new Error("not a graph program");
-    }
-    return blueprint.program.graphs.events[graphId];
+    return blueprint.graphs.events[graphId];
 }
 
 describe("the blueprint document as a delta of records", () => {
@@ -133,7 +123,7 @@ describe("the blueprint document as a delta of records", () => {
         const parts = diffUIGraphParts(before, after)!;
         const shell = parts.blueprints?.["bp-1"];
         expect(shell?.name).toBe("Renamed");
-        expect(shell?.program.kind === "graph" ? shell.program.graphs : null).not.toHaveProperty("events");
+        expect(shell?.graphs).not.toHaveProperty("events");
 
         const applied = clone(before);
         applyUIGraphParts(applied, parts);
@@ -143,11 +133,9 @@ describe("the blueprint document as a delta of records", () => {
     it("keeps a slot it is removing whole, because nothing else holds what was in it", () => {
         const before = document();
         const after = clone(before);
-        const graphs = after.blueprintDocument.blueprints["bp-1"].program;
-        if (graphs.kind === "graph") {
-            delete graphs.graphs.events["ev-1"];
-            graphs.graphs.eventIds = [];
-        }
+        const graphs = after.blueprintDocument.blueprints["bp-1"].graphs;
+        delete graphs.events["ev-1"];
+        graphs.eventIds = [];
 
         const parts = diffUIGraphParts(before, after)!;
         expect(parts.graphs?.["bp-1"]?.events?.["ev-1"]).toBeNull();
@@ -204,8 +192,7 @@ describe("the blueprint document as a delta of records", () => {
         const before = document();
         const after = clone(before);
         after.blueprintDocument.ownerRecords["surfaceMain:s1"] = {
-            activeBlueprintId: "bp-2",
-            privateBlueprintIds: ["bp-2"],
+            blueprintId: "bp-2",
         };
 
         const parts = diffUIGraphParts(before, after)!;
@@ -248,10 +235,7 @@ describe("what a blueprint delta claims and asserts", () => {
         after.blueprintDocument.blueprints["bp-3"] = {
             ...clone(before).blueprintDocument.blueprints["bp-2"],
             id: "bp-3",
-            program: {
-                kind: "graph",
-                graphs: { eventIds: ["e"], events: { e: { id: "e", graph: { nodes: {}, edges: [] } } }, functionIds: [], functions: {} },
-            },
+            graphs: { eventIds: ["e"], events: { e: { id: "e", graph: { nodes: {}, edges: [] } } }, functionIds: [], functions: {} },
         } as never;
 
         const parts = diffUIGraphParts(before, after)!;

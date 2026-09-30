@@ -37,7 +37,6 @@ function createHarness() {
                         readRaw: vi.fn(async () => ({ ok: false as const, error: "missing" })),
                         restoreFile: vi.fn(async () => ({ ok: true as const, data: undefined })),
                     };
-                    case Services.Assets: return { lockAsset: vi.fn(), unlockAsset: vi.fn() };
                     case Services.Uuid: return { generate: () => `id-${++nextId}` };
                     case Services.UI: return { showError: vi.fn() };
                     case Services.FileSystem: return {};
@@ -45,6 +44,7 @@ function createHarness() {
                 }
             },
         } as never,
+        commandLineRun: false,
     };
     history.setContext(context);
     service.setContext(context);

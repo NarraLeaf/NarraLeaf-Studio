@@ -57,7 +57,9 @@ export type SurfacePuppetUnavailableReason =
     /** The widget names no backend. */
     | "no-backend"
     /** The named backend is not installed — no `runtimes/puppet/<name>/index.js` in this project or pack. */
-    | "backend-missing";
+    | "backend-missing"
+    /** The project arrived from elsewhere and has not been trusted, so its runtimes are not run. */
+    | "distrusted";
 
 /**
  * "There is nothing to mount, and that is a normal state."

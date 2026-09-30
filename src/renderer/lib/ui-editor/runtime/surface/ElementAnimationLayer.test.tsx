@@ -7,9 +7,10 @@
  * on its own - the plan says when each animation starts, but what keeps the subtree mounted long
  * enough to play is nested presence.
  */
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { AnimatePresence } from "motion/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { useEffect, useState } from "react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
     DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
     type UIPageAnimationSettings,
@@ -112,5 +113,56 @@ describe("element presence", () => {
         view.rerender(tree(false));
 
         await waitFor(() => expect(view.queryByText("content")).toBeNull());
+    });
+
+    /**
+     * A page re-renders while it leaves - a write lands, it stops taking input - and every element on
+     * it hands its presence a new child. A `propagate` presence whose parent is leaving counts no child
+     * as present, so it kept the old one and added the new one under the same key, and React mounted a
+     * second copy of the subtree for each of those renders.
+     */
+    it("mounts nothing new while the page it is on is leaving", async () => {
+        const errors: string[] = [];
+        const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            errors.push(args.map(String).join(" "));
+        });
+        let mounts = 0;
+        function Content() {
+            useEffect(() => {
+                mounts += 1;
+            }, []);
+            return <span>content</span>;
+        }
+        let rerenderPage: (() => void) | null = null;
+        function Page() {
+            const [, setTick] = useState(0);
+            rerenderPage = () => setTick(tick => tick + 1);
+            return (
+                <ElementAnimationPresence timing={FADES_OUT} visible>
+                    <ElementAnimationLayer key="node" timing={FADES_OUT} reducedMotion={false}>
+                        <Content />
+                    </ElementAnimationLayer>
+                </ElementAnimationPresence>
+            );
+        }
+        const tree = (shown: boolean) => <AnimatePresence>{shown ? <Page key="page" /> : null}</AnimatePresence>;
+
+        try {
+            const view = render(tree(true));
+            expect(mounts).toBe(1);
+
+            view.rerender(tree(false));
+            for (let i = 0; i < 3; i++) {
+                act(() => rerenderPage?.());
+            }
+
+            expect(view.getAllByText("content")).toHaveLength(1);
+            expect(mounts).toBe(1);
+            expect(errors.filter(line => line.includes("same key"))).toEqual([]);
+            // Held, not stuck: the page still finishes leaving.
+            await waitFor(() => expect(view.queryByText("content")).toBeNull());
+        } finally {
+            spy.mockRestore();
+        }
     });
 });

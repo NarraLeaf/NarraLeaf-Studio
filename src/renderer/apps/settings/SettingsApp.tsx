@@ -9,6 +9,7 @@ import {
     getAppSettingCategories,
     getSettingByKey,
     getSettingsByCategory,
+    shownSettingValue,
 } from "@/lib/settings/registry";
 import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 import { filterCategoryEntries } from "@/lib/settings/searchSettings";
@@ -226,6 +227,7 @@ export function SettingsApp() {
                 : optionLabels,
             optionColors: setting.optionColors,
             optionFontStacks: setting.optionFontStacks,
+            optionImages: setting.optionImages,
             allowCustomColor: setting.allowCustomColor,
             onPreview: setting.onPreview,
             min: setting.min,
@@ -252,7 +254,7 @@ export function SettingsApp() {
 
     const getSettingValue = useCallback(
         (setting: AppSettingDefinition) => {
-            return values[setting.key] ?? setting.defaultValue;
+            return shownSettingValue(setting, values[setting.key]) as SettingValue;
         },
         [values],
     );
@@ -261,7 +263,8 @@ export function SettingsApp() {
      * Whether a row differs from its default, which is what decides if it offers a reset.
      *
      * Compared structurally because a few entries hold arrays and maps. A key stored *at* its
-     * default reads as unmodified, which is right: deleting it would change nothing observable.
+     * default reads as unmodified, which is right: deleting it would change nothing observable. So
+     * does one the entry resolves to its default (`resolveStoredValue`), for the same reason.
      */
     const isSettingModified = useCallback(
         (setting: AppSettingDefinition) => {
@@ -269,7 +272,7 @@ export function SettingsApp() {
             if (stored === undefined) {
                 return false;
             }
-            return JSON.stringify(stored) !== JSON.stringify(setting.defaultValue);
+            return JSON.stringify(shownSettingValue(setting, stored)) !== JSON.stringify(setting.defaultValue);
         },
         [values],
     );

@@ -44,6 +44,7 @@ export type VoiceEndMode = typeof VOICE_END_MODES[number];
  */
 export const PLAYER_PREFERENCE_KEYS = [
     "cps",
+    "textRevealDuration",
     "gameSpeed",
     "autoForward",
     "autoForwardDelay",
@@ -58,6 +59,7 @@ export const PLAYER_PREFERENCE_KEYS = [
     "voiceVolume",
     "voiceEndMode",
     "voiceFadeDuration",
+    "muteOnWindowBlur",
 ] as const;
 
 export type PlayerPreferenceKey = typeof PLAYER_PREFERENCE_KEYS[number];
@@ -67,6 +69,8 @@ export type PlayerPreferenceValue = boolean | number | VoiceEndMode;
 export type PlayerPreferences = {
     /** Characters per second the dialogue types at. */
     cps: number;
+    /** Milliseconds a newly typed character takes to fade in. `0` types it at full strength. */
+    textRevealDuration: number;
     /** Multiplier over text speed and the auto-forward delay; 1 is the authored pace. */
     gameSpeed: number;
     /** Advance on its own once a line has finished displaying. */
@@ -95,6 +99,8 @@ export type PlayerPreferences = {
     voiceEndMode: VoiceEndMode;
     /** Fade length in milliseconds when `voiceEndMode` is `fade`. */
     voiceFadeDuration: number;
+    /** Silence the game's whole output while its window is not the one the player is working in. */
+    muteOnWindowBlur: boolean;
 };
 
 /**
@@ -147,6 +153,19 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
         min: 1,
         max: 200,
         display: { unit: "cps", control: "field" },
+    },
+    /**
+     * How softly a character arrives, read against the speed it is typed at. The engine brings
+     * it down to what fits between two characters, so a player who wants fast text is not held
+     * to the author's fade; the ceiling here is the longest one worth offering.
+     */
+    textRevealDuration: {
+        key: "textRevealDuration",
+        kind: "number",
+        defaultValue: 0,
+        min: 0,
+        max: 500,
+        display: { unit: "ms", control: "field" },
     },
     gameSpeed: {
         key: "gameSpeed",
@@ -245,6 +264,19 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
         max: 10000,
         display: { unit: "ms", control: "field" },
     },
+    /**
+     * Off by default, and the default is what makes it allowed to be here at all.
+     *
+     * This module holds what an author owns the starting point of, and the rule beside it is that a
+     * preference is for what an author cannot build themselves. This one they could: the focus
+     * event and the volume nodes are both in the catalogue, and the graph is four nodes. It is here
+     * anyway, once, because those four nodes are four nodes about the *window* rather than about
+     * the game, and no author should have to learn what a window is to answer "be quiet when I tab
+     * away". Off by default means a project that ignores it behaves exactly as it did.
+     *
+     * It is the one exception. Anything else that an author could wire belongs in a graph.
+     */
+    muteOnWindowBlur: { key: "muteOnWindowBlur", kind: "boolean", defaultValue: false },
 };
 
 /**
@@ -252,6 +284,7 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
  */
 export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
     cps: 10,
+    textRevealDuration: 0,
     gameSpeed: 1,
     autoForward: false,
     autoForwardDelay: 3000,
@@ -266,6 +299,7 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
     voiceVolume: 1,
     voiceEndMode: "stop",
     voiceFadeDuration: 0,
+    muteOnWindowBlur: false,
 };
 
 /**
@@ -275,15 +309,33 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
  * does skipping run off the end of what I have read" finds it under Skipping rather than three
  * rows below a volume slider.
  */
+/**
+ * The fade a project is created with.
+ *
+ * Not the table's default, which is what a project that has never carried the setting reads as:
+ * a game already written was written against text arriving at full strength, and a value nobody
+ * chose must not change how its lines land. A new project has nothing to be consistent with, and
+ * a soft edge is the better place to start from.
+ */
+export const NEW_PROJECT_TEXT_REVEAL_DURATION = 120;
+
 export const PLAYER_PREFERENCE_GROUPS: readonly {
     id: "dialogue" | "skipping" | "audio";
     keys: readonly PlayerPreferenceKey[];
 }[] = [
-    { id: "dialogue", keys: ["cps", "gameSpeed", "autoForward", "autoForwardDelay", "showDialog"] },
+    { id: "dialogue", keys: ["cps", "textRevealDuration", "gameSpeed", "autoForward", "autoForwardDelay", "showDialog"] },
     { id: "skipping", keys: ["skip", "skipReadText", "skipDelay", "skipInterval"] },
     {
         id: "audio",
-        keys: ["globalVolume", "bgmVolume", "soundVolume", "voiceVolume", "voiceEndMode", "voiceFadeDuration"],
+        keys: [
+            "globalVolume",
+            "bgmVolume",
+            "soundVolume",
+            "voiceVolume",
+            "voiceEndMode",
+            "voiceFadeDuration",
+            "muteOnWindowBlur",
+        ],
     },
 ];
 

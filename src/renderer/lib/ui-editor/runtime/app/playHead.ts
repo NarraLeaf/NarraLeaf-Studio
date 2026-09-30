@@ -46,9 +46,38 @@ export type PlayHead = {
      * for a boot failure and is what makes such a report `session` rather than a row.
      */
     blockId(): string | undefined;
+    /**
+     * The rows this run has named, oldest first, ending with {@link blockId}.
+     *
+     * Kept because a hot reload has to answer "the nearest surviving row before the one you were on"
+     * against a document that no longer contains that row - so there is nothing in the new document
+     * to walk backwards from, and what the run actually played is the only record of what came
+     * before. Bounded (see {@link PLAY_HEAD_TRAIL_LIMIT}); consecutive repeats of one row - a line
+     * re-entered by a loop, or an action chain the compiler stamped more than once - collapse, so
+     * the bound holds a real span of story rather than one row a thousand times.
+     */
+    trail(): readonly string[];
+    /**
+     * Put a run's history back after the environment under it was replaced.
+     *
+     * A hot reload mounts a new session, which resets this one along with everything else the old
+     * environment owned - but the PLAYER did not restart, and the reload puts them back where they
+     * were. Without the history they came with, the first edit after a reload has nothing earlier to
+     * fall back to and sends them to the top of the scene.
+     */
+    seedTrail(rows: readonly string[]): void;
     /** Forget the run. Called wherever a session is torn down or replaced. */
     reset(): void;
 };
+
+/**
+ * How many played rows are remembered.
+ *
+ * The only reader wants the nearest surviving one, so what matters is that the window covers the
+ * rows an author could plausibly delete in one edit - a scene's worth, not a playthrough's. The
+ * entries are ids, so a few hundred of them cost nothing worth measuring.
+ */
+export const PLAY_HEAD_TRAIL_LIMIT = 256;
 
 /**
  * Track the play head against a binding table read at call time.
@@ -60,6 +89,7 @@ export type PlayHead = {
 export function createPlayHead(readBindings: () => readonly PlayHeadActionBinding[]): PlayHead {
     let currentActionId: string | null = null;
     let lastNamedBlockId: string | undefined;
+    let trail: string[] = [];
 
     const named = (actionId: string | null): string | undefined => {
         if (!actionId) {
@@ -76,13 +106,24 @@ export function createPlayHead(readBindings: () => readonly PlayHeadActionBindin
             // where it was, which is the whole point.
             if (blockId) {
                 lastNamedBlockId = blockId;
+                if (trail[trail.length - 1] !== blockId) {
+                    trail.push(blockId);
+                    if (trail.length > PLAY_HEAD_TRAIL_LIMIT) {
+                        trail = trail.slice(trail.length - PLAY_HEAD_TRAIL_LIMIT);
+                    }
+                }
             }
         },
         actionId: () => currentActionId,
         blockId: () => named(currentActionId) ?? lastNamedBlockId,
+        trail: () => trail,
+        seedTrail(rows) {
+            trail = rows.slice(Math.max(0, rows.length - PLAY_HEAD_TRAIL_LIMIT));
+        },
         reset() {
             currentActionId = null;
             lastNamedBlockId = undefined;
+            trail = [];
         },
     };
 }

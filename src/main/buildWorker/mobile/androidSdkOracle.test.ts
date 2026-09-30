@@ -4,9 +4,11 @@ import { existsSync, readdirSync } from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { wrapPackKey } from "@narraleaf/bindings";
 import { validateMobileShellManifest } from "./mobileShellManifest";
 import { runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
+import { parseZipIndex, readLocalEntryDataSpan } from "./zipModel";
 import {
     ANDROID_KEYSTORE_ALIAS,
     ANDROID_KEYSTORE_PASSWORD,
@@ -85,14 +87,17 @@ async function buildApk(signing?: GameBuildWorkerAndroidSigning): Promise<string
     await fs.mkdir(path.join(sourceDir, "assets"), { recursive: true });
     await fs.writeFile(path.join(sourceDir, "assets", "bgm.ogg"), Buffer.alloc(64 * 1024, 9));
 
+    // The container's key, as the manager mints one per build; the shell reads it from shell-config.
+    const contentKey = wrapPackKey(Buffer.alloc(32, 1));
     const job: GameBuildWorkerMobileJob = {
         sourceDir,
+        contentKey,
         templateManifest,
         productName: "Oracle Game",
         appDirBaseName: "Oracle Game",
         orientation: "landscape",
         indexHtmlOverride: "<!doctype html><title>mobile</title>",
-        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
+        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000", contentKey }),
         android: {
             templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
             outputs: { apk: "oracle.apk" },
@@ -160,11 +165,17 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         // protecting only the shell it came from.
         const apk = await buildApk();
         const bytes = await fs.readFile(apk);
-        // The ogg payload is stored uncompressed and far from any header, so
-        // this corrupts game content and nothing structural.
-        const marker = bytes.indexOf(Buffer.alloc(64, 9));
-        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
-        bytes[marker] ^= 0xff;
+        // The payload is sealed into the mobile container, so its plaintext is
+        // not in the APK: the entry is found by name, and one byte of its stored
+        // data - game content, well clear of any header - is flipped.
+        const { wwwRoot } = validateMobileShellManifest(
+            JSON.parse(await fs.readFile(path.join(TEMPLATE_DIR, "manifest.json"), "utf8")),
+        ).android;
+        const entry = parseZipIndex(bytes).entries.find(candidate => candidate.name === `${wwwRoot}assets/bgm.ogg`);
+        expect(entry, "payload entry not found in the APK").toBeDefined();
+        const { start, end } = readLocalEntryDataSpan(bytes, entry!);
+        expect(end - start).toBeGreaterThan(128);
+        bytes[start + 64] ^= 0xff;
         const tampered = path.join(path.dirname(apk), "tampered.apk");
         await fs.writeFile(tampered, bytes);
 

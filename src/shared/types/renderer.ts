@@ -1,8 +1,11 @@
+import type { ProjectTrustRecord } from "./projectTrust";
+import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
+import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
-import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
@@ -26,6 +29,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type {
     BuildPreflightFinding,
@@ -34,7 +38,7 @@ import type {
     GamePatchExportRequest,
     LastGameBuildRun,
 } from "./gameBuild";
-import type { CommandLineBuildEvent } from "./commandLineBuild";
+import type { CommandLineRunEvent } from "./commandLineRun";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -44,6 +48,10 @@ import type {
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { ServerTrustPromptProps } from "./serverTrust";
 import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "./blueprint/screenshot";
 import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -57,6 +65,7 @@ import type {
     PluginInstallResult,
     PluginListItem,
     RuntimePluginDescriptor,
+    RuntimePluginExclusion,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
@@ -90,7 +99,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -113,7 +122,6 @@ export interface RendererPrivilegedInterface {
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         /** See `PrivilegedFileSystemCall`'s `writeFileNoFollowOrCreate`. */
         writeFileNoFollowOrCreate(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-        recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -213,7 +221,6 @@ export interface RendererPreloadedInterface {
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-        recoverCorruptedJsonFile(path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -236,6 +243,11 @@ export interface RendererPreloadedInterface {
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
     /** Pick the `.nlspkg` an import unpacks; the chosen file becomes readable to this window. */
     selectProjectPackage(): Promise<RequestStatus<{ dest: string | null }>>;
+    /**
+     * Report a project the wizard has just written, so it opens as Studio's own rather than
+     * waiting for the author to trust it. Answered for the wizard window only.
+     */
+    registerCreatedProject(projectPath: string): Promise<RequestStatus<{ recorded: boolean }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
@@ -328,6 +340,19 @@ export interface RendererPreloadedInterface {
          * when the workspace actually came up.
          */
         setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /**
+         * Take this window's project for this Studio, or find out which one already has it.
+         *
+         * Answered from the window's own props, so it needs no argument and cannot be pointed
+         * anywhere else. A refusal means this window may not write anything belonging to the
+         * project - not a normalised document, not an auto-save, not a checkpoint.
+         */
+        acquireSessionLock(): Promise<RequestStatus<ProjectSessionLockOutcome>>;
+        /**
+         * Another NarraLeaf Studio has taken this window's project over. From receipt, nothing this
+         * window holds may be written - see `workspace.sessionTakenOver`.
+         */
+        onSessionTakenOver(handler: (holder: ProjectSessionHolder) => void): AppEventToken;
         /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
         liveIntentTaken(): Promise<RequestStatus<void>>;
         /**
@@ -371,7 +396,7 @@ export interface RendererPreloadedInterface {
          * it is written, then the outcome. Sent by nothing else - a workspace somebody opened has
          * no command-line build to report on.
          */
-        reportCommandLineBuild(event: CommandLineBuildEvent): void;
+        reportCommandLineRun(event: CommandLineRunEvent): void;
         /**
          * Tell main whether this workspace's project data is frozen; null means it is writable.
          *
@@ -387,6 +412,34 @@ export interface RendererPreloadedInterface {
         reportWriteFreeze(reason: WorkspaceFreezeKind | null, revision?: RevisionId): void;
         /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
         onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
+    };
+
+    // Project trust
+    /**
+     * Whether a project may cause effects, and the author's answer.
+     *
+     * Reading is a courtesy to the interface - it is how a control stops being offered. The
+     * refusals themselves are in main, beside the operations they refuse, because the code being
+     * judged runs in a renderer and a renderer's belief is not a boundary.
+     */
+    projectTrust: {
+        query(projectPath: string): Promise<RequestStatus<{
+            trusted: boolean;
+            record: ProjectTrustRecord | null;
+        }>>;
+        grant(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
+        /** A workspace open on the project reloads, and what the project was running stops. */
+        revoke(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
+        list(): Promise<RequestStatus<{
+            trusted: ProjectTrustRecord[];
+            distrusted: ProjectTrustRecord[];
+        }>>;
+        /**
+         * Put the trust question for this window's own project, in a window of Studio's own. The
+         * host writes the grant and reloads this window if the author agrees; the answer is what
+         * the ledger says afterwards.
+         */
+        prompt(): Promise<RequestStatus<{ trusted: boolean }>>;
     };
 
     // App
@@ -481,6 +534,18 @@ export interface RendererPreloadedInterface {
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
+        /**
+         * Hand the project's scripts folder to whatever the author edits with.
+         *
+         * Studio has no script editor: `<project>/scripts/` is the one directory the disk owns, and
+         * a second writer over those bytes is what that boundary exists to prevent. The folder is
+         * what is opened - a script resolves its types from the tsconfig and declarations in it -
+         * with the file passed alongside so the editor lands on it. The host refuses any project but
+         * this window's, any path but a script under `scripts/`, and any target but one it offered.
+         */
+        openScript(projectPath: string, scriptRef?: string, target?: ScriptOpenTargetId): Promise<RequestStatus<void>>;
+        /** Which editors this machine can open that folder in. Reads PATH; opens nothing. */
+        listScriptEditors(): Promise<RequestStatus<ExternalScriptEditor[]>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         /** Each remembered project's own app icon as a `data:` URL. Projects without one are absent. */
@@ -502,6 +567,11 @@ export interface RendererPreloadedInterface {
          * directory" call.
          */
         openLogsFolder(): Promise<RequestStatus<void>>;
+        /**
+         * Open Studio's third-party notice in the system's text editor. Takes no path: the file is
+         * the one main knows, in the app's resources.
+         */
+        openThirdPartyNotices(): Promise<RequestStatus<void>>;
         /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.
@@ -561,13 +631,58 @@ export interface RendererPreloadedInterface {
         stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /**
+         * The stage inside the Dev Mode window, sized the way a packaged game sizes its own.
+         *
+         * `chrome` is the window's content minus the box the stage is drawn into, which only the
+         * renderer can measure - the window is Studio's, and what Studio draws around the stage is
+         * not part of what a game is asking about.
+         */
+        getWindowScaleOptions(
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<{ scales: number[] }>>;
+        setStageSize(
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<void>>;
         /** Fullscreen state of the Dev Mode window itself. */
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
         onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
+        /**
+         * Whether the Dev Mode window has the author's attention, from the process that owns it.
+         *
+         * The page's own `hasFocus` is a different question: it is false while Studio's developer
+         * tools hold the keyboard, and an author with the console open has not gone anywhere.
+         */
+        getWindowFocused(): Promise<RequestStatus<{ isFocused: boolean }>>;
+        onWindowFocusChanged(handler: (payload: { isFocused: boolean }) => void): AppEventToken;
+        /**
+         * What this window's own renderer process holds in memory, for a runtime plugin granted
+         * `process.memory`. The window's process only: everything around it is Studio's.
+         */
+        readProcessMemory(): Promise<RequestStatus<{ reading: GameProcessMemoryReading }>>;
+        /** Capture this window and write the picture into the project's Dev Mode data. */
+        saveScreenshot(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<BlueprintScreenshotResult>>;
+        openScreenshotsFolder(
+            projectRef: DevModeSaveProjectRef,
+        ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        /**
+         * Start this story in the window that is already open, replacing whatever is playing. Sent
+         * immediately before the bundle it was compiled against; `token` rises per request.
+         */
+        onControlStartStory(handler: (payload: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
+        }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
         onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;
@@ -593,7 +708,7 @@ export interface RendererPreloadedInterface {
         resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         /** Every asset the workspace can resolve, in one round trip, keyed by asset id. */
-        resolveAllAssetUrls(): Promise<RequestStatus<{ urls: Record<string, string> }>>;
+        resolveAllAssetUrls(): Promise<RequestStatus<AssetUrlDirectory>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
@@ -616,12 +731,16 @@ export interface RendererPreloadedInterface {
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
             delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };
+        /** Clear every Dev Mode save slot and the persistence store for one project. */
+        resetData(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<void>>;
     };
 
     preview: {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+        /** Clear the Preview save slots and persistence file; refuses while a preview is running. */
+        resetData(projectPath: string): Promise<RequestStatus<void>>;
     };
 
     /**
@@ -859,12 +978,25 @@ export interface RendererPreloadedInterface {
          */
         getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
         /**
-         * Who this installation is signed in to this project's server as, or null.
+         * The sign-in this project uses at its server, and the one it could.
          *
-         * A LOCAL read - no socket - so a panel may ask it on open. Null on a project
-         * whose server does not ask who is calling, which is every bare `loreserver`.
+         * A LOCAL read - no socket - so a panel may ask it on open. `session` is null on a
+         * project whose server does not ask who is calling, which is every bare `loreserver`,
+         * and on one that does not use the sign-in held for its server - never asked, or
+         * answered no - which then comes back as `available`.
          */
-        getServerSession(projectPath: string): Promise<RequestStatus<{ session: VcsServerSession | null }>>;
+        getServerSession(projectPath: string): Promise<RequestStatus<VcsProjectServerSession>>;
+        /**
+         * Ask whether this project uses the sign-in held for its server.
+         *
+         * The question goes up in a window of Studio's own and the main process records the
+         * answer; what comes back is where the project stands afterwards. Asks even where the
+         * answer was once no - calling this is the author asking again.
+         *
+         * `remoteOrigin` asks about a server the project is not connected to yet, and the answer is
+         * then about that server.
+         */
+        useServerSession(projectPath: string, remoteOrigin?: string): Promise<RequestStatus<VcsProjectServerSession>>;
         /**
          * Sign this installation in to this project's server with a token its operator
          * issued.
@@ -883,9 +1015,18 @@ export interface RendererPreloadedInterface {
          *
          * **Changes a setting of the operating system**, which nothing else on this
          * interface does. Only a certificate Studio itself wrote is eligible.
+         *
+         * Names no project, unlike the rest of this section: an authority is trusted for
+         * the account, and the window that asks is the server-trust prompt, which has no
+         * project of its own.
          */
-        trustAuthority(projectPath: string, certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
-        /** Clear the stored token and Studio's record of whose it was. Local. */
+        trustAuthority(certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
+        /**
+         * Stop this project using the sign-in held for its server. Local.
+         *
+         * Per project: the sign-in stays on this machine for the projects that use it, and
+         * taking it off altogether is `forgetServer`.
+         */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
         /**
          * Ask an `nlteam://` address what is behind it.
@@ -1195,12 +1336,11 @@ export interface RendererPreloadedInterface {
          * One Open Link node request, decided and performed by the main process for a Dev Mode
          * preview.
          *
-         * `projectPath` decides whose declared addresses apply; the handler reads them off disk
-         * rather than taking the renderer's word for it, so a preview refuses exactly what the
-         * shipped game refuses.
+         * Only the address crosses. The handler decides on its scheme, as the shipped game's main
+         * process does, and takes whose request it is from the window - so a preview refuses
+         * exactly what the shipped game refuses, and a distrusted project refuses it here first.
          */
         open(
-            projectPath: string,
             request: BlueprintOpenExternalRequest,
         ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
         /**
@@ -1247,7 +1387,11 @@ export interface RendererPreloadedInterface {
         uninstall(pluginId: string): Promise<RequestStatus<void>>;
         revoke(pluginId: string): Promise<RequestStatus<PluginListItem>>;
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
-        getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
+        getRuntimePlugins(): Promise<RequestStatus<{
+            plugins: RuntimePluginDescriptor[];
+            /** Enabled runtime plugins this project leaves out, and why. */
+            excluded: RuntimePluginExclusion[];
+        }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
         getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;
@@ -1270,7 +1414,7 @@ export interface RendererPreloadedInterface {
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
         /** `locale` picks the template's own copy of its content written in that language, if it has one. */
-        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; contentLocale?: string }>>;
+        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string }>>;
     };
 
     assets: {

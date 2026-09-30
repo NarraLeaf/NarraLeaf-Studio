@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
+import type {
+    AutoSaveEntry,
+    SaveRecordLine,
+    SaveRecordPlaytime,
+    SaveRecordStory,
+    SaveRecordTimes,
+} from "@shared/types/saves";
+import { SCREENSHOT_UNSUPPORTED_MESSAGE } from "@shared/types/blueprint/screenshot";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -142,6 +149,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -370,6 +378,16 @@ const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
 const NO_DECLARED_LINKS: BlueprintHostApiRuntime["navigation"]["openExternal"] =
     async () => ({ outcome: "refused", error: "not declared" });
 
+/** A host with no window to picture and nowhere to keep a file, which is every host in this file. */
+const NO_SCREENSHOTS: Pick<
+    BlueprintHostApiRuntime["navigation"],
+    "saveScreenshot" | "openScreenshotsFolder" | "isWindowFocused"
+> = {
+    saveScreenshot: async () => ({ outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE }),
+    openScreenshotsFolder: async () => ({ outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE }),
+    isWindowFocused: async () => true,
+};
+
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
         host: "player",
@@ -395,6 +413,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getWindowSize: async () => ({ width: 0, height: 0 }),
                     setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {} as any,
@@ -442,6 +461,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSaveStory: async () => null,
                     getSavePlaytime: async () => null,
                     getPlaytime: () => 0,
                     getTotalPlaytime: () => 0,
@@ -561,6 +581,7 @@ function createPageNavigationHostAdapter(
                         openedExternalUrls.push(request.url);
                         return { outcome: "opened", error: null };
                     },
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {
@@ -630,6 +651,7 @@ function createPageNavigationHostAdapter(
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSaveStory: async () => null,
                     getSavePlaytime: async () => null,
                     getPlaytime: () => 0,
                     getTotalPlaytime: () => 0,
@@ -704,6 +726,7 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     saveTimes?: SaveRecordTimes | null;
     saveLine?: SaveRecordLine | null;
+    saveStory?: SaveRecordStory | null;
     savePlaytime?: SaveRecordPlaytime | null;
     playtimeSeconds?: number;
     totalPlaytimeSeconds?: number;
@@ -769,6 +792,7 @@ function createGameSaveHostAdapter(options: {
                     getWindowSize: async () => ({ width: 0, height: 0 }),
                     setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {} as any,
@@ -821,6 +845,7 @@ function createGameSaveHostAdapter(options: {
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSaveTimes: async () => options.saveTimes ?? null,
                     getSaveLine: async () => options.saveLine ?? null,
+                    getSaveStory: async () => options.saveStory ?? null,
                     getSavePlaytime: async () => options.savePlaytime ?? null,
                     getPlaytime: () => options.playtimeSeconds ?? 0,
                     getTotalPlaytime: () => options.totalPlaytimeSeconds ?? 0,
@@ -1254,12 +1279,6 @@ describe("built-in blueprint nodes", () => {
                 widgetElementType: "nl.button",
             }).map(entry => entry.type),
         );
-        const sharedAssetPaletteTypes = new Set(
-            blueprintNodeRegistry.listPaletteEntries({
-                graphKind: "event",
-                owner: { kind: "sharedAsset", assetId: "dialog-template" },
-            }).map(entry => entry.type),
-        );
         const valuePaletteTypes = new Set(
             blueprintNodeRegistry.listPaletteEntries({
                 graphKind: "event",
@@ -1277,7 +1296,6 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(componentWidgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
-        expect(sharedAssetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
     });
 
@@ -1341,36 +1359,8 @@ describe("built-in blueprint nodes", () => {
         });
         expect(localsFromStored.captured).toBe(42);
 
-        delete store["settings.volume"];
-        const localsFromDefault: Record<string, unknown> = {};
-        await executeGraph({
-            graph: {
-                id: "getDefault",
-                entries: { main: { start: { nodeId: "get", port: "in" } } },
-                nodes: {
-                    get: {
-                        id: "get",
-                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
-                        params: { persistentVariableId: "volume" },
-                    },
-                    capture: {
-                        id: "capture",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "captured" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "get", port: "next" }, to: { nodeId: "capture", port: "in" } },
-                    { from: { nodeId: "get", port: "value" }, to: { nodeId: "capture", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "get", port: "in" } },
-            hostAdapter: createPersistenceHostAdapter(store),
-            blueprintLocals: localsFromDefault,
-            persistentVariables,
-        });
-        expect(localsFromDefault.captured).toBe(7);
-        expect(store["settings.volume"]).toBeUndefined();
+        // What an unwritten variable reads as is the persistence scope's answer, not this node's:
+        // `persistentDefaultOnFirstRead.test.ts` runs the node against the real host for that.
 
         await executeGraph({
             graph: {
@@ -1882,7 +1872,7 @@ describe("built-in blueprint nodes", () => {
         it("refuses when nothing is asking to close the window", async () => {
             // No dispatch at all - a macro run by hand, or a graph under the wrong head.
             await expect(runKeepWindowOpen({})).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
         });
 
@@ -1892,7 +1882,7 @@ describe("built-in blueprint nodes", () => {
             const eventControl = createEventControl();
 
             await expect(runKeepWindowOpen({ eventName: "keyDown", eventControl })).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
             expect(eventControl.isPropagationStopped()).toBe(false);
         });
@@ -2061,7 +2051,7 @@ describe("built-in blueprint nodes", () => {
                 entry: { start: { nodeId: "head", port: "in" } },
                 hostAdapter: createPageNavigationHostAdapter([]),
                 blueprintLocals: {},
-            })).rejects.toThrow(/no game running/);
+            })).rejects.toThrow(/there is no running game to capture/);
         });
 
         /**
@@ -2858,6 +2848,74 @@ describe("built-in blueprint nodes", () => {
         expect(localsFromMissingLine.speaker).toBe("");
         expect(localsFromMissingLine.exists).toBe(false);
 
+        // Get Save Story answers which of the project's stories a slot was written in, so a load
+        // screen can group its grid by route and say on the row that a slot comes from elsewhere.
+        // Read back through Set Local rather than off `execute`: the output pins only reach a
+        // downstream node through the param resolvers, and that read path is what has to work.
+        const readSaveStory = async (
+            saveStory: SaveRecordStory | null,
+            locals: Record<string, unknown>,
+        ): Promise<void> => {
+            await executeGraph({
+                graph: {
+                    id: "storySave",
+                    entries: { main: { start: { nodeId: "story", port: "in" } } },
+                    nodes: {
+                        story: {
+                            id: "story",
+                            type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+                            params: { id: "slot-a" },
+                        },
+                        captureName: {
+                            id: "captureName",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "storyName" },
+                        },
+                        captureId: {
+                            id: "captureId",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "storyId" },
+                        },
+                        captureExists: {
+                            id: "captureExists",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "exists" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "story", port: "next" }, to: { nodeId: "captureName", port: "in" } },
+                        { from: { nodeId: "story", port: "storyName" }, to: { nodeId: "captureName", port: "value" } },
+                        { from: { nodeId: "captureName", port: "next" }, to: { nodeId: "captureId", port: "in" } },
+                        { from: { nodeId: "story", port: "storyId" }, to: { nodeId: "captureId", port: "value" } },
+                        { from: { nodeId: "captureId", port: "next" }, to: { nodeId: "captureExists", port: "in" } },
+                        { from: { nodeId: "story", port: "exists" }, to: { nodeId: "captureExists", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "story", port: "in" } },
+                hostAdapter: createGameSaveHostAdapter({ saveStory }),
+                blueprintLocals: locals,
+            });
+        };
+        const localsFromStory: Record<string, unknown> = {};
+        await readSaveStory({ id: "story-1", name: "Ashes of Winter" }, localsFromStory);
+        expect(localsFromStory.storyName).toBe("Ashes of Winter");
+        expect(localsFromStory.storyId).toBe("story-1");
+        expect(localsFromStory.exists).toBe(true);
+
+        // A real slot whose story this build does not ship: the reference is known and there is
+        // nothing to call it. Both halves are reported, because a save screen draws them apart.
+        const localsFromUnshippedStory: Record<string, unknown> = {};
+        await readSaveStory({ id: "story-gone", name: "" }, localsFromUnshippedStory);
+        expect(localsFromUnshippedStory.storyName).toBe("");
+        expect(localsFromUnshippedStory.storyId).toBe("story-gone");
+        expect(localsFromUnshippedStory.exists).toBe(true);
+
+        const localsFromMissingStory: Record<string, unknown> = {};
+        await readSaveStory(null, localsFromMissingStory);
+        expect(localsFromMissingStory.storyName).toBe("");
+        expect(localsFromMissingStory.storyId).toBe("");
+        expect(localsFromMissingStory.exists).toBe(false);
+
         const loadedIds: string[] = [];
         const localsAfterLoad: Record<string, unknown> = {};
         await executeGraph({
@@ -2931,8 +2989,14 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterAutoSave.afterAutoSave).toBe("continued");
 
         const autoSaves: AutoSaveEntry[] = [
-            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, metadata: { chapter: 2 } },
-            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, metadata: null },
+            {
+                id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, preview: null,
+                line: "We came back.", speaker: "Narra", metadata: { chapter: 2 },
+            },
+            {
+                id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, preview: null,
+                line: "", speaker: "", metadata: null,
+            },
         ];
         const localsFromAutoList: Record<string, unknown> = {};
         await executeGraph({
@@ -3136,7 +3200,7 @@ describe("built-in blueprint nodes", () => {
             entry: { start: { nodeId: "restore", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ restoredIds: [] }),
             blueprintLocals: {},
-        })).rejects.toThrow(/entry id is required/);
+        })).rejects.toThrow("“Restore From History”: “Entry Id” is empty.");
     });
 
     it("reads the lines ahead of the play head and steps forward into them", async () => {
@@ -3626,7 +3690,9 @@ describe("built-in blueprint nodes", () => {
         expect(setVariant?.inspectorParams).toBeUndefined();
         expect(setVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
         expect(setVariant?.scope).toMatchObject({
-            ownerKinds: ["widgetMain"],
+            // Both widget owners: a component definition's graph acts on its own widget too, and
+            // writes land on the instance rather than on the definition every instance shares.
+            ownerKinds: ["widgetMain", "componentWidgetMain"],
             widgetElementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
         });
 
@@ -5671,7 +5737,7 @@ describe("built-in blueprint nodes", () => {
             },
             entry: { start: { nodeId: "choose", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
-        })).rejects.toThrow("Select Choice: index must be a non-negative integer");
+        })).rejects.toThrow("“Index” must be a whole number, 0 or greater.");
     });
 
     it("exposes Blueprint Value nodes through the editor palette facade", () => {
@@ -6403,7 +6469,7 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter,
                 executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
             }),
-        )).rejects.toThrow("cannot target nl.slider");
+        )).rejects.toThrow("This node cannot act on this kind of widget.");
         expect(setVariantCalled).toBe(false);
     });
 
@@ -7698,7 +7764,7 @@ describe("fn blueprint nodes", () => {
                 params: { fnRef: "fn:bp-a:head" },
                 hostAdapter: { host: "player" },
             }),
-        ).rejects.toThrow(/Fn runtime is unavailable/);
+        ).rejects.toThrow("“Call Fn” needs a running game.");
 
         await expect(
             callDef.execute({
@@ -7716,7 +7782,7 @@ describe("fn blueprint nodes", () => {
                     },
                 },
             }),
-        ).rejects.toThrow(/Pick a function/);
+        ).rejects.toThrow("“Call Fn”: pick a function.");
     });
 
     it("resolves fn head parameter pins with per-pin labels and types", () => {

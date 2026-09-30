@@ -595,6 +595,26 @@ export function patchTextAppearanceDefaultRows(
 }
 
 /**
+ * The default variant's rows for `keys`, rewritten to what `props` now holds.
+ *
+ * A text that carries an appearance model - every text made in Studio does - is painted from those
+ * rows rather than from its flat props, so a change to the flat props that does not reach the rows
+ * is a change nobody sees. The inspector keeps the two in step with {@link patchTextAppearanceDefaultRows};
+ * this is the same step for a caller that holds the props rather than the row values.
+ */
+export function syncTextAppearanceDefaultRowsFromProps(
+    model: AppearanceModel,
+    props: TextWidgetProps,
+    keys: readonly TextAppearancePropertyKey[],
+): AppearanceModel {
+    const updates: Partial<Record<TextAppearancePropertyKey, AppearanceValueRow["value"]>> = {};
+    for (const key of keys) {
+        updates[key] = textRowValue(props, key).value;
+    }
+    return patchTextAppearanceDefaultRows(model, updates);
+}
+
+/**
  * Append missing property groups for older `nl.image` documents (pre-appearance or pre-transform keys).
  */
 export function ensureImageAppearanceHasAllKeys(model: AppearanceModel, element: UIElement): AppearanceModel {

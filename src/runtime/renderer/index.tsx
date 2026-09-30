@@ -12,6 +12,7 @@ import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
 import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 import { getActiveProjectLocale, subscribeActiveProjectLocale } from "@shared/typography/projectFonts";
 import { installDocumentLanguage } from "./documentLanguage";
+import { publishGameLaunch } from "@/lib/ui-editor/runtime/app/gameTimeline";
 
 // Before anything else, including the missing-root check below: what this build does about a crash
 // has to be settled before there is any chance of one, and read from the page's own address rather
@@ -21,6 +22,10 @@ import { installDocumentLanguage } from "./documentLanguage";
 const shell = readGameRuntimeIndexUrl(window.location.search);
 setRuntimeCrashPolicy(shell.policy);
 setRuntimeShellLogPath(shell.logPath);
+
+// When the process began and what it did before this page, as the `nl.launch` mark every boot
+// phase is placed against. The web export states none and gets a timeline that starts at its page.
+publishGameLaunch(shell.launch);
 
 // Ahead of React, so a throw during boot is observed too - that is the window in which a broken
 // pack most often dies.

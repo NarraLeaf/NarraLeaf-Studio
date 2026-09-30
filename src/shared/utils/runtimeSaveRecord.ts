@@ -6,6 +6,7 @@ import {
     readSaveCompatibilityStamp,
     type SaveCompatibilityStamp,
 } from "@shared/types/saveCompatibility";
+import type { SaveRecordLine } from "@shared/types/saves";
 
 /**
  * Persisted shape of one game save. Shared by every runtime shell: the desktop
@@ -29,6 +30,27 @@ export function readSavePlaytimeSeconds(value: unknown): number | undefined {
         return undefined;
     }
     return value;
+}
+
+/**
+ * The sentence a serialized game was left on, and who spoke it.
+ *
+ * The engine stamps both onto `SavedGameMetaData` on every serialize, so this describes the line the
+ * save actually resumes from rather than whatever a backlog happened to end with. One reader for
+ * both callers - the `Get Save Line` node and the auto-save rows a list draws - because a save
+ * screen that showed two different answers for the same slot would be showing two truths.
+ *
+ * Empty strings for a record that carries none: a save taken before any line played, or one written
+ * by something that stamped nothing. That is a real slot with nothing to quote, which the caller
+ * still has to draw a row for.
+ */
+export function readSavedGameLine(savedGame: unknown): SaveRecordLine {
+    const meta = savedGame && typeof savedGame === "object"
+        ? (savedGame as { meta?: unknown }).meta
+        : undefined;
+    const fields = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+    const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+    return { line: toText(fields.lastSentence), speaker: toText(fields.lastSpeaker) };
 }
 
 export function normalizeRuntimeSaveId(id: string): string {

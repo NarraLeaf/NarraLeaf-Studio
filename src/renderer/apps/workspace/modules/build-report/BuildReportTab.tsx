@@ -178,7 +178,19 @@ export function BuildReportTab() {
                                         className="flex items-baseline gap-2 rounded-md px-1.5 py-1"
                                         data-tip={artifact.path}
                                     >
-                                        <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">{artifact.name}</span>
+                                        <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
+                                            {/*
+                                              * The folder inside the output folder, ahead of the
+                                              * name and set back from it: a multi-target run puts
+                                              * its web export, its DLC paks and its installers in
+                                              * different places, and a column of bare file names
+                                              * is a list the author still has to go and find.
+                                              */}
+                                            {artifact.location
+                                                ? <span className="text-fg-subtle">{artifact.location}</span>
+                                                : null}
+                                            {artifact.name}
+                                        </span>
                                         <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
                                             {artifact.bytes === undefined ? t("build.size.unknown") : formatByteSize(artifact.bytes)}
                                         </span>
@@ -227,7 +239,11 @@ export function BuildReportTab() {
                                             <li
                                                 key={character.id}
                                                 className="flex items-baseline gap-2 rounded-md px-1.5 py-1"
-                                                data-tip={character.id}
+                                                // The name, not the id: a row here can be narrow enough to
+                                                // truncate, and the tooltip is what reads the whole of it.
+                                                // An id is never something to put in front of an author, and
+                                                // a tooltip is on the interface like anything else.
+                                                data-tip={character.name}
                                             >
                                                 <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                                                     {character.name}
@@ -291,11 +307,14 @@ function CompressionSection({ report }: { report: AssetCompressionReport }) {
 }
 
 /**
- * The output folder, and the one thing that can be done with the path from here.
+ * The output folder, and the two things that can be done with the path from here.
  *
- * The path copies rather than opens: revealing a folder is a main-process operation, and the only
- * one the renderer can reach reveals the project rather than an arbitrary directory. A build that
- * was asked to open its output folder when done has already done so.
+ * The path itself is selectable so it can be copied, and the button hands it to the desktop's file
+ * manager. The renderer names only the project when it asks: the folder opened is the one the
+ * pipeline recorded for the run, which is why no arbitrary directory can be reached this way.
+ *
+ * Offered even though a build asked to open its output folder when done has already done so - that
+ * is a checkbox the author may have cleared, and a report read a day later is nobody's live window.
  */
 function OutputFolderRow({ path, onReveal }: { path: string; onReveal: () => void }) {
     const { t } = useTranslation();
@@ -436,7 +455,10 @@ function ShippedAssetGroupRow({
                         <li
                             key={entry.id}
                             className="flex items-baseline gap-2 rounded-md px-1.5 py-0.5"
-                            data-tip={entry.id}
+                            // The asset's name rather than its id, for the reason the character rows
+                            // above give: the tooltip is the whole of a truncated name, and a
+                            // generated id belongs nowhere on the interface, tooltips included.
+                            data-tip={entry.name}
                         >
                             <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">{entry.name}</span>
                             <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">

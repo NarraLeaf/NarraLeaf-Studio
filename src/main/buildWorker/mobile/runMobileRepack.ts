@@ -1,12 +1,11 @@
 import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
-import { createReadStream } from "fs";
 import path from "path";
 import { packBuffer } from "@narraleaf/bindings";
 import { readKeystore } from "./keystoreReader";
 import { buildAab } from "./buildAab";
 import { signJar } from "./jarSigning";
-import { repackApk } from "./repackApk";
+import { repackApk, type ApkWwwEntry } from "./repackApk";
 import { repackIpa } from "./repackIpa";
 import { signIpa } from "./signIpa";
 import {
@@ -14,7 +13,6 @@ import {
     toApkSigningIdentity,
     type ApkSigningIdentity,
 } from "./signingIdentity";
-import type { ZipEntrySource } from "./zipWriter";
 import { countBuildStep } from "../stepProgress";
 import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
@@ -35,7 +33,7 @@ export type MobileRepackLogger = (level: "info" | "warning" | "error", message: 
 type SiteFile = { relativePath: string; absolutePath: string; size: number };
 
 /** Structurally what both repack orchestrators accept as a payload file. */
-type SiteEntry = { relativePath: string; source: ZipEntrySource };
+type SiteEntry = { relativePath: string; source: ApkWwwEntry["source"] };
 
 /**
  * The finished archive is assembled in memory (both repack orchestrators are
@@ -82,45 +80,38 @@ async function collectSiteFiles(sourceDir: string): Promise<SiteFile[]> {
 }
 
 /**
- * Turn the collected site files into repack entries. With a `contentKey`, every
- * payload file is protected as it is read (all-or-nothing: the shell assumes the
- * whole payload under wwwRoot is protected, so the index override below is
- * protected too). Without one, files stream through untouched. `shell-config.json`
- * is written outside wwwRoot by the repackers and stays plain either way — the
- * shell needs it to bootstrap.
+ * Turn the collected site files into repack entries, each sealed into the container the mobile
+ * shells read their payload from.
+ *
+ * The container is the format a mobile package keeps its content in, and nothing more: the key
+ * that opens it travels inside the same package (in `shell-config.json`, which the repackers
+ * write outside wwwRoot and leave plain, because the shell needs it to bootstrap), so it is not
+ * asset protection and nothing in the build calls it that. It is applied to every mobile build,
+ * whatever the project's protection switch says, the way the pack format is applied to every
+ * desktop build. All-or-nothing: the shell assumes everything under wwwRoot is in the container,
+ * so the index override below goes in too.
  */
 async function siteEntries(
     files: SiteFile[],
     indexHtmlOverride: string,
-    contentKey: string | undefined,
+    contentKey: string,
 ): Promise<SiteEntry[]> {
     const entries: SiteEntry[] = [];
-    // Counted only when there is a key, because only then is there any work here to count: without
-    // one this loop builds a stream descriptor per file and is over in a moment, and a bar that
-    // fills and empties inside one frame reports nothing anybody can read. With one it is a read
-    // and an encryption of every file in the game, which is minutes for a voiced project.
-    const counted = countBuildStep(contentKey ? files.length : 0, "file");
+    // A read and a seal of every file in the game, which is minutes for a voiced project, so the
+    // bar counts it.
+    const counted = countBuildStep(files.length, "file");
     for (const file of files) {
-        if (contentKey) {
-            // Read and protect one file at a time. The package is assembled in
-            // memory anyway (see MAX_PAYLOAD_BYTES), so this holds one plaintext
-            // file beyond that, not the whole payload at once.
-            const data = packBuffer(await fs.readFile(file.absolutePath), contentKey);
-            entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
-            counted.advance();
-        } else {
-            entries.push({
-                relativePath: file.relativePath,
-                source: { kind: "stream", size: file.size, open: () => createReadStream(file.absolutePath) },
-            });
-        }
+        // One file at a time. The package is assembled in memory anyway (see MAX_PAYLOAD_BYTES), so
+        // this holds one plaintext file beyond that, not the whole payload at once.
+        const data = packBuffer(await fs.readFile(file.absolutePath), contentKey);
+        entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+        counted.advance();
     }
     // The mobile entry document replaces the web one in the payload only; the
     // shared staging-web dir on disk stays exactly what the web target ships.
-    const overrideBytes = Buffer.from(indexHtmlOverride, "utf8");
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: contentKey ? packBuffer(overrideBytes, contentKey) : overrideBytes },
+        source: { kind: "buffer", data: packBuffer(Buffer.from(indexHtmlOverride, "utf8"), contentKey) },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {
@@ -203,8 +194,8 @@ export async function runMobileRepack(
     const artifacts: string[] = [];
     const files = await collectSiteFiles(job.sourceDir);
     await fs.mkdir(outputDir, { recursive: true });
-    // Built once and shared by both platforms: with a key, protecting the
-    // payload twice would be wasted work, and the bytes are identical anyway.
+    // Built once and shared by both platforms: sealing the payload twice would be wasted work, and
+    // the bytes are identical anyway.
     const www = await siteEntries(files, job.indexHtmlOverride, job.contentKey);
 
     if (job.android) {

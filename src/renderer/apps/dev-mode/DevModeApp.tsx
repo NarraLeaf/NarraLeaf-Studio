@@ -8,6 +8,7 @@ export function DevModeApp() {
     const {
         bundle,
         entry,
+        launchRequest,
         projectPath,
         surface,
         surfaceId,
@@ -24,6 +25,7 @@ export function DevModeApp() {
                 <DevModeContent
                     bundle={bundle}
                     entry={entry}
+                    launchRequest={launchRequest}
                     projectPath={projectPath}
                     surface={surface}
                     surfaceId={surfaceId}

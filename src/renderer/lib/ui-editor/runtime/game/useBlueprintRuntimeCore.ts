@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 import { setBlueprintDebugController } from "@/lib/ui-editor/behavior-graph/debugControl";
 import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import { BlueprintDebugSession } from "@/lib/ui-editor/blueprint-runtime/BlueprintDebugSession";
 import { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
-import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
+import {
+    mountBlueprintCompiledScripts,
+    type BlueprintScriptIssue,
+} from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
 import {
     ScopeStoreBridge,
     type BlueprintPersistentStoreAdapter,
@@ -34,6 +38,14 @@ export type BlueprintRuntimeCoreOptions = {
      * entirely rather than behind a flag the game could flip.
      */
     debuggerEnabled?: boolean;
+    /**
+     * Where a script blueprint that will not run is reported.
+     *
+     * Passed by the hosts that have somewhere to put it - Dev Mode draws an issues list - and
+     * omitted by the ones that do not. Must be stable across renders: it is in this effect's
+     * dependency list, so a fresh function every render would remount every script.
+     */
+    onScriptIssue?: (issue: BlueprintScriptIssue) => void;
 };
 
 /**
@@ -49,19 +61,21 @@ export function useBlueprintRuntimeCore(
     const onDebugEvent = options.onDebugEvent;
     const disposeMessage = options.disposeMessage ?? "Blueprint runtime disposed";
     const debuggerEnabled = options.debuggerEnabled ?? false;
+    const onScriptIssue = options.onScriptIssue;
 
     useEffect(() => {
         if (!bundle) {
             setSession(null);
             return;
         }
-        mountBlueprintCompiledScripts(bundle);
         const debugSession = debuggerEnabled ? new BlueprintDebugSession() : null;
         if (debugSession) {
             setBlueprintDebugController(debugSession);
         }
         const nextSession: BlueprintRuntimeCore = {
-            scopeBridge: new ScopeStoreBridge(),
+            // The bundle's declared defaults go in with the scope rather than after it: the first
+            // reader - a title screen's Init, a value binding drawing - may run in the same commit.
+            scopeBridge: new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults(bundle) }),
             debug: new DebugBridge(),
             bindingDebugCoalescer: new BindingDebugCoalescer(),
             executionManager: new BlueprintExecutionManager(),
@@ -73,8 +87,21 @@ export function useBlueprintRuntimeCore(
         const unsubscribeDebug = onDebugEvent
             ? nextSession.debug.subscribeEvents(onDebugEvent)
             : () => undefined;
-        setSession(nextSession);
+
+        // The session is published only once the author's scripts are loaded, because publishing it
+        // is what lets the surfaces mount and start dispatching. Loading a module is asynchronous,
+        // so a session published first would run every `Init` against a registry that is still
+        // empty - the handler would simply not be found, with nothing anywhere reporting why. That
+        // is what happened the first time this was driven for real.
+        let cancelled = false;
+        void mountBlueprintCompiledScripts(bundle, onScriptIssue).then(() => {
+            if (!cancelled) {
+                setSession(nextSession);
+            }
+        });
+
         return () => {
+            cancelled = true;
             unsubscribeDebug();
             // Uninstall before cancelling: a suspended execution must not be able to re-enter a
             // session that is going away, and disposing releases every gate it is holding.
@@ -91,6 +118,7 @@ export function useBlueprintRuntimeCore(
         debuggerEnabled,
         disposeMessage,
         onDebugEvent,
+        onScriptIssue,
         persistenceAdapter,
     ]);
 

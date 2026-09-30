@@ -67,7 +67,7 @@ const SEVERITY_FILTER_OPTIONS: SelectOption[] = [
  *    so the button consults it rather than keeping a second copy of those rules.
  */
 export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPayload>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
 
@@ -141,10 +141,10 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
      */
     const headline = summary
         || (counts
-            ? t("test.report.findings", {
-                errors: counts.error,
-                warnings: counts.warning,
-                infos: counts.info,
+            ? t("test.report.findingCounts", {
+                errors: tn("common.count.errors", counts.error),
+                warnings: tn("common.count.warnings", counts.warning),
+                infos: tn("common.count.infos", counts.info),
             })
             : "");
 

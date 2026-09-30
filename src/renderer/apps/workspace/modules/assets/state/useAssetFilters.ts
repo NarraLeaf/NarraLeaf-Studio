@@ -34,6 +34,11 @@ export interface UseAssetFiltersParams {
      * list of deletion candidates with unknowns mixed in.
      */
     usageUnknownAssetIds?: ReadonlySet<string> | null;
+    /**
+     * What the Tags group calls a stored tag, or null for one it does not offer. Absent: every tag
+     * is offered as written. See `readAssetTag`.
+     */
+    readTag?: (tag: string) => string | null;
 }
 
 /** Filters that cannot be answered from the asset records alone. */
@@ -70,9 +75,11 @@ function matchesSizeBand(bytes: number | undefined, bandIds: readonly string[]):
  * groups that matched *themselves*, which is what a flat grid shows — the ancestors are scaffolding,
  * not hits).
  */
-export function useAssetFilters({ assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds }: UseAssetFiltersParams) {
+export function useAssetFilters({ assets, groups, activeFilters, query, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds, readTag }: UseAssetFiltersParams) {
     const { t } = useTranslation();
     const [refreshFiltersTrigger, setRefreshFiltersTrigger] = useState(0);
+    // Keyed by value: the filter list is a fresh array on every change, and only its tags matter here.
+    const activeTagKey = JSON.stringify(activeFilters.filter(f => f.filterId === 'tags').map(f => f.optionId));
 
     const filterConfigs = useMemo(() => {
         const configs = createDefaultFilters(t);
@@ -80,7 +87,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
 
         const tagFilter = configs.find(c => c.id === 'tags');
         if (tagFilter) {
-            tagFilter.options = getUniqueTags(allAssets);
+            tagFilter.options = getUniqueTags(allAssets, readTag, JSON.parse(activeTagKey) as string[]);
         }
 
         const fileExtensionFilter = configs.find(c => c.id === 'file-extensions');
@@ -96,7 +103,7 @@ export function useAssetFilters({ assets, groups, activeFilters, query, bytesByA
         }
 
         return configs;
-    }, [assets, refreshFiltersTrigger, t]);
+    }, [activeTagKey, assets, readTag, refreshFiltersTrigger, t]);
 
     const handleFilterOpen = useCallback(() => {
         setRefreshFiltersTrigger(prev => prev + 1);

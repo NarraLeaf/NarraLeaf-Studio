@@ -19,10 +19,10 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
-import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
+import { useAssetInspectorMetadata } from "./useAssetInspectorMetadata";
 import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
 import {
     interfaceDocumentFreezeScope,
@@ -98,6 +98,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
+import { guardInspectorDataForPluginWidget } from "@/lib/plugins/pluginWidgetGuard";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
@@ -117,12 +118,15 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
 import { AssetSetInspector } from "./AssetSetInspector";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
+import { readAssetTag } from "@shared/types/assetSetLabels";
+import { useAssetSetNaming } from "../assets/state/useAssetSetNaming";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -341,6 +345,10 @@ function createLayoutInspectorSchema(
     };
 
     const sizeField = createSizeField();
+    // A component's root, in that component's editor, is the frame the canvas is drawn at: it sits at
+    // the origin because a placement draws it from there, and the editor keeps no position for it.
+    // Its size is the component's size and stays; a position row would take a number and show 0.
+    const isComponentOrigin = elements.length === 1 && isComponentEditorRootElement(elements[0]);
     const fields: FieldDefinition<UIInspectorData>[] = [
         defineField<UIInspectorData, any>({
             id: "layout.position",
@@ -487,7 +495,7 @@ function createLayoutInspectorSchema(
             ],
             order: 2,
         }),
-    ];
+    ].filter(field => !(isComponentOrigin && field.id === "layout.position"));
 
     if (!linkedOnly) {
         fields.push(defineField<UIInspectorData, any>({
@@ -756,7 +764,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      * old word until some unrelated interaction re-rendered the rail.
      */
     const assetLibraryRevision = useAssetLibraryRevision();
-    const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -1029,7 +1036,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             setActiveAsset(asset);
             setActiveSetId(setId);
             setActiveCharacter(character);
-            setAssetMetadata(null);
             setUISelection(uiSelection);
             setActiveSceneId(sceneId);
             setComparisonSelection(comparison);
@@ -1097,7 +1103,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
+                    // Guarded rather than live, because a plugin's own fields read this same object:
+                    // the panel builds one `data` for the whole merged schema, so it is the one part
+                    // of the widget surface the registration wrapper cannot reach. A no-op for
+                    // Studio's own widget types.
+                    data={guardInspectorDataForPluginWidget({ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId })}
                 />
             );
         }
@@ -1190,42 +1200,14 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         t,
     ]);
 
-    // Load asset metadata when asset changes
-    useEffect(() => {
-        if (!activeAsset || !assetsService) {
-            setAssetMetadata(null);
-            return;
-        }
-
-        let cancelled = false;
-
-        const loadMetadata = async () => {
-            try {
-                const result = await assetsService.fetch(activeAsset);
-                if (!cancelled && result.success) {
-                    // Avoid storing raw binary data to prevent UI freeze
-                    const { metadata } = result.data as any;
-                    setAssetMetadata({ metadata } as AssetData<any>);
-                }
-            } catch (err) {
-                console.error("Failed to load asset metadata:", err);
-            }
-        };
-
-        loadMetadata();
-
-        return () => {
-            cancelled = true;
-        };
-        // `hash` is in the dependency list on purpose: a content replacement keeps the id and changes
-        // the bytes, so without it this panel would keep reporting the dimensions and size of the
-        // file that was there before.
-    }, [activeAsset?.id, activeAsset?.hash, assetsService]);
+    // Owns its own lifetime: a record edit republishes the subject without touching the file, so
+    // clearing this on each new selection is what used to empty the info card. See the hook.
+    const assetMetadata = useAssetInspectorMetadata(activeAsset, assetsService);
 
     /**
      * The selection carries a *snapshot* of the asset record. A content replacement rewrites that
      * record in place, so without this the inspector would keep showing the previous hash — and the
-     * metadata reload above, which keys on it, would never run.
+     * metadata read above, which keys on it, would never run.
      */
     useEffect(() => {
         if (!assetsService || !activeAsset) return;
@@ -1346,6 +1328,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         [assetsService]
     );
 
+    // A member of an asset set carries the set's bookkeeping among its tags; the tag list prints it in
+    // the project's words, or not at all. See `readAssetTag`.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
+
     // Build asset editor context - only recreate when necessary values change
     const assetContext = useMemo<AssetEditorContext<any> | null>(() => {
         if (!activeAsset) return null;
@@ -1353,8 +1340,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             asset: activeAsset,
             metadata: assetMetadata,
             onUpdate: handleAssetUpdate,
+            readTag,
         };
-    }, [activeAsset, assetMetadata, handleAssetUpdate]);
+    }, [activeAsset, assetMetadata, handleAssetUpdate, readTag]);
 
     // Build character editor context
     const characterContext = useMemo<CharacterEditorContext | null>(() => {
@@ -1509,14 +1497,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     }
 
     /**
-     * The whole panel is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed
-     * colour.
+     * The whole panel is one reading surface. Under a wallpaper it sits in a dock, so the dock's plate
+     * from the background dialog decides how much of the picture reaches it (see styles.css).
      *
      * `.nl-editor-surface` is the one rule the editor's reading surfaces share (prose column, Dev Mode
-     * debug panel, and this): a custom workspace background otherwise shows straight through a
-     * panel whose base is `rgba(0,0,0,0)`, and values you have to read must not compete with a
-     * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
-     * header included.
+     * debug panel, and this). It goes on the panel root only, which already spans the header and
+     * the scroller: a second plate on the scroller would stack its alpha over the first, and the
+     * field area would come out more solid than the header above it.
      *
      * An earlier version scoped this to story rows only, which left the asset, character, interface and
      * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
@@ -1536,7 +1523,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
+            <div className="flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }
@@ -1751,7 +1738,13 @@ export function ComparisonElementInspector({
              * perform. Stamping it at the source means every field is read-only whatever route it
              * takes, and the guard's clamp remains the second line rather than the only one.
              */
-            return { schema: readOnlySchema(schema), data: { element: subject, elements, documentService: service, surfaceId } };
+            return {
+                schema: readOnlySchema(schema),
+                // The frozen service refuses writes but still answers `getContext()` with the live
+                // workspace, so a plugin widget drawn in a comparison needs the same guard the live
+                // panel applies.
+                data: guardInspectorDataForPluginWidget({ element: subject, elements, documentService: service, surfaceId }),
+            };
         };
 
         const here = inspectorFor(element, document);

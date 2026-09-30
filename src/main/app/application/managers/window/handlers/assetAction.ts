@@ -1,11 +1,13 @@
-import fs from "fs/promises";
+import type { FileHandle } from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
-import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
+import { RemoteAssetFetchErrorCode, type RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
-import { fetchRemoteAsset } from "../../remoteAssetFetcher";
+import { fetchRemoteAsset, RemoteAssetFetchError } from "../../remoteAssetFetcher";
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -13,18 +15,32 @@ import { IPCHandler } from "./IPCHandler";
 /**
  * Fetch a remote asset's bytes on the renderer's behalf.
  *
- * There is no capability gate: this reads a URL the author typed and returns the bytes, touching
- * nothing on the machine. The things worth gating - where those bytes are then written - are on the
- * privileged file-system facade the renderer already has to go through.
+ * Where those bytes are then written is gated on the privileged file-system facade the renderer
+ * already goes through, so this handler does not gate the write. What it does gate is the request.
+ *
+ * # Why a distrusted project may not do this
+ *
+ * The reasoning that once applied here - "a URL the author typed, touching nothing on the machine"
+ * - holds only for a project the author wrote. In one that arrived from elsewhere the addresses in
+ * the asset table were chosen by whoever built the package, and Refresh turns one of them into a
+ * request from this machine, at this address, at a moment somebody else picked. That is an effect
+ * on the world, which is exactly what trust governs, and it is not covered by the network block on
+ * the workspace window: this request leaves from main.
  */
 export class AssetFetchRemoteHandler extends IPCHandler<IPCEventType.assetFetchRemote> {
     readonly name = IPCEventType.assetFetchRemote;
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
+        window: AppWindow,
         data: IPCEvents[IPCEventType.assetFetchRemote]["data"],
     ): Promise<RequestStatus<RemoteAssetFetchResult>> {
+        const distrusted = refuseDistrustedWindow(window, "remote asset download");
+        if (distrusted) {
+            // Coded like every other refusal of this fetch, so the renderer says it in the words the
+            // rest of the interface uses for a distrusted project rather than printing this one.
+            return this.failed(new RemoteAssetFetchError(RemoteAssetFetchErrorCode.Distrusted, distrusted));
+        }
         return this.tryUse(() => fetchRemoteAsset(data.url, data.validators));
     }
 }
@@ -85,7 +101,7 @@ async function nameWithExtension(source: string, name: string, isDirectory: bool
     if (isDirectory || path.extname(name) !== "") {
         return name;
     }
-    let handle: fs.FileHandle | undefined;
+    let handle: FileHandle | undefined;
     try {
         handle = await fs.open(source, "r");
         const head = Buffer.alloc(MEDIA_SNIFF_PREFIX_BYTES);
@@ -202,9 +218,11 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                     }
                     exportedCount += 1;
                 } catch (error) {
+                    const code = (error as NodeJS.ErrnoException | null)?.code;
                     failures.push({
                         relativePath: relativePath || "(unnamed)",
                         reason: error instanceof Error ? error.message : String(error),
+                        ...(typeof code === "string" ? { code } : {}),
                     });
                 }
             }

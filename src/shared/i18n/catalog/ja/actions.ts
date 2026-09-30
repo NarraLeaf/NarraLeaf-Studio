@@ -23,6 +23,22 @@ export const actions = {
         runAs: "実行するバリアント",
             runWithDlc: "DLC 付きで実行",
             dlcCount: "{active} / {total}",
+        // プレビューが保護されたビルドと同じ形で中身を持つかどうか。
+        // アセット保護を入れているプロジェクトでだけ出て、初期はオフ。
+        previewAsShipped: "配布どおりにプレビュー",
+        previewAsShippedDetail: "プレイヤーが受け取る保護された形でプレビューを実行し、起動は遅くなる",
+        // 同じ選択を実行ボタンに出すときの言い方。
+        asShipped: "配布どおり",
+        // 実行が残すセーブと永続データを消す。ゲーム自身がその状態を壊し、起動時にクラッシュするときのための操作。
+        // 開発モードとプレビューは別々に持つので、サブメニューは片方だけをリセットする。
+        resetData: "プレイヤーデータをリセット",
+        // いま実行中のモードの行は無効。動いているプロセスの下でリセットすると、その次の書き込みと競合する。
+        resetWhileRunning: "停止するとそのデータをリセットできる",
+        resetDevModeConfirm: "開発モードのプレイヤーデータをリセットするか",
+        resetPreviewConfirm: "プレビューのプレイヤーデータをリセットするか",
+        resetDetail: "このプロジェクトのすべてのセーブと永続データが削除される",
+        resetDone: "プレイヤーデータをリセットした",
+        resetFailed: "プレイヤーデータをリセットできなかった",
     },
     file: {
         label: "ファイル",
@@ -66,6 +82,18 @@ export const actions = {
     export: {
         chooseFolder: "書き出したプロジェクトパッケージを置くフォルダを選ぶ",
         failed: "プロジェクトを書き出せなかった",
+        failedWithReason: "{headline}。{reason}",
+        // 書き出しに失敗した理由。メインプロセスが返したコードから文言を選ぶ。読むのはプロジェクト、
+        // 書くのは選んだフォルダで、各文はどちらか一方について述べる。
+        reason: {
+            folderProtected: "選んだフォルダは Studio 自身の保存領域の中にある。別のフォルダを選ぶ",
+            folderReadOnly: "Studio に選んだフォルダへの書き込み権限がない",
+            folderMissing: "選んだフォルダがもう存在しない",
+            diskFull: "ディスクの空き容量が足りない",
+            projectUnreadable: "Studio にプロジェクト内の一部のファイルの読み取り権限がない",
+            projectFileBusy: "プロジェクト内のファイルが別のプログラムで使用中",
+            projectChanged: "書き出し中にプロジェクト内のファイルが移動または削除された。もう一度書き出す",
+        },
         success: {
             other: "ファイル {count} 件を含むプロジェクトパッケージを書き出した",
         },

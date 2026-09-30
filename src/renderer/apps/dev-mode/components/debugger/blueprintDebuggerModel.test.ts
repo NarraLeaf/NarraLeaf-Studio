@@ -20,12 +20,7 @@ function listDebuggable(document: BlueprintDocument) {
 
 function graphBlueprint(overrides: Partial<Blueprint> & Pick<Blueprint, "id" | "name" | "owner">): Blueprint {
     return {
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: { events: {}, functions: {}, macros: {} },
-        },
+        graphs: { events: {}, functions: {}, macros: {} },
         ...overrides,
     } as Blueprint;
 }
@@ -135,26 +130,22 @@ describe("debuggable blueprints", () => {
         id: "bp-a",
         name: "Alpha",
         owner: { kind: "globalMain" },
-        program: {
-            kind: "graph",
-            graphs: {
-                events: { e1: withNodes("e1", "On Click", ["n1"]) },
-                functions: { f1: withNodes("f1", "Helper", ["n2"]) },
-                macros: {},
-            },
+        graphs: {
+            events: { e1: withNodes("e1", "On Click", ["n1"]) },
+            functions: { f1: withNodes("f1", "Helper", ["n2"]) },
+            macros: {},
         },
     } as never);
     const emptyGraphs = graphBlueprint({
         id: "bp-b",
         name: "Beta",
         owner: { kind: "globalMain" },
-        program: { kind: "graph", graphs: { events: { e0: { id: "e0", name: "Empty", graph: { nodes: {} } } }, functions: {}, macros: {} } },
+        graphs: { events: { e0: { id: "e0", name: "Empty", graph: { nodes: {} } } }, functions: {}, macros: {} },
     } as never);
     const scriptModule = graphBlueprint({
         id: "bp-c",
         name: "Gamma",
         owner: { kind: "globalMain" },
-        frontend: "typescript",
         program: { kind: "scriptModule", source: "" },
     } as never);
 
@@ -172,7 +163,7 @@ describe("debuggable blueprints", () => {
             id: "bp-v",
             name: "Inline",
             owner: { kind: "storyAction", blueprintId: "bp-v", mode: "value" },
-            program: { kind: "graph", graphs: { events: { e1: withNodes("e1", "On Call", ["n1"]) }, functions: {}, macros: {} } },
+            graphs: { events: { e1: withNodes("e1", "On Call", ["n1"]) }, functions: {}, macros: {} },
         } as never);
         expect(listDebuggable(documentOf(inlineValue))[0].syncOnly).toBe(true);
     });

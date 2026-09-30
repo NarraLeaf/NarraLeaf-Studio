@@ -16,6 +16,9 @@ import { useWorkspace } from "../../../context";
 import { NarralangExportReportModal } from "./NarralangExportReportModal";
 import { narralangFileName, narralangIssueRows, type NarralangIssueRow } from "./narralangIo";
 import { narralangLookups } from "./narralangLookups";
+import { basename } from "@shared/utils/path";
+import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
+import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
 
 /** What an export was asked to write: one scene, or the whole story when `sceneId` is null. */
 export type NarralangExportTarget = {
@@ -84,16 +87,26 @@ export function useNarralangExport(): NarralangExport {
                 ["nl"],
             );
             if (!selection.success || !selection.data.ok) {
-                throw new Error(selection.success && !selection.data.ok ? selection.data.error.message : "Save dialog failed");
+                // The dialog's own failure is for the log; it is English and says nothing to act on.
+                console.warn("[narralang] the save dialog failed", selection);
+                throw new Error(t("workspace.shell.fileDialogFailed"));
             }
             const targetPath = selection.data.data;
             if (!targetPath) {
                 return;
             }
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const written = await filesystem.write(targetPath, result.text, "utf-8");
+            // Reported here, where the author asked for it, by the name they gave the file - the
+            // save-status surface only logs it. Never the system's message, which is English and
+            // quotes the whole path.
+            const written = await filesystem.write(
+                targetPath,
+                result.text,
+                "utf-8",
+                itemWrite(basename(targetPath), "workspace.shell.save.stores.story", "handledByWriter"),
+            );
             if (!written.ok) {
-                throw new Error(written.error.message);
+                throw new Error(describeFileWriteFailure(basename(targetPath), written.error, t));
             }
             // The same sentence the `.txt` export ends on: one export, two formats.
             context.services.get<UIService>(Services.UI)

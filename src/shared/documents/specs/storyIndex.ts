@@ -15,6 +15,8 @@ import {
     type KeyedMergeRow,
     labelled,
     mergeKeyed,
+    mergeMeta,
+    pickStamp,
     stripFields,
 } from "./mergeHelpers";
 import {isJsonObject, rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
@@ -109,8 +111,8 @@ const LABEL = {
 /**
  * Handled explicitly below, so they never reach the generic document-field merge.
  *
- * `meta` is the library's own two timestamps, taken from mine with no row for the reason the mixer
- * takes its `meta` that way: a pair of clock readings is not something an author decided between.
+ * `meta` is the library's own two timestamps, settled by `mergeMeta` with no row: a pair of clock
+ * readings is not something an author decided between.
  */
 const DOCUMENT_SKIP = new Set(["stories", "schemaVersion", "meta"]);
 
@@ -124,11 +126,10 @@ const DOCUMENT_SKIP = new Set(["stories", "schemaVersion", "meta"]);
  * a whole-entry comparison is a conflict over a field no author touched. Left out of the comparison
  * it is not a difference at all, and the entry merges with nothing to decide.
  *
- * The merged entry keeps **mine's** stamp rather than the later of the two, and that is deliberate:
- * the stamp claims "this mirrors a document saved at T", and which side's story document survives
- * the merge is settled separately, per record, in `storyMerge3`. Taking theirs because it is newer
- * would make the claim more likely to be false, not less. The service re-stamps it from the
- * document on the next save either way.
+ * The merged entry keeps the **later** of the two stamps, because that is what the story document's
+ * own merge keeps (`storyMerge3` settles `meta.updatedAt` the same way) and this is a copy of it:
+ * any other choice would leave the library claiming the document was saved at a time the merged
+ * document says it was not.
  */
 const ENTRY_SKIP = new Set(["id", "updatedAt"]);
 
@@ -195,11 +196,23 @@ export function merge3StoryIndex(
         }));
     }
 
+    // The library's own `meta` holds only its clock readings; anything else in it would still be asked
+    // about, under the document-field label the rest of the top level uses.
+    const meta = mergeMeta(
+        [],
+        base?.meta,
+        mine.meta,
+        theirs.meta,
+        base !== undefined,
+        key => labelled(LABEL.documentField, {field: `meta.${key}`}),
+    );
+    decisions.push(...meta.decisions);
+
     const document = {
         ...fields.merged,
         schemaVersion: mine.schemaVersion,
         stories: Object.values(stories),
-        ...(mine.meta === undefined ? {} : {meta: mine.meta}),
+        ...(meta.merged === undefined ? {} : {meta: meta.merged}),
     } as unknown as StoryLibraryIndex;
 
     return {document, decisions, conflicts: countConflicts(decisions)};
@@ -223,8 +236,13 @@ function mergeEntry(
         ...(subject ? {subject} : {}),
     }));
 
+    const updatedAt = pickStamp([mine.updatedAt, theirs.updatedAt], "latest");
     return {
-        entry: {...fields.merged, id: storyId, updatedAt: mine.updatedAt} as unknown as StoryLibraryEntry,
+        entry: {
+            ...fields.merged,
+            id: storyId,
+            ...(updatedAt === undefined ? {} : {updatedAt}),
+        } as unknown as StoryLibraryEntry,
         decisions,
     };
 }

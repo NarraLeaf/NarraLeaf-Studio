@@ -540,7 +540,9 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return {
             instance: async () => {
                 const project = await this.identity(ctx);
-                if (project === null || project.remoteOrigin === null) {
+                // Announcing is the sign-in at work, so it waits on the same answer everything else
+                // here does; `ready` has already put the question where one was due.
+                if (project === null || project.remoteOrigin === null || !project.signedIn) {
                     return null;
                 }
                 // Learnt from the answer rather than worked out: a renderer that could compose an
@@ -550,6 +552,15 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 return answered.ok ? answered.value.id : null;
             },
             project: () => this.identity(ctx),
+            askSignIn: async () => {
+                try {
+                    return (await ctx.services.get<VersionControlService>(Services.VersionControl)
+                        .useServerSession()).session !== null;
+                } catch {
+                    // A question that could not be put is a question not answered yes.
+                    return false;
+                }
+            },
             rooms: remoteOrigin => createTeamLiveRooms(remoteOrigin),
             // Bytes, which the rooms above deliberately do not carry. Everything here names a path
             // and the main process does the reading, the writing and the connection.
@@ -814,10 +825,14 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         }
         const remote = await version.getRemote();
         const parsed = remote === null ? null : parseVcsRemoteUrl(remote);
+        const remoteOrigin = parsed?.origin ?? null;
         return {
             repositoryId: info.repositoryId,
             projectPath: ctx.project.getConfig().projectPath,
-            remoteOrigin: parsed?.origin ?? null,
+            remoteOrigin,
+            // A local read of the recorded answer; it never asks. A project on no server has no
+            // sign-in to use, and is not asked about one.
+            signedIn: remoteOrigin !== null && (await version.getServerSession()) !== null,
         };
     }
 

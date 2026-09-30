@@ -1,0 +1,481 @@
+import path from "path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Enough of Electron for the module graph behind these handlers to load. None of them reaches it:
+// what they do is decide which window to hand a message to.
+vi.mock("electron", () => ({
+    app: {
+        getPath: () => "",
+        // Studio's own processes as a Dev Mode window would find them: the main process, the GPU
+        // process, the workspace's renderer and this window's. Kilobytes, as Electron reports them.
+        getAppMetrics: () => [
+            { pid: 1, type: "Browser", memory: { workingSetSize: 200_000, peakWorkingSetSize: 210_000 } },
+            { pid: 2, type: "GPU", memory: { workingSetSize: 300_000, peakWorkingSetSize: 320_000 } },
+            { pid: 3, type: "Tab", memory: { workingSetSize: 900_000, peakWorkingSetSize: 950_000 } },
+            { pid: 4, type: "Tab", memory: { workingSetSize: 250_000, peakWorkingSetSize: 260_000 } },
+        ],
+    },
+    dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
+    net: { request: vi.fn() },
+    session: { defaultSession: undefined },
+}));
+
+const { WindowAppType } = await import("@shared/types/window");
+const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
+const { IPCEventType } = await import("@shared/types/ipcEvents");
+const { normalizeProjectPath } = await import("@shared/utils/recentProject");
+const {
+    DevModeForwardBlueprintDebugEventHandler,
+    DevModeForwardStoryRowHandler,
+    DevModeGetStatusHandler,
+    DevModeLaunchHandler,
+    DevModeOpenBlueprintInWorkspaceHandler,
+    DevModeOpenStoryRowInWorkspaceHandler,
+    DevModeProcessMemoryHandler,
+    DevModeReloadHandler,
+    DevModeStopHandler,
+} = await import("./devModeAction");
+
+type AppWindowLike = Parameters<InstanceType<typeof DevModeOpenStoryRowInWorkspaceHandler>["handle"]>[0];
+
+/** The project the preview has open, and a second one it does not. */
+const mine = path.resolve("/projects/mine");
+const theirs = path.resolve("/projects/theirs");
+
+type Workspace = {
+    sendIpcEvent: ReturnType<typeof vi.fn>;
+    show: ReturnType<typeof vi.fn>;
+    focus: ReturnType<typeof vi.fn>;
+};
+
+/**
+ * A preview window and, unless the case is about its absence, the workspace beside it.
+ *
+ * The app double answers `findWorkspaceForProject` the way `App` does - over its own window list,
+ * through the shared identity rule - rather than returning a fixed window, because the lookup is
+ * half of what is under test: a handler that found the workspace by some private comparison of its
+ * own would pass a double that answered unconditionally.
+ *
+ * `windowManager.getWindows()` is the same list, and it is here because a handler that walked it
+ * itself is what these tests exist to describe: the doubles have to be able to run that shape too,
+ * or the red half of the evidence is a crash rather than a refusal.
+ */
+function makePreview(options: { props: unknown; workspaceProject?: string }) {
+    const workspace: Workspace = { sendIpcEvent: vi.fn(), show: vi.fn(), focus: vi.fn() };
+    const windows = options.workspaceProject === undefined ? [] : [{
+        getWindowType: () => WindowAppType.Workspace,
+        isClosed: () => false,
+        isDestroyed: () => false,
+        getProps: () => ({ projectPath: options.workspaceProject }),
+        sendIpcEvent: workspace.sendIpcEvent,
+        getBrowserWindow: () => ({ show: workspace.show, focus: workspace.focus }),
+    }];
+    const app = {
+        windowManager: { getWindows: () => windows },
+        findWorkspaceForProject: (projectPath: string) => windows.find(w =>
+            w.getWindowType() === WindowAppType.Workspace
+            && !w.isClosed()
+            && normalizeProjectPath(w.getProps().projectPath as string) === normalizeProjectPath(projectPath),
+        ),
+    };
+    const window = {
+        getWindowType: () => WindowAppType.DevMode,
+        getProps: () => options.props,
+        getApp: () => app,
+        app,
+    } as unknown as AppWindowLike;
+    return { window, workspace };
+}
+
+/** A window that is not a preview at all: the same request from the workspace itself. */
+function notAPreview(props: unknown): AppWindowLike {
+    const { window } = makePreview({ props });
+    return { ...(window as object), getWindowType: () => WindowAppType.Workspace } as unknown as AppWindowLike;
+}
+
+const row = { storyId: "story", sceneId: "scene", blockId: "block" };
+
+/**
+ * The four doors a Dev Mode preview has into its own workspace.
+ *
+ * `noWorkspace` is each door's own answer to "nothing has this project open", which is not uniform
+ * and must not become so: the play head fires on every action and says nothing when there is
+ * nowhere to say it, while the two the author clicked have to report that they did nothing.
+ */
+const doors = [
+    {
+        name: "openBlueprintInWorkspace",
+        event: IPCEventType.workspaceBlueprintNavigateFromPreview,
+        noWorkspace: "failed" as const,
+        run: (window: AppWindowLike, projectPath: string) =>
+            new DevModeOpenBlueprintInWorkspaceHandler().handle(window, {
+                projectPath,
+                blueprintId: "bp",
+                ownerKind: "surfaceMain",
+                surfaceId: "surface",
+            } as never),
+    },
+    {
+        name: "forwardBlueprintDebugEvent",
+        event: IPCEventType.workspaceBlueprintDebugEvent,
+        noWorkspace: "silent" as const,
+        run: (window: AppWindowLike, projectPath: string) =>
+            new DevModeForwardBlueprintDebugEventHandler().handle(window, {
+                projectPath,
+                event: { kind: "nodeEntered" },
+            } as never),
+    },
+    {
+        name: "forwardStoryRow",
+        event: IPCEventType.workspaceStoryRowHighlight,
+        noWorkspace: "silent" as const,
+        run: (window: AppWindowLike, projectPath: string) =>
+            new DevModeForwardStoryRowHandler().handle(window, { projectPath, ...row } as never),
+    },
+    {
+        name: "openStoryRowInWorkspace",
+        event: IPCEventType.workspaceStoryRowOpen,
+        noWorkspace: "failed" as const,
+        run: (window: AppWindowLike, projectPath: string) =>
+            new DevModeOpenStoryRowInWorkspaceHandler().handle(window, { projectPath, ...row } as never),
+    },
+] as const;
+
+/**
+ * Which project a Dev Mode request may be about, and how "the same project" is decided.
+ *
+ * All four ask their own window rather than believing the payload, which is the check the rest of
+ * the main process asks. They used to ask it with a `path.normalize` comparison written in that
+ * file - a private copy of the app's identity rule that agrees about separators and not about case,
+ * and does not even agree about a trailing one. Nothing spelled the two sides differently, so it
+ * never misbehaved; the tests below pin both halves, because the half that would have broken first
+ * is the author being refused their own project.
+ */
+describe("a Dev Mode request reaches the workspace of its own project", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    for (const door of doors) {
+        /**
+         * The property the check exists for. `theirs` has a workspace open, so without it the
+         * message lands in a window showing a project this preview is not running.
+         */
+        it(`${door.name} refuses a project this window does not have open`, async () => {
+            const { window, workspace } = makePreview({
+                props: { projectPath: mine },
+                workspaceProject: theirs,
+            });
+
+            const result = await door.run(window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(workspace.sendIpcEvent).not.toHaveBeenCalled();
+        });
+
+        /** The ordinary case, asserted through to the message rather than at the envelope. */
+        it(`${door.name} reaches the workspace showing the window's own project`, async () => {
+            const { window, workspace } = makePreview({
+                props: { projectPath: mine },
+                workspaceProject: mine,
+            });
+
+            const result = await door.run(window, mine);
+
+            expect(result.success).toBe(true);
+            expect(workspace.sendIpcEvent).toHaveBeenCalledWith(door.event, expect.anything());
+        });
+
+        /**
+         * The first failure mode that matters more than the hole: refusing the author's own project.
+         *
+         * A trailing separator names the same directory, and `path.normalize` keeps it - on every
+         * platform - so the comparison this replaces answered "not your project" to a preview
+         * talking about the only project it has. Both sides are resolved before being folded, which
+         * is what makes the two spellings one question.
+         */
+        it(`${door.name} accepts the window's own project with a trailing separator`, async () => {
+            const { window, workspace } = makePreview({
+                props: { projectPath: mine },
+                workspaceProject: mine,
+            });
+
+            const result = await door.run(window, mine + path.sep);
+
+            expect(result.success).toBe(true);
+            expect(workspace.sendIpcEvent).toHaveBeenCalledWith(door.event, expect.anything());
+        });
+
+        /**
+         * The second, and the one only the shared rule answers. On Windows `D:\Projects\Game` and
+         * `d:/projects/game` are one directory - a picker writes `\`, a typed or scripted path
+         * usually carries `/` - and folding case is the difference between a guard and an outage.
+         */
+        it.runIf(process.platform === "win32")(
+            `${door.name} accepts the window's own project under another spelling`,
+            async () => {
+                const { window, workspace } = makePreview({
+                    props: { projectPath: "D:\\Projects\\Game" },
+                    workspaceProject: "D:\\Projects\\Game",
+                });
+
+                const result = await door.run(window, "d:/projects/game");
+
+                expect(result.success).toBe(true);
+                expect(workspace.sendIpcEvent).toHaveBeenCalledWith(door.event, expect.anything());
+            },
+        );
+
+        /** Only a preview may ask. Every window in the app carries these handlers. */
+        it(`${door.name} refuses a window that is not a preview`, async () => {
+            const result = await door.run(notAPreview({ projectPath: mine }), mine);
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("Invalid window");
+        });
+
+        /**
+         * "Nothing has this project open" is an ordinary situation rather than a refusal, and the
+         * two kinds of door answer it differently on purpose. Pinned so that routing the project
+         * check through a shared helper did not flatten them into one answer.
+         */
+        it(`${door.name} answers its own way when no workspace has the project open`, async () => {
+            const { window, workspace } = makePreview({ props: { projectPath: mine } });
+
+            const result = await door.run(window, mine);
+
+            expect(result.success).toBe(door.noWorkspace === "silent");
+            expect(workspace.sendIpcEvent).not.toHaveBeenCalled();
+        });
+    }
+
+    /** The two doors the author clicked pull the workspace forward; the play head must not. */
+    it("only the doors the author clicked bring the workspace to the front", async () => {
+        for (const door of doors) {
+            const { window, workspace } = makePreview({
+                props: { projectPath: mine },
+                workspaceProject: mine,
+            });
+
+            await door.run(window, mine);
+
+            expect(workspace.show.mock.calls.length > 0).toBe(door.noWorkspace === "failed");
+        }
+    });
+});
+
+/**
+ * Which project a Dev Mode session is started for.
+ *
+ * The sharpest of the four here, and it was the one with nothing on it. Dev Mode compiles the named
+ * project and runs it: its puppet runtimes are imported, its `scripts/` are compiled and mounted,
+ * its plugins get a runtime, and the window that opens holds a recursive grant over that tree. A
+ * build, a preview and a test run all ask the window first; this did not, so a renderer able to send
+ * a message was a renderer able to have somebody else's project run.
+ *
+ * The trust ledger did not cover it either, and could not: the gate inside `DevModeManager.launch`
+ * reads the path it is handed, so a payload naming a project that is trusted - somebody else's,
+ * trusted for its own author's reasons - passed the gate about a project this window was never
+ * opened on. The gate answers "may this project run", never "is this project yours"; that second
+ * question only has an answer here.
+ */
+describe("DevModeLaunchHandler", () => {
+    /** A window on one project, whose Dev Mode manager records what it was asked to launch. */
+    function makeLauncher(projectPath?: string) {
+        const launch = vi.fn(async () => "running");
+        const window = {
+            getProps: () => ({ projectPath }),
+            getApp: () => ({ getDevModeManager: () => ({ launch }) }),
+        } as unknown as AppWindowLike;
+        return { window, launch };
+    }
+
+    const entry = { kind: "surface", surfaceId: "main" } as never;
+
+    it("launches the window's own project", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.success).toBe(true);
+        // Asserted through to the manager, and with the window's own spelling: two spellings of one
+        // project are two session keys, so which string crosses is not cosmetic.
+        expect(launch).toHaveBeenCalledWith(mine, entry);
+    });
+
+    it("refuses a project this window does not have open, and compiles nothing", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: theirs, entry });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** The launcher, settings and the wizard have no project a payload could agree with. */
+    it("refuses a window that has no project open", async () => {
+        const { window, launch } = makeLauncher();
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** A guard that refused the author their own project would be worse than the hole it closes. */
+    it("accepts the window's own project under another spelling", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, {
+            projectPath: mine + path.sep,
+            entry,
+        });
+
+        expect(result.success).toBe(true);
+        expect(launch).toHaveBeenCalledWith(mine, entry);
+    });
+});
+
+/**
+ * The three that drive a session once it is running.
+ *
+ * Not a launch, so not the same harm: these end somebody else's session, recompile what it is
+ * executing, or ask whether they have one at all. They are the same *question* though, and the
+ * answer has to be the same everywhere - a collar that stops a project being started but lets it be
+ * stopped from another window is not a rule, it is a list. Which is why the status probe is here
+ * too, small as it is: it is the channel that says "that project is running", and the workspace
+ * polls it once a second, so an unguarded one is a way to watch a session rather than glimpse it.
+ */
+describe("the Dev Mode session controls take their project from the window", () => {
+    /** A window on one project, whose Dev Mode manager records which project it was driven for. */
+    function makeDriver(projectPath?: string) {
+        const stop = vi.fn(async () => "idle");
+        const reload = vi.fn(async () => "running");
+        const getStatus = vi.fn(() => "running");
+        const window = {
+            getProps: () => ({ projectPath }),
+            getApp: () => ({ getDevModeManager: () => ({ stop, reload, getStatus }) }),
+        } as unknown as AppWindowLike;
+        return { window, stop, reload, getStatus };
+    }
+
+    type Driver = ReturnType<typeof makeDriver>;
+
+    const controls = [
+        {
+            name: "devMode.stop",
+            manager: (driver: Driver) => driver.stop,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeStopHandler().handle(window, { projectPath }),
+        },
+        {
+            name: "devMode.reload",
+            manager: (driver: Driver) => driver.reload,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeReloadHandler().handle(window, { projectPath }),
+        },
+        {
+            name: "devMode.getStatus",
+            manager: (driver: Driver) => driver.getStatus,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeGetStatusHandler().handle(window, { projectPath }),
+        },
+    ] as const;
+
+    for (const control of controls) {
+        it(`${control.name} drives the window's own project`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, mine);
+
+            expect(result.success).toBe(true);
+            expect(control.manager(driver)).toHaveBeenCalledWith(mine);
+        });
+
+        it(`${control.name} refuses a project this window does not have open`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(control.manager(driver)).not.toHaveBeenCalled();
+        });
+
+        it(`${control.name} refuses a window that has no project open`, async () => {
+            const driver = makeDriver();
+
+            const result = await control.run(driver.window, mine);
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(control.manager(driver)).not.toHaveBeenCalled();
+        });
+
+        /**
+         * A refusal has to arrive as a refusal. Two of these three answered synchronously and one
+         * of them never had a `try` at all, so a guard added carelessly would have thrown out of
+         * the handler and reached the renderer as whatever the registry makes of an exception -
+         * without the code the refusal is recognised by.
+         */
+        it(`${control.name} carries the refusal code rather than throwing`, async () => {
+            const driver = makeDriver(mine);
+
+            await expect(Promise.resolve(control.run(driver.window, theirs)))
+                .resolves.toMatchObject({ success: false, code: WINDOW_PROJECT_MISMATCH_CODE });
+        });
+
+        it(`${control.name} accepts the window's own project under another spelling`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, mine + path.sep);
+
+            expect(result.success).toBe(true);
+            expect(control.manager(driver)).toHaveBeenCalledWith(mine);
+        });
+    }
+});
+
+/**
+ * `app.game.process.memory()` in Dev Mode: the window's own renderer and nothing of Studio's.
+ *
+ * The packaged game counts every process it has, because every process it has is the game. Here
+ * every process but one is Studio's - its main process, its GPU process, the workspace beside the
+ * window - and a reading that counted them would be a reading of Studio.
+ */
+describe("process memory for a Dev Mode window", () => {
+    function windowOfType(windowType: string, pid: number): AppWindowLike {
+        return {
+            getWindowType: () => windowType,
+            win: { isDestroyed: () => false, webContents: { getOSProcessId: () => pid } },
+        } as unknown as AppWindowLike;
+    }
+
+    it("is the asking window's renderer alone", () => {
+        const result = new DevModeProcessMemoryHandler().handle(windowOfType(WindowAppType.DevMode, 4));
+
+        expect(result).toEqual({
+            success: true,
+            data: {
+                reading: {
+                    scope: "window",
+                    processes: [{
+                        kind: "renderer",
+                        current: true,
+                        workingSetBytes: 250_000 * 1024,
+                        peakWorkingSetBytes: 260_000 * 1024,
+                    }],
+                    workingSetBytes: 250_000 * 1024,
+                    privateBytes: null,
+                },
+            },
+        });
+    });
+
+    it("is refused to a window that runs no game", () => {
+        const result = new DevModeProcessMemoryHandler().handle(windowOfType(WindowAppType.Workspace, 3));
+
+        expect(result.success).toBe(false);
+    });
+});

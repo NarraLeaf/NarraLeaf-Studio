@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { findAssetNameGaps } from "./assetNameGaps";
 import {
+    assetNameGapToIndexGap,
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
@@ -221,18 +223,15 @@ describe("extractStoryAnimationAssetReferences", () => {
 describe("extractBlueprintAssetReferences", () => {
     function blueprintDoc(nodes: Record<string, unknown>, slot: "events" | "functions" | "macros" = "events"): BlueprintDocument {
         return {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Main",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {},
-                            functions: {},
-                            ...{ [slot]: { "g-1": { graph: { nodes } } } },
-                        },
+                    graphs: {
+                        events: {},
+                        functions: {},
+                        ...{ [slot]: { "g-1": { graph: { nodes } } } },
                     },
                 },
             },
@@ -357,7 +356,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("reads a widget's bare assetId and posterAssetId", () => {
         // Before `nl.video` this walk knew `imageFill` and `fontAssetId` and nothing else. A widget
         // naming its prop `assetId` was preloaded by the shipped game
-        // (`surfaceResourcePreload.ts` matches that literal name) and simultaneously absent from
+        // (`surfaceAssetWarmup.ts` matches that literal name) and simultaneously absent from
         // "what uses this asset", which is the one place an author looks before deleting it.
         const references = uiReferences(
             doc([uiElement("e1", "nl.video", { assetId: "clip-1", posterAssetId: "poster-1" })]),
@@ -603,15 +602,12 @@ describe("coverage of an asset reachable only through a hash URL", () => {
 describe("coverage of an asset reachable only through a legacy literal node", () => {
     function wiredDoc(nodes: Record<string, unknown>, edges: unknown[]): BlueprintDocument {
         return {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Main",
-                    program: {
-                        kind: "graph",
-                        graphs: { events: { "g-1": { graph: { nodes, edges } } }, functions: {} },
-                    },
+                    graphs: { events: { "g-1": { graph: { nodes, edges } } }, functions: {} },
                 },
             },
             persistentVariables: {},
@@ -671,24 +667,32 @@ describe("coverage of an asset reachable only through a legacy literal node", ()
         expect(extraction.gaps).toEqual([]);
     });
 
-    it("reports an asset pin fed by a computing node as a gap naming the node", () => {
-        const extraction = extractBlueprintAssetReferences(
-            wiredDoc(
-                {
-                    pick: { id: "pick", type: "blueprint.saved.get.value", params: {} },
-                    set: { id: "set", type: "widget.image.setAsset", params: {} },
-                },
-                [{ from: { nodeId: "pick", port: "value" }, to: { nodeId: "set", port: "asset" } }],
-            ),
-            { resolveNodeLabel: type => (type === "widget.image.setAsset" ? "Set Image Asset" : undefined) },
+    it("reads nothing from an asset pin fed by a computing node, and leaves the gap to the shared judgement", () => {
+        const document = wiredDoc(
+            {
+                pick: { id: "pick", type: "blueprint.saved.get.value", params: {} },
+                set: { id: "set", type: "widget.image.setAsset", params: {} },
+            },
+            [{ from: { nodeId: "pick", port: "value" }, to: { nodeId: "set", port: "asset" } }],
         );
+        const extraction = extractBlueprintAssetReferences(document);
 
         expect(extraction.references).toEqual([]);
-        expect(extraction.gaps).toEqual([
+        // Reported once, by the judgement every surface reads - not a second time from here.
+        expect(extraction.gaps).toEqual([]);
+        const gaps = findAssetNameGaps({ blueprintDocument: document }, {
+            assetPins: () => [],
+            title: type => (type === "widget.image.setAsset" ? "Set Image Asset" : type),
+            pinLabel: (_type, pinId) => pinId,
+            // Nothing is known about either node, so the value arriving is one nobody can vouch for.
+            node: () => null,
+        });
+        expect(gaps.map(assetNameGapToIndexGap)).toEqual([
             expect.objectContaining({
                 reason: "computedAssetPin",
                 slice: "blueprint",
                 location: "Main › Set Image Asset.asset",
+                affects: ["image"],
             }),
         ]);
     });
@@ -760,20 +764,21 @@ describe("coverage of an asset reachable only through a legacy literal node", ()
 describe("blueprints this walk cannot read", () => {
     function docWith(blueprint: Record<string, unknown>, ownerRecords?: Record<string, unknown>): BlueprintDocument {
         return {
-            ownerRecords: ownerRecords ?? { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: ownerRecords ?? { globalMain: { blueprintId: "bp-1" } },
             blueprints: { "bp-1": blueprint },
             persistentVariables: {},
         } as unknown as BlueprintDocument;
     }
 
-    it("reports a script-module blueprint as a gap instead of skipping it", () => {
-        // TypeScript blueprints are creatable, and an asset id in that source is a plain string this
-        // file has no business parsing. Skipping in silence reported full coverage over it.
+    it("reports a blueprint with a script layer as a gap instead of skipping it", () => {
+        // An asset id in the author's own file is a plain string this file has no business parsing,
+        // so one script layer makes the whole blueprint unprovable. Skipping in silence reported
+        // full coverage over it.
         const extraction = extractBlueprintAssetReferences(
             docWith({
                 id: "bp-1",
                 name: "Title Logic",
-                program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+                graphs: { events: { s: { id: "s", script: { scriptRef: "scripts/title.ts" } } }, functions: {} },
             }),
         );
 
@@ -789,7 +794,7 @@ describe("blueprints this walk cannot read", () => {
                 {
                     id: "bp-1",
                     name: "Orphaned",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
                 {},
             ),
@@ -804,12 +809,12 @@ describe("blueprints this walk cannot read", () => {
 describe("node types the catalogue does not know", () => {
     function nodeDoc(nodes: Record<string, unknown>): BlueprintDocument {
         return {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Main",
-                    program: { kind: "graph", graphs: { events: { "g-1": { graph: { nodes } } }, functions: {} } },
+                    graphs: { events: { "g-1": { graph: { nodes } } }, functions: {} },
                 },
             },
             persistentVariables: {},

@@ -170,3 +170,90 @@ describe("listBlueprintSetFramePageTargetOptions", () => {
     });
 });
 
+/**
+ * A Set Frame Page node on a component's own graph changes a Page widget inside the definition, and
+ * the page the component is placed on leads back to that widget.
+ */
+describe("listBlueprintSetFramePageTargetOptions inside a component", () => {
+    /** The shared document, with "home" placing a card whose Page widget is `window`. */
+    function withCard(): UIDocument {
+        const document = createDocument();
+        document.elements["root-home"]!.childrenIds.push("slot");
+        document.elements.slot = {
+            id: "slot",
+            type: "nl.container",
+            parentId: "root-home",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 120, height: 80 },
+            extra: { componentLink: { componentId: "card", linked: true } },
+        };
+        document.components = [
+            {
+                id: "card",
+                name: "Card",
+                rootElementId: "card-root",
+                elements: {
+                    "card-root": {
+                        id: "card-root",
+                        type: "nl.container",
+                        parentId: null,
+                        childrenIds: ["window"],
+                        layout: { x: 0, y: 0, width: 120, height: 80 },
+                    },
+                    window: {
+                        id: "window",
+                        type: UI_FRAME_ELEMENT_TYPE,
+                        parentId: "card-root",
+                        childrenIds: [],
+                        layout: { x: 0, y: 0, width: 120, height: 80 },
+                        props: { targetSurfaceId: null, params: {}, navigationMode: "static" },
+                    },
+                },
+            },
+        ];
+        return document;
+    }
+
+    it("omits the page the component is placed on for the widget's own Set Frame Page", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: { set: { id: "set", type: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE, params: {} } },
+            edges: [],
+        };
+
+        // home places the card; settings shows home, so it leads back to the card too.
+        expect(values(listBlueprintSetFramePageTargetOptions({
+            document: withCard(),
+            owner: { kind: "componentWidgetMain", componentId: "card", elementId: "window" },
+            ir,
+            nodeId: "set",
+            nodeType: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+        }))).toEqual(["details"]);
+    });
+
+    it("omits it for an element Set Frame Page aimed at the widget from the definition's graph", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                ref: {
+                    id: "ref",
+                    type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                    params: {
+                        // What a reference written inside a definition names: its virtual surface.
+                        [ELEMENT_REF_PARAM_SURFACE_ID]: "component:card",
+                        [ELEMENT_REF_PARAM_ELEMENT_ID]: "window",
+                        [ELEMENT_REF_PARAM_ELEMENT_TYPE]: UI_FRAME_ELEMENT_TYPE,
+                    },
+                },
+                set: { id: "set", type: BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE, params: {} },
+            },
+            edges: [{ from: { nodeId: "ref", port: "element" }, to: { nodeId: "set", port: "element" } }],
+        };
+
+        expect(values(listBlueprintSetFramePageTargetOptions({
+            document: withCard(),
+            owner: { kind: "componentWidgetMain", componentId: "card", elementId: "card-root" },
+            ir,
+            nodeId: "set",
+            nodeType: BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
+        }))).toEqual(["details"]);
+    });
+});

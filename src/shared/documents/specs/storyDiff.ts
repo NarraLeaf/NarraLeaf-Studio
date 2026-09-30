@@ -333,8 +333,11 @@ function blockLeaves(path: readonly string[], base: StoryScene, head: StoryScene
  * declaration's or a label's name. Everything else - an action name, a block kind, an id - is
  * Studio's vocabulary, and putting it here would print it beside the translated label as if the
  * author had typed it.
+ *
+ * Exported for the story merge, which names the rows of its decisions by the same rule: a comparison
+ * and a resolution are one list seen twice, so a row has to be called the same thing in both.
  */
-function blockSubject(block: StoryBlock | undefined): string | undefined {
+export function blockSubject(block: StoryBlock | undefined): string | undefined {
     const payload = block?.payload as Record<string, unknown> | undefined;
     if (!payload || typeof payload !== "object") {
         return undefined;

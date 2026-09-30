@@ -106,8 +106,6 @@ function mount() {
                         };
                     case Services.Story:
                         return story;
-                    case Services.Assets:
-                        return { listSharedBlueprints: async () => [] };
                     case Services.AppTags:
                         return { resolveTag: () => RELEASE_APP_TAG, getDocument: () => ({ tags: [] }) };
                     case Services.MediaSupport:

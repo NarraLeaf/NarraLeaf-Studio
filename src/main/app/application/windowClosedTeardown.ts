@@ -16,6 +16,8 @@ export interface WindowClosedTeardown {
     stopRuntimes: boolean;
     /** Release the project's version-control store handle. */
     releaseVersionControl: boolean;
+    /** Give up this Studio's claim on the project, so another one may take it. */
+    releaseSessionLock: boolean;
 }
 
 /**
@@ -32,6 +34,9 @@ export interface WindowClosedTeardown {
  *     window is not the author leaving the project; its workspace is still open and still editing,
  *     and dropping the store there costs the next call a reopen. This one used to fire for any
  *     window that named a project.
+ *   - **The session lock goes with the last window too, and for the same reason.** It says this
+ *     Studio is the one editing the project, which stays true while any of its windows still holds
+ *     it - and letting go while one does would let a second Studio in beside it.
  *   - **Neither happens during a quit.** The quit has its own teardown, which is bounded, awaited,
  *     and runs once for everything; doing the same work per window as the windows close would
  *     duplicate it in the good case and, for version control, start calls that nothing waits for
@@ -42,11 +47,12 @@ export interface WindowClosedTeardown {
 export function decideWindowClosedTeardown(facts: WindowClosedFacts): WindowClosedTeardown {
     const namesProject = typeof facts.projectPath === "string" && facts.projectPath.length > 0;
     if (!namesProject || facts.quitting) {
-        return { stopRuntimes: false, releaseVersionControl: false };
+        return { stopRuntimes: false, releaseVersionControl: false, releaseSessionLock: false };
     }
 
     return {
         stopRuntimes: facts.windowType === WindowAppType.Workspace,
         releaseVersionControl: !facts.projectStillOpen,
+        releaseSessionLock: !facts.projectStillOpen,
     };
 }

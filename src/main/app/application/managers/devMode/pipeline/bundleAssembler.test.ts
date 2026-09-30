@@ -1,7 +1,9 @@
-import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "fs/promises";
+import { pathToFileURL } from "url";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_LANGUAGE_CHANGE_CONFIGURATION } from "@shared/types/localization";
@@ -11,8 +13,9 @@ import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveComp
 import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
-import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -21,6 +24,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
+    loadEndingSurfaceId,
     loadLanguageChangeConfiguration,
     loadGameVersion,
     loadSaveCompatibilityConfiguration,
@@ -29,12 +33,13 @@ import {
     loadPlayerPreferences,
     loadProjectBrand,
     loadProjectFonts,
-    foldSharedBlueprints,
     planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
     assembleDevModeBundleFromProjectPath,
 } from "./bundleAssembler";
 import type { DevModeBundleLoadContext } from "./types";
+import { BuildRefusal } from "@shared/build/buildRefusal";
+import { createTranslator, type LocaleCode } from "@shared/i18n";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -173,6 +178,60 @@ describe("bundleAssembler auto save", () => {
  * build that never opened the setting still has to behave one way rather than none, and the way it
  * behaves has to be the one every build had before the setting existed.
  */
+/**
+ * The page a session ends on.
+ *
+ * Read here rather than left to the packaged build, which is the whole point: the page an author
+ * writes for the end of their story used to be reachable only by packaging one, because Dev Mode
+ * had no answer for it and a story that ran off the end simply stopped where it was.
+ */
+describe("bundleAssembler ending surface", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(document: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-ending-test-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        if (document !== undefined) {
+            await mkdir(path.join(projectPath, "editor"), { recursive: true });
+            await writeFile(path.join(projectPath, "editor", "app-tags.json"), JSON.stringify(document));
+        }
+        return projectPath;
+    }
+
+    it("is blank for a project that named no page", async () => {
+        expect(await loadEndingSurfaceId(await createProject(undefined), APP_TAG_ID_RELEASE)).toBe("");
+    });
+
+    it("takes the project's own choice for the release build", async () => {
+        const projectPath = await createProject({ endingSurfaceId: "surface-credits", tags: [] });
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("surface-credits");
+    });
+
+    it("takes the variant's override, because a demo does not end where the full game does", async () => {
+        const projectPath = await createProject({
+            endingSurfaceId: "surface-credits",
+            tags: [{ id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "surface-thanks" }],
+        });
+        expect(await loadEndingSurfaceId(projectPath, "demo")).toBe("surface-thanks");
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("surface-credits");
+    });
+
+    it("leaves a session with no ending page rather than refusing to assemble", async () => {
+        const projectPath = await createProject(undefined);
+        await mkdir(path.join(projectPath, "editor"), { recursive: true });
+        await writeFile(path.join(projectPath, "editor", "app-tags.json"), "{ not json");
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("");
+    });
+});
+
 describe("bundleAssembler language change configuration", () => {
     const tempDirs: string[] = [];
 
@@ -323,6 +382,33 @@ describe("bundleAssembler audio payload", () => {
             a1: { inMs: 4200, outMs: 92500, loopStartMs: 12000 },
             a2: { inMs: 1000 },
         });
+    });
+
+    it("carries each clip's gain, alone or beside its markers, for every runtime that reads the table", async () => {
+        // Dev Mode and the packaged game both play from this table, so a gain left out of it would
+        // balance the clip in the editor and nowhere else.
+        const projectPath = await createProject({
+            a1: { id: "a1", extras: { audioGain: { db: -6.5 } } },
+            a2: { id: "a2", extras: { audioLoop: { inMs: 1000 }, audioGain: { db: -3, targetLufs: -16 } } },
+            a3: { id: "a3", extras: { audioGain: { db: 0 } } },
+        });
+        expect(await clipsOf(projectPath)).toEqual({
+            a1: { gainDb: -6.5 },
+            a2: { inMs: 1000, gainDb: -3 },
+        });
+    });
+
+    it("carries the markers alone, whatever else an earlier build stored beside them", async () => {
+        // A loop with no out point ends at the end of the file wherever it plays; a length the
+        // preview once measured is not part of the table.
+        const projectPath = await createProject({
+            a1: {
+                id: "a1",
+                hash: "h1",
+                extras: { audioLoop: { inMs: 1000, loopStartMs: 5000, fileLength: { ms: 90_000, hash: "h1" } } },
+            },
+        });
+        expect(await clipsOf(projectPath)).toEqual({ a1: { inMs: 1000, loopStartMs: 5000 } });
     });
 
     it("reads the cue-point shape that preceded the region", async () => {
@@ -532,131 +618,22 @@ describe("bundleAssembler brand palette", () => {
     });
 });
 
-/**
- * Shared blueprint assets are the one set of graphs the renderer's build gate cannot see, so the
- * assembler is where a refusal in one has to stop the build. These cover the three outcomes:
- * a build refuses, a build folds, and Dev Mode is left alone.
- */
-describe("bundleAssembler shared blueprint variant fold", () => {
-    function sharedAsset(graph: BlueprintGraphIr): SharedBlueprintAsset {
-        return {
-            assetId: "asset-1",
-            name: "Shared Menu Logic",
-            frontend: "visual",
-            blueprint: {
-                id: "bp-shared",
-                name: "Shared",
-                owner: { kind: "sharedAsset", assetId: "asset-1" },
-                frontend: "visual",
-                programKind: "graph",
-                program: {
-                    kind: "graph",
-                    graphs: { events: { "e-1": { id: "e-1", name: "On Init", graph } }, functions: {} },
-                },
-            },
-        } as unknown as SharedBlueprintAsset;
-    }
-
-    /** `Get App Tag` held against a value only the running game answers. */
-    const refusingGraph: BlueprintGraphIr = {
-        nodes: {
-            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
-            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
-            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
-        },
-        edges: [
-            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
-            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
-            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
-            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
-        ],
-    };
-
-    /** `Get App Tag` straight into a label: a constant the package can simply carry. */
-    const foldingGraph: BlueprintGraphIr = {
-        nodes: {
-            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
-            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
-        },
-        edges: [
-            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
-            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "label", port: "text" } },
-        ],
-    };
-
-    /**
-     * A build's context. `packaging` is what separates a build from every other host: only a build
-     * produces something a player receives, so only a build plans a drop or refuses a graph.
-     */
-    function context(extra?: Partial<DevModeBundleLoadContext>): DevModeBundleLoadContext {
-        return { projectPath: "/project", bundleId: "b", revision: 1, packaging: true, ...extra };
-    }
-
-    it("stops a build whose shared blueprint does not reduce to a fixed value", () => {
-        expect(() => foldSharedBlueprints(
-            [sharedAsset(refusingGraph)],
-            context({ appTag: { id: "tag-demo", name: "Demo" } }),
-            { tagName: "Demo" },
-        )).toThrow(/Shared Menu Logic \/ On Init/);
-    });
-
-    it("names the asset in the author's language", () => {
-        expect(() => foldSharedBlueprints(
-            [sharedAsset(refusingGraph)],
-            context({ appTag: { id: "tag-demo", name: "Demo" }, locale: "zh" }),
-            { tagName: "Demo" },
-        )).toThrow(/变体/);
-    });
-
-    it("substitutes the variant name into a shared blueprint a build can fold", () => {
-        const [folded] = foldSharedBlueprints(
-            [sharedAsset(foldingGraph)],
-            context({ appTag: { id: "tag-demo", name: "Demo" } }),
-            { tagName: "Demo" },
-        );
-        const program = folded.blueprint.program;
-
-        expect(program.kind).toBe("graph");
-        if (program.kind === "graph") {
-            const nodes = program.graphs.events["e-1"].graph?.nodes ?? {};
-            expect(Object.keys(nodes).sort()).toEqual(["head", "label", "tag__appTag"]);
-            expect(nodes.tag__appTag.params).toEqual({ value: "Demo" });
-        }
-    });
-
-    it("leaves a refusing shared blueprint alone outside a build", () => {
-        // Dev Mode and the preview supply no variant, so they assemble as release and the runtime's
-        // own answer for `Get App Tag` is right. A refusal here would stop an author mid-edit.
-        const assets = [sharedAsset(refusingGraph)];
-
-        expect(() => foldSharedBlueprints(assets, context(), { tagName: "main" })).not.toThrow();
-        expect(foldSharedBlueprints(assets, context(), { tagName: "main" })[0]).toBe(assets[0]);
-    });
-});
-
 describe("bundleAssembler scene drop plan", () => {
     function graphBlueprint(nodes: Record<string, unknown>, wiredPins: string[] = []): Blueprint {
         return {
             id: "bp-1",
             name: "Menu",
             owner: { kind: "surface", surfaceId: "s1" },
-            frontend: "visual",
-            programKind: "graph",
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        "e-1": {
-                            id: "e-1",
-                            graph: {
-                                nodes,
-                                edges: wiredPins.map(port => ({
-                                    from: { nodeId: "n-source", port: "value" },
-                                    to: { nodeId: "n-1", port },
-                                })),
-                            },
+            graphs: {
+                events: {
+                    "e-1": {
+                        id: "e-1",
+                        graph: {
+                            nodes,
+                            edges: wiredPins.map(port => ({
+                                from: { nodeId: "n-source", port: "value" },
+                                to: { nodeId: "n-1", port },
+                            })),
                         },
                     },
                 },
@@ -669,9 +646,7 @@ describe("bundleAssembler scene drop plan", () => {
             id: "bp-2",
             name: "Script",
             owner: { kind: "surface", surfaceId: "s1" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", source: { entry: "index.ts", files: {} } },
+            graphs: { events: { s: { id: "s", script: { scriptRef: "scripts/launcher.ts" } } }, functions: {} },
         } as unknown as Blueprint;
     }
 
@@ -825,55 +800,6 @@ describe("assembling as a variant without packaging", () => {
         expect(planSceneDrop(context({ appTag: { id: "tag-demo", name: "Demo" } }), "tag-demo", [])).toBeNull();
     });
 
-    /** `Get App Tag` into a comparison the fold cannot decide - what a build refuses outright. */
-    const unfoldable = {
-        assetId: "asset-1",
-        name: "Shared Menu Logic",
-        frontend: "visual",
-        blueprint: {
-            id: "bp-shared",
-            name: "Shared",
-            owner: { kind: "sharedAsset", assetId: "asset-1" },
-            frontend: "visual",
-            programKind: "graph",
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        "e-1": {
-                            id: "e-1",
-                            name: "On Init",
-                            graph: {
-                                nodes: {
-                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-                                    tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
-                                    eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
-                                    label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
-                                },
-                                edges: [
-                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
-                                    { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
-                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
-                                    { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
-                                ],
-                            },
-                        },
-                    },
-                    functions: {},
-                },
-            },
-        },
-    } as unknown as SharedBlueprintAsset;
-
-    it("does not refuse a shared blueprint it cannot fold", () => {
-        // A build refuses this graph, twice. Refusing it here would take Dev Mode away from the
-        // author over a graph they are still editing.
-        expect(() => foldSharedBlueprints(
-            [unfoldable],
-            context({ appTag: { id: "tag-demo", name: "Demo" } }),
-            { tagName: "Demo" },
-        )).not.toThrow();
-    });
 });
 
 describe("bundleAssembler save compatibility", () => {
@@ -963,7 +889,9 @@ describe("bundleAssembler story schema", () => {
         await writeFile(
             path.join(projectPath, "editor", "ui", "uigraphs.json"),
             JSON.stringify({
-                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                // The wrapper's own version, which is not the interface document's - it has sat at
+                // 2 while the blueprint record inside it moved on its own.
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
                 blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {} },
             }),
             "utf-8",
@@ -1050,5 +978,370 @@ describe("bundleAssembler story schema", () => {
             revision: 1,
         });
         expect(bundle.localization?.scenes).toEqual({ "scene-1": "Scene 1" });
+    });
+});
+
+describe("bundleAssembler script blueprints", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    /** The message an assembly was refused with; a test that expected a refusal fails without one. */
+    async function refusalOf(assembling: Promise<unknown>): Promise<string> {
+        try {
+            await assembling;
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+        }
+        throw new Error("the assembly was expected to be refused");
+    }
+
+    /** The smallest project that holds one script blueprint on the project's own graph. */
+    async function createScriptProject(): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-script-bundle-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await mkdir(path.join(projectPath, "editor", "story"), { recursive: true });
+        await mkdir(path.join(projectPath, "scripts"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({ schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, surfaces: [] }),
+            "utf-8",
+        );
+        const script: Blueprint = {
+            id: "bp-script",
+            name: "Boot",
+            owner: { kind: "globalMain" },
+            graphs: {
+                eventIds: ["layer-script"],
+                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/boot.ts" } } },
+                functions: {},
+            },
+        };
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                // The graph document's own format version, not the interface document's: the
+                // assembler refuses a `uigraphs.json` claiming a version newer than it reads.
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: {
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                    blueprints: { [script.id]: script },
+                    ownerRecords: { globalMain: { blueprintId: script.id } },
+                },
+            }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "scripts", "boot.ts"),
+            [
+                'import type { GlobalCtx } from "@narraleaf/script";',
+                "export function onAppBoot(ctx: GlobalCtx): void { void ctx; }",
+                "",
+            ].join("\n"),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    it("writes Dev Mode's compiled scripts under .nlstudio and names them as file URLs", async () => {
+        const projectPath = await createScriptProject();
+        const bundle = await assembleDevModeBundleFromProjectPath({ projectPath, bundleId: "b", revision: 1 });
+
+        const entry = bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")];
+        expect(entry?.scriptRef).toBe("scripts/boot.ts");
+        expect(entry?.diagnostics).toBeUndefined();
+        // A `file:` URL because that is what the Dev Mode document's policy admits, and under the
+        // project's own `.nlstudio/` because version control and an export both leave that out.
+        expect(entry?.url?.startsWith("file:///")).toBe(true);
+        const written = path.join(projectPath, ".nlstudio", "dev-mode", "scripts", "scripts_boot.js");
+        expect(entry?.url).toBe(pathToFileURL(written).toString());
+        expect((await readFile(written, "utf-8"))).toContain("onAppBoot");
+    });
+
+    it("writes where a build says, and names each file the way the build gives", async () => {
+        const projectPath = await createScriptProject();
+        const appDir = path.join(projectPath, ".build", "app");
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            scriptOutput: {
+                directory: path.join(appDir, "scripts"),
+                toUrl: filePath => `scripts/${path.basename(filePath)}`,
+            },
+        });
+
+        // What a pack carries: a name relative to the page, which the runtime resolves against the
+        // document it runs in - the runtime scheme on the desktop, the site in a web export. Never a
+        // `file:` URL, which the shipped page's policy refuses.
+        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("scripts/scripts_boot.js");
+        expect((await readFile(path.join(appDir, "scripts", "scripts_boot.js"), "utf-8"))).toContain("onAppBoot");
+    });
+
+    /*
+     * A package that ships a script layer the author wrote and nothing runs is the build producing
+     * less than was asked for, with nothing anywhere saying so - the failure that reached players
+     * when every build's compile failed the same way. So a package refuses, and says which file.
+     */
+    it("refuses a package whose script does not compile, naming the file", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+        const appDir = path.join(projectPath, ".build", "app");
+
+        const assembling = assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "en",
+            scriptOutput: { directory: path.join(appDir, "scripts"), toUrl: filePath => `scripts/${path.basename(filePath)}` },
+        });
+
+        await expect(assembling).rejects.toBeInstanceOf(BuildRefusal);
+        const message = await refusalOf(assembling);
+        expect(message.split("\n")[0]).toBe("1 script could not be compiled.");
+        expect(message).toContain("scripts/boot.ts");
+    });
+
+    it("writes the refusal's count in the author's language", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+
+        const message = await refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "zh",
+            scriptOutput: { directory: path.join(projectPath, ".build", "scripts"), toUrl: filePath => filePath },
+        }));
+
+        expect(message.split("\n")[0]).toBe("有 1 个脚本无法编译");
+    });
+
+    it("keeps Dev Mode running with the layer dead and the failure reported", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+        const notices: string[] = [];
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            onNotice: message => notices.push(message),
+        });
+
+        const entry = bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")];
+        expect(entry?.url).toBeUndefined();
+        expect(entry?.diagnostics?.[0]?.message).toContain("scripts/boot.ts");
+        expect(notices.some(notice => notice.includes("scripts/boot.ts"))).toBe(true);
+    });
+
+    it("builds a package whose script only has type errors", async () => {
+        // The rule the whole feature rests on: types are stripped, never checked, so a build never
+        // depends on the type check the author's editor runs.
+        const projectPath = await createScriptProject();
+        await writeFile(
+            path.join(projectPath, "scripts", "boot.ts"),
+            'const n: number = "not a number";\nexport function onAppBoot(): number { return n; }\n',
+            "utf-8",
+        );
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            scriptOutput: { directory: path.join(projectPath, ".build", "scripts"), toUrl: filePath => `scripts/${path.basename(filePath)}` },
+        });
+
+        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("scripts/scripts_boot.js");
+    });
+});
+
+describe("bundleAssembler asset set refusals", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    /** An author edition. Its id is a uuid, which is exactly what no sentence may print. */
+    const DLC_ID = "d1c0e7a1-0000-4000-8000-00000000d1c0";
+    const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+    /**
+     * A project whose one scene, "The corridor", sets its background to an asset set that varies by
+     * edition. `files` are that set's members, each tagged with the edition it answers.
+     */
+    async function createSetProject(files: Record<string, string>): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-asset-set-refusal-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({
+                name: "Test",
+                identifier: "test.project",
+                metadata: {},
+                app: { localization: { sourceLocale: "en", locales: [{ code: "en", displayName: "English" }] } },
+            } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({ schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, surfaces: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {} },
+            }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({ schemaVersion: 1, tags: [{ id: DLC_ID, name: "DLC", overrides: {} }] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "asset-sets.json"),
+            JSON.stringify({
+                version: 1,
+                sets: [{
+                    id: "set-cover",
+                    name: "Cover",
+                    type: "image",
+                    filter: ["set:set-cover"],
+                    axis: { kind: "release", key: "release", residency: "build", values: ["main", DLC_ID], fallback: "main" },
+                }],
+            }),
+            "utf-8",
+        );
+        await mkdir(path.join(projectPath, "assets"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "assets", "assets.metadata.image.json"),
+            JSON.stringify(Object.fromEntries(Object.entries(files).map(([id, edition]) => [
+                id,
+                { id, type: "image", name: id, tags: ["set:set-cover", `release:${edition}`] },
+            ]))),
+            "utf-8",
+        );
+        const storyDir = path.join(projectPath, "editor", "story", "stories", STORY_ID);
+        await mkdir(storyDir, { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [{ id: STORY_ID, name: "Story" }] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(storyDir, "storydoc.json"),
+            JSON.stringify({
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: STORY_ID,
+                name: "Story",
+                chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+                scenes: {
+                    "scene-1": {
+                        id: "scene-1",
+                        name: "The corridor",
+                        runtimeName: "The corridor",
+                        rootBlockIds: ["cover"],
+                        blocks: {
+                            cover: {
+                                id: "cover",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: { action: "setBackground", assetId: "set-cover" },
+                            },
+                        },
+                    },
+                },
+            }),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    /** The message an assembly was refused with; a test that expected a refusal fails without one. */
+    async function refusalOf(assembling: Promise<unknown>): Promise<string> {
+        try {
+            await assembling;
+        } catch (error) {
+            expect(error).toBeInstanceOf(BuildRefusal);
+            return error instanceof Error ? error.message : String(error);
+        }
+        throw new Error("the assembly was expected to be refused");
+    }
+
+    it("refuses a package in the author's language, with the catalogue's sentence", async () => {
+        // No edition says which of the set's files it takes, so `main` cannot be built.
+        const projectPath = await createSetProject({ "cover-main": "main", "cover-dlc": DLC_ID });
+        const refusal = (locale: LocaleCode) => refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale,
+        }));
+
+        const where = { set: "Cover", location: "The corridor", variant: "main" };
+        for (const locale of ["zh", "en", "ja"] as const) {
+            expect(await refusal(locale)).toBe(createTranslator(locale).t("build.assetSet.variantUnset", where));
+        }
+        expect(await refusal("zh")).toBe(
+            "资产集「Cover」（用于 The corridor）按变体变化，main 没有指定所用的美术。请在 项目 ▸ 应用 ▸ 变体 中选择",
+        );
+    });
+
+    it("names a variant by its name, never by the id it is stored as", async () => {
+        // The DLC takes its own art, and neither it nor the fallback has a file.
+        const projectPath = await createSetProject({});
+        const message = await refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "en",
+            appTag: { id: DLC_ID, name: "DLC" },
+            assetAxes: { release: DLC_ID },
+        }));
+
+        expect(message).toBe("Asset set Cover, used in The corridor, has no file for the variant DLC.");
+        expect(message).not.toMatch(UUID);
+    });
+
+    it("keeps Dev Mode running and says the same sentence there", async () => {
+        const projectPath = await createSetProject({ "cover-main": "main", "cover-dlc": DLC_ID });
+        const notices: string[] = [];
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            locale: "zh",
+            onNotice: message => notices.push(message),
+        });
+
+        expect(bundle.storyLibrary?.documents[STORY_ID]).toBeDefined();
+        expect(notices).toContain(createTranslator("zh").t("build.assetSet.variantUnset", {
+            set: "Cover",
+            location: "The corridor",
+            variant: "main",
+        }));
     });
 });

@@ -40,7 +40,7 @@ export function resolveWidgetPrivateBlueprintId(
     const ownerKey = scope.componentId
         ? componentWidgetMainOwnerKey(scope.componentId, elementId)
         : widgetMainOwnerKey(scope.surfaceId, elementId);
-    return document.ownerRecords?.[ownerKey]?.activeBlueprintId;
+    return document.ownerRecords?.[ownerKey]?.blueprintId;
 }
 
 /**
@@ -62,10 +62,7 @@ function blueprintHasHead(
     if (!blueprint) {
         return false;
     }
-    if (blueprint.program.kind !== "graph") {
-        return unreadable === "listening";
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
+    return Object.values(blueprint.graphs.events ?? {}).some(eventGraph =>
         Object.values(eventGraph?.graph?.nodes ?? {}).some(node => headTypes.has(node.type)),
     );
 }

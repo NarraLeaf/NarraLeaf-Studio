@@ -54,6 +54,12 @@ function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
 
     try {
         const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
+        // Open editors first, and before the savers are even listed. A row that is open for editing
+        // holds its words in the field until something moves them into the document; a flush that
+        // asked only the savers would write every document except the one the author is typing
+        // into. Settling is synchronous, so by the time the savers are collected below the story's
+        // saver already owes the disk the line that was in the field.
+        saveStatus.settlePendingEdits();
         for (const { labelKey, saver } of saveStatus.listSavers()) {
             targets.push({ labelKey, flush: () => saver.flush() });
         }

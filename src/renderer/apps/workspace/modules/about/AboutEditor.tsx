@@ -1,7 +1,8 @@
 import { useCallback } from "react";
-import { Globe, Info, Users } from "lucide-react";
+import { FileText, Globe, Info, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
+import { Button } from "@/lib/components/elements";
 import { EditorComponentProps } from "../types";
 
 /** The NarraLeaf Project home page; opened in the system browser via `app.openExternal`. */
@@ -18,7 +19,8 @@ const CONTRIBUTORS = ["WangZixu", "helloyork"];
 /**
  * About editor component.
  *
- * A static credits page: who owns NarraLeaf Studio and who has contributed to it. Reached from
+ * A static credits page: who owns NarraLeaf Studio and who has contributed to it, and a line that
+ * opens the licence texts of the open source packages Studio is built from. Reached from
  * Help ▸ About (the in-app menu on Windows/Linux, the native menu on macOS).
  */
 export function AboutEditor(_: EditorComponentProps) {
@@ -26,6 +28,10 @@ export function AboutEditor(_: EditorComponentProps) {
 
     const handleOpenWebsite = useCallback(() => {
         void getInterface().app.openExternal(OWNER_URL);
+    }, []);
+
+    const handleOpenNotices = useCallback(() => {
+        void getInterface().app.openThirdPartyNotices();
     }, []);
 
     return (
@@ -75,6 +81,14 @@ export function AboutEditor(_: EditorComponentProps) {
                             </li>
                         ))}
                     </ul>
+                </div>
+
+                {/* Licences of the packages Studio is built from: one quiet line, not a section. */}
+                <div className="flex justify-center mt-6">
+                    <Button variant="ghost" size="sm" className="font-normal" onClick={handleOpenNotices}>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>{t("about.openSourceLicenses")}</span>
+                    </Button>
                 </div>
             </div>
         </div>

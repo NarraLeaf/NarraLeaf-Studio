@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { AssetSet } from "@shared/types/assetSet";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../../workspace/services/references/referenceModel";
@@ -117,6 +118,24 @@ describe("assets/unused", () => {
         ]);
         // The audio row, and only the audio row.
         expect(findings[1].messageParams).toEqual({ asset: "tune.mp3" });
+    });
+
+    it("leaves an asset picked by a computed value to the blueprint rule, and still withholds its kind", async () => {
+        // It used to be filed here as "unused assets not listed", under the project's name, where
+        // it took the place of the row it hid. `blueprint/assembled-asset-name` reports it now, at
+        // the node; the doubt it casts over pictures still holds the picture rows back.
+        const ctx = createTestLintContext({
+            assets: [asset("pic"), asset("tune", { type: AssetType.Audio, name: "tune.mp3", ext: "mp3" })],
+            referencedAssetIds: new Set<string>(),
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "computedAssetPin", slice: "blueprint", location: "CG grid › Set Image Asset.asset", affects: ["image"] }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings.map(finding => finding.messageParams)).toEqual([{ asset: "tune.mp3" }]);
     });
 
     it("says the project could not be scanned when the index never built", async () => {
@@ -446,14 +465,18 @@ describe("assets/oversized", () => {
 describe("assets/group-incomplete", () => {
     const runSets = (ctx: LintContext) => runRule("assets/group-incomplete", ctx);
 
-    /** `char:alice` fixed, one build axis over moods and one runtime axis over locales. */
+    /** An author edition. Its id is a uuid, as every edition an author makes has. */
+    const DEMO: ProjectAppTag = { id: "0b5e1d9c-4f2a-4e8b-9c3d-7a6f5e4d3c2b", name: "Demo", overrides: {} };
+    const appTags = [RELEASE_APP_TAG, DEMO];
+
+    /** A set of Alice's picture that varies by edition: main, and the demo. */
     function aliceSet(overrides: Partial<AssetSet> = {}): AssetSet {
         return {
             id: "set-alice",
             name: "Alice",
             type: AssetType.Image,
-            filter: ["char:alice"],
-            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy", "sad"], fallback: "happy" },
+            filter: ["set:set-alice"],
+            axis: { kind: "release" as const, key: "release", residency: "build" as const, values: ["main", DEMO.id], fallback: "main" },
             ...overrides,
         };
     }
@@ -463,45 +486,82 @@ describe("assets/group-incomplete", () => {
     }
 
     const fullLibrary = [
-        tagged("a", ["char:alice", "mood:happy"]),
-        tagged("c", ["char:alice", "mood:sad"]),
+        tagged("a", ["set:set-alice", "release:main"]),
+        tagged("c", ["set:set-alice", `release:${DEMO.id}`]),
     ];
 
     it("says nothing about a project that declares no sets", async () => {
-        expect(await runSets(createTestLintContext({ assets: fullLibrary }))).toEqual([]);
+        expect(await runSets(createTestLintContext({ assets: fullLibrary, appTags }))).toEqual([]);
     });
 
     it("says nothing when every variant resolves to one file", async () => {
-        const ctx = createTestLintContext({ assets: fullLibrary, assetSets: [aliceSet()] });
+        const ctx = createTestLintContext({ assets: fullLibrary, appTags, assetSets: [aliceSet()] });
 
         expect(await runSets(ctx)).toEqual([]);
     });
 
-    it("names the variant that has no file, as the tags that would fix it", async () => {
+    it("names the variant that has no file by the edition's name, never by its id", async () => {
         // The fallback is the one that has to resolve, so it is the one whose absence is a hole.
         const ctx = createTestLintContext({
             assets: fullLibrary.slice(0, 1),
-            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: DEMO.id } })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "Demo" },
+            location: { kind: "project" },
+        }]);
+        expect(JSON.stringify(findings)).not.toContain(DEMO.id);
+    });
+
+    it("names a language by its code", async () => {
+        const ctx = createTestLintContext({
+            assets: [tagged("en", ["set:set-alice", "locale:en"])],
+            assetSets: [aliceSet({ axis: { kind: "locale", key: "locale", residency: "runtime", values: ["en", "ja"], fallback: "ja" } })],
         });
 
         expect(await runSets(ctx)).toEqual([{
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.message",
-            messageParams: { set: "Alice", variant: "mood:sad" },
+            messageParams: { set: "Alice", variant: "ja" },
             location: { kind: "project" },
         }]);
     });
 
+    it("names an edition the project no longer has by the word for one, never by its id", async () => {
+        // The set still promises the demo after the demo was deleted from the project.
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 1),
+            appTags: [RELEASE_APP_TAG],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: DEMO.id } })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "" },
+            messageParamKeys: { variant: "assets.sets.deletedVariant" },
+            location: { kind: "project" },
+        }]);
+        expect(JSON.stringify(findings)).not.toContain(DEMO.id);
+    });
+
     it("reports a variant two files claim, which resolves to nothing just as a hole does", async () => {
         const ctx = createTestLintContext({
-            assets: [...fullLibrary, tagged("e", ["char:alice", "mood:happy"])],
+            assets: [...fullLibrary, tagged("e", ["set:set-alice", "release:main"])],
+            appTags,
             assetSets: [aliceSet()],
         });
 
         expect(await runSets(ctx)).toEqual([{
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
-            messageParams: { set: "Alice", variant: "mood:happy", count: "2" },
+            messageParams: { set: "Alice", variant: "main", count: "2" },
             location: { kind: "project" },
         }]);
     });
@@ -509,10 +569,13 @@ describe("assets/group-incomplete", () => {
     it("never names a file, so a variant a package left out cannot reach a log", async () => {
         const ctx = createTestLintContext({
             assets: fullLibrary.slice(0, 1),
-            assetSets: [aliceSet()],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: DEMO.id } })],
         });
 
-        const params = (await runSets(ctx)).map(finding => JSON.stringify(finding.messageParams));
+        const findings = await runSets(ctx);
+        expect(findings).toHaveLength(1);
+        const params = findings.map(finding => JSON.stringify(finding.messageParams));
         expect(params.some(text => text.includes("a.png") || text.includes("\"a\""))).toBe(false);
     });
 
@@ -521,11 +584,11 @@ describe("assets/group-incomplete", () => {
         const inner = aliceSet({
             id: "inner",
             name: "Alice EN",
-            filter: ["char:alice", "locale:en"],
+            filter: ["set:set-alice", "locale:en"],
             axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"], fallback: "happy" },
         });
         const ctx = createTestLintContext({
-            assets: [tagged("x", ["char:alice", "locale:en", "mood:happy"])],
+            assets: [tagged("x", ["set:set-alice", "locale:en", "mood:happy"])],
             assetSets: [outer, inner],
         });
 
@@ -540,7 +603,8 @@ describe("assets/group-incomplete", () => {
     it("reports an incoherent set once, instead of a hole for every cell it does not have", async () => {
         const ctx = createTestLintContext({
             assets: fullLibrary,
-            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: [], fallback: "" } })],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "release", residency: "build" as const, values: [], fallback: "" } })],
         });
 
         const findings = await runSets(ctx);
@@ -548,10 +612,11 @@ describe("assets/group-incomplete", () => {
         expect(findings[0].messageKey).toBe("lint.rule.assetsGroupIncomplete.messageDeclaration");
     });
 
-    it("holds the fixed filter, so another character's files do not fill a hole", async () => {
+    it("holds the fixed filter, so another set's files do not fill a hole", async () => {
         const ctx = createTestLintContext({
-            assets: [...fullLibrary.slice(0, 1), tagged("z", ["char:bob", "mood:sad"])],
-            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+            assets: [...fullLibrary.slice(0, 1), tagged("z", ["set:set-bob", `release:${DEMO.id}`])],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: DEMO.id } })],
         });
 
         expect(await runSets(ctx)).toHaveLength(1);
@@ -561,6 +626,7 @@ describe("assets/group-incomplete", () => {
         // The whole point of the fallback: one file, and the variants that do not differ say nothing.
         const ctx = createTestLintContext({
             assets: fullLibrary.slice(0, 1),
+            appTags,
             assetSets: [aliceSet()],
         });
 
@@ -569,14 +635,15 @@ describe("assets/group-incomplete", () => {
 
     it("reports the set when the fallback itself has no file, which leaves nothing to fall back to", async () => {
         const ctx = createTestLintContext({
-            assets: [tagged("c", ["char:alice", "mood:sad"])],
+            assets: [tagged("c", ["set:set-alice", `release:${DEMO.id}`])],
+            appTags,
             assetSets: [aliceSet()],
         });
 
         expect(await runSets(ctx)).toEqual([{
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.message",
-            messageParams: { set: "Alice", variant: "mood:happy" },
+            messageParams: { set: "Alice", variant: "main" },
             location: { kind: "project" },
         }]);
     });
@@ -584,7 +651,8 @@ describe("assets/group-incomplete", () => {
     it("reports a set that names no fallback at all", async () => {
         const ctx = createTestLintContext({
             assets: fullLibrary,
-            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "" } })],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: "" } })],
         });
 
         const findings = await runSets(ctx);
@@ -596,9 +664,10 @@ describe("assets/group-incomplete", () => {
         const ctx = createTestLintContext({
             assets: [
                 ...fullLibrary.slice(0, 1),
-                asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad"] }),
+                asset("z", { type: AssetType.Audio, tags: ["set:set-alice", `release:${DEMO.id}`] }),
             ],
-            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+            appTags,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "release", residency: "build", values: ["main", DEMO.id], fallback: DEMO.id } })],
         });
 
         expect(await runSets(ctx)).toHaveLength(1);

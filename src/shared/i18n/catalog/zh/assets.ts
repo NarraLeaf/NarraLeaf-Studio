@@ -23,6 +23,8 @@ export const assets = {
         moreReferences: "…另有 {count} 处",
         unverifiedTitle: "无法检查这些资产的使用情况",
         unverifiedMessage: "无法确定这些资产是否仍在使用；删除后，正在使用它们的位置将失去资产来源",
+        unverifiedComputed: "以下位置的资产名称在运行时拼出：",
+        unverifiedUnreadable: "以下位置无法读取：",
         confirmTitle: {
             one: "删除 {count} 项",
             other: "删除 {count} 项",
@@ -30,7 +32,6 @@ export const assets = {
         confirmMessage: "所选分组内的全部内容也会一并删除",
         action: "删除",
         failedTitle: "删除失败",
-        failed: "无法删除：{error}",
     },
     rename: {
         failed: "无法重命名 {name}",
@@ -53,7 +54,6 @@ export const assets = {
         audio: "音频",
         video: "视频",
         json: "JSON 文件",
-        blueprint: "蓝图",
         font: "字体",
         model: "模型",
         other: "其他",
@@ -69,6 +69,26 @@ export const assets = {
     itemCount: {
         one: "{count} 项",
         other: "{count} 项",
+    },
+    unreadable: {
+        category: "该类别无法读取，文件保持原样",
+        notSaved: "当前不保存该类别的改动",
+        notSavedDetail: "“{category}”类别无法读取，没有内容被覆盖",
+    },
+    reference: {
+        missing: "该资产已不在本项目中",
+        unreadable: "该资产无法读取",
+        unreadableNamed: "资产“{asset}”无法读取",
+        notAsset: "该值不是资产",
+        // 编辑器打开资产却读不到时，先说上面某一句；项目里仍有该资产时，再说读取的结果（只列作者能处理的）。
+        // 永不显示读取自带的消息，那里面是资产的存储路径。
+        withReason: "{headline}；{reason}",
+        reason: {
+            fileMissing: "其文件已不在项目文件夹中",
+            accessDenied: "Studio 没有读取其文件的权限",
+            undecodable: "其文件已损坏，或不是 Studio 能打开的格式",
+            newerVersion: "其文件由更新版本的 NarraLeaf Studio 保存",
+        },
     },
     overview: {
         loading: "正在读取资产库…",
@@ -219,7 +239,9 @@ export const assets = {
         noneFound: "该文件夹中没有 {family} 模型",
         noneFoundHint: "确认上方所选的类型，并确认该文件夹是否为导出工具生成的文件夹",
         entry: "入口文件",
-        fileSummary: "{count} 个文件 · {size}",
+        fileSummary: {
+            other: "{count} 个文件 · {size}",
+        },
         selectAll: "全选",
         selectNone: "全不选",
         importAction: "导入",
@@ -274,6 +296,7 @@ export const assets = {
             locale: "语言",
             release: "变体",
         },
+        deletedVariant: "已删除的变体",
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",
@@ -354,9 +377,18 @@ export const assets = {
             one: "已导出 {count} 个文件",
             other: "已导出 {count} 个文件",
         },
-        partial: "已导出 {exported} 个文件，{failed} 个未能导出",
+        partialCounts: "已导出 {exported}，{failed} 个未能导出",
+        fileCount: {
+            other: "{count} 个文件",
+        },
         partialTitle: "部分文件未能导出",
         failed: "导出失败：{error}",
+        reason: {
+            permissionDenied: "访问被拒绝",
+            sourceMissing: "项目文件夹中缺少该文件",
+            diskFull: "磁盘已满",
+            copyFailed: "无法复制该文件",
+        },
     },
     selector: {
         selectType: "选择 {type}",
@@ -380,8 +412,16 @@ export const assets = {
         categoryMapping: "标签类别映射",
         exampleFilename: "示例文件名：{filename}",
         categoryPlaceholder: "标签类别（例如：char、emo）",
-        moreFiles: "…还有 {count} 个文件",
-        summary: "将为 {files} 个文件共添加 {tags} 个标签",
+        moreFiles: {
+            other: "…还有 {count} 个文件",
+        },
+        tagCounts: "将为 {files}共添加 {tags}",
+        tagCount: {
+            other: "{count} 个标签",
+        },
+        fileCount: {
+            other: "{count} 个文件",
+        },
         applying: "正在应用…",
         applyTags: "应用标签",
         parseFailedTitle: "魔法标签解析失败",
@@ -414,6 +454,35 @@ export const assets = {
             markLoop: "在播放头设置循环点",
             markOut: "在播放头设置出点",
             channels: "{count} 声道",
+            seam: "循环接缝",
+            auditionSeam: "试听接缝",
+            auditionSeamTip: "播放接缝前后各 {seconds} 秒",
+            clearMarkers: "清除全部标记",
+            gain: "增益",
+            gainTip: "降低该音频在游戏中的音量，不能调高",
+            align: "对齐响度",
+            alignTip: "按测得的响度设置增益，使所有已对齐的音频响度一致；本就更轻的音频保持原音量",
+            seamEnd: {
+                out: "出点",
+                clipEnd: "音频结尾",
+            },
+            seamStart: {
+                loop: "循环点",
+                in: "入点",
+                clipStart: "音频开头",
+            },
+            levels: "电平",
+            peak: "峰值",
+            loudness: "响度",
+            leadingSilence: "开头静音",
+            trailingSilence: "结尾静音",
+            clipping: "削波",
+            clippingNone: "无",
+            clippingCount: {
+                one: "{count} 处",
+                other: "{count} 处",
+            },
+            seconds: "{value} 秒",
         },
         // 显示在快捷键设置表和「?」速查表中。
         keybindings: {
@@ -434,6 +503,7 @@ export const assets = {
             clearIn: "清除入点",
             clearLoop: "清除循环点",
             clearOut: "清除出点",
+            clearMarkers: "清除全部标记",
             undo: "撤销标记改动",
             redo: "重做标记改动",
             selectAll: "选中整段",
@@ -441,6 +511,42 @@ export const assets = {
             zoomIn: "放大",
             zoomOut: "缩小",
             zoomFit: "显示全部",
+            auditionSeam: "试听循环接缝",
+        },
+    },
+    // 视频预览的播放、视图与状态栏。不改动视频文件和它的记录；保存帧会新建一个图片资产。
+    video: {
+        loading: "正在加载视频…",
+        loadError: "加载视频失败",
+        editor: {
+            previousFrame: "上一帧",
+            nextFrame: "下一帧",
+            speed: "播放速度",
+            zoom: "缩放",
+            zoomFit: "适应窗口",
+            saveFrame: "将当前帧存为图片",
+            frameSaved: "当前帧已存为 {name}",
+            frameSaveFailed: "无法保存当前帧",
+            open: "打开",
+            frame: "第 {frame} / {total} 帧",
+            transparent: "透明通道",
+        },
+        // 显示在快捷键设置表和「?」速查表中。
+        keybindings: {
+            playPause: "播放 / 暂停",
+            auditionSeam: "预览循环接缝",
+            toStart: "回到开头",
+            toEnd: "跳到结尾",
+            previousFrame: "上一帧",
+            nextFrame: "下一帧",
+            backSecond: "后退一秒",
+            forwardSecond: "前进一秒",
+            loop: "切换循环",
+            selectAll: "选中整段",
+            clearSelection: "清除选区",
+            zoomIn: "放大时间线",
+            zoomOut: "缩小时间线",
+            zoomFit: "时间线显示全部",
         },
     },
     image: {
@@ -455,11 +561,6 @@ export const assets = {
         cut: "剪切选中的资产",
         paste: "粘贴资产",
         rename: "重命名选中的资产或分组",
-    },
-    lockReason: {
-        character: "资产正被某个角色使用",
-        scene: "资产正被某个场景使用",
-        editor: "资产正被编辑器使用",
     },
     previewEditor: {
         loadFailed: "资产加载失败",

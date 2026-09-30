@@ -4,6 +4,7 @@ export const widgetChrome = {
         insert: "Insert {name}",
         drawing: "Drawing {name}: drag on canvas to create",
         moreInsertElements: "More insert elements",
+        fromPlugin: "From {plugin}",
         components: "Components",
         openComponentLibrary: "Open Component Library",
         componentLibrary: "Component Library",

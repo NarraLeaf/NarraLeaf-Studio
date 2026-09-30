@@ -26,6 +26,14 @@
         },
         "attributes": {},
         "description": "",
+        "entranceTransform": {
+          "position": {
+            "xalign": 0.5,
+            "yalign": 0.5,
+            "yoffset": -50
+          },
+          "zoom": 0.624
+        },
         "id": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
         "name": "Narra",
         "nicknames": [],

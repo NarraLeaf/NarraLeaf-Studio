@@ -214,7 +214,9 @@ export async function buildAab(input: BuildAabInput): Promise<Buffer> {
     const assetDirectories = assetDirectoriesOf(modulePaths);
 
     const entries: ZipWriteEntry[] = [
-        { name: BUNDLE_CONFIG_PATH, source: { kind: "buffer", data: encodeBundleConfig() } },
+        // The payload stays uncompressed in the APKs Play generates, as it does in the APK
+        // repackApk writes: the shell opens every file under wwwRoot with openFd.
+        { name: BUNDLE_CONFIG_PATH, source: { kind: "buffer", data: encodeBundleConfig([`${wwwRoot}/**`]) } },
         ...moduleEntries.map(entry => ({ name: `${BUNDLE_MODULE}/${entry.modulePath}`, source: entry.source })),
     ];
     if (nativeDirectories.length > 0) {

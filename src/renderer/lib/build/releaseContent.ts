@@ -1,3 +1,4 @@
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { applyAppTagToStoryDocument } from "@shared/story/appTagFold";
 import {
     blueprintGraphCarriers,
@@ -70,7 +71,7 @@ export type ReleaseContentInput = {
     /** The project's own scene declarations - the document root, which every variant inherits. */
     projectDeclaredScenes: AppTagReachableScenes;
     stories: readonly ReleaseContentStory[];
-    /** Every blueprint the project runs, loaded: the project's own plus every shared blueprint asset. */
+    /** Every blueprint the project runs, loaded. */
     blueprints: readonly Blueprint[];
     surfaces: readonly { id: string; name: string }[];
     assets: readonly { id: string; name: string }[];
@@ -201,7 +202,7 @@ export function listUnreadableMechanisms(input: {
         });
     }
     for (const blueprint of input.blueprints) {
-        if (blueprint.program?.kind !== "graph") {
+        if (hasScriptLayer(blueprint)) {
             const mechanism: AppTagMechanismRef = { kind: "scriptBlueprint", blueprintId: blueprint.id };
             found.push({
                 reason: "scriptBlueprint",

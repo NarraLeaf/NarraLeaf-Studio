@@ -38,6 +38,43 @@ export function isProtectedStateKey(key: string): boolean {
 }
 
 /**
+ * Keys only the main process writes. A renderer may neither set nor delete them.
+ *
+ * Not preferences and not history: each one decides whose credential a request carries or where
+ * it is sent. The server sign-ins hold the address a stored token is presented to, and a renderer
+ * able to rewrite that address could have the token sent anywhere; the session uses decide which
+ * project acts as which account, and a renderer able to write a row would be answering the
+ * question the author is asked. The sealed tokens are ciphertext, but a renderer that could replace
+ * one could swap in a token of its own choosing.
+ *
+ * Enforced by the host's global-state handlers, which refuse these by name. The main process
+ * writes them through its own store and is not affected.
+ */
+export const MAIN_OWNED_STATE_KEYS: readonly string[] = [
+    "versionControl.serverSessions",
+    "versionControl.serverTokens",
+    "versionControl.serverSessionProjects",
+];
+
+/**
+ * Keys whose value never crosses to a renderer at all.
+ *
+ * Sealed tokens are ciphertext, and still nothing outside the main process has a use for them:
+ * the one reader is the process that can unseal them. Reads answer as though the key were unset.
+ */
+export const MAIN_ONLY_STATE_KEYS: readonly string[] = [
+    "versionControl.serverTokens",
+];
+
+export function isMainOwnedStateKey(key: string): boolean {
+    return MAIN_OWNED_STATE_KEYS.includes(key);
+}
+
+export function isMainOnlyStateKey(key: string): boolean {
+    return MAIN_ONLY_STATE_KEYS.includes(key);
+}
+
+/**
  * Where the workspace keeps its shape: dock visibility and widths, panel order, which editor tabs
  * were open per project, the UI editor's viewport and outline state.
  *
@@ -85,6 +122,10 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundFill",
     "ui.backgroundAnchor",
     "ui.backgroundBlur",
+    "ui.backgroundEditorFill",
+    "ui.backgroundEditorOpacity",
+    "ui.backgroundSidebarFill",
+    "ui.backgroundSidebarOpacity",
     "story.actionCreator.starredActionIds",
 ];
 
@@ -96,7 +137,7 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
  * question deserves. Both groups are things the receiving machine is better off without.
  *
  * - **The wallpaper.** `ui.backgroundImage` is a file NAME inside this profile's background cache,
- *   never a path, so on another machine it names a file that does not exist; the other four keys
+ *   never a path, so on another machine it names a file that does not exist; the other keys
  *   only describe how that missing picture would be painted. Carrying the picture itself would
  *   mean putting megabytes of base64 in a settings file, which is not what a settings file is.
  * - **The identity.** The name and address recorded on commits are the author's, not the
@@ -108,6 +149,10 @@ export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundFill",
     "ui.backgroundAnchor",
     "ui.backgroundBlur",
+    "ui.backgroundEditorFill",
+    "ui.backgroundEditorOpacity",
+    "ui.backgroundSidebarFill",
+    "ui.backgroundSidebarOpacity",
     "versionControl.authorName",
     "versionControl.authorEmail",
     // Also the identity, for the same reason and one more of its own. The label is what

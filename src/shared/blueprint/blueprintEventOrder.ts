@@ -120,10 +120,15 @@ function forEachBlueprintGraphIndex(raw: unknown, visit: (graphs: BlueprintGraph
     }
 
     for (const blueprint of Object.values(raw.blueprints)) {
-        if (!isRecord(blueprint) || !isRecord(blueprint.program)) {
+        if (!isRecord(blueprint)) {
             continue;
         }
-        const graphs = blueprint.program.graphs;
+        // Either shape, because this runs on the raw parse before the migration ladder: a document
+        // written before v14 keeps its graphs under `program`, and the order it carries is exactly
+        // what this exists to rescue.
+        const graphs = isRecord(blueprint.graphs)
+            ? blueprint.graphs
+            : isRecord(blueprint.program) ? blueprint.program.graphs : undefined;
         if (!isRecord(graphs)) {
             continue;
         }

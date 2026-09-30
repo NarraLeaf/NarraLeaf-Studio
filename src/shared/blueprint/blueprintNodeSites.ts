@@ -26,14 +26,11 @@ export type BlueprintNodeSite = {
 };
 
 /** Every node of one of `nodeTypes` in this blueprint, across events, functions and macros. */
-export function collectBlueprintNodeSitesIn(
+function collectBlueprintNodeSitesIn(
     blueprint: Blueprint,
     nodeTypes: ReadonlySet<string>,
 ): BlueprintNodeSite[] {
-    if (blueprint.program.kind !== "graph") {
-        return [];
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     const carriers = [
         ...Object.values(graphs.events ?? {}),
         ...Object.values(graphs.functions ?? {}),

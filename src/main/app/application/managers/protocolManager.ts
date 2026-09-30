@@ -1,6 +1,7 @@
 import { protocol } from "electron";
 import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
 import { PluginApiHandler, PluginEntryHandler } from "./protocol/pluginHandler";
+import { createProjectCodePolicy } from "./protocol/projectCodePolicy";
 import { APP_SCHEME_PRIVILEGES, ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
@@ -107,13 +108,17 @@ export class ProtocolManager implements IProtocolManager {
         });
         this.registerHandler(publicHandler);
 
-        // The product icon, addressed by id: `app://app-icon/<id>`.
+        // An app icon, addressed by id: `app://app-icon/<id>`. The Settings row previews each choice
+        // through it; the interface's own logo is the leaf in the public assets and never asks.
         //
         // Its own host rather than a rule on the public assets above, because it serves out of
         // `resources/` and answers from a registry rather than from a directory listing: the rule
         // never joins the requested path onto a base dir, so the only files reachable through this
         // route are the ones `WINDOW_ICONS` declares. An id nobody declares resolves to the
-        // shipped mark, which is why a stale preference shows the leaf and not a broken image.
+        // shipped mark, which is why a stale preference shows the default and not a broken image.
+        //
+        // Always the Windows tile, whatever the platform: the preview is 16px beside a label, where
+        // the Apple grid's inset would draw the icon a fifth smaller than its slot.
         const appIconHandler = new FileSystemHandler(
             AppProtocol,
             APP_SCHEME_PRIVILEGES,
@@ -159,7 +164,8 @@ export class ProtocolManager implements IProtocolManager {
         const fsHashHandler = new FileSystemHashHandler(
             AppProtocol,
             APP_SCHEME_PRIVILEGES,
-            this.app.storageManager
+            this.app.storageManager,
+            createProjectCodePolicy(this.app),
         );
         this.registerHandler(fsHashHandler);
 

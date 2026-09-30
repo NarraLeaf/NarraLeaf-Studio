@@ -365,6 +365,10 @@ export function targetParam(
         reserved?: readonly StoryReservedTargetName[];
         /** Kinds resolved only so they can be refused with a reason - see the grammar's `refuses`. */
         refuses?: readonly StoryCommandTargetKind[];
+        /** Libraries the slot also answers from, for a verb that creates its own subject - see the grammar. */
+        assets?: readonly ("image" | "video")[];
+        /** The param that names the element such a line creates; its presence puts the library first. */
+        namedBy?: string;
     },
 ): StoryCommandParamSpec {
     return {
@@ -375,6 +379,8 @@ export function targetParam(
             ...(options?.fallbackKind ? { fallbackKind: options.fallbackKind } : {}),
             ...(options?.reserved ? { reserved: options.reserved } : {}),
             ...(options?.refuses ? { refuses: options.refuses } : {}),
+            ...(options?.assets ? { assets: options.assets } : {}),
+            ...(options?.namedBy ? { namedBy: options.namedBy } : {}),
         },
         positional: true,
         ...(options?.core ? { core: true } : {}),

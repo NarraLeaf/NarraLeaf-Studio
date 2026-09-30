@@ -6,7 +6,9 @@
  *
  *  - Every rule has `title`, `description` and `message` under its camelCase slug
  *    (`lint.rule.<slug>`), and `registry.test.ts` fails if a registered rule is missing any of them
- *    in either catalogue. A rule's variant messages sit beside `message` as `message<Variant>`.
+ *    in either catalogue. A rule's variant messages sit beside `message` as `message<Variant>`. The
+ *    handful of ids no rule owns (`LINT_RULELESS_IDS`) carry only `title` and `description`; their
+ *    messages live under `lint.message` because more than one of them can produce the same finding.
  *  - Titles are short noun phrases; descriptions are one clause and appear only in a hint popover.
  *    Nothing here is a sentence explaining the UI - the interface does not narrate itself.
  *
@@ -50,8 +52,8 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
-            // The variant is named as the tags it is made of, because writing those tags on a file
-            // is the fix. The file that would resolve is not named: it does not exist yet.
+            // The variant is a language's code or an edition's name, never the tag it is stored as:
+            // an edition's id is a uuid. The file that would resolve is not named: it does not exist yet.
             message: "{set} has no file for {variant}",
             messageAmbiguous: "{set} has {count} files for {variant}",
             messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
@@ -88,6 +90,16 @@ export const lint = {
             title: "Network node without network access",
             description: "A network node in a project whose network policy is off",
             message: "{blueprint} makes a network request, which this project does not allow",
+        },
+        /**
+         * The one entry here with no rule behind it. A story document the schema ladder refuses is
+         * never handed to a rule, so it has no row in Project -> Project and no severity to set;
+         * only a name, because the report groups by rule and these findings need a heading. What
+         * one says is `message.storyTooOld` / `.storyTooNew` / `.storyLoadFailed` below.
+         */
+        storyUnreadable: {
+            title: "Unreadable story",
+            description: "A story document this Studio cannot open",
         },
         storyInvalidCommand: {
             title: "Invalid command",
@@ -208,6 +220,11 @@ export const lint = {
             // handle the author has on a transition that is otherwise gone from every menu.
             message: "The transition {transition} is not available, so this change plays as a cut",
         },
+        storyBackgroundUnchanged: {
+            title: "Unchanged background",
+            description: "A row transitioning to the background already on screen",
+            message: "This background is already on screen, so the transition changes nothing",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",
@@ -253,6 +270,27 @@ export const lint = {
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
+        blueprintUnknownNode: {
+            title: "Unknown node type",
+            description: "A node whose type the project cannot load",
+            // Names the type, because the locator points at the graph and the node but a node id is
+            // not something the author can act on - the type is what says which plugin is missing.
+            message: "{type} is not loaded, so this node will not run in the game",
+        },
+        blueprintAssembledAssetName: {
+            title: "Asset name assembled at run time",
+            description: "An asset is chosen by a name the game puts together while it runs, and the game package does not carry it",
+            // The one sentence every surface prints about this: the canvas, the build and the delete
+            // dialog render these keys too. `{node}`, `{pin}`, `{prop}` and a node `{origin}` arrive in
+            // the reader's language, named the way the canvas and the inspector name them.
+            message: "\"{pin}\" on \"{node}\" receives an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            messageBinding: "\"{prop}\" on \"{element}\" is bound to an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            // The same two places, where the name comes from a node type nothing here can load.
+            // `{origin}` is the node type rather than a title: it is what names the plugin, the way
+            // `blueprintUnknownNode` names it.
+            messageUnloadedNode: "\"{pin}\" on \"{node}\" receives an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
+            messageUnloadedNodeBinding: "\"{prop}\" on \"{element}\" is bound to an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
+        },
         uiUnlocalizedText: {
             title: "Unlocalized text",
             description: "Text written straight onto a widget in a project that has a second language",
@@ -270,6 +308,13 @@ export const lint = {
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
         },
+        uiUnknownWidget: {
+            title: "Unknown widget type",
+            description: "A widget whose type the project cannot load",
+            // Names the type, for the reason `blueprintUnknownNode` does: the locator points at the
+            // page and the element, and the type is what says which plugin is missing.
+            message: "{type} is not loaded, so this widget will not be drawn in the game",
+        },
         uiComponentMissing: {
             title: "Missing component",
             description: "An instance of a component the project does not have",
@@ -279,6 +324,11 @@ export const lint = {
             title: "Missing embedded page",
             description: "A Page widget embedding a page the project does not have",
             message: "This Page widget embeds a page the project does not have",
+        },
+        uiFrameLoop: {
+            title: "Circular embedded page",
+            description: "A Page widget embedding a page that leads back to it",
+            message: "This Page widget embeds a page that leads back to it",
         },
         uiListItemFieldMissing: {
             title: "Missing item field",
@@ -294,6 +344,13 @@ export const lint = {
             title: "Empty save field",
             description: "A Save Game node that will run with a declared save field left empty",
             message: "{field} is empty, so this save is written with its default instead",
+        },
+        blueprintRequiredInputUnwired: {
+            title: "Empty input",
+            description: "A node that will run with a required input left unconnected",
+            // Names the node and the pin: the locator column points at the blueprint, and the node
+            // behind it is a generated id nothing on the interface shows.
+            message: "{node} has nothing connected to {pin}",
         },
         blueprintStartSceneForeign: {
             title: "Scene from another story",
@@ -323,7 +380,11 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "Condition nothing can change",
             description: "A variable a condition tests, that nothing in the project ever assigns",
-            message: "{variable} is tested by {count} condition(s) but nothing ever sets it",
+            message: "{variable} is tested by {conditions} but nothing ever sets it",
+            conditionCount: {
+                one: "{count} condition",
+                other: "{count} conditions",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "Random outside an assignment",
@@ -360,7 +421,11 @@ export const lint = {
         localizationOrphan: {
             title: "Orphan translation",
             description: "A translation whose line no longer exists",
-            message: "{count} {locale} translations have no line",
+            message: "{translations} with no line",
+            translationCount: {
+                one: "{count} {locale} translation",
+                other: "{count} {locale} translations",
+            },
         },
         voiceMissing: {
             title: "Missing voice",
@@ -375,7 +440,11 @@ export const lint = {
         voiceOrphan: {
             title: "Orphan voice",
             description: "A recording whose line no longer exists",
-            message: "{count} {locale} recordings have no line",
+            message: "{recordings} with no line",
+            recordingCount: {
+                one: "{count} {locale} recording",
+                other: "{count} {locale} recordings",
+            },
         },
         brandBrokenLink: {
             title: "Broken color link",
@@ -393,10 +462,18 @@ export const lint = {
             // The character itself, because nothing in the location can carry it and it is the only
             // thing that tells one of these findings from the next. Its count travels with it: one
             // finding per line would be thousands of them when the font is simply the wrong one.
-            message: "No project font can draw “{character}” ({count} times)",
-            messageInLanguage: "No project font can draw “{character}” in {language} ({count} times)",
-            messageMore: "{count} more characters no project font can draw",
-            messageMoreInLanguage: "{count} more characters no project font can draw in {language}",
+            message: "No project font can draw “{character}” ({occurrences})",
+            occurrenceCount: {
+                one: "{count} time",
+                other: "{count} times",
+            },
+            messageInLanguage: "No project font can draw “{character}” in {language} ({occurrences})",
+            messageMore: "{characters} no project font can draw",
+            moreCharacterCount: {
+                one: "{count} more character",
+                other: "{count} more characters",
+            },
+            messageMoreInLanguage: "{characters} no project font can draw in {language}",
             // Not a coverage finding at all: the check could not be made. Said out loud because a
             // check that quietly did not run reads on screen as a check that passed.
             messageUnreadable: "{font} could not be read, so glyph coverage was not checked",
@@ -412,6 +489,18 @@ export const lint = {
     message: {
         ruleFailed: "{rule} could not run",
         storyLoadFailed: "{story} could not be opened",
+        /**
+         * Beside the line above and ahead of it, because it is the one reason a story will not open
+         * that says nothing about the story. Without the two versions an author reads their own
+         * file's name next to a failure and looks for the mistake in their script.
+         */
+        storyTooOld: "{story} is in story format v{version}, and this Studio opens v{minimum} and later",
+        /**
+         * The other end of the same ladder. Kept apart from the line above rather than worded to
+         * cover both, because the two ask opposite things of the author: an old document is theirs
+         * and this Studio has moved past it, a new one is theirs and this Studio has not caught up.
+         */
+        storyTooNew: "{story} was written by a newer NarraLeaf Studio (story format v{version}); this Studio reads up to v{supported}",
     },
     category: {
         assets: "Assets",
@@ -443,7 +532,9 @@ export const lint = {
         title: "Problems",
         empty: "No problems found",
         running: "Checking…",
-        summary: "{errors} errors, {warnings} warnings, {infos} info",
+        // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
+        // reads in the singular.
+        counts: "{errors}, {warnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -453,6 +544,9 @@ export const lint = {
         expand: "Expand",
         collapseAll: "Collapse all",
         expandAll: "Expand all",
+        // The last row of a rule that has far more findings than the report opens with. It names the
+        // rule's whole count, which is the number already on the heading above it.
+        showAll: "Show all {count}",
         // The gutter number of the row, spoken. Screen readers get "line 12"; the column itself is
         // bare digits, because that is what the scene editor's own gutter shows and the reader is
         // matching one against the other.
@@ -464,15 +558,36 @@ export const lint = {
         category: "Lint",
     },
     console: {
+        // The console tab a sweep writes to, and what hovering it says. The same word as the
+        // palette category above: it is one feature, and the tab sits among tabs named that way.
+        channel: "Lint",
+        channelDescription: "Project checks and the problems they find",
         started: "Check started",
-        finished: "{errors} errors, {warnings} warnings in {duration}",
+        // `{errors}` and `{warnings}` are whole counts with their nouns, from `common.count.*`.
+        finishedCounts: "{errors}, {warnings} in {duration}",
         // Site first, then what is wrong, then the rule that says so - a compiler's line, and the
         // order a reader scans in. No severity slot: the console prints the level in its own column
         // beside every line, and this used to repeat it inside the sentence.
         finding: "{location} {message} ({rule})",
+        // The shape of the sweep, printed after the findings and beside the summary - the end of a
+        // long log is the part an operator reads. A console cannot fold a rule away the way the
+        // report tab can, and a sweep is routinely one rule repeated thousands of times, so without
+        // these two lines the count of every other rule is unreadable in the stream.
+        byRule: "Findings by rule",
+        // The rule id, not its title: the id is the row in Project ▸ Project that retunes it, and
+        // it is what the finding lines above print too. No severity in the sentence - the console
+        // prints the level of every line in its own column, and this line carries the rule's.
+        ruleCount: "{rule}: {count}",
     },
     build: {
-        blocked: "Build stopped by {count} problems",
+        // Printed on the build channel when the sweep begins, because it is the longest thing
+        // between the click and the first sign of a package, and the build channel is where an
+        // author waiting for one is looking.
+        started: "Checking the project…",
+        blocked: {
+            one: "Build stopped by {count} problem",
+            other: "Build stopped by {count} problems",
+        },
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"
         // would leave them looking for it.

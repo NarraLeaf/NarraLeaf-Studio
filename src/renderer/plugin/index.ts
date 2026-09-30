@@ -10,13 +10,23 @@ import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
     BlueprintInspectorParamSelectOption,
-    BlueprintNodeDef,
+    BlueprintNodeDeclaration,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
     RuntimeBlueprintNodeContext,
     RuntimeBlueprintNodeExecute,
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
-import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type {
+    PluginWidgetContextMenuContext,
+    PluginWidgetDockerBarContext,
+    PluginWidgetDocumentApi,
+    PluginWidgetEditorStateApi,
+    PluginWidgetFloatingToolbarContext,
+    PluginWidgetInspectorContext,
+    PluginWidgetInspectorData,
+    PluginWidgetLayoutSizeFieldContext,
+    PluginWidgetModule,
+} from "@/lib/plugins/pluginWidgetApi";
 import type {
     PluginTextEditorActionDef,
     PluginTextEditorLanguageDef,
@@ -58,15 +68,48 @@ export type {
     AssetSelectorVirtualGroup,
 } from "@/apps/workspace/modules/assets/components/AssetSelector";
 export type {
+    BlueprintAssetNameFlow,
     BlueprintInspectorParamSelectOption,
-    BlueprintNodeDef,
-    BlueprintNodeExecuteFn,
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
+export type {
+    PluginWidgetContextMenuContext,
+    PluginWidgetDockerBarContext,
+    PluginWidgetDocumentApi,
+    PluginWidgetEditorStateApi,
+    PluginWidgetFloatingToolbarContext,
+    PluginWidgetInspectorContext,
+    PluginWidgetInspectorData,
+    PluginWidgetLayoutSizeFieldContext,
+    PluginWidgetModule,
+};
 
 /**
- * A blueprint node as a *plugin* writes it: the editor's full palette metadata,
- * but with the narrowed execute of `narraleaf-studio/runtime`.
+ * What a plugin can learn about a widget type it did not register.
+ *
+ * The registry itself holds host objects, so what comes back is the answer to the question a plugin
+ * can act on - does this type exist, and what is it called - rather than the module behind it.
+ */
+export type PluginWidgetTypeInfo = {
+    type: string;
+    displayName: string;
+    /** The widget type this one specialises, when it specialises one. */
+    extends?: string;
+    /** The plugin that contributed it, absent for Studio's own widgets. */
+    ownerPluginId?: string;
+};
+
+/**
+ * A blueprint node as a *plugin* writes it: everything a node declares about itself, with the
+ * narrowed execute of `narraleaf-studio/runtime`.
+ *
+ * Built on `BlueprintNodeDeclaration` rather than on the host's `BlueprintNodeDef`, so the two
+ * fields that say *where* a node may appear — `scope` and `requiresHostApi` — are not merely
+ * omitted here but unreachable from the published package. `scope` in particular is a list of
+ * owner kinds taken from `BlueprintOwnerRef`; publishing it would let a plugin pin an internal
+ * union, and every later change to the blueprint model would break plugins that had. Both
+ * restrictions are the host's answer, decided by review for the built-in catalogue, and the host
+ * drops either one a plugin's compiled JavaScript still carries.
  *
  * The host's own `BlueprintNodeDef.execute` receives a `BehaviorNodeExecutionContext`,
  * which carries `hostAdapter` — and through it every host API: saves, localization,
@@ -74,13 +117,15 @@ export type {
  * declared and the user never approved. So a plugin's execute gets the very same
  * capability-gated context its runtime entry gets, in both targets: one node module
  * can be shared by the studio and runtime entries, and neither is the privileged one.
+ * That is also why `BlueprintNodeExecuteFn`, which names the host context, is not published:
+ * nothing a plugin can write would satisfy it.
  *
  * The editor is an environment that backs no game, so the gated domains on
  * `ctx.game` (`saves`, `store`, `state`, …) are absent while a node runs in Studio.
  * Nodes must degrade rather than assume them — the same discipline a plugin already
  * needs for the web export versus the desktop shell.
  */
-export type PluginBlueprintNodeDef = Omit<BlueprintNodeDef, "execute"> & {
+export type PluginBlueprintNodeDef = BlueprintNodeDeclaration & {
     execute: RuntimeBlueprintNodeExecute;
 };
 
@@ -343,8 +388,12 @@ export type PluginStorageService = {
  * stays writable, and everything else in the project - a plugin's own stored documents included -
  * does not. Nothing a plugin can write is on the writable side of it, so for a plugin it behaves
  * exactly like the others: `frozen` is true, and the buttons come off.
+ *
+ * `taken-over` means another NarraLeaf Studio has opened this project and this window has stopped
+ * writing it for good - there is no way back within the window. The workspace replaces its editor
+ * with a screen that says so, so a plugin sees it at most once, on its way out.
  */
-export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery" | "live-session";
+export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery" | "live-session" | "taken-over";
 
 /**
  * The state of the project a plugin's data lives in.
@@ -466,6 +515,64 @@ export type PluginI18n = {
  * nodes in open documents, and the catalog has no removal path - so there is
  * nothing to dispose.
  */
+/** One app surface (a page) of the project, as a plugin panel offers it to the author. */
+export type PluginSurfaceEntry = {
+    id: string;
+    name: string;
+};
+
+/**
+ * One function declared in the project's global blueprint.
+ *
+ * `fnRef` is what a caller names it by - the same reference the Call Fn node stores - and `params`
+ * are its head's parameter pins, so a panel can ask the author for the arguments a call needs
+ * instead of hard-coding a shape.
+ */
+export type PluginBlueprintFnEntry = {
+    fnRef: string;
+    name: string;
+    params: { pinId: string; name: string; valueType: string }[];
+};
+
+/** One of the project's named localization keys, with the text it reads in the source language. */
+export type PluginLocalizationKeyEntry = {
+    name: string;
+    sourceText: string;
+};
+
+/**
+ * The project's interface documents, read-only.
+ *
+ * The same reason `story.listStories` exists: a plugin panel that has to let the author point at
+ * something in their own project needs the catalogue of what there is to point at. Read-only on
+ * purpose - authoring surfaces and blueprints stays with Studio, and a plugin that could write
+ * either would be a second editor for a document Studio holds open.
+ */
+export type PluginInterfaceService = {
+    /** App surfaces (pages). Stage surfaces are excluded: they are slots, not places to go. */
+    listSurfaces(): PluginSurfaceEntry[];
+    /**
+     * Functions the global blueprint declares.
+     *
+     * Global ones only, because they are the ones callable from anywhere - a function declared on
+     * one surface is not something a plugin can honestly offer as an action, since it exists only
+     * while that surface is the one on screen.
+     */
+    listGlobalFns(): PluginBlueprintFnEntry[];
+};
+
+/**
+ * The project's own localization keys, read-only.
+ *
+ * A plugin that puts words in front of a player writes them as keys through this list rather than
+ * as literals, so they travel with everything else the project translates. Empty before the keys
+ * document has loaded, which is a moment rather than a state - subscribe through
+ * `services.workspace.registerReloader` if a panel has to re-read it.
+ */
+export type PluginLocalizationService = {
+    listKeys(): PluginLocalizationKeyEntry[];
+};
+
 export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
@@ -474,6 +581,10 @@ export type PluginServices = {
     workspace: PluginWorkspaceService;
     /** Extend Studio's built-in text editor; see {@link PluginTextEditorService}. */
     textEditor: PluginTextEditorService;
+    /** Read-only catalogue of surfaces and global functions; see {@link PluginInterfaceService}. */
+    interface: PluginInterfaceService;
+    /** Read-only catalogue of localization keys; see {@link PluginLocalizationService}. */
+    localization: PluginLocalizationService;
     /** Contribute checks to Run > Test; see {@link PluginTestService}. */
     tests: PluginTestService;
     ui: {
@@ -506,11 +617,18 @@ export type PluginServices = {
             error(message: string): void;
         };
     };
+    /**
+     * Contribute a widget type to the interface editor; see {@link PluginWidgetModule}.
+     *
+     * `get` and `list` answer with a type's name rather than with its module. A widget module is
+     * the host's own object - Studio's built-ins carry the editor services in their callbacks - and
+     * "which types exist" is the whole of what a plugin can act on.
+     */
     widgets: {
-        register(module: UIWidgetModule): PluginCleanup;
-        registerMany(modules: UIWidgetModule[]): PluginCleanup;
-        get(type: string): UIWidgetModule | undefined;
-        list(): UIWidgetModule[];
+        register(module: PluginWidgetModule): PluginCleanup;
+        registerMany(modules: PluginWidgetModule[]): PluginCleanup;
+        get(type: string): PluginWidgetTypeInfo | undefined;
+        list(): PluginWidgetTypeInfo[];
         has(type: string): boolean;
     };
     story: {

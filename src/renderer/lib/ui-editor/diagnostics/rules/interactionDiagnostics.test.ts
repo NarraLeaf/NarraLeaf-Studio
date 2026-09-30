@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -55,9 +56,8 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         ownerRecords: {
-            [`widgetMain:${SURFACE_ID}:${elementId}`]: {
-                activeBlueprintId: "bp-1",
-                privateBlueprintIds: ["bp-1"],
+            [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: elementId })]: {
+                blueprintId: "bp-1",
             },
         },
         blueprints: {
@@ -65,18 +65,15 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
                 id: "bp-1",
                 name: "Button logic",
                 owner: { kind: "widgetMain", surfaceId: SURFACE_ID, elementId },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            layer: {
-                                id: "layer",
-                                name: "Anything at all",
-                                graph: { nodes: { head: { id: "head", type: headNodeType } }, edges: [] },
-                            },
+                graphs: {
+                    events: {
+                        layer: {
+                            id: "layer",
+                            name: "Anything at all",
+                            graph: { nodes: { head: { id: "head", type: headNodeType } }, edges: [] },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },

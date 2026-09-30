@@ -6,4 +6,5 @@ export const about = {
     ownerLabel: "所有者",
     contributorsLabel: "コントリビューター",
     visitWebsite: "公式サイトを開く",
+    openSourceLicenses: "オープンソースライセンス",
 } satisfies LocaleNamespace<"about">;

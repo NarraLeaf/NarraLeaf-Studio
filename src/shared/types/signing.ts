@@ -204,6 +204,25 @@ export const SIGNING_CREDENTIAL_MATERIAL_FIELDS: Record<SigningCredentialKind, r
     "linux-gpg": [],
 };
 
+/**
+ * Plain, non-secret, non-file fields each kind carries.
+ *
+ * A whitelist because import payloads arrive over IPC and from a file named on the command line,
+ * and because it is what tells a credential's own facts from the material and the secrets - the
+ * three tables together are the whole of what a kind is made of, which is why they live side by
+ * side rather than one of them inside the vault.
+ */
+export const SIGNING_CREDENTIAL_METADATA_FIELDS: Record<SigningCredentialKind, readonly string[]> = {
+    "windows-pfx": [],
+    "windows-store": ["subjectName", "sha1"],
+    "windows-azure": ["endpoint", "codeSigningAccountName", "certificateProfileName", "publisherName"],
+    "macos-keychain": ["identity", "notaryKeyId", "notaryIssuerId"],
+    "macos-apple": ["notaryKeyId", "notaryIssuerId"],
+    "android-keystore": ["alias"],
+    "ios-apple": [],
+    "linux-gpg": ["keyId", "gpgPath"],
+};
+
 /** Fields that are secret: sealed on import, never serialized in a credential. */
 export const SIGNING_CREDENTIAL_SECRET_FIELDS: Record<SigningCredentialKind, readonly string[]> = {
     "windows-pfx": ["password"],
@@ -247,6 +266,23 @@ export function signingNotarizes(value: Partial<AppleNotarizationFields> | null 
     return Boolean(value) && APPLE_NOTARIZATION_FIELDS.every(field => Boolean(
         (value as Record<string, unknown>)[field],
     ));
+}
+
+/**
+ * Refuse a half-filled notarization. Shared by the vault's import and by the credentials a
+ * command-line build is handed, because the failure it prevents is the same either way: an author
+ * who filled in two of the three fields asked to notarize, and would otherwise get a build that
+ * quietly did not.
+ */
+export function assertNotarizationComplete(kind: SigningCredentialKind, fields: Record<string, unknown>): void {
+    const present = APPLE_NOTARIZATION_FIELDS.filter(field => Boolean(fields[field]));
+    if (present.length !== 0 && present.length !== APPLE_NOTARIZATION_FIELDS.length) {
+        const missing = APPLE_NOTARIZATION_FIELDS.filter(field => !fields[field]);
+        throw new Error(
+            `A "${kind}" credential that notarizes needs all of ${APPLE_NOTARIZATION_FIELDS.join(", ")}; `
+            + `missing ${missing.join(", ")}`,
+        );
+    }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useRef, type CSSProperties, type ReactElement } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import { fitFramePage } from "@/lib/ui-editor/runtime/surface/framePageFit";
 import { getFrameProps } from "./helpers";
 
 function FramePlaceholder({ label }: { label: string }): ReactElement {
@@ -64,9 +65,9 @@ export function FrameRenderer(props: WidgetRendererProps): ReactElement | null {
 
     // Fill the Page component instead of letterboxing. The element keeps target Page ratio by default,
     // but existing documents or manual layout edits can drift by subpixels and reveal white surface edges.
-    const scale = Math.max(width / layoutSurface.designSize.width, height / layoutSurface.designSize.height);
-    const scaledWidth = layoutSurface.designSize.width * scale;
-    const scaledHeight = layoutSurface.designSize.height * scale;
+    // A page of another design size, drawn in this box while the frame changes page, is fitted into
+    // it by the same rule (see `NestedSurfaceRenderer`).
+    const fit = fitFramePage(layoutSurface.designSize, { width, height });
 
     const viewportStyle: CSSProperties = {
         width: "100%",
@@ -77,11 +78,11 @@ export function FrameRenderer(props: WidgetRendererProps): ReactElement | null {
     };
     const surfaceStyle: CSSProperties = {
         position: "absolute",
-        left: (width - scaledWidth) / 2,
-        top: (height - scaledHeight) / 2,
+        left: fit.left,
+        top: fit.top,
         width: layoutSurface.designSize.width,
         height: layoutSurface.designSize.height,
-        transform: `scale(${scale})`,
+        transform: `scale(${fit.scale})`,
         transformOrigin: "top left",
         pointerEvents: hostAdapter.blueprintRuntime ? "auto" : "none",
     };

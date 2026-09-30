@@ -224,29 +224,25 @@ function literalAssetBlueprint(id: string, assetId: string): Blueprint {
         id,
         name: "Widget",
         owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-        frontend: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    click: {
-                        graph: {
-                            nodes: {
-                                literal: {
-                                    id: "literal",
-                                    type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
-                                    params: { value: { kind: "imageAsset", assetId } },
-                                },
-                                sink: { id: "sink", type: "widget.image.setAsset", params: {} },
+        graphs: {
+            events: {
+                click: {
+                    graph: {
+                        nodes: {
+                            literal: {
+                                id: "literal",
+                                type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                                params: { value: { kind: "imageAsset", assetId } },
                             },
-                            edges: [
-                                { from: { nodeId: "literal", port: "value" }, to: { nodeId: "sink", port: "asset" } },
-                            ],
+                            sink: { id: "sink", type: "widget.image.setAsset", params: {} },
                         },
+                        edges: [
+                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "sink", port: "asset" } },
+                        ],
                     },
                 },
-                functions: {},
             },
+            functions: {},
         },
     } as unknown as Blueprint;
 }

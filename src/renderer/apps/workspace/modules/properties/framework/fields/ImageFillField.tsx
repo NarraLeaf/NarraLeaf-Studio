@@ -14,6 +14,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -81,6 +82,7 @@ export function ImageFillField<TData extends UIInspectorData>({
     }, [allowedModes, MODE_OPTIONS]);
 
     const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
+    const assetNotice = useAssetFieldNotice(normalizedFill.assetId, Boolean(assetResolveError));
     // A widget's fill may be answered by a set. The build writes the answer onto the element that
     // holds this fill, so the shipped game resolves it at the widget rather than through a
     // project-wide table - see `@shared/build/uiAssetSets`.
@@ -419,9 +421,9 @@ export function ImageFillField<TData extends UIInspectorData>({
                     </div>
                 </button>
             </FieldLayout>
-            {normalizedFill.assetId && assetResolveError ? (
+            {assetNotice ? (
                 <p className="mt-1 text-2xs text-warning leading-snug">
-                    {t("properties.imageFill.resolveError", { error: assetResolveError })}
+                    {assetNotice}
                 </p>
             ) : null}
 

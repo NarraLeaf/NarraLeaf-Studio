@@ -17,16 +17,18 @@ import {
     applyCharacterSpeakerFallback,
     planCharacterSpeakerFallback,
     revertCharacterSpeakerFallback,
+    planSpeakerNameRows,
+    applySpeakerNameRename,
 } from "../story/characterSpeakerFallback";
 import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
-import { AssetsService } from "./AssetsService";
-import { createProjectDocumentStorage } from "./DocumentStorage";
+import { createProjectDocumentStorage, DocumentWriteError } from "./DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
-import { AssetLockReason } from "../assets/AssetLockManager";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
@@ -128,11 +130,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         const serviceAssetsService = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         const uiService = ctx.services.get<UIService>(Services.UI);
-        await depend([filesystemService, assetsService, serviceAssetsService, uuidService, uiService]);
+        await depend([filesystemService, serviceAssetsService, uuidService, uiService]);
         await this.loadCharacters();
     }
 
@@ -187,14 +188,57 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return character;
     }
 
-    public renameCharacter(id: string, name: string): boolean {
+    /**
+     * How many lines in the project speak as a bare name, so a rename can offer to carry them along.
+     *
+     * A separate question, asked before the rename, because a bare name is not this character: it is
+     * text a row carries because nobody was bound to it. Renaming the character has no effect on
+     * those rows and must not - "Alice" the character and "Alice" the typed name are two things, and
+     * one of them belongs to lines the author may have meant to keep as they are.
+     */
+    public async countRowsSpeakingAs(speakerName: string): Promise<number> {
+        const plan = await planSpeakerNameRows(this.getStoryService(), speakerName);
+        return plan.reduce((total, entry) => total + entry.rows.length, 0);
+    }
+
+    /**
+     * Rename a character, optionally carrying the lines that speak as their old name.
+     *
+     * The sweep is off by default and stays an offer: see {@link countRowsSpeakingAs} for why those
+     * rows are not the character's. When it runs, both halves are one undo step, because the author
+     * made one decision.
+     *
+     * Asynchronous only because finding those rows means reading every story document, including the
+     * ones nobody has opened - the same reason {@link deleteCharacter} is.
+     */
+    public async renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean> {
         const character = this.characters[id];
         if (!character) {
             return false;
         }
-        character.profile.setName(name);
-        this.markDirty();
-        this.emitChange();
+        const previousName = character.profile.getName();
+        const spokenRows = options?.renameSpokenRows
+            ? await planSpeakerNameRows(this.getStoryService(), previousName)
+            : [];
+        const applyRename = (next: string, rowName: string) => {
+            const current = this.characters[id];
+            if (!current) {
+                return;
+            }
+            current.profile.setName(next);
+            applySpeakerNameRename(this.getStoryService(), spokenRows, rowName);
+            this.markDirty();
+            this.emitChange();
+        };
+        applyRename(name, name);
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: {
+                key: "characters.history.renameCharacter" as TranslationKey,
+                params: { name },
+            },
+            undo: () => applyRename(previousName, previousName),
+            redo: () => applyRename(name, name),
+        });
         return true;
     }
 
@@ -261,11 +305,14 @@ export class CharacterService extends Service<CharacterService> implements IChar
             },
             undo: async () => {
                 if (thumbnailId && thumbnailBytes) {
-                    await this.getServiceAssetsService().restoreFile(thumbnailId, thumbnailBytes);
+                    await this.getServiceAssetsService().restoreFile(
+                        thumbnailId,
+                        thumbnailBytes,
+                        storeWrite("workspace.shell.save.stores.characters", "notRetried"),
+                    );
                 }
                 const restored = Character.fromJSON(stored);
                 this.registerCharacter(restored, index >= 0 ? index : undefined);
-                this.lockCharacterAssets(restored);
                 this.markDirty();
                 this.emitChange();
                 // After the character is back, so the rows are pointed at something that resolves.
@@ -286,7 +333,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
     private removeCharacter(id: string, character: Character, thumbnailId: string | undefined): void {
-        this.unlockCharacterAssets(character);
         if (thumbnailId) {
             void this.getServiceAssetsService().deleteFile(thumbnailId);
         }
@@ -471,9 +517,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
             return;
         }
 
-        for (const character of this.listCharacter()) {
-            this.unlockCharacterAssets(character);
-        }
         for (const id of [...this.characterOrder]) {
             delete this.characters[id];
         }
@@ -538,7 +581,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.registerStore(result.document.characters, result.document.groups);
     }
 
-    /** Take a parsed store into memory: groups first, then the cast, locking the assets each one uses. */
+    /** Take a parsed store into memory: groups first, then the cast. */
     private registerStore(characters: readonly StoredCharacter[] | undefined, groups: Record<string, CharacterGroup> | undefined): void {
         if (groups) {
             Object.values(groups).forEach(group => this.registerGroup(group));
@@ -546,8 +589,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         for (const config of characters ?? []) {
             const character = Character.fromJSON(config);
             this.registerCharacter(character);
-            // Lock all assets used by this character
-            this.lockCharacterAssets(character);
         }
     }
 
@@ -608,9 +649,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
             }
             this.markDirty();
             this.emitChange();
-        });
-        character.setOnAssetChange((oldAssetId, newAssetId) => {
-            this.updateAssetLock(id, oldAssetId, newAssetId);
         });
     }
 
@@ -691,7 +729,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 } else {
                     const character = Character.fromJSON(record);
                     this.registerCharacter(character);
-                    this.lockCharacterAssets(character);
                 }
                 this.lastKnown.set(record.profile.id, record);
                 // Present only on the creation that undoes a deletion, and it carries the rows rather
@@ -708,9 +745,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
                     return [];
                 }
                 const record = structuredClone(op.character) as StoredCharacter;
-                const before = character.profile.getThumbnail();
                 character.adopt(record);
-                this.updateAssetLock(op.characterId, before, character.profile.getThumbnail());
                 this.lastKnown.set(op.characterId, record);
                 return [];
             }
@@ -850,10 +885,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (this.storeFromNewerStudio) return;
         if (this.unreadable) {
             // Same trade, different cause: the file is there and we could not read it, so the cast in
-            // memory is empty and writing it would replace their work with nothing.
+            // memory is empty and writing it would replace their work with nothing. The path and the
+            // parser's reason are for the log; the author is told what is and is not happening.
+            console.warn(`[characters] refusing to write ${this.unreadable.path}: ${this.unreadable.reason}`);
             this.getContext().services.get<UIService>(Services.UI).showError(
-                `Refusing to write ${this.unreadable.path}: it is on disk but could not be read `
-                + `(${this.unreadable.reason}), so anything written now would replace it with an empty cast.`,
+                translate("workspace.shell.save.refusedUnreadable", {
+                    name: translate("workspace.shell.save.stores.characters"),
+                }),
             );
             return;
         }
@@ -868,10 +906,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
         try {
             await saveDocument(charactersSpec, this.storage(), charactersSpec.pathFor(), payload);
         } catch (error) {
-            // Two failures land here and they are not the same. A write failure is an I/O problem;
-            // a `CanonicalJsonError` means something in the cast cannot be written as JSON at all -
-            // an `undefined` property, which `JSON.stringify` used to drop without a word. The
-            // message names the JSON path, which is what makes the second kind fixable.
+            // Two failures land here and they are not the same. A write failure is an I/O problem,
+            // and the save-status surface has already said so - "Could not save the characters",
+            // with what the disk said and that the change was not saved - so saying it again here
+            // would only add the path and the system's English. A `CanonicalJsonError` means
+            // something in the cast cannot be written as JSON at all - an `undefined` property,
+            // which `JSON.stringify` used to drop without a word. The message names the JSON path,
+            // which is what makes that kind fixable.
+            if (error instanceof DocumentWriteError) {
+                return;
+            }
             const uiService = this.getContext().services.get<UIService>(Services.UI);
             uiService.showError("Failed to persist characters: " + (error instanceof Error ? error.message : String(error)));
             return;
@@ -880,7 +924,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.characters", "notRetried"));
     }
 
     private getServiceAssetsService(): ServiceAssetsService {
@@ -905,48 +949,5 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private registerGroup(group: CharacterGroup): void {
         this.groups[group.id] = group;
-    }
-
-    /**
-     * Lock all assets used by a character
-     */
-    private lockCharacterAssets(character: Character): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        const characterId = character.profile.getId();
-
-        // Poses for a preset character, every layer and layer option for a layered one.
-        for (const assetId of character.profile.appearance.listAssetIds()) {
-            assetsService.lockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-    }
-
-    /**
-     * Unlock all assets used by a character
-     */
-    private unlockCharacterAssets(character: Character): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        const characterId = character.profile.getId();
-
-        for (const assetId of character.profile.appearance.listAssetIds()) {
-            assetsService.unlockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-    }
-
-    /**
-     * Update asset locks when a character's variant asset changes
-     * This should be called by the character appearance when assets change
-     */
-    public updateAssetLock(characterId: string, oldAssetId: string | null, newAssetId: string | null): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        
-        // Unlock old asset
-        if (oldAssetId) {
-            assetsService.unlockAsset(oldAssetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-        
-        // Lock new asset
-        if (newAssetId) {
-            assetsService.lockAsset(newAssetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
     }
 }

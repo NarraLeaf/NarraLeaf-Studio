@@ -4,7 +4,7 @@
 
 Displayable 节点默认读取当前元素。坐标和尺寸均使用当前 Surface 的设计坐标系，与 Inspector 的 Position `X` / `Y` 一致。
 
-透明度统一为 Displayable 的有效 `opacity`：Appearance Variant 中的 `transformOpacity` 会解析到同一个元素透明度，不再和内部 chrome/text 透明度叠乘；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会解析到这套透明度，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的图片内容层 `imageFill` / crop / contain 模式来自 Default，不会被非 Default Variant 切换；需要改图片资源或裁剪时使用 Image 节点/图片控件。`Get Property` / `Set Property` / `Animate Property` 读写和动画的都是这同一套透明度。
+透明度统一为 Displayable 的有效 `opacity`：Appearance Variant 中的 `transformOpacity` 会解析到同一个元素透明度，不再和内部 chrome/text 透明度叠乘；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会解析到这套透明度，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的图片内容层 `imageFill` / crop / contain 模式来自 Default，不会被非 Default Variant 切换；需要改图片资产或裁剪时使用 Image 节点/图片控件。`Get Property` / `Set Property` / `Animate Property` 读写和动画的都是这同一套透明度。
 
 Displayable 节点覆盖插入面板提供的全部 16 种控件（含 `nl.video` / `nl.puppet` / `nl.textInput` 与四个舞台槽控件）。控件清单是 `@shared/types/ui-editor/displayableWidgets` 的 `UI_DISPLAYABLE_WIDGET_TYPES` 一份，Self 版的 `scope` 与 Element 版的 `magicElementTarget` 都读它；`displayableWidgets.test.ts` 对着插入面板配置比对，新增控件漏登记会红。
 

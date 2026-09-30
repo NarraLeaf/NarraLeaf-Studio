@@ -15,7 +15,7 @@ import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
-import type { VcsServerSession } from "@shared/types/vcs";
+import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
@@ -97,15 +97,20 @@ export interface GlobalStateType extends Record<string, any> {
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
     /**
-     * Which built-in mark Studio's windows wear, as an id from `@shared/constants/windowIcon` -
+     * Which built-in icon Studio wears while it runs, as an id from `@shared/constants/windowIcon` -
      * not a file name. Applied by the main process, which is the only side that can call
-     * `BrowserWindow.setIcon`; Windows and Linux only, since macOS has no per-window icon at all.
+     * `BrowserWindow.setIcon` and `app.dock.setIcon`: the windows and the tray on Windows and Linux,
+     * the Dock tile on macOS. An id the registry does not declare - `default`, which profiles from
+     * before the Narra icon carry, among them - is read as the current default everywhere
+     * (`resolveWindowIcon`).
      */
     "ui.windowIcon": string;
     /**
-     * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
-     * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
-     * resolves through. Studio windows only; a shipped game keeps the brand anchor.
+     * Accent preset id from @shared/constants/accent, or a `#rrggbb` the user picked. Applied by
+     * the renderer (lib/appearance) by overriding the `--nl-primary` channels, which every
+     * `*-primary` utility resolves through, plus the two inks derived from it — the one written on
+     * the accent and the one the accent is written in. Studio windows only; a shipped game keeps
+     * the brand anchor.
      */
     "ui.accentColor": string;
     /**
@@ -161,6 +166,20 @@ export interface GlobalStateType extends Record<string, any> {
     /** Blur radius in CSS pixels; 0 (the default) leaves the picture sharp. Clamped to 0–40. */
     "ui.backgroundBlur": number;
     /**
+     * Whether the editor's reading surfaces (story prose, text editor) keep a plate over the
+     * wallpaper; absent means on. Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundEditorFill": boolean;
+    /** Opacity of that plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundEditorOpacity": number;
+    /**
+     * Whether the docks (sidebars, bottom panel) keep a plate over the wallpaper; absent means on.
+     * Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundSidebarFill": boolean;
+    /** Opacity of the dock plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundSidebarOpacity": number;
+    /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split
      * into nested objects.
@@ -172,13 +191,6 @@ export interface GlobalStateType extends Record<string, any> {
     "editor.lineNumbers": boolean;
     /** Wrap long lines in the built-in text editor instead of scrolling horizontally. */
     "editor.softWrap": boolean;
-    /**
-     * Opacity (0-100) of the editor's reading surfaces — story prose area, inspector field area,
-     * Dev Mode debug panel. Published as `--nl-editor-surface-opacity` by lib/appearance; see
-     * lib/settings/editorSurfaceOptions. 100 (fully opaque) is the default and a no-op without a
-     * workspace wallpaper, which is the only thing an opaque plate can cut a seam into.
-     */
-    "editor.surfaceOpacity": number;
     "editor.maxActiveEditors": number;
     /**
      * Let "@" stand in for "/" as the trigger that opens the story editor's action creator.
@@ -444,6 +456,19 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "versionControl.serverSessions": VcsServerSession[];
     /**
+     * Which project uses which of those sign-ins, one row per (server, project) the author has
+     * answered for.
+     *
+     * A sign-in above belongs to the account; a project acts as that account only once the author
+     * has said it does, and this is where that is kept - see `VcsSessionUse`. A project with no row
+     * here is asked the first time a request it makes needs the sign-in, which is also how every
+     * sign-in stored before this record existed reaches its projects: none of them has a row, so
+     * each is asked once.
+     *
+     * Written by the main process alone, like the two beside it (`MAIN_OWNED_STATE_KEYS`).
+     */
+    "versionControl.serverSessionProjects": VcsSessionUse[];
+    /**
      * The token this installation signs in to each server with, sealed.
      *
      * Keyed by the same `remoteOrigin` the sessions are, and holding
@@ -538,7 +563,6 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "keybindings.overrides": {},
     "editor.fontSize": 14,
     "editor.fontFamily": "Default",
-    "editor.surfaceOpacity": 100,
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
@@ -565,6 +589,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
+    "versionControl.serverSessionProjects": [],
     "versionControl.serverTokens": {},
     // `team.installationId` deliberately has no default; see its declaration above. A
     // default would be written to disk on first read and every installation would then
@@ -610,4 +635,43 @@ export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
     "advanced.enableTelemetry",
     "advanced.enableDevTools",
     "advanced.experimentalFeatures",
+    // The reading surfaces' opacity, from when it was a row in the Settings window. The plate only
+    // exists under a wallpaper, so it moved into the background dialog as `ui.backgroundEditorFill`
+    // plus `ui.backgroundEditorOpacity`. A value the author lowered is carried there first (see
+    // `carriedRetiredValues`); the default of 100 most profiles hold is the new plate's default too.
+    "editor.surfaceOpacity",
 ];
+
+/**
+ * What a retired key's stored value still says about the keys that replaced it.
+ *
+ * `GlobalStateManager.sweepRetiredKeys` writes this just before it deletes the retired keys, so it
+ * applies once per profile, on the first launch that knows the replacement. A replacement that has
+ * a value of its own keeps it: that was set through the new control, and is the newer answer.
+ */
+export function carriedRetiredValues(stored: Readonly<Record<string, unknown>>): Partial<GlobalStateType> {
+    const carried: Partial<GlobalStateType> = {};
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(stored, key);
+
+    // `editor.surfaceOpacity` (0-100, default 100) set the reading surfaces' plate; the background
+    // dialog's editor plate is the same paint under a switch. 100 is that plate's default as well,
+    // so only a lowered value carries anything: 0 was a clear surface, which is the switch off, and
+    // anything between is the plate on at that opacity (clamped to the slider's range when read).
+    const surfaceOpacity = stored["editor.surfaceOpacity"];
+    if (
+        typeof surfaceOpacity === "number"
+        && Number.isFinite(surfaceOpacity)
+        && surfaceOpacity < 100
+        && !has("ui.backgroundEditorFill")
+        && !has("ui.backgroundEditorOpacity")
+    ) {
+        if (surfaceOpacity <= 0) {
+            carried["ui.backgroundEditorFill"] = false;
+        } else {
+            carried["ui.backgroundEditorFill"] = true;
+            carried["ui.backgroundEditorOpacity"] = Math.round(surfaceOpacity);
+        }
+    }
+
+    return carried;
+}

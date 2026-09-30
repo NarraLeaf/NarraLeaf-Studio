@@ -304,9 +304,9 @@ export type LiveStoryOp =
  * Named rather than spelled inline because two things state it - the operation and the record of what
  * that operation displaced - and two spellings of one shape are two chances for them to disagree.
  *
- * `runtimeName` travels beside `name` because it is derived from it only when it is empty, and only
- * on the machine that did the editing: a receiver that derived its own would compile a different
- * scene name into the game from the one every other machine compiled.
+ * `runtimeName` travels beside `name` because a rename is the moment one stored empty gets pinned to
+ * the name the scene compiled under until then, and that is worked out on the machine that did the
+ * editing: every machine applying the fields writes the one stated rather than reaching its own.
  *
  * ⚠ **An absent field is an absent key, never `undefined`.** The canonical encoder refuses a property
  * whose value is `undefined`, so a scene cleared that way would be one no receiving machine could

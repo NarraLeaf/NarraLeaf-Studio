@@ -35,18 +35,25 @@ import { Service } from "../Service";
 import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { itemWrite, storeWrite, type FsWriteReport } from "../autosave/writeReport";
+import { ASSET_UNDECODABLE } from "../assets/assetReadFailure";
+import { withReadFailureReason } from "@/lib/workspace/assets/assetReadFailure";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
-import { AssetsService } from "../core/AssetsService";
-import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
-import type { HistoryLabel } from "../history/historyModel";
+import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import { translate } from "@/lib/i18n";
+import {
+    findStoryDocumentTooNewError,
+    findStoryDocumentTooOldError,
+} from "@shared/story/migrateStoryDocument";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -69,6 +76,16 @@ import {
     storyDocumentRelativePath,
     updateBlockPayload,
 } from "./storyModel";
+import {
+    applySceneMerge,
+    chapterOfScene,
+    moveBlocksToScene,
+    planSceneMerge,
+    planSceneSplit,
+    type StoryBlockPlacement,
+    type StorySceneMergePlan,
+    type StorySceneReferrer,
+} from "./storyStructuralOps";
 
 type StoryServiceEvents = {
     libraryChanged: StoryLibraryIndex;
@@ -118,61 +135,22 @@ type StoryStructureSnapshot = {
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
     entrySceneId?: StorySceneId;
-};
-
-type StoryAssetLockEntry = {
-    assetId: string;
-    metadata: {
-        storyId: StoryId;
-        sceneId: StorySceneId;
-        blockId: StoryBlockId;
-        field: string;
-    };
+    unassignedSceneIds?: StorySceneId[];
 };
 
 /**
- * One scene's asset locks, keyed by `${blockId}:${field}`.
+ * A motion asset that is in the list and could not be read.
  *
- * The scene id is the outer key rather than part of this one, which is what makes the table
- * splittable: every lock a scene can produce is derived from that scene alone, so recomputing one
- * scene's map can never invalidate another's.
+ * `code` is what the read answered, for a surface to word: the filesystem's code when the file could
+ * not be had, `ASSET_UNDECODABLE` when it was read and is not a motion this Studio can open. The
+ * message is for the log - it names the file's path, which is the motion's id.
  */
-type StorySceneAssetLocks = Map<string, StoryAssetLockEntry>;
-
-/**
- * One story's asset locks, keyed by scene id.
- *
- * Every scene the document has is present, including scenes that reference no asset at all - the
- * empty map is the record that the scene *was* looked at. {@link StoryService.assetLockSceneSetMatches}
- * relies on that: the key set is the document's scene set, so a scene that appeared or vanished
- * outside a declared scope is caught by comparing two sets rather than by walking any blocks.
- */
-type StoryAssetLocks = Map<StorySceneId, StorySceneAssetLocks>;
-
-/**
- * Which scenes a document mutation may have changed the asset references of.
- *
- * `"all"` re-derives the whole table and is always correct; an array names the scenes the mutation
- * could have touched and costs one walk per named scene instead of one per scene in the document.
- * The array is read *after* the mutator has run, so a mutator that only discovers its scene while
- * running can be handed a mutable array and push into it.
- *
- * The rule for choosing: name a scene if the mutation reads or writes anything under
- * `document.scenes[...]`, and reach for `"all"` the moment that set is not knowable up front.
- * Naming too many scenes only costs time; naming too few is a wrong lock table, so
- * {@link StoryService.syncDocumentAssetLocks} additionally checks the document's scene set against
- * the table's on every scoped sync and falls back to a full rebuild if they have drifted.
- */
-type StoryAssetLockScope = "all" | readonly StorySceneId[];
-
-/**
- * The scope of a mutation that touches no scene: chapter lists, the entry pointer, the story name.
- *
- * Spelled out rather than written as a bare `[]` at each call site so the claim is greppable, and
- * so that the reason it is safe lives in one place: none of these mutations can reach a
- * `defaultBackgroundAssetId` or a block payload, which are the only two things a lock is made of.
- */
-const NO_SCENES: readonly StorySceneId[] = [];
+export class StoryAnimationReadError extends RendererError {
+    public constructor(message: string, public readonly code: string, cause?: unknown) {
+        super(message, { cause });
+        this.name = "StoryAnimationReadError";
+    }
+}
 
 export class StoryService extends Service<StoryService> implements IStoryService {
     private index: StoryLibraryIndex | null = null;
@@ -227,15 +205,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         save: () => this.flush(),
         onError: err => console.warn("[StoryService] auto-save failed", err),
     });
-    /**
-     * storyId -> the locks that story holds, by scene.
-     *
-     * A story is present here from the moment its locks have been derived once and absent only
-     * before that and after {@link releaseStoryAssetLocks} - never because it happened to reference
-     * nothing. {@link ensureStoryAssetLocks} reads it that way, and a table that deleted itself when
-     * it went empty would make "never derived" and "derived, references nothing" indistinguishable.
-     */
-    private readonly storyAssetLocks = new Map<StoryId, StoryAssetLocks>();
     private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
     /**
      * actionId -> the plugin that registered it.
@@ -251,14 +220,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        await depend([filesystemService, projectService, uuidService, assetsService]);
+        await depend([filesystemService, projectService, uuidService]);
         await registerAutoSaver(ctx, depend, "story", "workspace.shell.save.stores.story", this.autoSaver);
 
         await this.ensureStoryDirs();
         await this.loadLibrary();
         await this.loadAnimationIndex();
-        await this.syncLibraryAssetLocks();
     }
 
     public listStories(): StoryLibraryEntry[] {
@@ -306,10 +273,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
 
         this.documents.set(storyId, document);
-        // An empty story locks nothing, so this exists for the *table*, not its contents: from here
-        // on every loaded document has one, which is what lets `mutateDocument` treat a table as
-        // current rather than as possibly-never-derived, and what lets a read stop at a map lookup.
-        this.syncDocumentAssetLocks(storyId, document, "all");
         // Owed before it is attempted. The eager write below is a floating promise whose failure is
         // only logged, and `ensureStoryDocumentDir` can reject before the write is even reached - so
         // without this a new story whose first write did not land would never be written again.
@@ -393,7 +356,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (document) {
             this.mutateDocument(storyId, doc => {
                 doc.name = name;
-            }, NO_SCENES);
+            });
         }
     }
 
@@ -429,9 +392,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
                     this.documents.set(storyId, JSON.parse(JSON.stringify(storedDocument)) as StoryDocument);
                     this.dirtyDocuments.add(storyId);
                     await this.writeStoryDocument(storyId, this.getStoryDocument(storyId));
-                    // The story was deleted, so `removeStory` released its table; this restores it
-                    // whole from a document that has just come back from a clone.
-                    this.syncDocumentAssetLocks(storyId, this.getStoryDocument(storyId), "all");
                 }
                 this.mutateLibrary(target => {
                     const restored = JSON.parse(JSON.stringify(storedEntry)) as StoryLibraryEntry;
@@ -457,7 +417,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
     private removeStory(storyId: StoryId): void {
-        this.releaseStoryAssetLocks(storyId);
         this.documents.delete(storyId);
         // The file is about to go; a debt against it would only outlive the story it belonged to.
         this.dirtyDocuments.delete(storyId);
@@ -480,18 +439,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         assertValidStoryId(storyId);
         const cached = this.documents.get(storyId);
         if (cached) {
-            // Not a re-derivation. This used to re-walk the whole document on every read, and this is
-            // read from three dozen places - the build, the linter, the search index, every panel that
-            // wants a scene name - so a project with thirty thousand rows paid for a full walk to
-            // learn nothing. What a read actually has to guarantee is that the story *has* a table,
-            // which is a map lookup; keeping it current is `mutateDocument`'s job and it does it as
-            // the edit is made.
-            this.ensureStoryAssetLocks(storyId, cached);
             return cached;
         }
         const entry = this.getStoryEntry(storyId);
         if (!entry) {
-            throw new RendererError(`Story not found: ${storyId}`);
+            // The message is what every surface that asked shows, so it is the author's sentence:
+            // the id is all a missing story has, and an id names nothing an author can look for.
+            throw new RendererError(translate("story.readFailed.missing"), { cause: { storyId } });
         }
         const fs = this.getFileSystem();
         const path = this.getStoryDocumentPath(storyId);
@@ -508,7 +462,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error: result.error,
                 severity: "degraded",
             });
-            throw new RendererError(result.error.message || `Failed to read story document: ${entry.name}`);
+            // Said by the story's name and what the read answered, the way the surfaces that asked
+            // show it. The read's own message - English, naming the file by the story's id - is in
+            // the anomaly record above.
+            throw new RendererError(
+                withReadFailureReason(
+                    translate("story.readFailed.named", { name: entry.name }),
+                    result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                    translate,
+                ),
+                { cause: result.error },
+            );
         }
         try {
             const document = normalizeStoryDocument(result.data, new Date().toISOString());
@@ -516,10 +480,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 throw new Error(`Story document id mismatch: expected ${storyId}, received ${document.id}`);
             }
             this.documents.set(storyId, document);
-            // A first read, or a re-read after `reloadStory`: either way this document has never been
-            // walked, and `syncLibraryAssetLocks` may already hold a table derived from the bytes on
-            // disk before this read. Full, so the two are diffed rather than stacked.
-            this.syncDocumentAssetLocks(storyId, document, "all");
             this.events.emit("documentChanged", { storyId, document });
             return document;
         } catch (error) {
@@ -530,7 +490,24 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error,
                 severity: "degraded",
             });
-            throw new RendererError(error instanceof Error ? error.message : String(error));
+            // With the cause, because the message is not always the whole answer: a document outside
+            // the schema ladder throws an error that names both versions, and the lint sweep turns
+            // that into a sentence an author can act on. Rewrapping the text alone would leave that
+            // reader nothing to recognise.
+            //
+            // The text itself is what every surface that asked shows - `showError` prints whatever
+            // it is handed - so it is the author's sentence: the two version refusals with their
+            // numbers, which are the whole point of saying anything, and otherwise that the story
+            // could not be read. The parser's English is in the anomaly record and the cause.
+            throw new RendererError(
+                describeStoryDocumentRefusal(entry.name, error)
+                    ?? withReadFailureReason(
+                        translate("story.readFailed.named", { name: entry.name }),
+                        ASSET_UNDECODABLE,
+                        translate,
+                    ),
+                { cause: error },
+            );
         }
     }
 
@@ -568,28 +545,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 console.warn(`[StoryService] could not load story ${entry.id}`, error);
                 return null;
             })));
-    }
-
-    /**
-     * Re-derive one story's asset locks from its document as it now stands.
-     *
-     * The escape hatch for a caller that has edited a loaded document without coming through
-     * {@link mutateDocument}. There is exactly one - `promoteTempSpeaker`, which the scene editor runs
-     * over the whole document when an author turns a bare speaker name into a character, and which
-     * reaches the live blocks because the editor holds a shallow copy of the document. That rewrite
-     * happens to carry `voiceAssetId` through untouched, so today it cannot move a lock; the call
-     * exists so that the lock table does not depend on that staying true, now that nothing re-walks a
-     * document on the author's behalf.
-     *
-     * A full walk, and no scope to name: a caller that went around this service is in no position to
-     * say which scenes it touched. That is the price of going around it, and it is why there is one.
-     */
-    public resyncAssetLocks(storyId: StoryId): void {
-        const document = this.documents.get(storyId);
-        if (!document) {
-            return;
-        }
-        this.syncDocumentAssetLocks(storyId, document, "all");
     }
 
     /**
@@ -657,14 +612,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.revision = 0;
         this.discardPendingWrites();
 
-        // A story the re-read index no longer lists took its asset locks with it, and nothing else
-        // releases them: `syncLibraryAssetLocks` only visits stories the index still names.
-        for (const storyId of [...this.storyAssetLocks.keys()]) {
-            if (!this.getStoryEntry(storyId)) {
-                this.releaseStoryAssetLocks(storyId);
-            }
-        }
-
         // Re-open what was open, one document at a time. One that cannot be read is left *not
         // loaded* - the state `getStoryDocument` already reports and `flush` already skips over -
         // rather than half-parsed, and it does not stop the other stories coming back.
@@ -681,8 +628,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 failures.push(`${storyId} (${error instanceof Error ? error.message : String(error)})`);
             }
         }
-
-        await this.syncLibraryAssetLocks();
 
         if (failures.length > 0) {
             throw new RendererError(`Could not re-read ${failures.length} story document(s): ${failures.join("; ")}`);
@@ -811,14 +756,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const result = await this.getFileSystem().readJSON<StoryAnimationAsset>(this.getAnimationAssetPath(animationId));
         if (!result.ok) {
-            throw new RendererError(result.error.message || `Failed to read story animation: ${entry.name}`);
+            throw new StoryAnimationReadError(
+                result.error.message || `Failed to read story animation: ${entry.name}`,
+                result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                result.error,
+            );
         }
         try {
             const asset = normalizeStoryAnimationAsset(result.data, new Date().toISOString());
             this.animationAssets.set(animationId, asset);
             return asset;
         } catch (error) {
-            throw new RendererError(error instanceof Error ? error.message : String(error));
+            throw new StoryAnimationReadError(error instanceof Error ? error.message : String(error), ASSET_UNDECODABLE, error);
         }
     }
 
@@ -985,11 +934,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return removed;
     }
 
-    /** Plugin ids currently contributing at least one story action, for the dependency scanner. */
-    public getContributingPluginIds(): string[] {
-        return [...new Set(this.pluginActionOwners.values())];
-    }
-
     public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {
         return this.pluginActions.get(actionId.trim());
     }
@@ -1071,7 +1015,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (entry !== undefined && document.scenes[entry]) {
                 document.entrySceneId = entry;
             }
-        }, restored.length === 0 ? NO_SCENES : restored.map(scene => scene.id));
+        });
     }
 
     public renameChapter(storyId: StoryId, chapterId: string, name: string): boolean {
@@ -1097,7 +1041,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapter.name = trimmed;
             chapter.meta = { ...chapter.meta, updatedAt: new Date().toISOString() };
             changed = true;
-        }, NO_SCENES);
+        });
         return changed;
     }
 
@@ -1119,7 +1063,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const name = this.getStoryDocument(storyId).chapters.find(c => c.id === chapterId)?.name ?? "";
         const changed = this.applyChapterDelete(storyId, chapterId);
         if (changed) {
-            this.recordStructuralDeletion(storyId, {
+            this.recordStructuralChange(storyId, {
                 key: "story.history.deleteChapter" as TranslationKey,
                 params: { name },
             }, before);
@@ -1129,9 +1073,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     private applyChapterDelete(storyId: StoryId, chapterId: string): boolean {
         let changed = false;
-        // Filled by the mutator and read by `mutateDocument` once it returns: which scenes leave with
-        // the chapter is not knowable until the chapter has been found.
-        const removedSceneIds: StorySceneId[] = [];
         this.mutateDocument(storyId, document => {
             const index = document.chapters.findIndex(chapter => chapter.id === chapterId);
             if (index === -1) {
@@ -1139,14 +1080,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
             const [chapter] = document.chapters.splice(index, 1);
             chapter.sceneIds.forEach(sceneId => {
-                removedSceneIds.push(sceneId);
                 delete document.scenes[sceneId];
             });
             if (document.entrySceneId && !document.scenes[document.entrySceneId]) {
                 document.entrySceneId = this.firstSceneId(document);
             }
             changed = true;
-        }, removedSceneIds);
+        });
         return changed;
     }
 
@@ -1157,9 +1097,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // chapter, which is the ordinary path's answer too - and it goes there to give it.
             const chapterIds = this.chapterOrderAfterMove(storyId, chapterId, beforeChapterId);
             if (chapterIds && this.handedToSink(storyId, { op: "reorder-chapters", chapterIds })) {
+                // No project-stack entry inside a session; see the same return in `moveScene`.
                 return true;
             }
         }
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).chapters.find(chapter => chapter.id === chapterId)?.name ?? "";
+        const changed = this.applyChapterMove(storyId, chapterId, beforeChapterId);
+        if (changed) {
+            this.recordStructuralChange(storyId, {
+                key: "story.history.moveChapter" as TranslationKey,
+                params: { name },
+            }, before);
+        }
+        return changed;
+    }
+
+    private applyChapterMove(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
             const from = document.chapters.findIndex(chapter => chapter.id === chapterId);
@@ -1176,7 +1130,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 document.chapters.splice(to, 0, chapter);
             }
             changed = true;
-        }, NO_SCENES);
+        });
         return changed;
     }
 
@@ -1216,22 +1170,22 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 }
             }
             document.chapters = [...ordered, ...byId.values()];
-        }, NO_SCENES);
+        });
     }
 
     public createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene {
         const now = new Date().toISOString();
+        const document = this.getStoryDocument(storyId);
         const scene = createStorySceneModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(input.name, "New Scene"),
-            runtimeName: this.toRuntimeName(input.name),
+            runtimeName: this.mintRuntimeName(document, input.name),
             now,
         });
         // Where the scene is filed, resolved here rather than inside the mutation. A session states
         // the destination it settled on, never the rule it settled by: the fallback chapter's id is
         // minted on this machine, and every other machine minting its own would file the scene in a
         // chapter nobody else has.
-        const document = this.getStoryDocument(storyId);
         const existing = input.chapterId
             ? document.chapters.find(item => item.id === input.chapterId)
             : document.chapters[0];
@@ -1296,7 +1250,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (entry || !document.entrySceneId) {
                 document.entrySceneId = scene.id;
             }
-        }, [scene.id]);
+        });
     }
 
     public renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean {
@@ -1319,11 +1273,16 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) {
                 return;
             }
+            // The internal name the scene compiled under a moment ago, pinned before the display
+            // name moves. A scene stored with an empty one compiles under its display name, so
+            // letting the rename through unpinned would move its variables - see
+            // `sceneRuntimeName`. Every machine in a session derives the same pin from the same
+            // record, which is why this one may be worked out on the receiving side.
+            scene.runtimeName = sceneRuntimeName(scene);
             scene.name = trimmed;
-            scene.runtimeName = scene.runtimeName || this.toRuntimeName(trimmed);
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
             changed = true;
-        }, [sceneId]);
+        });
         return changed;
     }
 
@@ -1453,7 +1412,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) return;
             scene.sceneSnapshots = [...(scene.sceneSnapshots ?? []), snapshot];
             created = id;
-        }, [sceneId]);
+        });
         return created;
     }
 
@@ -1483,7 +1442,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // Copies, because the list may have arrived inside a message the sender still holds.
             scene.sceneSnapshots = snapshots.map(snapshot => ({ ...snapshot, values: { ...snapshot.values } }));
             changed = true;
-        }, [sceneId]);
+        });
         return changed;
     }
 
@@ -1511,7 +1470,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (next.length === scene.sceneSnapshots.length) return;
             scene.sceneSnapshots = next;
             changed = true;
-        }, [sceneId]);
+        });
         return changed;
     }
 
@@ -1562,7 +1521,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!snapshot) return;
             mutate(snapshot);
             changed = true;
-        }, [sceneId]);
+        });
         return changed;
     }
 
@@ -1614,7 +1573,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) return;
             insertBlockInScene(scene, block, { parentId: null, beforeBlockId: scene.rootBlockIds[0] ?? null });
             created = definition;
-        }, [sceneId]);
+        });
         return created;
     }
 
@@ -1636,14 +1595,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
         }
         let changed = false;
-        // A declaration payload carries no asset id, so this could honestly be `NO_SCENES`. It names
-        // the scene anyway: the payload shape is the variable system's to change, and a scope that
-        // is right because of a fact about *another* module is a scope that will be wrong one day.
-        const touchedSceneIds: StorySceneId[] = [];
         this.mutateDocument(storyId, document => {
             const found = findDeclarationBlock(document, variableId);
             if (!found) return;
-            touchedSceneIds.push(found.sceneId);
             // Reassign the payload rather than mutating it in place, so a fresh reference marks the edit:
             // `updateBlockPayload` (the other write path) already reassigns, and the inspector bridge's
             // republish gate compares payload identity — an in-place mutation would slip past it,
@@ -1652,7 +1606,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             mutate(nextPayload);
             found.block.payload = nextPayload;
             changed = true;
-        }, touchedSceneIds);
+        });
         return changed;
     }
 
@@ -1666,16 +1620,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
             return true;
         }
         let changed = false;
-        // Deleting a declaration takes its whole subtree with it (`deleteBlockFromScene`), and a
-        // subtree can hold anything - so the scene it was found in has to be re-walked.
-        const touchedSceneIds: StorySceneId[] = [];
         this.mutateDocument(storyId, document => {
             const found = findDeclarationBlock(document, variableId);
             if (!found) return;
-            touchedSceneIds.push(found.sceneId);
             deleteBlockFromScene(document.scenes[found.sceneId], variableId);
             changed = true;
-        }, touchedSceneIds);
+        });
         return changed;
     }
 
@@ -1713,7 +1663,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         // would be answering a question the sender already answered.
         const fields: LiveSceneFields = {
             name: nextName,
-            runtimeName: hasNameChange ? (current.runtimeName || this.toRuntimeName(nextName)) : current.runtimeName,
+            // Pinned to what the scene compiles under now, never derived from the new name: a rename
+            // must not move the scene's variables. See `applySceneName`.
+            runtimeName: hasNameChange ? sceneRuntimeName(current) : current.runtimeName,
             ...(hasDescriptionChange
                 ? { description: nextDescription }
                 : current.description === undefined ? {} : { description: current.description }),
@@ -1760,7 +1712,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 scene.bgm = fields.bgm;
             }
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
-        }, [sceneId]);
+        });
     }
 
     public deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean {
@@ -1774,7 +1726,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const name = this.getStoryDocument(storyId).scenes[sceneId]?.name ?? "";
         const changed = this.applySceneDelete(storyId, sceneId);
         if (changed) {
-            this.recordStructuralDeletion(storyId, {
+            this.recordStructuralChange(storyId, {
                 key: "story.history.deleteScene" as TranslationKey,
                 params: { name },
             }, before);
@@ -1801,7 +1753,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 document.entrySceneId = this.firstSceneId(document);
             }
             changed = true;
-        }, [sceneId]);
+        });
         return changed;
     }
 
@@ -1813,9 +1765,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapterId: target.chapterId,
             beforeSceneId,
         })) {
+            // No project-stack entry inside a session, for `deleteChapter`'s reason: an undo there
+            // is the inverse operation, and a whole-structure snapshot restored here would put this
+            // machine's outline back over everybody else's work with nothing on screen saying so.
             return true;
         }
-        return this.applySceneMove(storyId, sceneId, target.chapterId, beforeSceneId);
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).scenes[sceneId]?.name ?? "";
+        const changed = this.applySceneMove(storyId, sceneId, target.chapterId, beforeSceneId);
+        if (changed) {
+            this.recordStructuralChange(storyId, {
+                key: "story.history.moveScene" as TranslationKey,
+                params: { name },
+            }, before);
+        }
+        return changed;
     }
 
     private applySceneMove(
@@ -1856,7 +1820,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 }
             }
             changed = true;
-        }, NO_SCENES);
+        });
         return changed;
     }
 
@@ -1875,7 +1839,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 throw new RendererError(`Scene not found: ${sceneId}`);
             }
             document.entrySceneId = sceneId;
-        }, NO_SCENES);
+        });
     }
 
     public insertBlock(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): StoryBlock {
@@ -1893,7 +1857,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             insertBlockInScene(scene, block, target);
-        }, [sceneId]);
+        });
     }
 
     /**
@@ -1933,7 +1897,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const insert of inserts) {
                 insertBlockInScene(scene, insert.block, insert.target);
             }
-        }, [sceneId]);
+        });
     }
 
     public updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
@@ -1947,7 +1911,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             updateBlockPayload(scene, blockId, payload);
-        }, [sceneId]);
+        });
     }
 
     /**
@@ -1981,7 +1945,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 const scene = this.getSceneOrThrow(document, edit.sceneId);
                 updateBlockPayload(scene, edit.blockId, edit.payload);
             }
-        }, edits.map(edit => edit.sceneId));
+        });
     }
 
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
@@ -1995,7 +1959,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             deleteBlockFromScene(scene, blockId);
-        }, [sceneId]);
+        });
     }
 
     /**
@@ -2020,7 +1984,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             for (const blockId of blockIds) {
                 deleteBlockFromScene(scene, blockId);
             }
-        }, [sceneId]);
+        });
     }
 
     /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
@@ -2043,7 +2007,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             } else {
                 delete block.disabled;
             }
-        }, [sceneId]);
+        });
     }
 
     /**
@@ -2069,7 +2033,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             this.getSceneOrThrow(document, sceneId);
             document.scenes[sceneId] = this.cloneScene({ ...scene, id: sceneId });
-        }, [sceneId]);
+        });
         return true;
     }
 
@@ -2084,7 +2048,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlockInScene(scene, blockId, target);
-        }, [sceneId]);
+        });
     }
 
     /**
@@ -2107,7 +2071,168 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlocksInScene(scene, moves.map(move => ({ blockIds: [...move.blockIds], target: move.target })));
-        }, [sceneId]);
+        });
+    }
+
+    /**
+     * The three operations that reshape a story rather than a row - moving rows to another scene,
+     * splitting a scene, merging two - each as one document revision and one undo step.
+     *
+     * None of them is in the live-session vocabulary, so each refuses while a session holds the
+     * story, exactly as {@link replaceScene} does and for the same reason: the effect the other
+     * machines would receive does not exist, so the write can only be a local divergence. A refusal
+     * is returned rather than thrown; the caller says so on screen.
+     *
+     * `scopeId` names the stack the step lands on. The scene editor passes its own scene's scope so
+     * Ctrl+Z there takes the operation back; callers with no editor in front of them leave it out
+     * and get the project stack.
+     */
+    public moveBlocksToScene(
+        storyId: StoryId,
+        sourceSceneId: StorySceneId,
+        targetSceneId: StorySceneId,
+        blockIds: readonly StoryBlockId[],
+        placement: StoryBlockPlacement,
+        options?: { scopeId?: HistoryScopeId },
+    ): number {
+        if (this.opSink !== null) {
+            return 0;
+        }
+        const before = this.captureStoryStructure(storyId);
+        let moved = 0;
+        this.mutateDocument(storyId, document => {
+            moved = moveBlocksToScene(document, sourceSceneId, targetSceneId, blockIds, placement);
+        });
+        if (moved === 0) {
+            return 0;
+        }
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storyMoveRowsToScene" },
+            before,
+            options?.scopeId,
+        );
+        return moved;
+    }
+
+    /**
+     * Cut a scene in two at one of its top-level rows: the rows from there on become a new scene
+     * filed straight after this one.
+     *
+     * The new scene inherits the original's background and music, and the original gets a jump to it
+     * appended when it would otherwise have run off its own end - the engine has no scene successor,
+     * so a scene that stops stops the game. Both are what keeps the split playing the way the one
+     * scene did.
+     *
+     * Returns what happened, so the caller can say it in one line, or null when the row is not one a
+     * scene can be cut at.
+     */
+    public splitScene(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        atBlockId: StoryBlockId,
+        name: string,
+        options?: { scopeId?: HistoryScopeId },
+    ): { sceneId: StorySceneId; movedRowCount: number; jumpAdded: boolean } | null {
+        if (this.opSink !== null) {
+            return null;
+        }
+        const document = this.getStoryDocument(storyId);
+        const source = document.scenes[sceneId];
+        if (!source) {
+            return null;
+        }
+        const plan = planSceneSplit(source, atBlockId);
+        // Ties are a refusal, not a warning: the caller lists them, and a split written
+        // anyway would leave the second half naming a stage object, a label or a variable
+        // the first half kept. See {@link StorySceneSplitPlan.ties}.
+        if (!plan || plan.ties.length > 0) {
+            return null;
+        }
+        const now = new Date().toISOString();
+        const created = createStorySceneModel({
+            id: this.getUuidService().generate(),
+            name: this.cleanName(name, "New Scene"),
+            runtimeName: this.mintRuntimeName(document, name),
+            now,
+        });
+        const jumpBlock: StoryBlock | null = plan.needsJump
+            ? {
+                id: this.getUuidService().generate(),
+                parentId: null,
+                childrenIds: [],
+                kind: "jump",
+                payload: { targetSceneId: created.id },
+            }
+            : null;
+        const chapterId = chapterOfScene(document, sceneId);
+        const before = this.captureStoryStructure(storyId);
+        let movedRowCount = 0;
+        this.mutateDocument(storyId, target => {
+            const scene = this.getSceneOrThrow(target, sceneId);
+            const scenes = target.scenes as Record<StorySceneId, StoryScene>;
+            scenes[created.id] = {
+                ...created,
+                ...(scene.defaultBackgroundAssetId ? { defaultBackgroundAssetId: scene.defaultBackgroundAssetId } : {}),
+                ...(scene.bgm ? { bgm: JSON.parse(JSON.stringify(scene.bgm)) as StoryScene["bgm"] } : {}),
+            };
+            const chapter = chapterId ? target.chapters.find(item => item.id === chapterId) : undefined;
+            if (chapter) {
+                const at = chapter.sceneIds.indexOf(sceneId);
+                chapter.sceneIds.splice(at < 0 ? chapter.sceneIds.length : at + 1, 0, created.id);
+            } else {
+                target.unassignedSceneIds = [...(target.unassignedSceneIds ?? []), created.id];
+            }
+            movedRowCount = moveBlocksToScene(target, sceneId, created.id, plan.movingRootIds, {
+                parentId: null,
+                beforeBlockId: null,
+            });
+            if (jumpBlock) {
+                insertBlockInScene(scene, jumpBlock, { parentId: null, beforeBlockId: null });
+            }
+        });
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storySplitScene" },
+            before,
+            options?.scopeId,
+        );
+        return { sceneId: created.id, movedRowCount, jumpAdded: Boolean(jumpBlock) };
+    }
+
+    /**
+     * Put two neighbouring scenes back together. The earlier one keeps its id and receives the
+     * rows; the later one is removed.
+     *
+     * A plan with `blockers` is a refusal: something outside the story document names the scene
+     * about to disappear and cannot be re-pointed from here, and half a merge is worse than none.
+     * The caller lists them.
+     */
+    public mergeScenes(
+        storyId: StoryId,
+        survivingSceneId: StorySceneId,
+        mergedSceneId: StorySceneId,
+        externalReferrers: readonly StorySceneReferrer[] = [],
+        options?: { scopeId?: HistoryScopeId },
+    ): StorySceneMergePlan | null {
+        if (this.opSink !== null) {
+            return null;
+        }
+        const plan = planSceneMerge(this.getStoryDocument(storyId), survivingSceneId, mergedSceneId, externalReferrers);
+        if (!plan || plan.blockers.length > 0) {
+            return plan;
+        }
+        const before = this.captureStoryStructure(storyId);
+        this.mutateDocument(storyId, document => {
+            applySceneMerge(document, plan);
+        });
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storyMergeScenes" },
+            before,
+            options?.scopeId,
+        );
+        return plan;
     }
 
     /**
@@ -2281,23 +2406,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.events.emit("animationsChanged", index);
     }
 
-    /**
-     * The one way a loaded story document changes.
-     *
-     * `scope` says which scenes the mutator may have changed the asset references of; see
-     * {@link StoryAssetLockScope} for how to choose one, and note that it is read *after* the mutator
-     * runs, so a mutator that only learns its scene while running can push into a mutable array. It
-     * is a required argument rather than an optional one because the honest answer is sometimes
-     * `"all"` and a defaulted parameter is how a new mutator ends up never having been asked.
-     */
+    /** The one way a loaded story document changes. */
     private mutateDocument(
         storyId: StoryId,
         mutator: (document: StoryDocument) => void,
-        scope: StoryAssetLockScope,
     ): void {
         const document = this.getStoryDocument(storyId);
         mutator(document);
-        this.syncDocumentAssetLocks(storyId, document, scope);
         document.meta = {
             ...document.meta,
             updatedAt: new Date().toISOString(),
@@ -2463,16 +2578,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * still answers `ok` with `refused`, and a real failure is still `ok: false` with a code the
      * save-status surface already understands.
      */
-    private writeStoryFile(path: string, payload: string): Promise<FsRequestResult<void>> {
-        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8");
+    private writeStoryFile(path: string, payload: string, report: FsWriteReport): Promise<FsRequestResult<void>> {
+        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8", report);
     }
+
+    /**
+     * Every file here is written again by the auto-saver when a write fails - {@link settleWrite}
+     * re-owes it - so each is reported as retried, by the name the author knows it by: a story or a
+     * motion by its own name, the two lists by the store's.
+     */
+    private static readonly LIBRARY_WRITE = storeWrite("workspace.shell.save.stores.story", "retried");
 
     private async writeLibraryIndex(): Promise<void> {
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
         this.libraryStampsDirty = false;
-        const result = await this.writeStoryFile(this.getIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
             // write that did not land tells us nothing about which half mattered; re-owing the
@@ -2498,7 +2620,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDocumentDir(storyId);
         const payload = JSON.stringify(document, null, 2);
         this.dirtyDocuments.delete(storyId);
-        const result = await this.writeStoryFile(this.getStoryDocumentPath(storyId), payload);
+        const result = await this.writeStoryFile(
+            this.getStoryDocumentPath(storyId),
+            payload,
+            itemWrite(this.getStoryEntry(storyId)?.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
         });
@@ -2508,7 +2634,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getAnimationIndex(), null, 2);
         this.animationIndexDirty = false;
-        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             this.animationIndexDirty = true;
         });
@@ -2518,7 +2644,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(asset, null, 2);
         this.dirtyAnimationAssets.delete(asset.id);
-        const result = await this.writeStoryFile(this.getAnimationAssetPath(asset.id), payload);
+        const result = await this.writeStoryFile(
+            this.getAnimationAssetPath(asset.id),
+            payload,
+            itemWrite(asset.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyAnimationAssets.add(asset.id);
         });
@@ -2615,6 +2745,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapters: document.chapters,
             scenes: document.scenes,
             entrySceneId: document.entrySceneId,
+            unassignedSceneIds: document.unassignedSceneIds,
         })) as StoryStructureSnapshot;
     }
 
@@ -2628,22 +2759,35 @@ export class StoryService extends Service<StoryService> implements IStoryService
             } else {
                 document.entrySceneId = restored.entrySceneId;
             }
-        }, "all");
+            if (restored.unassignedSceneIds === undefined) {
+                delete document.unassignedSceneIds;
+            } else {
+                document.unassignedSceneIds = restored.unassignedSceneIds;
+            }
+        });
     }
 
     /**
-     * Record a structural deletion as one undo step on the project stack.
+     * Record an edit to the outline - a deletion, a scene or chapter changing places, a split or a
+     * merge - as one undo step.
+     *
+     * The project stack by default, because most of these edits are not *in* a document the author
+     * has open: they are made from the story panel, and that is where Ctrl+Z reaches from
+     * (`resolveWorkspaceUndoScope`). `scopeId` is for the ones that are: a split, a merge or a move
+     * to another scene runs from the scene editor, so it has to land on the stack that editor's
+     * Ctrl+Z reads, or the keystroke undoes the author's previous edit and leaves the split standing.
      *
      * `before` is captured by the caller ahead of the mutation; `after` is taken here, so undo and
-     * redo are the same operation in opposite directions and neither has to re-derive what was lost.
+     * redo are the same operation in opposite directions and neither has to re-derive what changed.
      */
-    private recordStructuralDeletion(
+    private recordStructuralChange(
         storyId: StoryId,
         label: HistoryLabel,
         before: StoryStructureSnapshot,
+        scopeId: HistoryScopeId = projectHistoryScope(),
     ): void {
         const after = this.captureStoryStructure(storyId);
-        this.getHistoryService().pushCommand(projectHistoryScope(), {
+        this.getHistoryService().pushCommand(scopeId, {
             label,
             undo: () => this.applyStoryStructure(storyId, before),
             redo: () => this.applyStoryStructure(storyId, after),
@@ -2663,13 +2807,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return trimmed || undefined;
     }
 
-    private toRuntimeName(name: string): string {
-        const normalized = name
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "");
-        return normalized || `scene_${this.getUuidService().generate(true)}`;
+    /**
+     * The internal name for a scene about to join `document`, unique among the scenes already in it.
+     * Called only where a scene is made; see {@link mintSceneRuntimeName} for why never on a rename.
+     */
+    private mintRuntimeName(document: StoryDocument, name: string): string {
+        return mintSceneRuntimeName(name, document, () => `scene_${this.getUuidService().generate(true)}`);
     }
 
     private getFileSystem(): FileSystemService {
@@ -2678,273 +2821,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     private getUuidService(): UuidService {
         return this.getContext().services.get<UuidService>(Services.Uuid);
-    }
-
-    private getAssetsService(): AssetsService {
-        return this.getContext().services.get<AssetsService>(Services.Assets);
-    }
-
-    /**
-     * Derive a lock table for every story the library names, reading from disk the ones not open.
-     *
-     * The cold-start cost, and it stays a full walk per story on purpose. There is no cheaper way to
-     * learn what a document on disk points at than to read it, and a lock table cached beside the
-     * document would have to be provably current before it could be believed - "the file has not
-     * changed since" is exactly the claim a copied project, a version-control checkout or an editor
-     * open in another window makes false. A stale table under-reports use, and an asset reported
-     * unused is an asset the author is invited to delete out from under a story.
-     */
-    private async syncLibraryAssetLocks(): Promise<void> {
-        const index = this.getLibraryIndex();
-        for (const entry of index.stories) {
-            const cached = this.documents.get(entry.id);
-            if (cached) {
-                // Held in memory, so its table is either already current or has never been made.
-                // `reloadFromDisk` reaches here right after re-loading each open story, and this is
-                // what stops that being a second full walk of everything the author had open.
-                this.ensureStoryAssetLocks(entry.id, cached);
-                continue;
-            }
-            const result = await this.getFileSystem().readJSON<StoryDocument>(this.getStoryDocumentPath(entry.id));
-            if (!result.ok) {
-                continue;
-            }
-            try {
-                const document = normalizeStoryDocument(result.data, new Date().toISOString());
-                this.syncDocumentAssetLocks(entry.id, document, "all");
-            } catch (error) {
-                console.warn("[StoryService] failed to read story asset references", error);
-            }
-        }
-    }
-
-    /**
-     * Bring this story's asset locks back in line with the document, walking only what `scope` names.
-     *
-     * The whole point is that a lock is a function of one scene: the key a lock is filed under is
-     * `sceneId` + `blockId` + `field`, and nothing outside `document.scenes[sceneId]` contributes to
-     * it. So an edit that changed one scene can be answered by recomputing that scene, and the other
-     * thirty-nine scenes of a long story are left alone instead of re-walked on every keystroke.
-     *
-     * Two things stop a wrong `scope` from becoming a wrong lock table:
-     *
-     * - A story with no table yet is rebuilt in full whatever the scope says. There is nothing to be
-     *   incremental against, and a scoped sync would otherwise file one scene and quietly declare the
-     *   other thirty-nine lock-free.
-     * - After a scoped sync the document's scene set is compared against the table's. That is O(one
-     *   entry per scene), not per block, and it catches every scene that appeared or vanished without
-     *   being named. A mismatch is repaired by a full rebuild rather than trusted, because a scope
-     *   that was wrong about the scene *set* has already shown it cannot be trusted about the rest.
-     *
-     * What neither check can see is a scope that names the right scenes but misses a block edit
-     * inside an unnamed one. That is what `StoryService.assetLocks.test.ts` is for: it drives every
-     * mutator on the service and asserts that forcing a full rebuild afterwards changes nothing.
-     */
-    private syncDocumentAssetLocks(storyId: StoryId, document: StoryDocument, scope: StoryAssetLockScope): void {
-        const table = this.storyAssetLocks.get(storyId);
-        if (!table || scope === "all") {
-            this.rebuildStoryAssetLocks(storyId, document, table);
-            return;
-        }
-
-        for (const sceneId of new Set(scope)) {
-            this.syncSceneAssetLocks(document, table, sceneId);
-        }
-
-        if (!this.assetLockSceneSetMatches(document, table)) {
-            console.warn(
-                "[StoryService] asset lock scope missed a scene; rebuilding the table for",
-                storyId,
-            );
-            this.rebuildStoryAssetLocks(storyId, document, table);
-        }
-    }
-
-    /**
-     * Derive this story's locks from every scene it has, and diff the result against what is held.
-     *
-     * Diffed per scene rather than wholesale so that a rebuild over an unchanged document issues no
-     * lock or unlock calls at all. That matters beyond tidiness: `AssetLockManager` stores one object
-     * per lock and removes one per unlock, so a rebuild that dropped and re-took every lock would be
-     * balanced only as long as nothing threw in between.
-     */
-    private rebuildStoryAssetLocks(
-        storyId: StoryId,
-        document: StoryDocument,
-        previous: StoryAssetLocks | undefined,
-    ): void {
-        const next: StoryAssetLocks = new Map();
-        for (const scene of Object.values(document.scenes)) {
-            next.set(scene.id, this.collectSceneAssetLocks(document.id, scene));
-        }
-
-        if (previous) {
-            for (const [sceneId, sceneLocks] of previous.entries()) {
-                if (!next.has(sceneId)) {
-                    this.releaseSceneAssetLocks(sceneLocks);
-                }
-            }
-            for (const [sceneId, sceneLocks] of next.entries()) {
-                this.applySceneAssetLockDiff(previous.get(sceneId), sceneLocks);
-            }
-        } else {
-            for (const sceneLocks of next.values()) {
-                this.applySceneAssetLockDiff(undefined, sceneLocks);
-            }
-        }
-
-        this.storyAssetLocks.set(storyId, next);
-    }
-
-    /** Recompute one scene's entry in a table that already exists, or release it if the scene is gone. */
-    private syncSceneAssetLocks(document: StoryDocument, table: StoryAssetLocks, sceneId: StorySceneId): void {
-        const scene = document.scenes[sceneId];
-        if (!scene) {
-            const previous = table.get(sceneId);
-            if (previous) {
-                this.releaseSceneAssetLocks(previous);
-                table.delete(sceneId);
-            }
-            return;
-        }
-        const next = this.collectSceneAssetLocks(document.id, scene);
-        // Filed under `scene.id`, which is what the lock metadata carries. The two agree for every
-        // scene this service writes; if they ever did not, the scene-set check below would see a key
-        // it cannot account for and rebuild.
-        this.applySceneAssetLockDiff(table.get(scene.id), next);
-        table.set(scene.id, next);
-    }
-
-    /**
-     * Does the table hold exactly one entry per scene the document has?
-     *
-     * Cheap enough to run after every scoped sync - one map lookup per scene, and a story has scenes
-     * in the tens where it has blocks in the tens of thousands.
-     */
-    private assetLockSceneSetMatches(document: StoryDocument, table: StoryAssetLocks): boolean {
-        let seen = 0;
-        for (const scene of Object.values(document.scenes)) {
-            if (!table.has(scene.id)) {
-                return false;
-            }
-            seen += 1;
-        }
-        return seen === table.size;
-    }
-
-    private applySceneAssetLockDiff(
-        previous: StorySceneAssetLocks | undefined,
-        next: StorySceneAssetLocks,
-    ): void {
-        if (!previous) {
-            if (next.size === 0) {
-                return;
-            }
-            const assetsService = this.getAssetsService();
-            for (const entry of next.values()) {
-                assetsService.lockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
-            }
-            return;
-        }
-        const assetsService = this.getAssetsService();
-        for (const [key, entry] of previous.entries()) {
-            const nextEntry = next.get(key);
-            if (!nextEntry || nextEntry.assetId !== entry.assetId) {
-                assetsService.unlockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
-            }
-        }
-        for (const [key, entry] of next.entries()) {
-            const previousEntry = previous.get(key);
-            if (!previousEntry || previousEntry.assetId !== entry.assetId) {
-                assetsService.lockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
-            }
-        }
-    }
-
-    private releaseSceneAssetLocks(sceneLocks: StorySceneAssetLocks): void {
-        if (sceneLocks.size === 0) {
-            return;
-        }
-        const assetsService = this.getAssetsService();
-        for (const entry of sceneLocks.values()) {
-            assetsService.unlockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
-        }
-    }
-
-    /**
-     * Derive a story's locks once, if nobody has yet.
-     *
-     * The cheap half of what the old per-read full sync bought. A document held in memory only ever
-     * changes through {@link mutateDocument}, which files the change as it makes it, so a table that
-     * exists is a table that is current and re-walking thirty thousand rows to confirm it buys
-     * nothing. A table that does *not* exist is the one case a read has to answer for: `createStory`
-     * and both load paths derive one, but a future path that installs a document without doing so
-     * would otherwise leave the story's assets deletable.
-     */
-    private ensureStoryAssetLocks(storyId: StoryId, document: StoryDocument): void {
-        if (this.storyAssetLocks.has(storyId)) {
-            return;
-        }
-        this.rebuildStoryAssetLocks(storyId, document, undefined);
-    }
-
-    private releaseStoryAssetLocks(storyId: StoryId): void {
-        const previous = this.storyAssetLocks.get(storyId);
-        if (!previous) {
-            return;
-        }
-        for (const sceneLocks of previous.values()) {
-            this.releaseSceneAssetLocks(sceneLocks);
-        }
-        this.storyAssetLocks.delete(storyId);
-    }
-
-    /**
-     * Every asset one scene points at, keyed by `${blockId}:${field}`.
-     *
-     * The scene id is carried in each entry's metadata because that is what `AssetLockManager`
-     * matches an unlock against - it has to stay in the shape the lock was taken with.
-     */
-    private collectSceneAssetLocks(storyId: StoryId, scene: StoryScene): StorySceneAssetLocks {
-        const locks: StorySceneAssetLocks = new Map();
-        const addAssetLock = (blockId: StoryBlockId, field: string, assetId: string | undefined) => {
-            const normalizedAssetId = assetId?.trim();
-            if (!normalizedAssetId) {
-                return;
-            }
-            locks.set(`${blockId}:${field}`, {
-                assetId: normalizedAssetId,
-                metadata: {
-                    storyId,
-                    sceneId: scene.id,
-                    blockId,
-                    field,
-                },
-            });
-        };
-
-        addAssetLock("__scene__", "scene.defaultBackgroundAssetId", scene.defaultBackgroundAssetId);
-        for (const block of Object.values(scene.blocks)) {
-            if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-                addAssetLock(block.id, "voiceAssetId", block.payload.voiceAssetId);
-                continue;
-            }
-            if (block.kind !== "action") {
-                continue;
-            }
-            const payload = block.payload;
-            if (payload.action === "setBackground") {
-                addAssetLock(block.id, "background.assetId", payload.assetId);
-            } else if (payload.action === "character") {
-                addAssetLock(block.id, "character.assetId", payload.assetId);
-            } else if (payload.action === "audio") {
-                addAssetLock(block.id, "audio.assetId", payload.assetId);
-            } else if (payload.action === "displayable") {
-                addAssetLock(block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
-            }
-        }
-
-        return locks;
     }
 
     private getIndexPath(): string {
@@ -3037,3 +2913,32 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories, `${storyId}/`);
     }
 }
+
+/**
+ * The sentence a story refused by the schema ladder gets, or null when this failure is not one.
+ *
+ * Both ends of the ladder, in the author's own language, and named the same way the lint report
+ * names them - one document, one wording, wherever the failure surfaces. Null for every other
+ * failure: a truncated write has no version to state, and the parser's own text is the better
+ * answer there.
+ */
+function describeStoryDocumentRefusal(storyName: string, error: unknown): string | null {
+    const tooOld = findStoryDocumentTooOldError(error);
+    if (tooOld) {
+        return translate("lint.message.storyTooOld", {
+            story: storyName,
+            version: tooOld.version,
+            minimum: tooOld.minimumVersion,
+        });
+    }
+    const tooNew = findStoryDocumentTooNewError(error);
+    if (tooNew) {
+        return translate("lint.message.storyTooNew", {
+            story: storyName,
+            version: tooNew.version,
+            supported: tooNew.supportedVersion,
+        });
+    }
+    return null;
+}
+

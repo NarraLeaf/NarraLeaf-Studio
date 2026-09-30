@@ -51,7 +51,7 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "未完成のアセットセット",
             description: "宣言したバリアントのいずれかが、ちょうど 1 つのファイルに解決しないセット",
-            // バリアントは構成するタグの形で示す。そのタグをファイルに書くことが対処だから。
+            // バリアントは言語コードかバリアント名で示し、保存用のタグの形では書かない。バリアントの id は uuid だから。
             // 解決するはずのファイル名は書かない。そのファイルはまだ存在しない。
             message: "{set} の {variant} に対応するファイルがない",
             messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
@@ -88,6 +88,16 @@ export const lint = {
             title: "ネットワーク許可のないネットワークノード",
             description: "ネットワークポリシーが「使わない」のプロジェクトにあるネットワークノード",
             message: "{blueprint} はネットワーク要求を行うが、このプロジェクトのネットワークポリシーが許可していない",
+        },
+        /**
+         * ここで唯一、背後にルールがない項目。スキーマの下限を下回るストーリードキュメントは
+         * どのルールにも渡らないので、「プロジェクト ▸ プロジェクト」に行はなく、重大度も
+         * 設定できない。名前だけがあるのは、レポートがルールごとにまとめるため。本文は下の
+         * `message.storyTooOld` / `.storyTooNew` / `.storyLoadFailed`。
+         */
+        storyUnreadable: {
+            title: "読み込めないストーリー",
+            description: "このバージョンの Studio が開けないストーリードキュメント",
         },
         storyInvalidCommand: {
             title: "無効なコマンド",
@@ -203,6 +213,11 @@ export const lint = {
             // 保存された語をそのまま出す。どのメニューにも残っていない以上、作者に残る手がかりはこれだけ。
             message: "トランジション {transition} は利用できないため、この変化は切り替えで再生される",
         },
+        storyBackgroundUnchanged: {
+            title: "変化しない背景",
+            description: "すでに画面に出ている背景へ遷移する行",
+            message: "この背景はすでに画面に出ているため、このトランジションは何も変えない",
+        },
         blueprintReferenceMissing: {
             title: "参照先の欠落",
             description: "プロジェクトに存在しない対象を指すノード",
@@ -247,6 +262,19 @@ export const lint = {
             description: "実行する内容が接続されていないイベントレイヤー",
             message: "このイベントは何も実行しない",
         },
+        blueprintUnknownNode: {
+            title: "不明なノード型",
+            description: "型を読み込めないノード",
+            message: "{type} が読み込まれていないため、このノードはゲームで実行されない",
+        },
+        blueprintAssembledAssetName: {
+            title: "実行時に組み立てられるアセット名",
+            description: "ゲームが実行中に組み立てる名前でアセットを選んでおり、そのアセットはゲームパッケージに入らない",
+            message: "「{node}」の「{pin}」が受け取るアセット名は実行時に組み立てられる（「{origin}」から）。ゲームパッケージにはプロジェクト内で名前が書かれたアセットだけが入るため、リリース後はここに何も入らない。アセットピッカーでアセットを選ぶか、リスト行や変数から選択済みのアセットを読み取る",
+            messageBinding: "「{element}」の「{prop}」にバインドされたアセット名は実行時に組み立てられる（「{origin}」から）。ゲームパッケージにはプロジェクト内で名前が書かれたアセットだけが入るため、リリース後はここに何も入らない。アセットピッカーでアセットを選ぶか、リスト行や変数から選択済みのアセットを読み取る",
+            messageUnloadedNode: "「{node}」の「{pin}」が受け取るアセット名は {origin} から来るが、このノード型は読み込まれていないため、指すアセットはリリース後のゲームに入らない。このノード型を提供するプラグインをインストールするか有効にして、再度ビルドする",
+            messageUnloadedNodeBinding: "「{element}」の「{prop}」にバインドされたアセット名は {origin} から来るが、このノード型は読み込まれていないため、指すアセットはリリース後のゲームに入らない。このノード型を提供するプラグインをインストールするか有効にして、再度ビルドする",
+        },
         uiUnlocalizedText: {
             title: "ローカライズされていないテキスト",
             description: "第二の言語があるプロジェクトで、ウィジェットに直接書かれたテキスト",
@@ -262,6 +290,11 @@ export const lint = {
             description: "クリックできるが、動作が何も割り当てられていないウィジェット",
             message: "クリックしても何も実行されない",
         },
+        uiUnknownWidget: {
+            title: "不明なウィジェット型",
+            description: "型を読み込めないウィジェット",
+            message: "{type} が読み込まれていないため、このウィジェットはゲームで描画されない",
+        },
         uiComponentMissing: {
             title: "存在しないコンポーネント",
             description: "プロジェクトにないコンポーネントのインスタンス",
@@ -271,6 +304,11 @@ export const lint = {
             title: "存在しない埋め込みページ",
             description: "プロジェクトにないページを埋め込んでいるページウィジェット",
             message: "このページウィジェットはプロジェクトにないページを埋め込んでいる",
+        },
+        uiFrameLoop: {
+            title: "循環する埋め込みページ",
+            description: "埋め込んだページがそのページウィジェットに戻ってくる",
+            message: "このページウィジェットが埋め込むページは、このウィジェットに戻ってくる",
         },
         uiListItemFieldMissing: {
             title: "項目が見つかりません",
@@ -286,6 +324,11 @@ export const lint = {
             title: "未入力のセーブ項目",
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",
             message: "{field} が未入力のため、このセーブには既定値が書き込まれる",
+        },
+        blueprintRequiredInputUnwired: {
+            title: "未接続の入力",
+            description: "実行されるノードで、必須の入力ピンが接続されていない",
+            message: "{node} の {pin} に何も接続されていない",
         },
         blueprintStartSceneForeign: {
             title: "別のストーリーのシーン",
@@ -315,7 +358,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "変化しない条件",
             description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
-            message: "{variable} を参照する条件が {count} 件ありますが、代入する箇所がありません",
+            message: "{variable} を参照する条件が {conditions}ありますが、代入する箇所がありません",
+            conditionCount: {
+                other: "{count} 件",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",
@@ -352,7 +398,10 @@ export const lint = {
         localizationOrphan: {
             title: "対応する行のない翻訳",
             description: "対応する行が存在しない翻訳",
-            message: "対応する行のない {locale} の翻訳が {count} 件ある",
+            message: "対応する行のない {locale} の翻訳が {translations}ある",
+            translationCount: {
+                other: "{count} 件",
+            },
         },
         voiceMissing: {
             title: "ボイスの欠落",
@@ -367,7 +416,10 @@ export const lint = {
         voiceOrphan: {
             title: "対応する行のない録音",
             description: "対応する行が存在しない録音",
-            message: "対応する行のない {locale} の録音が {count} 件ある",
+            message: "対応する行のない {locale} の録音が {recordings}ある",
+            recordingCount: {
+                other: "{count} 件",
+            },
         },
         brandBrokenLink: {
             title: "切れた色のリンク",
@@ -381,10 +433,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "グリフ不足",
             description: "プロジェクトのどのフォントにも無い文字を使っている",
-            message: "プロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
-            messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
+            message: "プロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 箇所",
+            },
+            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageMore: "他に {characters}、プロジェクトのフォントに無い",
+            moreCharacterCount: {
+                other: "{count} 文字",
+            },
+            messageMoreInLanguage: "{language}で他に {characters}、プロジェクトのフォントに無い",
             messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
             messageUnloadable: "{font} は .{format} フォントで、ゲームでは描画できない",
         },
@@ -397,6 +455,8 @@ export const lint = {
     message: {
         ruleFailed: "{rule} を実行できなかった",
         storyLoadFailed: "{story} を開けなかった",
+        storyTooOld: "{story} はストーリー形式 v{version}、このバージョンの Studio が開けるのは v{minimum} 以降",
+        storyTooNew: "{story} は新しいバージョンの NarraLeaf Studio が書き込んだもの（ストーリー形式 v{version}）、このバージョンの Studio が読めるのは v{supported} まで",
     },
     category: {
         assets: "アセット",
@@ -424,7 +484,7 @@ export const lint = {
         title: "問題",
         empty: "問題は見つからなかった",
         running: "検査中…",
-        summary: "エラー {errors} 件、警告 {warnings} 件、情報 {infos} 件",
+        counts: "{errors}、{warnings}、{infos}",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
         filterAll: "すべて",
@@ -434,6 +494,9 @@ export const lint = {
         expand: "展開",
         collapseAll: "すべて折りたたむ",
         expandAll: "すべて展開",
+        // レポートが最初に出す件数よりずっと多くの指摘を持つルールの、そのグループの最終行。
+        // 書くのはそのルールの総数で、すぐ上の見出しに出ている数と同じ。
+        showAll: "{count} 件すべて表示",
         // 行番号の読み上げ。列そのものは数字だけにしてある。シーンエディタの行番号がそう出ていて、
         // 読み手はその 2 つを見比べるため。
         lineAria: "{line} 行目",
@@ -444,14 +507,23 @@ export const lint = {
         category: "検査",
     },
     console: {
+        channel: "検査",
+        channelDescription: "プロジェクトの検査と見つかった問題",
         started: "検査を開始",
-        finished: "エラー {errors} 件、警告 {warnings} 件（{duration}）",
+        finishedCounts: "{errors}、{warnings}（{duration}）",
         // 場所、次に何がおかしいか、最後にそう言っているルール。コンパイラの 1 行と同じ並びで、
         // 読み手が目で追う順でもある。重大度の枠は無い。コンソールは行ごとに別の列で出している。
         finding: "{location} {message}（{rule}）",
+        // 英語カタログを参照。検査全体の内訳で、指摘の後、総括の行の隣に出す。コンソールはレポート
+        // タブのように折りたためず、1 回の検査は同じルールが何千回も並ぶことが珍しくない。
+        byRule: "ルール別の件数",
+        ruleCount: "{rule}：{count}",
     },
     build: {
-        blocked: "問題 {count} 件のためビルドを中止した",
+        started: "プロジェクトを検査中…",
+        blocked: {
+            other: "問題 {count} 件のためビルドを中止した",
+        },
         // パネル → ページ → 項目まで書く。この関門は既定で有効なので、このパネルを開いたことのない
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
         blockedHint: "「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変更できる",

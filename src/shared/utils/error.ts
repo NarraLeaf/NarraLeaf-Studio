@@ -3,8 +3,17 @@ import { Result } from "./types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 
 export class RendererError extends Error {
-    constructor(message: string) {
-        super(message);
+    /**
+     * `options` is forwarded so a re-throw can keep the original as its `cause`.
+     *
+     * This class is the renderer's outer wrapper: a service catches whatever a document reader threw
+     * and re-throws it with a message a caller can show. Without a cause that is a one-way door -
+     * the sentence survives and the value does not, so a caller that wants to *act* on a particular
+     * failure has to match on English text. Passing the cause through costs nothing and keeps that
+     * option open; nothing is required to look at it.
+     */
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
         this.name = 'RendererError';
     }
 }

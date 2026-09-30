@@ -67,7 +67,7 @@ describe("extractPluginZip", () => {
     });
 });
 
-describe("fetchRegistryIndex icons", () => {
+describe("fetchRegistryIndex entry fields", () => {
     /** One index entry with the fields normalization refuses to work without. */
     function entry(overrides: Record<string, unknown>) {
         return {
@@ -115,5 +115,29 @@ describe("fetchRegistryIndex icons", () => {
     it("leaves icon absent when the entry declares none", async () => {
         const index = await indexWith([entry({})]);
         expect(index.plugins[0].icon).toBeUndefined();
+    });
+
+    it("keeps the entry's translations, keyed by the tags the registry wrote", async () => {
+        const index = await indexWith([entry({
+            locales: {
+                "zh-CN": { name: "演示", description: "演示插件" },
+                en: { description: "A demo plugin" },
+            },
+        })]);
+        expect(index.plugins[0].locales).toEqual({
+            "zh-CN": { name: "演示", description: "演示插件" },
+            en: { name: undefined, description: "A demo plugin" },
+        });
+    });
+
+    it("drops translations it cannot show, and the block when none is left", async () => {
+        const index = await indexWith([
+            entry({ locales: { "zh-CN": { name: 42 }, ja: "名前", fr: { name: "  " } } }),
+            entry({ locales: ["zh-CN"] }),
+            entry({}),
+        ]);
+        for (const plugin of index.plugins) {
+            expect(plugin.locales).toBeUndefined();
+        }
     });
 });

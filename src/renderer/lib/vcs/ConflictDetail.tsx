@@ -5,6 +5,7 @@ import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { renderDocumentName, type DocumentName } from "./documentName";
+import { elideGeneratedIdentifiers, readableChangePath, readableStoragePath } from "./identifierDisplay";
 import {
     describeMergeSides,
     effectiveMergeSide,
@@ -12,8 +13,18 @@ import {
     resolveMergeDecisionLabel,
     type MergeChangeChoices,
     type MergeDocumentEntry,
+    type MergeSidesView,
     type MergeValueView,
 } from "./mergeDecisionView";
+
+/**
+ * A format's own reading of a decision's two sides, or null where it has none and the generic
+ * field-by-field reading should draw them.
+ *
+ * Handed in rather than looked up here, because a format's reading can need the workspace - a
+ * story row's speaker is a name from the character list - and this surface takes plain props.
+ */
+export type MergeSidesDescriber = (decision: DocumentMergeDecision) => MergeSidesView | null;
 
 /**
  * The detail half of a merge: one conflicted file, change by change, with both sides' values.
@@ -35,10 +46,21 @@ export interface ConflictDetailProps {
     /** True while a finish or an abandon is out. Not the freeze: choosing writes nothing. */
     readonly disabled: boolean;
     onChooseChange(decision: DocumentMergeDecision, side: VcsMergeSideChoice): void;
+    /** This file's format reading its own rows, where it has a reading. See {@link MergeSidesDescriber}. */
+    readonly describeSides?: MergeSidesDescriber;
     readonly className?: string;
 }
 
-export function ConflictDetail({ path, name, entry, choices, disabled, onChooseChange, className }: ConflictDetailProps) {
+export function ConflictDetail({
+    path,
+    name,
+    entry,
+    choices,
+    disabled,
+    onChooseChange,
+    describeSides,
+    className,
+}: ConflictDetailProps) {
     const { t } = useTranslation();
 
     return (
@@ -49,7 +71,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
             className={cn("flex h-full min-h-0 flex-col", className)}
         >
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
-                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={path}>
+                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={readableStoragePath(path) ?? undefined}>
                     {renderDocumentName(name, t)}
                 </span>
             </div>
@@ -61,7 +83,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                         {t("documentDiff.resolve.change.loading")}
                     </p>
                 ) : entry.status === "error" ? (
-                    <p className="text-2xs text-danger">{entry.message}</p>
+                    <p className="text-2xs text-danger">{elideGeneratedIdentifiers(entry.message)}</p>
                 ) : entry.document.blocked !== undefined ? (
                     // Tier three: refuse, and say which wall was hit. The two whole-file buttons on
                     // this file's row are still the answer for it and are still there - this is a
@@ -72,7 +94,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                         {entry.document.detail && (
                             // The producer's own words, untranslated and marked as such by being
                             // quieter - never instead of the sentence above it.
-                            <p className="text-2xs text-fg-subtle opacity-70">{entry.document.detail}</p>
+                            <p className="text-2xs text-fg-subtle opacity-70">{elideGeneratedIdentifiers(entry.document.detail)}</p>
                         )}
                     </div>
                 ) : entry.document.decisions.length === 0 ? (
@@ -86,6 +108,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                                 decision={decision}
                                 side={effectiveMergeSide(decision, choices)}
                                 disabled={disabled}
+                                describeSides={describeSides}
                                 onChoose={side => onChooseChange(decision, side)}
                             />
                         ))}
@@ -113,31 +136,34 @@ function MergeChangeRow({
     decision,
     side,
     disabled,
+    describeSides,
     onChoose,
 }: {
     decision: DocumentMergeDecision;
     side: "mine" | "theirs" | undefined;
     disabled: boolean;
+    describeSides?: MergeSidesDescriber;
     onChoose: (side: VcsMergeSideChoice) => void;
 }) {
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveMergeDecisionLabel(decision, translator);
     // Described once, for both: the two columns are rows of each other only if one field list built
-    // from both sides decides what each of them draws.
-    const values = describeMergeSides(decision.mine, decision.theirs);
+    // from both sides decides what each of them draws. The format's own reading first, where it has
+    // one - a line of a script reads as a line, not as the fields it is stored in.
+    const values = describeSides?.(decision) ?? describeMergeSides(decision.mine, decision.theirs);
     const conflict = decision.outcome === "conflict";
     const other = side === "mine" ? "theirs" : "mine";
 
     return (
-        <div className="group/change border-t border-edge/60 py-1 first:border-t-0">
+        <div className="group/change border-t border-edge-subtle py-1 first:border-t-0">
             <div className="flex items-baseline gap-1.5 overflow-hidden">
                 <span
                     className={cn(
                         "min-w-0 truncate text-2xs",
                         label.untranslated ? "font-mono text-fg-muted" : "text-fg",
                     )}
-                    data-tip={decision.path.join(" / ")}
+                    data-tip={readableChangePath(decision.path)}
                 >
                     {label.primary}
                 </span>
@@ -184,7 +210,7 @@ function MergeChangeRow({
                     ))}
                 </div>
             ) : (
-                <div className="mt-0.5 min-w-0 rounded-md border border-edge/60 px-1.5 py-1">
+                <div className="mt-0.5 min-w-0 rounded-md border border-edge-subtle px-1.5 py-1">
                     <MergeValue view={values[side]} />
                 </div>
             )}
@@ -206,8 +232,10 @@ function MergeValue({ view }: { view: MergeValueView }) {
     }
     return (
         <span className="block min-w-0">
+            {/* Keyed by position: the two columns are rows of each other by position, and a field
+                name with its ids drawn as an ellipsis is no longer unique. */}
             {view.lines.map((line, index) => (
-                <span key={line.name ?? index} className="flex min-w-0 items-baseline gap-1">
+                <span key={index} className="flex min-w-0 items-baseline gap-1">
                     {line.name && <span className="shrink-0 text-2xs text-fg-subtle">{line.name}</span>}
                     <span className="min-w-0 truncate text-2xs text-fg">{line.text}</span>
                 </span>

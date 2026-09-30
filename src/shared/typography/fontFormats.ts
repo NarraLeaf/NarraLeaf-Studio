@@ -55,3 +55,51 @@ export function fontFormatConversionHint(extension: string | undefined | null): 
 function normalizeFontExtension(extension: string): string {
     return extension.trim().toLowerCase().replace(/^\./, "");
 }
+
+/**
+ * The format a font's own bytes declare, or null when they declare none this module knows.
+ *
+ * The extension is a *name*, and a name is the one thing an asset record is allowed not to have: a
+ * library entry may be called `MaokenAssortedSans` with no dot in it and no `ext` field - the state
+ * every asset written by something other than Studio's own import arrives in, and the state the
+ * shipped skeleton's assets are already in. Guessing the format from that name yields `"unknown"`,
+ * and every consumer downstream reads `"unknown"` as "a format we cannot draw", which is the
+ * opposite of what the file is. So the bytes are asked first and the name is only the fallback.
+ *
+ * The four-byte tag at offset 0 is the sfnt/WOFF version field, and it is exactly what
+ * `openFont` in `@shared/typography/fontCoverage` dispatches on - the same four constants, read the
+ * same way, because there is one right answer to "what is this file" and two readers of it.
+ *
+ * `0x00010000` and `true` are TrueType outlines, `OTTO` is CFF - both are drawn by the same
+ * `font/ttf` | `font/otf` pair and are told apart only so the `format()` hint written into the
+ * `@font-face` rule matches the file. A collection (`ttcf`) is named rather than rejected here:
+ * naming it is what lets the caller refuse it with the sentence
+ * {@link UNRENDERABLE_FONT_FORMATS} carries.
+ */
+export function sniffFontFormat(bytes: Uint8Array | undefined | null): string | null {
+    if (!bytes || bytes.length < 4) {
+        return null;
+    }
+    const tag = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (tag === "wOFF") {
+        return "woff";
+    }
+    if (tag === "wOF2") {
+        return "woff2";
+    }
+    if (tag === "ttcf") {
+        return "ttc";
+    }
+    if (tag === "OTTO") {
+        return "otf";
+    }
+    if (tag === "true" || tag === "typ1") {
+        return "ttf";
+    }
+    // `0x00010000`, the version of a TrueType-outline sfnt. Read as four bytes rather than through
+    // a DataView so this stays usable on a plain array of bytes from any host.
+    if (bytes[0] === 0x00 && bytes[1] === 0x01 && bytes[2] === 0x00 && bytes[3] === 0x00) {
+        return "ttf";
+    }
+    return null;
+}

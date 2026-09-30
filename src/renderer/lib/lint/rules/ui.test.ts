@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Box } from "lucide-react";
+
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
@@ -19,6 +22,7 @@ import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/regi
 import type { LintContext, LintLocalizationContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
+import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { UI_LINT_RULES } from "./ui";
 
 /**
@@ -74,11 +78,11 @@ function blueprintDocument(owners: Record<string, BlueprintGraphIr>): BlueprintD
     const blueprints: Record<string, unknown> = {};
     Object.entries(owners).forEach(([ownerKey, graph], index) => {
         const blueprintId = `bp${index}`;
-        ownerRecords[ownerKey] = { activeBlueprintId: blueprintId, privateBlueprintIds: [blueprintId] };
+        ownerRecords[ownerKey] = { blueprintId: blueprintId };
         blueprints[blueprintId] = {
             id: blueprintId,
             name: ownerKey,
-            program: { kind: "graph", graphs: { events: { main: { id: "main", graph } }, functions: {} } },
+            graphs: { events: { main: { id: "main", graph } }, functions: {} },
         };
     });
     return { ownerRecords, blueprints } as unknown as BlueprintDocument;
@@ -135,6 +139,33 @@ describe("ui/unlocalized-text", () => {
 
         expect(await run("ui/unlocalized-text", unlocalizedContext(byKey))).toEqual([]);
         expect(await run("ui/unlocalized-text", unlocalizedContext(byImplicitUnit))).toEqual([]);
+    });
+
+    it("says nothing about a placeholder whose words come from a value binding", async () => {
+        // A backlog row's line, a choice row's text, an auto-save row's quote: the binding writes the
+        // prop before the widget draws it, so the literal is never read - and a key or the implicit
+        // unit put there would be resolved after the binding and replace the bound words.
+        const rowField = onePage(textWidget({ text: "Speaker" }));
+        rowField.elements.label.valueBindings = { text: { kind: "listItemField", fieldId: "character" } };
+        const valueBlueprint = onePage(
+            element({ id: "start", type: "nl.button", name: "Start", props: { label: "Continue" } }),
+        );
+        valueBlueprint.elements.start.valueBindings = {
+            label: { kind: "blueprintValue", blueprintId: "bp-label", valueType: "string" },
+        };
+
+        expect(await run("ui/unlocalized-text", unlocalizedContext(rowField))).toEqual([]);
+        expect(await run("ui/unlocalized-text", unlocalizedContext(valueBlueprint))).toEqual([]);
+    });
+
+    it("still reports a literal when only some other prop of the widget is bound", async () => {
+        // Binding whether a row shows the text is not binding what it says.
+        const document = onePage(textWidget({ text: "Locked" }));
+        document.elements.label.valueBindings = { "layout.visible": { kind: "listItemField", fieldId: "locked" } };
+
+        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
+
+        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Locked"]);
     });
 
     it("says nothing about strings with no words in them", async () => {
@@ -298,7 +329,19 @@ describe("ui/page-unreachable", () => {
 // ui/empty-behavior
 // ---------------------------------------------------------------------------
 
-const SURFACE_OWNER_KEY = `surfaceMain:${MAIN_APP_SURFACE_ID}`;
+/**
+ * Owner keys spelled by the encoder, not by hand.
+ *
+ * The main surface's id contains the key separator, so a hand-built key for anything on it is the
+ * one shape the format has always got wrong - and a fixture that spells its own keys is a second
+ * encoder that drifts the moment the first one changes. These three cases silently reported every
+ * wired button as unwired when it did.
+ */
+const SURFACE_OWNER_KEY = encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID });
+
+function widgetKey(elementId: string): string {
+    return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: MAIN_APP_SURFACE_ID, elementId });
+}
 
 function button(overrides: Partial<UIElement> = {}): UIElement {
     return element({ id: "start", type: "nl.button", name: "Start", props: { label: "Play" }, ...overrides });
@@ -330,7 +373,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: onePage(button()),
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:start`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+                [widgetKey("start")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
             }),
         });
 
@@ -368,7 +411,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: document,
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:panel`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+                [widgetKey("panel")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
             }),
         });
 
@@ -387,7 +430,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: document,
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:slots`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
+                [widgetKey("slots")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
             }),
         });
 
@@ -414,6 +457,77 @@ describe("ui/empty-behavior", () => {
                 createTestLintContext({ uiDocument: onePage(art, panel), blueprintDocument: NO_GRAPHS }),
             ),
         ).toEqual([]);
+    });
+});
+
+describe("ui/unknown-widget", () => {
+    const PLUGIN_TYPE = "acme.lab.badge";
+
+    /**
+     * Stand-ins for the widget catalogue, rather than the catalogue itself: loading the real one is
+     * the whole built-in widget tree, which the rule deliberately does not pull in either. What is
+     * under test is "the registry answers for this type", not which types Studio ships.
+     */
+    function registerWidget(type: string, owner?: { ownerPluginId: string; ownerPluginName: string }) {
+        widgetModuleRegistry.register({
+            type,
+            displayName: type,
+            icon: Box,
+            createDefaultElement: () => ({ type }),
+            render: () => null,
+        }, owner);
+    }
+
+    beforeEach(() => {
+        registerWidget("nl.root");
+        registerWidget("nl.container");
+        registerWidget("nl.text");
+    });
+
+    afterEach(() => {
+        for (const type of ["nl.root", "nl.container", "nl.text", PLUGIN_TYPE]) {
+            widgetModuleRegistry.unregister(type);
+        }
+    });
+
+    it("reports an element whose type nothing registers, naming the type", async () => {
+        const findings = await run(
+            "ui/unknown-widget",
+            createTestLintContext({ uiDocument: onePage(element({ id: "badge", type: PLUGIN_TYPE })) }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].ruleId).toBe("ui/unknown-widget");
+        expect(findings[0].messageKey).toBe("lint.rule.uiUnknownWidget.message");
+        expect(findings[0].messageParams).toEqual({ type: PLUGIN_TYPE });
+        expect(findings[0].location.kind === "surface" ? findings[0].location.elementId : null).toBe("badge");
+    });
+
+    it("says nothing about a type the registry answers for", async () => {
+        const document = onePage(
+            element({ id: "box", type: "nl.container" }),
+            element({ id: "label", type: "nl.text" }),
+        );
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing once the plugin that defines the type is loaded", async () => {
+        registerWidget(PLUGIN_TYPE, { ownerPluginId: "acme.lab", ownerPluginName: "Widget Lab" });
+        const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing at all when the catalogue is not loaded", async () => {
+        // Not a workspace, so the rule cannot tell an unknown type from a not-yet-loaded one.
+        // Reporting here would report every element in the project.
+        for (const type of ["nl.root", "nl.container", "nl.text"]) {
+            widgetModuleRegistry.unregister(type);
+        }
+        const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
     });
 });
 
@@ -507,6 +621,183 @@ describe("ui/frame-target-missing", () => {
         expect(
             await run("ui/frame-target-missing", createTestLintContext({ uiDocument: onePage(frame("embed")) })),
         ).toEqual([]);
+    });
+
+    it("reports a Page widget inside a component once, under the component, by name", async () => {
+        // Placed twice, and reported once: the widget is written once, in the definition.
+        const placed = (id: string) =>
+            element({ id, type: "nl.container", extra: { componentLink: { componentId: "card-id", linked: true } } });
+        const document = onePage(placed("slot-a"), placed("slot-b"));
+        document.components = [
+            {
+                id: "card-id",
+                name: "Card",
+                rootElementId: "card-root",
+                elements: {
+                    "card-root": element({ id: "card-root", type: "nl.container", childrenIds: ["window"] }),
+                    window: element({ ...frame("window", "gone"), name: "Window", parentId: "card-root" }),
+                },
+            },
+        ];
+
+        const findings = await run("ui/frame-target-missing", createTestLintContext({ uiDocument: document }));
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toEqual({
+            kind: "component",
+            componentId: "card-id",
+            componentName: "Card",
+            elementId: "window",
+            elementName: "Window",
+        });
+        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id" });
+    });
+});
+
+/**
+ * `ui/frame-loop`. The shapes it must see are the ones a page-only walk misses: a loop that runs
+ * through a component placement, through a list row, through a component inside a component. And it
+ * must stay quiet about a Page widget that merely shares a page with a loop it is not part of.
+ */
+describe("ui/frame-loop", () => {
+    function frame(id: string, targetSurfaceId: string | null, name?: string) {
+        return element({
+            id,
+            type: UI_FRAME_ELEMENT_TYPE,
+            ...(name ? { name } : {}),
+            props: { targetSurfaceId },
+        });
+    }
+
+    function placed(id: string, componentId: string, childrenIds: string[] = []) {
+        return element({ id, type: "nl.container", childrenIds, extra: { componentLink: { componentId, linked: true } } });
+    }
+
+    /** A card whose one Page widget, "Window", names `target`. */
+    function card(target: string | null): NonNullable<UIDocument["components"]>[number] {
+        return {
+            id: "card",
+            name: "Card",
+            rootElementId: "card-root",
+            elements: {
+                "card-root": element({ id: "card-root", type: "nl.container", childrenIds: ["window"] }),
+                window: element({ ...frame("window", target, "Window"), parentId: "card-root" }),
+            },
+        };
+    }
+
+    /** Pages "Home" and "Gallery", each holding the given top-level elements. */
+    function twoPages(home: UIElement[], gallery: UIElement[], extra: UIElement[] = []) {
+        return uiDocument({
+            surfaces: [
+                { id: "home", name: "Home", rootElementId: "home-root" },
+                { id: "gallery", name: "Gallery", rootElementId: "gallery-root" },
+            ],
+            elements: [
+                element({ id: "home-root", type: "nl.root", childrenIds: home.map(item => item.id) }),
+                element({ id: "gallery-root", type: "nl.root", childrenIds: gallery.map(item => item.id) }),
+                ...home,
+                ...gallery,
+                ...extra,
+            ],
+        });
+    }
+
+    async function where(document: UIDocument): Promise<string[]> {
+        const findings = await run("ui/frame-loop", createTestLintContext({ uiDocument: document }));
+        for (const finding of findings) {
+            expect(finding.messageKey).toBe("lint.rule.uiFrameLoop.message");
+        }
+        return findings.map(finding => {
+            const location = finding.location;
+            if (location.kind === "surface") {
+                return `${location.surfaceName} / ${location.elementName ?? location.elementId}`;
+            }
+            if (location.kind === "component") {
+                return `component ${location.componentName} / ${location.elementName ?? location.elementId}`;
+            }
+            return location.kind;
+        });
+    }
+
+    it("reports both Page widgets of two pages that show each other", async () => {
+        const document = twoPages([frame("to-gallery", "gallery", "Preview")], [frame("to-home", "home", "Back view")]);
+
+        expect(await where(document)).toEqual(["Home / Preview", "Gallery / Back view"]);
+    });
+
+    it("reports a Page widget that shows its own page", async () => {
+        expect(await where(twoPages([frame("mirror", "home", "Mirror")], []))).toEqual(["Home / Mirror"]);
+    });
+
+    it("reports a card's Page widget naming the page the card is placed on, under the card", async () => {
+        const document = twoPages([placed("slot", "card")], []);
+        document.components = [card("home")];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("reports both ends of a loop that runs through a card", async () => {
+        // Home places the card, the card shows Gallery, and Gallery shows Home.
+        const document = twoPages([placed("slot", "card")], [frame("to-home", "home", "Back view")]);
+        document.components = [card("gallery")];
+
+        expect(await where(document)).toEqual(["Gallery / Back view", "component Card / Window"]);
+    });
+
+    it("follows a card placed in a list row", async () => {
+        const list = element({ id: "grid", type: "nl.list", childrenIds: ["cell"] });
+        const document = twoPages([list], [], [{ ...placed("cell", "card"), parentId: "grid" }]);
+        document.components = [card("home")];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("follows a card placed inside another component", async () => {
+        const document = twoPages([placed("slot", "outer")], []);
+        document.components = [
+            card("home"),
+            {
+                id: "outer",
+                name: "Outer",
+                rootElementId: "outer-root",
+                elements: {
+                    "outer-root": element({ id: "outer-root", type: "nl.container", childrenIds: ["inner"] }),
+                    inner: { ...placed("inner", "card"), parentId: "outer-root" },
+                },
+            },
+        ];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("says nothing about Page widgets that lead nowhere back", async () => {
+        // Home shows Gallery, and the card on Gallery shows nothing; the card is not on Home's way.
+        const document = twoPages([frame("to-gallery", "gallery", "Preview")], [placed("slot", "card")]);
+        document.components = [card(null)];
+
+        expect(await where(document)).toEqual([]);
+    });
+
+    it("says nothing about a Page widget beside a loop it is not part of", async () => {
+        // Gallery and Settings show each other; Home shows Gallery and is not on that loop.
+        const document = uiDocument({
+            surfaces: [
+                { id: "home", name: "Home", rootElementId: "home-root" },
+                { id: "gallery", name: "Gallery", rootElementId: "gallery-root" },
+                { id: "settings", name: "Settings", rootElementId: "settings-root" },
+            ],
+            elements: [
+                element({ id: "home-root", type: "nl.root", childrenIds: ["home-frame"] }),
+                frame("home-frame", "gallery", "Preview"),
+                element({ id: "gallery-root", type: "nl.root", childrenIds: ["gallery-frame"] }),
+                frame("gallery-frame", "settings", "Settings view"),
+                element({ id: "settings-root", type: "nl.root", childrenIds: ["settings-frame"] }),
+                frame("settings-frame", "gallery", "Gallery view"),
+            ],
+        });
+
+        expect(await where(document)).toEqual(["Gallery / Settings view", "Settings / Gallery view"]);
     });
 });
 
@@ -753,17 +1044,25 @@ describe("ui/gesture-answered-twice", () => {
         ).toEqual([]);
     });
 
-    it("claims nothing about a blueprint it cannot read", async () => {
-        // The polarity that matters: a script module's handlers are functions this sweep cannot
+    it("claims nothing about a layer it cannot read", async () => {
+        // The polarity that matters: a script layer's handlers are functions this sweep cannot
         // see, and crediting one with answering a click would report every widget carrying one.
         const scripted = {
             ownerRecords: {
                 [widgetMainOwnerKey(MAIN_APP_SURFACE_ID, "hit")]: {
-                    activeBlueprintId: "bpS",
-                    privateBlueprintIds: ["bpS"],
+                    blueprintId: "bpS",
                 },
             },
-            blueprints: { bpS: { id: "bpS", name: "Hit area", program: { kind: "script", source: "" } } },
+            blueprints: {
+                bpS: {
+                    id: "bpS",
+                    name: "Hit area",
+                    graphs: {
+                        events: { s: { id: "s", script: { scriptRef: "scripts/hit.ts" } } },
+                        functions: {},
+                    },
+                },
+            },
         } as unknown as BlueprintDocument;
 
         expect(

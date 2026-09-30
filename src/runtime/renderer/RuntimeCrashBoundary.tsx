@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { CRASH_LOOP_LIMIT } from "@shared/utils/crashLoop";
+import type { GameCrashStoryPosition } from "@shared/types/gameRuntime";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { readStoryPosition } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { claimAutomaticRestart, getRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
@@ -11,6 +13,8 @@ interface RuntimeCrashBoundaryProps {
 
 interface RuntimeCrashBoundaryState {
     details: string | null;
+    /** Where the story had got to when it broke. Read once, on the way down - see below. */
+    story: GameCrashStoryPosition | null;
 }
 
 export function describeRendererError(error: unknown, componentStack?: string | null): string {
@@ -35,11 +39,15 @@ export function describeRendererError(error: unknown, componentStack?: string | 
 export class RuntimeCrashBoundary extends Component<RuntimeCrashBoundaryProps, RuntimeCrashBoundaryState> {
     constructor(props: RuntimeCrashBoundaryProps) {
         super(props);
-        this.state = { details: null };
+        this.state = { details: null, story: null };
     }
 
     static getDerivedStateFromError(error: unknown): RuntimeCrashBoundaryState {
-        return { details: describeRendererError(error) };
+        // The position is taken here rather than by the screen below, and here rather than in
+        // `componentDidCatch`: both of those run after the failed tree has come down, and the engine
+        // unmounts its scene on the way out. Asked then, "where was the player" answers "nowhere"
+        // for every crash in the middle of a scene - which is the crash worth reporting.
+        return { details: describeRendererError(error), story: readStoryPosition() };
     }
 
     componentDidCatch(error: unknown, info: ErrorInfo): void {
@@ -84,7 +92,7 @@ export class RuntimeCrashBoundary extends Component<RuntimeCrashBoundaryProps, R
 
     render(): ReactNode {
         if (this.state.details !== null) {
-            return <RuntimeCrashScreen details={this.state.details} />;
+            return <RuntimeCrashScreen details={this.state.details} story={this.state.story} />;
         }
         return this.props.children;
     }

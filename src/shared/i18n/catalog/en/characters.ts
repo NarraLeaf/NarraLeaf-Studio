@@ -23,6 +23,11 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
+        renameSpokenRowsConfirm: {
+            one: "Also rename {count} line that speaks as \"{name}\"?",
+            other: "Also rename {count} lines that speak as \"{name}\"?",
+        },
+        renameSpokenRowsDetail: "Those lines carry the name, not the character. They become \"{name}\".",
         // Was "This action cannot be undone." until deletion became undoable. What is worth weighing
         // now is the consequence, not the finality - and the consequence is no longer the same for
         // every row: dialogue keeps the name as a bare speaker, while a row that places the character
@@ -34,6 +39,7 @@ export const characters = {
     // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
     history: {
         deleteCharacter: "delete character {name}",
+        renameCharacter: "rename character {name}",
         deleteGroup: "delete group {name}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,
@@ -84,6 +90,7 @@ export const characters = {
             describeNoModel: "No model to read",
             describeNoBackend: "No runtime chosen",
             describeBackendMissing: "Runtime not installed here",
+            describeDistrusted: "Project not trusted",
             describeNotSupported: "This runtime lists nothing",
             describeFailed: "The model could not be read",
             redescribe: "Read the model again",
@@ -184,9 +191,17 @@ export const characters = {
             title: "Import PSD",
             choose: "Choose a PSD…",
             canvas: "Document size",
-            cost: "{layers} layers · ~{megabytes} MB",
+            // `{layers}` is a whole count with its noun, from `layerCount`.
+            costCounts: "{layers} · ~{megabytes} MB",
+            layerCount: {
+                one: "{count} layer",
+                other: "{count} layers",
+            },
             mapping: "Layers",
-            axis: "axis, {count} tags",
+            axis: {
+                one: "axis, {count} tag",
+                other: "axis, {count} tags",
+            },
             blends: "Blend modes the engine cannot reproduce",
             merge: "Merge down",
             skip: "Skip",
@@ -200,6 +215,9 @@ export const characters = {
             import: "Import",
             importing: "Importing…",
             failed: "Import failed",
+            // The picked file could not be read into a layer tree; one of `assets.reference.reason`
+            // may follow it. Never the parser's message or the file's path.
+            readFailed: "This PSD could not be read.",
             reason: {
                 hidden: "hidden in Photoshop",
                 blendSkipped: "skipped",
@@ -255,6 +273,13 @@ export const characters = {
         // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
         // help and the author has to go and make a bus first.
         voiceTrackEmpty: "Add a bus under Voice in Project ▸ Game to give this character its own volume control.",
+        // What an `enter` row falls back to on every channel it does not state. Named for the
+        // operation the rows carry (`charOp.enter`), which is the word an author already reads on
+        // the row itself.
+        entrance: "Entrance defaults",
+        entranceEmpty: "Entrance rows use the stage's own values until this is set.",
+        entranceDrag: "Drag to place",
+        entranceZoom: "Drag to scale",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

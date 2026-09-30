@@ -5,7 +5,7 @@
 
 import { setBehaviorDataPinResolver } from "../behavior-graph/dataPinResolver";
 import { allBuiltinBlueprintNodes } from "./built-in";
-import { resolveDataPinValue } from "./built-in/graphParamResolvers";
+import { resolveNodeInput } from "./built-in/graphParamResolvers";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 import { defineBlueprintNode } from "./defineBlueprintNode";
 
@@ -15,16 +15,7 @@ import { defineBlueprintNode } from "./defineBlueprintNode";
  * This function is the one entry every execution environment already calls.
  */
 function installDataPinResolver(): void {
-    setBehaviorDataPinResolver((ctx, pinId) =>
-        resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-            valueExecution: ctx.valueExecution,
-        }),
-    );
+    setBehaviorDataPinResolver(resolveNodeInput);
 }
 
 export function registerCoreBlueprintNodes(): void {

@@ -15,7 +15,15 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import {
+    buildUIFrameGraph,
+    getUIFrameWidgetProps,
+    listUIFrameSites,
+    type UIFrameHost,
+    type UIFrameSite,
+} from "@shared/types/ui-editor/frame";
 import type { BpDiagnostic } from "../blueprint-cli/dsl/ast";
+import { applyCompiled } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
 import { collectTree, elementPath, MAIN_SURFACE_ID, type BlueprintIndex } from "./project";
@@ -75,7 +83,112 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
         }
         out.push(...checkDropped(component.dropped, component.component.name, blueprints));
     }
+    if (options.existing) {
+        out.push(...checkFramesAfterApply(compiled, options.existing));
+    }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// Page widgets
+// ---------------------------------------------------------------------------
+
+/** A Page widget finding, keyed so a file check can tell one it introduced from one already there. */
+type FrameFinding = {
+    key: string;
+    hostKey: string;
+    diagnostic: BpDiagnostic;
+};
+
+function frameHostKey(host: UIFrameHost): string {
+    return host.kind === "surface" ? `s:${host.surfaceId}` : `c:${host.componentId}`;
+}
+
+/** `"Root / Window" on surface "Title"`, or `"Card / Window" in component "Card"`. */
+function describeFrameSite(document: UIDocument, site: UIFrameSite): string | null {
+    const { host } = site;
+    if (host.kind === "surface") {
+        const surface = document.surfaces.find(candidate => candidate.id === host.surfaceId);
+        return surface ? `"${elementPath(document.elements, site.element)}" on surface "${surface.name}"` : null;
+    }
+    const component = (document.components ?? []).find(candidate => candidate.id === host.componentId);
+    return component ? `"${elementPath(component.elements, site.element)}" in component "${component.name}"` : null;
+}
+
+/**
+ * Page widgets that do not draw the page they name: the page is not in the document, or it leads
+ * back to the widget.
+ *
+ * The questions Studio's project lint asks as `ui/frame-target-missing` and `ui/frame-loop`, answered
+ * by the same shared model (`listUIFrameSites`, `buildUIFrameGraph`) - so a Page widget inside a
+ * component is checked where it is written, and a loop that runs through a component placement (a
+ * card whose Page widget names the page the card is placed on) is caught here as it is there.
+ */
+function frameFindings(document: UIDocument): FrameFinding[] {
+    const graph = buildUIFrameGraph(document);
+    const out: FrameFinding[] = [];
+    for (const site of listUIFrameSites(document)) {
+        const targetSurfaceId = getUIFrameWidgetProps(site.element).targetSurfaceId;
+        const reason = graph.targetInvalidReason({ host: site.host, frameElementId: site.element.id, targetSurfaceId });
+        if (reason !== "missing" && reason !== "self" && reason !== "cycle") {
+            continue;
+        }
+        const where = describeFrameSite(document, site);
+        if (!where) {
+            continue;
+        }
+        const hostKey = frameHostKey(site.host);
+        if (reason === "missing") {
+            out.push({
+                key: `missing|${hostKey}|${site.element.id}`,
+                hostKey,
+                diagnostic: {
+                    severity: "error",
+                    code: "ui.frame_target_missing",
+                    message: `${where} embeds page "${targetSurfaceId}", which this document does not have.`,
+                    hint: "A Page widget draws the page it names and nothing else, so this one draws an empty frame. "
+                        + "Point targetSurfaceId at a page this project has.",
+                },
+            });
+            continue;
+        }
+        const page = document.surfaces.find(surface => surface.id === targetSurfaceId);
+        out.push({
+            key: `loop|${hostKey}|${site.element.id}`,
+            hostKey,
+            diagnostic: {
+                severity: "error",
+                code: "ui.frame_loop",
+                message: `${where} embeds page "${page?.name ?? targetSurfaceId}", which leads back to it.`,
+                hint: "Drawing that page would draw this Page widget again inside it, so the game shows \"Page loop "
+                    + "blocked\" there instead. A page leads back when it is the widget's own page, when it places the "
+                    + "component the widget is in, or when a Page widget or a component placed on it does - at any depth.",
+            },
+        });
+    }
+    return out;
+}
+
+/**
+ * The Page widget findings of the document as it would be after this file is applied.
+ *
+ * Reported when the widget is in a block the file writes, and also when the file creates a finding
+ * elsewhere: placing a card on a page is written on the page, while the Page widget that now leads
+ * back sits in the card's definition, which the file may never mention.
+ */
+function checkFramesAfterApply(compiled: UiCompileResult, existing: UIDocument): BpDiagnostic[] {
+    const after = structuredClone(existing);
+    // A copy of the compiled blocks too: applying normalizes flow children's layouts in place, and
+    // the caller may still apply these very records to the real document.
+    applyCompiled(after, structuredClone(compiled));
+    const before = new Set(frameFindings(existing).map(finding => finding.key));
+    const written = new Set([
+        ...compiled.surfaces.map(surface => frameHostKey({ kind: "surface", surfaceId: surface.surface.id })),
+        ...compiled.components.map(component => frameHostKey({ kind: "component", componentId: component.component.id })),
+    ]);
+    return frameFindings(after)
+        .filter(finding => written.has(finding.hostKey) || !before.has(finding.key))
+        .map(finding => finding.diagnostic);
 }
 
 function checkDropped(
@@ -93,7 +206,7 @@ function checkDropped(
                 message: `Applying this drops "${element.name}" from "${ownerName}", and `
                     + `${attached.map(item => `"${item.name}"`).join(", ")} hangs off it.`,
                 hint: "The blueprint stays in uigraphs.json with an owner nothing points at. Keep the element, "
-                    + "or remove the blueprint with `blueprint` first.",
+                    + "or take the blueprint away first: `blueprint remove --blueprint <id> --project <dir> --write`.",
             });
             continue;
         }
@@ -245,6 +358,8 @@ export function checkProjectDocument(document: UIDocument, blueprints: Blueprint
             out.push(...checkElement(element, pool, { componentId: component.id }, blueprints, document.structs ?? {}));
         }
     }
+
+    out.push(...frameFindings(document).map(finding => finding.diagnostic));
 
     for (const id of Object.keys(document.elements)) {
         if (!reachable.has(id)) {

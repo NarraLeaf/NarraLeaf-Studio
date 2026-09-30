@@ -1,4 +1,5 @@
 import path from "path";
+import { refuseNewerProjectDocument, type ProjectDocumentGate } from "@shared/documents/newerSchema";
 import { collectInertCutPoints, collectUncutForks, collectVariantCutPoints } from "@shared/story/cutPointChecks";
 import {
     isBuiltinAppTagId,
@@ -7,7 +8,12 @@ import {
     type ProjectAppTagDocument,
 } from "@shared/types/appTag";
 import type { BuildPreflightFinding } from "@shared/types/gameBuild";
-import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
+import {
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+    type StoryDocument,
+    type StoryLibraryIndex,
+} from "@shared/types/story";
 import { Fs } from "@shared/utils/fs";
 import { isValidStoryId } from "@shared/utils/storyId";
 
@@ -141,7 +147,14 @@ export async function collectVariantContentFindings(
  * points applied to it would have no cut points left to measure.
  */
 async function readStories(projectPath: string): Promise<PreflightStory[]> {
-    const index = await readJson<StoryLibraryIndex>(path.join(projectPath, "editor", "story", "index.json"));
+    const index = await readJson<StoryLibraryIndex>(
+        path.join(projectPath, "editor", "story", "index.json"),
+        {
+            kind: "storyIndex",
+            subject: "editor/story/index.json",
+            supportedVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+        },
+    );
     const entries = Array.isArray(index?.stories) ? index.stories : [];
     const stories: PreflightStory[] = [];
     const seen = new Set<string>();
@@ -152,6 +165,11 @@ async function readStories(projectPath: string): Promise<PreflightStory[]> {
         seen.add(entry.id);
         const document = await readJson<StoryDocument>(
             path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json"),
+            {
+                kind: "story",
+                subject: entry.name || entry.id,
+                supportedVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            },
         );
         if (document?.id === entry.id) {
             stories.push({ id: entry.id, name: entry.name, document });
@@ -161,14 +179,25 @@ async function readStories(projectPath: string): Promise<PreflightStory[]> {
 }
 
 /** Null for anything that is not there or will not parse; see the note on the exported function. */
-async function readJson<T>(filePath: string): Promise<T | null> {
+/**
+ * `gate` refuses a document a newer Studio wrote, between the parse and the first reader.
+ *
+ * Everything else here degrades to `null`, which is right for a file that is absent or damaged: a
+ * missing story is a story this check has nothing to say about. A document from the future is the
+ * opposite - it reads as a valid document with fields silently missing, so the answer would be
+ * wrong rather than absent. That one is thrown, and it stops the build.
+ */
+async function readJson<T>(filePath: string, gate: ProjectDocumentGate): Promise<T | null> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         return null;
     }
+    let parsed: unknown;
     try {
-        return JSON.parse(result.data) as T;
+        parsed = JSON.parse(result.data);
     } catch {
         return null;
     }
+    refuseNewerProjectDocument(parsed, gate);
+    return parsed as T;
 }

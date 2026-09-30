@@ -12,6 +12,11 @@
     // (oxc-project/tsgolint#351) and every mapping below is already relative to
     // this file, which is all `baseUrl: "."` meant here.
     "paths": {
+      // What this project type-checks reaches the Studio workspace (the ui-editor tests import it),
+      // and from there the bundled plugins' node definitions, which import the plugin API by the
+      // bare specifier an installed plugin uses. The same mapping src/renderer/tsconfig.json carries.
+      // Type-checking only: the game runtime bundle never reaches those modules.
+      "narraleaf-studio/plugin": ["../renderer/plugin/index.ts"],
       "@/*": ["../renderer/*"],
       "@shared/*": ["../shared/*"],
       "@services/*": ["../renderer/lib/workspace/services/*"]

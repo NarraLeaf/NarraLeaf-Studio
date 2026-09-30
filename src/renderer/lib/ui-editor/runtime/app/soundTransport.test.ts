@@ -18,6 +18,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import { LOOP_TO_END_OF_FILE_SECONDS, type AudioClipRegion } from "@shared/types/audio";
 import type { LiveGame } from "narraleaf-react";
 import { createSoundTransport, resolveSoundPlayback } from "./soundTransport";
 
@@ -106,7 +107,7 @@ type MixerStub = {
     setVolume: ReturnType<typeof vi.fn>;
 };
 
-function createHarness(tracks: ProjectAudioTrack[] = TRACKS) {
+function createHarness(tracks: ProjectAudioTrack[] = TRACKS, clips: Record<string, AudioClipRegion> = {}) {
     const token: TokenStub = { setVolume: vi.fn(), fade: vi.fn(), stop: vi.fn() };
     const created: unknown[] = [];
     const mixer: MixerStub = { getVolume: vi.fn(() => 0.25), setVolume: vi.fn() };
@@ -123,6 +124,7 @@ function createHarness(tracks: ProjectAudioTrack[] = TRACKS) {
             created.push(input);
             return input;
         },
+        getClip: assetId => clips[assetId],
         log: (_level, message) => void logged.push(message),
     });
     return { transport, token, created, mixer, logged };
@@ -135,7 +137,7 @@ describe("createSoundTransport play", () => {
         await transport.play({ assetId: "a1", audioTrackId: "ambience", volume: 0.8, fadeInMs: 0 });
 
         // `busId`, not a channel enum: the engine routes an arbitrary declared bus by that string.
-        expect(created[0]).toMatchObject({ busId: "ambience", loop: true, volume: 0.8, assetId: "a1" });
+        expect(created[0]).toMatchObject({ busId: "ambience", loop: true, volume: 0.8, seek: 0 });
         // Without this the engine's `{end: 1}` default leaves the clip at full volume.
         expect(token.setVolume).toHaveBeenCalledWith(0.8);
         expect(token.fade).not.toHaveBeenCalled();
@@ -157,6 +159,78 @@ describe("createSoundTransport play", () => {
 
         expect(token.fade).not.toHaveBeenCalled();
         expect(token.setVolume).toHaveBeenCalledWith(1);
+    });
+});
+
+/**
+ * A gain set on the asset balances the clip against the project's others. Every volume this
+ * transport writes replaces the token's outright, so the gain has to be in each of them - and in
+ * each exactly once: the Sound's config and the token write carry the same number, not the gain
+ * squared.
+ */
+describe("createSoundTransport clip gain", () => {
+    const minusSix = Math.pow(10, -6 / 20);
+
+    it("folds the clip's gain into the start, the fade-in and every later volume", async () => {
+        const { transport, token, created } = createHarness(TRACKS, { a1: { gainDb: -6 } });
+
+        const handle = await transport.play({ assetId: "a1", audioTrackId: "bgm", volume: 0.8, fadeInMs: 400 });
+        const started = (created[0] as { volume: number }).volume;
+        expect(started).toBeCloseTo(0.8 * minusSix, 9);
+        expect(token.fade).toHaveBeenLastCalledWith(0, started, 400);
+
+        await transport.setVolume(handle!, 0.6, 0);
+        expect(token.setVolume.mock.lastCall?.[0]).toBeCloseTo(0.6 * minusSix, 9);
+
+        await transport.setVolume(handle!, 0.3, 250);
+        expect(token.fade.mock.lastCall?.[1]).toBeCloseTo(0.3 * minusSix, 9);
+        expect(token.fade.mock.lastCall?.[2]).toBe(250);
+    });
+
+    it("writes the same volume onto the token that the Sound was built with", async () => {
+        const { transport, token, created } = createHarness(TRACKS, { a1: { gainDb: -12 } });
+
+        await transport.play({ assetId: "a1", audioTrackId: "sound", volume: 0.5 });
+        expect(token.setVolume).toHaveBeenLastCalledWith((created[0] as { volume: number }).volume);
+    });
+
+    it("never raises a clip, whatever the table says", async () => {
+        const { transport, token } = createHarness(TRACKS, { a1: { gainDb: 4 }, a2: { gainDb: Number.NaN } });
+
+        await transport.play({ assetId: "a1", audioTrackId: "bgm", volume: 0.5 });
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.5);
+        await transport.play({ assetId: "a2", audioTrackId: "bgm", volume: 0.5 });
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.5);
+    });
+
+    it("leaves a clip with no entry at the node's own volume, whole", async () => {
+        const { transport, token, created } = createHarness(TRACKS, { other: { gainDb: -6 } });
+
+        const handle = await transport.play({ assetId: "a1", audioTrackId: "bgm", volume: 0.7 });
+        expect(created[0]).toEqual({ src: "blob:clip", busId: "bgm", loop: true, volume: 0.7, seek: 0 });
+        await transport.setVolume(handle!, 0.2, 0);
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.2);
+    });
+});
+
+/**
+ * The markers set on the asset reach a blueprint-started clip the way they reach a story row's -
+ * including a loop that returns to its loop point at the end of the file, which needs no length.
+ */
+describe("createSoundTransport clip region", () => {
+    it("loops the body of a clip with no out point, turning around at the end of the file", async () => {
+        const { transport, created } = createHarness(TRACKS, { a1: { inMs: 2000, loopStartMs: 5000 } });
+
+        await transport.play({ assetId: "a1", audioTrackId: "bgm" });
+        expect(created[0]).toMatchObject({ loop: true, seek: 2, loopStart: 5, endTime: LOOP_TO_END_OF_FILE_SECONDS });
+    });
+
+    it("plays from the in point to the end of the file when the clip does not loop", async () => {
+        const { transport, created } = createHarness(TRACKS, { a1: { inMs: 2000, loopStartMs: 5000 } });
+
+        await transport.play({ assetId: "a1", audioTrackId: "sound" });
+        expect(created[0]).toMatchObject({ loop: false, seek: 2 });
+        expect(created[0]).not.toHaveProperty("endTime");
     });
 });
 

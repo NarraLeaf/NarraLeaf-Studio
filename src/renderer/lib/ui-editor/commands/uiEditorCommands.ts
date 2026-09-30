@@ -1,7 +1,11 @@
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
-import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import {
+    aimAddAtElement,
+    settleAddTarget,
+    type UIEditorAddTarget,
+} from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -19,23 +23,20 @@ import {
     resolveUiPasteSource,
 } from "./uiEditorClipboardBridge";
 import {
-    filterSelectionToTopLevelMovers,
+    filterToEditableTopLevel,
     getContainersToUngroup,
     getMoversToGroupIntoLeaderContainer,
     getSelectionLeaderId,
     getSelectionPrimaryId,
+    isSurfaceRootElement,
     selectSurfaceForProperties,
 } from "./uiEditorSelection";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
-export type UIEditorPasteTarget = {
-    parentId: string;
-    beforeChildId: string | null;
-};
+export type { UIEditorAddTarget };
 
 function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceId: string, elementId: string): Blueprint | undefined {
     const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
@@ -90,7 +91,7 @@ export function resolvePasteTargetAfterSelection(
     document: UIDocument,
     surfaceId: string,
     selection: UIElementSelection | null,
-): UIEditorPasteTarget | null {
+): UIEditorAddTarget | null {
     const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
     if (!effectiveRootId) {
         return null;
@@ -100,10 +101,10 @@ export function resolvePasteTargetAfterSelection(
     }
 
     const allowed = collectSubtreeElementIds(document, effectiveRootId);
-    const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter(id => {
-        const el = document.elements[id];
-        return el != null && el.type !== "nl.root" && !isComponentEditorRootElement(el) && allowed.has(id);
-    });
+    // Pasted things go inside a component's frame, never beside it: with only the frame selected
+    // there is no anchor, and the paste lands in the surface's root - which, in a component editor,
+    // is the frame.
+    const topLevelIds = filterToEditableTopLevel(document, selection.elementIds).filter(id => allowed.has(id));
     const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
     const anchor = anchorId ? document.elements[anchorId] : null;
     if (!anchor?.parentId) {
@@ -218,7 +219,7 @@ export function uiEditorCutSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -232,14 +233,28 @@ export function uiEditorCutSelection(
  *
  * The one place a clipboard payload becomes elements, whether it came from this window, from
  * another project's, or from the duplicate gesture that never went near a clipboard at all.
+ *
+ * `aim` is where the gesture pointed; the payload lands at the nearest place from there that takes
+ * it (`settleAddTarget`). Every gesture used to hand its aim straight to the document, which
+ * refused it without a word whenever the aim was inside a widget that holds only its own parts - so
+ * Ctrl+V with a Slider's handle selected, or Ctrl+D on the handle, did nothing at all.
  */
 function applyClipboardPayload(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    target: UIEditorPasteTarget,
+    aim: UIEditorAddTarget,
     payload: UIEditorClipboardPayload,
 ): boolean {
+    const target = settleAddTarget(
+        documentService.getDocument(),
+        surfaceId,
+        aim,
+        payload.topLevelElementIds.map(id => payload.elements[id]),
+    );
+    if (!target) {
+        return false;
+    }
     const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
     if (!result.ok || result.newRootIds.length === 0) {
         return false;
@@ -268,7 +283,7 @@ async function pasteFromClipboard(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    resolveTarget: () => UIEditorPasteTarget | null,
+    resolveTarget: () => UIEditorAddTarget | null,
 ): Promise<boolean> {
     const source = await resolveUiPasteSource(documentService);
     if (!source) {
@@ -301,13 +316,8 @@ export function uiEditorPaste(
     input: { hitElementId?: string | null; primaryElementId?: string | null },
 ): Promise<boolean> {
     void localBp;
-    return pasteFromClipboard(documentService, stateService, surfaceId, () => {
-        const resolved = resolveInsertTargetParent(documentService.getDocument(), surfaceId, {
-            hitElementId: input.hitElementId,
-            primaryElementId: input.primaryElementId,
-        });
-        return resolved ? { parentId: resolved.parentId, beforeChildId: null } : null;
-    });
+    return pasteFromClipboard(documentService, stateService, surfaceId, () =>
+        aimAddAtElement(documentService.getDocument(), surfaceId, input.hitElementId, input.primaryElementId));
 }
 
 export function uiEditorPasteAfterSelection(
@@ -350,7 +360,7 @@ export function uiEditorDuplicateSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -380,7 +390,9 @@ export function uiEditorDeleteSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    // A component's frame is not deleted - it is what every placement draws - and asking leaves the
+    // selection where it was rather than clearing it for nothing.
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -488,7 +500,8 @@ export function uiEditorSelectAllInSurface(
         if (!el || !allowed.has(id)) {
             return;
         }
-        if (el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
+        // Everything on the surface, and not the surface: a page's root, or a component's frame.
+        if (!isSurfaceRootElement(el)) {
             ids.push(id);
         }
         el.childrenIds.forEach(walk);

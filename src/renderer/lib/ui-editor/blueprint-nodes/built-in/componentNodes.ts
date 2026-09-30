@@ -17,6 +17,7 @@ export const BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE = "componentParams";
 export const componentBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
+        assetNames: "written",
         displayName: "Get Component Param",
         category: "Component",
         keywords: ["component", "param", "parameter", "instance", "input", "property"],

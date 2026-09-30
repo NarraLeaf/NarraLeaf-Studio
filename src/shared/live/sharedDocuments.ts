@@ -104,14 +104,13 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  *    carries - and its undo rides the blueprint history channel, where `LocalBlueprintService`
  *    snapshots the graph and the schema together. Sharing the schema alone would give an author a
  *    Ctrl+Z that also restores a frozen document. It arrives when the blueprints do.
- *  - **`<projectName>.nlproj`.** Four independent reasons, and the first is enough on its own:
+ *  - **`<projectName>.nlproj`.** Three independent reasons, and the first is enough on its own:
  *    writability is decided by PATH, so the whole file is shared or none of it is, and its writers
  *    are every group of the project's settings rather than one panel. Beyond that, some of what it
  *    holds is deliberately local to a machine (a signing credential is an id into
- *    `<userData>/signing/`, and the selected build variant is a preference); some of it decides which
- *    documents a session carries at all (the language list, the plugin list), which is settled when
- *    the room opens; and renaming the project renames the file, so the writable path would move
- *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
+ *    `<userData>/signing/`, and the selected build variant is a preference); and some of it decides
+ *    which documents a session carries at all (the language list, the plugin list), which is settled
+ *    when the room opens. Its spec refuses to serialize for a related reason - see `specs/project`.
  *
  * ⚠ **A story document being writable means every gesture on it travels, and that is a wider claim
  * than "the rows travel".** The vocabulary began with the rows and grew to the outline for exactly

@@ -9,17 +9,17 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { createInitialBlueprintDocument, repairGlobalMainIfMissing } from "./blueprintFactories";
 
 function expectDefaultGlobalBlueprint(doc: ReturnType<typeof createInitialBlueprintDocument>) {
-    const globalId = doc.ownerRecords.globalMain?.activeBlueprintId;
+    const globalId = doc.ownerRecords.globalMain?.blueprintId;
     expect(globalId).toBeTruthy();
 
     const blueprint = globalId ? doc.blueprints[globalId] : undefined;
     expect(blueprint?.owner.kind).toBe("globalMain");
-    expect(blueprint?.program.kind).toBe("graph");
-    if (!blueprint || blueprint.program.kind !== "graph") {
+    expect(blueprint?.graphs).toBeDefined();
+    if (!blueprint) {
         return;
     }
 
-    const layer = blueprint.program.graphs.events.global;
+    const layer = blueprint.graphs.events.global;
     expect(layer?.name).toBe("Global");
     expect(layer?.graph?.meta?.[BLUEPRINT_GRAPH_IR_META_KIND]).toBe("event");
 

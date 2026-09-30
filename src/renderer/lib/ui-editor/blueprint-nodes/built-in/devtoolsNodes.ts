@@ -6,7 +6,7 @@
 import { BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY, type BlueprintNodeDef } from "../types";
 import { BLUEPRINT_NODE_TYPE_FLOW_COMMENT, BLUEPRINT_NODE_TYPE_LOG } from "@shared/types/blueprint/graph";
 import { readDynamicInputPinIds } from "../effectivePins";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -52,13 +52,7 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
         execute: ctx => {
             const inputPinIds = ["value", ...readDynamicInputPinIds(ctx.params, BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY)];
             const resolved = inputPinIds.map(pinId =>
-                resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                }),
+                resolveNodeInput(ctx, pinId),
             );
             const line = resolved.some(value => value !== undefined)
                 ? resolved.map(value => (value === undefined ? "" : stringifyForLog(value))).join("")

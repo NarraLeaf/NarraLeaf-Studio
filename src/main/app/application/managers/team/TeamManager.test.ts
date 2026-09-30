@@ -14,16 +14,30 @@ import { describe, expect, it } from "vitest";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import type { TeamConnection } from "@shared/types/team";
 import type { VcsServerSession } from "@shared/types/vcs";
+import { WindowAppType } from "@shared/types/window";
 
 import type { TeamClientOptions } from "./TeamClient";
 import { TeamManager, type TeamClientLike } from "./TeamManager";
 
-/** One window, in the amount of it the manager touches. */
+/**
+ * One window, in the amount of it the manager touches.
+ *
+ * A launcher unless a test says otherwise: it may reach every server as the account, so what these
+ * cases pin is the bookkeeping rather than who may ask - that is `teamAction.test.ts`.
+ */
 class FakeWindow {
     readonly delivered: { event: IPCEventType; data: unknown }[] = [];
     private closed = false;
 
-    constructor(readonly webContentsId: number) {}
+    constructor(readonly webContentsId: number, readonly windowType: WindowAppType = WindowAppType.Launcher) {}
+
+    getWindowType(): WindowAppType {
+        return this.windowType;
+    }
+
+    getProps(): Record<string, unknown> {
+        return {};
+    }
 
     getWebContents(): { id: number } {
         return { id: this.webContentsId };
@@ -284,6 +298,20 @@ describe("who hears an event", () => {
         // does not ask for it again.
         made?.push("weather", { kind: "whatever" });
         expect(asking.events).toEqual([]);
+    });
+});
+
+describe("taking something back", () => {
+    it("goes over the session that is open, and never opens one to do it", async () => {
+        const team = harness();
+
+        await expect(team.manager.letGo(SERVER.remoteOrigin, "clients.withdraw", { project: "p1" }))
+            .resolves.toEqual({ ok: true, value: {} });
+        expect(team.clients).toHaveLength(0);
+
+        team.manager.open(SERVER.remoteOrigin);
+        await team.manager.letGo(SERVER.remoteOrigin, "clients.withdraw", { project: "p1" });
+        expect(team.clients).toHaveLength(1);
     });
 });
 

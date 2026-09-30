@@ -29,6 +29,7 @@ import {
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import { sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
@@ -196,16 +197,11 @@ function makeUIGraphs(): UIGraphDocument {
                     id: "bp-1",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            eventIds: ["ev-1"],
-                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
-                            functionIds: [],
-                            functions: {},
-                        },
+                    graphs: {
+                        eventIds: ["ev-1"],
+                        events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                        functionIds: [],
+                        functions: {},
                     },
                 },
             },
@@ -354,6 +350,8 @@ function makeWorld(options: {
             locales: LOCALES,
             assetTypes: ASSET_TYPES,
             readScene: (_storyId, id) => scenes[id] ?? null,
+            hasSceneRuntimeName: (_storyId, runtimeName, exceptSceneId) => Object.values(scenes).some(scene =>
+                scene.id !== exceptSceneId && sceneRuntimeName(scene) === runtimeName),
             readChapter: (_storyId, id) => story.chapters.find(chapter => chapter.id === id) ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
@@ -1540,7 +1538,7 @@ describe("the interface and the blueprints a session carries", () => {
             updates: ["bp-1"],
         }));
         const blueprint = world.uiGraphs.blueprintDocument.blueprints["bp-1"];
-        const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+        const graph = blueprint.graphs.events["ev-1"].graph;
         expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
         expect(graph?.edges).toEqual([]);
     });
@@ -2308,6 +2306,7 @@ describe("the project registries a session carries", () => {
             self: "host",
             stories: [STORY],
             readScene: () => null,
+            hasSceneRuntimeName: () => false,
             readChapter: () => null,
             readCharacter: () => null,
             hasAsset: () => false,
@@ -2391,6 +2390,57 @@ describe("a live host deciding about the outline", () => {
         }));
 
         expect(world.story.chapters.map(chapter => chapter.id)).toEqual(["c1", "c2", "c3"]);
+    });
+
+    it("gives the second of two scenes made at once under one internal name a name of its own", () => {
+        // Two authors each make a "Chapter 1" before either has seen the other's. Each sender minted
+        // `chapter_1` against its own copy, where it was free; landing both under it would put the
+        // two scenes' variables in one namespace. The effect carries the name used, so every machine
+        // writes the same one.
+        const world = makeWorld();
+        const first = { ...makeScene("s2", []), name: "Chapter 1", runtimeName: "chapter_1" };
+        const second = { ...makeScene("s3", []), name: "Chapter 1", runtimeName: "chapter_1" };
+
+        const kept = asEffect(send(world, { op: "create-scene", scene: first, chapterId: "c1", beforeSceneId: null }, "guest-1"));
+        const renamed = asEffect(send(world, { op: "create-scene", scene: second, chapterId: "c1", beforeSceneId: null }, "guest-2"));
+
+        expect(kept.op.op === "create-scene" && kept.op.scene).toBe(first);
+        expect(renamed.op.op === "create-scene" && renamed.op.scene.runtimeName).toBe("chapter_1_2");
+        expect(world.scenes.s2.runtimeName).toBe("chapter_1");
+        expect(world.scenes.s3.runtimeName).toBe("chapter_1_2");
+        // Nothing else about the scene moves: the display name is the author's and stays as typed.
+        expect(world.scenes.s3.name).toBe("Chapter 1");
+    });
+
+    it("puts a chapter's scenes back under new internal names only where one was taken since", () => {
+        // An undo restoring a deleted chapter brings its scenes back under the names they had - unless
+        // a scene made in the meantime answers to one of them, when the restored one gives way rather
+        // than sharing that scene's variables.
+        const world = makeWorld({
+            scenes: [makeScene("s1", [{ block: note("a") }]), { ...makeScene("s4", []), runtimeName: "four" }],
+        });
+        world.story.chapters[0].sceneIds = ["s1", "s4"];
+        const restored = [structuredClone(world.scenes.s1), structuredClone(world.scenes.s4)];
+
+        asEffect(send(world, { op: "delete-chapter", chapterId: "c1" }));
+        asEffect(send(world, {
+            op: "create-scene",
+            scene: { ...makeScene("s2", []), runtimeName: "s1" },
+            chapterId: "c2",
+            beforeSceneId: null,
+        }));
+        const effect = asEffect(send(world, {
+            op: "create-chapter",
+            chapter: { id: "c1", name: "One", sceneIds: ["s1", "s4"] },
+            beforeChapterId: null,
+            scenes: restored,
+        }));
+
+        expect(effect.op.op === "create-chapter" && effect.op.scenes?.map(scene => scene.runtimeName))
+            .toEqual(["s1_2", "four"]);
+        expect(world.scenes.s1.runtimeName).toBe("s1_2");
+        expect(world.scenes.s4.runtimeName).toBe("four");
+        expect(world.scenes.s2.runtimeName).toBe("s1");
     });
 
     it("refuses every scene edit whose scene has gone", () => {

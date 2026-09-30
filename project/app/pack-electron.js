@@ -13,6 +13,7 @@
 
 const path = require('path');
 const { spawn } = require('child_process');
+const { assertStudioNoticesComplete } = require('../build/third-party-notices');
 
 function run(cmd, args = [], opts = {}) {
     return new Promise((resolve, reject) => {
@@ -67,6 +68,11 @@ function targetArch(args) {
 
         console.log('[pack] Building built-in plugins (production)...');
         await run('node', ['project/build/build-builtin-plugins.js']);
+
+        // The four builds above each recorded their part of Studio's third-party notice; a part
+        // that is missing would ship a notice that leaves packages out, and electron-builder only
+        // logs a line for an extraResources source that does not exist.
+        assertStudioNoticesComplete();
 
         console.log('[pack] Preparing embedded preview runner...');
         await run('node', ['project/build/prepare-preview-runner.js']);

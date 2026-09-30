@@ -4,6 +4,7 @@ import {
     useRef,
     useState,
     type ChangeEvent,
+    type Ref,
 } from "react";
 
 /**
@@ -29,6 +30,12 @@ export interface DraftTextInputProps {
     readCommittedValue?: () => string;
     /** Renders a `<textarea>` rather than an `<input type="text">`. */
     multiline?: boolean;
+    /**
+     * The field's own element, for a caller that has to read where the caret is. A control acting
+     * on the selection - a mark set over the characters that are selected - cannot ask React for
+     * it: the selection lives on the DOM node and nowhere else.
+     */
+    inputRef?: Ref<HTMLTextAreaElement & HTMLInputElement>;
     rows?: number;
     className?: string;
     placeholder?: string;
@@ -56,6 +63,7 @@ export function DraftTextInput({
     onCommit,
     readCommittedValue,
     multiline = false,
+    inputRef,
     rows,
     className,
     placeholder,
@@ -155,6 +163,7 @@ export function DraftTextInput({
 
     const shown = draft !== null ? draft : value;
     const shared = {
+        ref: inputRef,
         value: shown,
         className,
         placeholder,

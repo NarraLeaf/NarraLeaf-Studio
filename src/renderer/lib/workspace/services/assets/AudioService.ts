@@ -2,6 +2,8 @@ import { AssetData, AssetType, AudioAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
+import { ASSET_UNDECODABLE } from "./assetReadFailure";
+import { readAudioHeader } from "./audioHeader";
 
 export class AudioService extends AssetServiceBase {
 
@@ -12,6 +14,7 @@ export class AudioService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read audio file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 
@@ -38,6 +41,7 @@ export class AudioService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to parse audio metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                code: ASSET_UNDECODABLE,
             };
         }
     }
@@ -55,27 +59,24 @@ export class AudioService extends AssetServiceBase {
                 // Get format from file extension
                 const format = this.detectAudioFormat(asset);
 
-                // Get audio context for sample rate (if available)
+                // The file's own rate and channel count, read from its header. A fresh context's rate
+                // is the output device's, not the file's, so it is only the fallback for a container
+                // the header reader does not know.
+                const header = readAudioHeader(buffer);
+                let deviceRate = 44100;
                 try {
                     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-                    const sampleRate = audioContext.sampleRate;
-                    audioContext.close();
-
-                    resolve({
-                        duration: audio.duration || 0,
-                        sampleRate,
-                        channels: 2, // Default, hard to detect without decoding
-                        format,
-                    });
+                    deviceRate = audioContext.sampleRate;
+                    void audioContext.close();
                 } catch {
-                    // Fallback if AudioContext is not available
-                    resolve({
-                        duration: audio.duration || 0,
-                        sampleRate: 44100, // Common default
-                        channels: 2,
-                        format,
-                    });
+                    // No AudioContext; keep the common default.
                 }
+                resolve({
+                    duration: audio.duration || 0,
+                    sampleRate: header?.sampleRate ?? deviceRate,
+                    channels: header?.channels ?? 2,
+                    format,
+                });
             };
 
             audio.onerror = () => {

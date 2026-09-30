@@ -29,5 +29,8 @@ export const SERVER_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Trans
     // name it publishes under is the project's app id.
     "name-taken": "launcher.servers.problem.nameTaken",
     "already-published": "launcher.servers.problem.alreadyPublished",
+    // Not reachable from here: a project this tab makes for a server uses that server's sign-in by
+    // the act of making it. Mapped for the reason `wrong-repository` is.
+    declined: "launcher.servers.problem.unknown",
     unknown: "launcher.servers.problem.unknown",
 };

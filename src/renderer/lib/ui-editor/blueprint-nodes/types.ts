@@ -27,6 +27,83 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+/**
+ * Persisted on node.params: the node's pin shape as last resolved while its type was known.
+ *
+ * Only plugin (non-built-in) node types carry this - a built-in never becomes unknown. When the
+ * plugin later goes missing, the catalogue rebuilds the card's pins from this record instead of the
+ * bare exec stub, so the node's connections stay visible and attached rather than silently absent.
+ */
+export const BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY = "__lastKnownPins" as const;
+
+/** The minimal per-pin record stored under {@link BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY}. */
+export type BlueprintNodePinSnapshotEntry = {
+    id: string;
+    kind: "input" | "output";
+    semantic: BlueprintPinSemantic;
+    valueType?: string;
+    label?: string;
+};
+
+/** Reduce a resolved catalog entry's pins to the compact shape stored on the node. */
+export function toBlueprintNodePinSnapshot(
+    pins: readonly {
+        id: string;
+        kind: "input" | "output";
+        semantic: BlueprintPinSemantic;
+        valueType?: string;
+        label?: string;
+    }[],
+): BlueprintNodePinSnapshotEntry[] {
+    return pins.map(pin => {
+        const entry: BlueprintNodePinSnapshotEntry = { id: pin.id, kind: pin.kind, semantic: pin.semantic };
+        if (pin.valueType !== undefined) {
+            entry.valueType = pin.valueType;
+        }
+        if (pin.label !== undefined) {
+            entry.label = pin.label;
+        }
+        return entry;
+    });
+}
+
+/**
+ * Read a validated pin snapshot off a node's stored params, or null when it is absent or malformed.
+ * The value comes off disk, so a shape that is not a well-formed pin list is discarded rather than
+ * trusted - the node then falls back to the exec stub.
+ */
+export function readBlueprintNodePinSnapshot(
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinSnapshotEntry[] | null {
+    const raw = params?.[BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY];
+    if (!Array.isArray(raw) || raw.length === 0) {
+        return null;
+    }
+    const out: BlueprintNodePinSnapshotEntry[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== "object") {
+            return null;
+        }
+        const rec = item as Record<string, unknown>;
+        const { id, kind, semantic } = rec;
+        if (
+            typeof id !== "string" ||
+            (kind !== "input" && kind !== "output") ||
+            (semantic !== "exec" && semantic !== "data")
+        ) {
+            return null;
+        }
+        const entry: BlueprintNodePinSnapshotEntry = { id, kind, semantic };
+        if (typeof rec.valueType === "string") {
+            entry.valueType = rec.valueType;
+        }
+        if (typeof rec.label === "string") {
+            entry.label = rec.label;
+        }
+        out.push(entry);
+    }
+    return out;
+}
 /** Persisted on node.params: show the manually wired Element target pin for a derived palette instance. */
 export const BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN = "__showMagicElementTargetPin" as const;
 /** Persisted on Animate Property nodes when the user explicitly edits the optional From field. */
@@ -59,7 +136,36 @@ export type BlueprintNodePinDef = {
      * covered by declaring it here and nowhere else.
      */
     assetRef?: BlueprintAssetPinRef;
+    /**
+     * This output's own answer to {@link BlueprintNodeDeclaration.assetNames}, for the one node in
+     * which outputs differ: `Get All Properties` reads a font the project picked beside a text the
+     * game may have written.
+     */
+    assetName?: BlueprintAssetNameFlow;
 };
+
+/**
+ * Where the strings a node outputs come from, as far as an asset name is concerned.
+ *
+ * A game package carries every library asset whose name is written down somewhere in the project,
+ * so an asset name that reaches a picture, a sound or a typeface is only a problem when it is put
+ * together while the game runs. Every node whose outputs can carry a string says which of three
+ * things it does, and the asset-name judgement (`assetNameFlow`) follows values through it by that:
+ *
+ * - `"forward"`: every output is one of the node's inputs, part of one, or a collection of them -
+ *   Memo, Array Get, Get JSON Field, Make Object. An asset name comes out only if one went in.
+ * - `"written"`: every output is written down in the project - a literal, the Gallery catalogue, a
+ *   localized string, the picture an element holds (every write to which is itself checked).
+ * - `"assembled"`: an output may be a string that exists only while the game runs - Concat, Format,
+ *   what the player typed, what a server sent. A name out of one of these is refused where it is
+ *   used as an asset.
+ *
+ * **Undeclared means `"assembled"`.** The bar only moves the safe way: a node that says nothing is
+ * assumed to make its strings up, and a registry test fails for any built-in node with a
+ * string-carrying output that has not said which. Plugins declare it the same way; a plugin node
+ * that says nothing is treated as assembling.
+ */
+export type BlueprintAssetNameFlow = "forward" | "written" | "assembled";
 
 /**
  * Optional variadic pins: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
@@ -224,10 +330,13 @@ export type BlueprintMagicElementRefPaletteEntry = {
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
 /**
- * Full node definition: editor pins + inspector + runtime execute.
- * Registered via defineBlueprintNode().
+ * What a node says about itself: identity, palette metadata, pins and inspector.
+ *
+ * Split out of {@link BlueprintNodeDef} because this half - and only this half - is what the
+ * `narraleaf-studio` types package publishes to plugins, as `PluginBlueprintNodeDef`. The rest of
+ * a definition says where the node may appear and how it runs, which is the host's answer to give.
  */
-export type BlueprintNodeDef = {
+export type BlueprintNodeDeclaration = {
     type: string;
     displayName: string;
     category: string;
@@ -258,8 +367,18 @@ export type BlueprintNodeDef = {
      * built on one refreshes on the host's dependencies, never on the plugin's.
      */
     allowInBlueprintValueGraph?: boolean;
-    /** Palette-only guard for nodes that read the active List item template scope. */
+    /**
+     * The node reads the list row that is in scope while it runs, so it belongs only where a row can
+     * be: on an element a list draws once per row, or on the list itself, whose item heads each run
+     * for one row. Enforced by `isBlueprintNodeAllowedInGraphContext`, so the palette and the graph
+     * validator answer it the same way.
+     */
     requiresListItemContext?: boolean;
+    /**
+     * Where this node's string-carrying outputs come from - see {@link BlueprintAssetNameFlow}.
+     * Absent reads as `"assembled"`.
+     */
+    assetNames?: BlueprintAssetNameFlow;
     /** Latent/async execution (delay, host awaits) - disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];
@@ -275,44 +394,79 @@ export type BlueprintNodeDef = {
      */
     saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
+    role?: BlueprintNodeRole;
+};
+
+/**
+ * Full node definition as the catalogue holds it: everything a node declares, plus where the host
+ * lets it appear and the host-side execute. Registered via defineBlueprintNode().
+ *
+ * `scope` and `requiresHostApi` sit here rather than in {@link BlueprintNodeDeclaration} because
+ * neither is a node author's to answer. Both say where a node may appear, which for the built-in
+ * catalogue is settled by review; and `scope` names owner kinds straight off `BlueprintOwnerRef`,
+ * so a published type carrying it would pin an internal union and turn every change to the
+ * blueprint model into a break for installed plugins.
+ */
+export type BlueprintNodeDef = BlueprintNodeDeclaration & {
     scope?: BlueprintNodeScope;
     /**
      * This node reaches the blueprint host API, so it may only appear where a host serves one.
      *
-     * Set at registration for whole families rather than per node (see `HOST_API_OWNER_KINDS`),
-     * and deliberately NOT expressed as a {@link BlueprintNodeScope}: a scope answers "which
-     * owners and which widget types", and `resolveEffectiveBlueprintNodePins` reads the mere
-     * PRESENCE of one as "this is the widget-scoped variant, so hide the element pin". Writing
-     * this restriction as a scope therefore stripped the element pin off every magic-element
-     * node in the catalogue.
+     * Set at registration for whole families rather than per node, and answered as a contract
+     * question - a story call runs inside a compiled NLR `Script` with a narrow adapter, and
+     * everything else gets the whole host API.
+     *
+     * Still not a {@link BlueprintNodeScope}, but the old reason has gone: a scope used to be read
+     * elsewhere as "this is the widget-scoped variant, so hide the element pin", so expressing this
+     * as one stripped the element pin off every magic-element node in the catalogue. That coupling
+     * was removed. What remains is that a scope names owners and widget types, and this names
+     * neither - it is a property of how the graph is called.
      */
     requiresHostApi?: boolean;
-    role?: BlueprintNodeRole;
     execute: BlueprintNodeExecuteFn;
 };
 
 /**
- * Owner kinds whose runtime hands the graph the whole blueprint host API.
+ * A Story Action Blueprint gets a narrow host adapter, and that is why `requiresHostApi` exists.
  *
- * A Story Action Blueprint's is deliberately not one of them. It runs inside a compiled NLR
- * `Script`, and `buildStoryActionHostAdapter` gives it `persistence` and the story's own variable
- * stores - no `navigation`, no `game`, no `widget`, no `sound`. Every node that reaches for one of
- * those throws on the first property access, and the throw goes nowhere: a story action is
- * fire-and-forget (`void run(...).catch(console.error)`) and its graph runs without a debug trace,
- * so nothing reaches the issues panel, the lint report or the game log. The author sees a row that
- * silently did nothing.
+ * It runs inside a compiled NLR `Script`, and `buildStoryActionHostAdapter` gives it `persistence`
+ * and the story's own variable stores - no `navigation`, no `game`, no `widget`, no `sound`. Every
+ * node that reaches for one of those throws on the first property access, and the throw goes
+ * nowhere: a story action is fire-and-forget (`void run(...).catch(console.error)`) and its graph
+ * runs without a debug trace, so nothing reaches the issues panel, the lint report or the game log.
+ * The author sees a row that silently did nothing.
  *
  * The fix is to keep those nodes out of the story's palette rather than to widen the adapter: a
  * story row that navigates would be a second way to leave a scene, competing with the rows that
  * already say so (`/jump`, `/ending`, `/quit`), and it could not block on the result anyway.
+ *
+ * This used to be a list of the five owner kinds that are *not* story calls, which meant a new
+ * owner position had to be remembered in it. `BlueprintNodeRegistry` asks
+ * `blueprintContract(owner).invocation` instead, which is the fact the list was spelling out.
  */
-export const HOST_API_OWNER_KINDS: readonly BlueprintNodeScopeOwnerKind[] = [
-    "globalMain",
-    "surfaceMain",
+
+/**
+ * The owners of a widget's own graph: one on a surface, and one inside a component definition.
+ *
+ * A node that acts on the widget the graph belongs to - set this slider's value, animate this
+ * element, read this switch - is available in both, because both are a widget with a graph of its
+ * own. Eleven declarations used to name only the surface one, which left a component definition's
+ * graph able to hear its own click and unable to do anything to itself in response.
+ *
+ * That was a leftover rather than a rule. Component instances address their widgets through a widget
+ * address - the element id plus the instance key - and both write paths were rebuilt around it, so
+ * the same setter that drives a surface widget drives one inside a component and writes to the
+ * instance rather than to the shared definition. The runtime could do this; the palette had not been
+ * told.
+ *
+ * Deliberately *not* widened with it: nodes that address a **different** element (`Element Click`,
+ * `Element Flush`), the broadcast pair, and the keyboard heads. Those are not "this widget acting on
+ * itself", and whether a component definition should reach them is a separate question with its own
+ * answer. Page nodes stay out for a plainer reason - a component definition has no page.
+ */
+export const WIDGET_OWN_GRAPH_OWNER_KINDS: readonly BlueprintNodeScopeOwnerKind[] = [
     "widgetMain",
-    "widgetValue",
     "componentWidgetMain",
-    "sharedAsset",
 ];
 
 /** Context for palette filtering in the editor */
@@ -322,6 +476,14 @@ export type BlueprintWidgetEventCapabilityRef = {
     headNodeTypes?: readonly string[];
 };
 
+/**
+ * What `isBlueprintNodeAllowedInGraphContext` is asked about - both by the add-node palette and by
+ * the graph validator.
+ *
+ * Build it with `buildBlueprintGraphContext` rather than by hand: the fields marked *derived* below
+ * follow from the owner and from where its element sits, and the palette and the validator working
+ * one of them out separately is how a node comes to be offered and then permanently refused.
+ */
 export type BlueprintPaletteContext = {
     graphKind: BlueprintGraphKind;
     owner: BlueprintOwnerRef;
@@ -340,15 +502,15 @@ export type BlueprintPaletteContext = {
     hasEventHead?: boolean;
     /** Current function graph already has an entry node */
     hasFunctionEntry?: boolean;
-    /** Blueprint Value graphs have a restricted palette and value-return sink. */
+    /** *Derived.* Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
     /**
-     * Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes but still
-     * allow synchronous exec nodes (branches, Get/Set var). Distinct from `isBlueprintValueGraph`,
-     * which additionally restricts to the pure widget-value node whitelist.
+     * *Derived.* Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes
+     * but still allow synchronous exec nodes (branches, Get/Set var). Distinct from
+     * `isBlueprintValueGraph`, which additionally restricts to the pure widget-value node whitelist.
      */
     isSyncOnlyGraph?: boolean;
-    /** Current widget owner is rendered inside an nl.list item template. */
+    /** *Derived.* A list row can be in scope here - see `isListItemScopeReachable`. */
     listItemContextAvailable?: boolean;
     /** Bound Element Literal nodes in the active graph, same Surface only. */
     magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
@@ -380,6 +542,13 @@ export type BlueprintNodeEditorCatalogEntry = {
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /**
+     * True when the node type is not in the editor registry: the plugin that contributed it is
+     * uninstalled, disabled, or failed to load. The entry is then a placeholder stub - the pins are
+     * a generic exec pair, not the node's real shape - so the card must be drawn as unmistakably
+     * unknown and its wiring left alone. See {@link BlueprintNodeDefinitionsRegistry.resolveCatalogEntry}.
+     */
+    unknown?: boolean;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
     /** True on the save nodes: the card offers the editor for the project's save fields. */

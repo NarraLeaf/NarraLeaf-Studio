@@ -29,19 +29,22 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_TEXT_SET_WRAP_MODE,
 } from "@shared/types/blueprint/graph";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
     blueprintRGBAColorToCss,
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type {
     BlueprintTextProperties,
     BlueprintTextPropertiesPatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -50,7 +53,7 @@ const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
 const TEXT_VERTICAL_ALIGN_VALUES = ["start", "center", "end"] as const;
 const TEXT_WRAP_MODE_VALUES = ["word", "character", "nowrap"] as const;
 const TEXT_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: ["nl.text"],
 };
 
@@ -106,7 +109,9 @@ const textAllPropertyInputs: BlueprintNodePinDef[] = [
 
 const textAllPropertyOutputs: BlueprintNodePinDef[] = [
     out("text", "Text", "string"),
-    out("fontAssetId", "Font", "string"),
+    // The font the element holds, which the project picked or a checked Set Font wrote - unlike the
+    // text beside it, which the game may have put together.
+    { ...out("fontAssetId", "Font", "string"), assetName: "written" },
     out("fontSize", "Font Size", "float"),
     out("fontWeight", "Font Weight", "string"),
     out("color", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR),
@@ -122,9 +127,12 @@ function readNode(input: {
     displayName: string;
     keywords: string[];
     pins: BlueprintNodePinDef[];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Text",
         keywords: input.keywords,
@@ -161,9 +169,12 @@ function runtimeTextRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
     const api = requireHostApi(ctx);
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("Text node requires a widget execution owner", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
-    return { api, elementId };
+    // The drawing, not the template: a component draws its definition once per placement, so a
+    // Text node inside one addresses a place no drawing reads unless it says which. See
+    // `widgetTarget.ts`; every other widget family asks the same way.
+    return { api, elementId: addressWidgetFromExecution(ctx, elementId) };
 }
 
 function readCurrentText(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): BlueprintTextProperties {
@@ -181,14 +192,7 @@ async function patchCurrentText(
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function toStringValue(raw: unknown, fallback: string): string {
@@ -249,6 +253,7 @@ function buildAllPropertiesPatch(
 export const textBlueprintNodes: BlueprintNodeDef[] = [
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "content", "value"],
         pins: [out("text", "Text", "string")],
@@ -278,6 +283,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
+        assetNames: "written",
         displayName: "Get Font",
         keywords: ["text", "font", "asset"],
         pins: [out("fontAssetId", "Font", "string")],
@@ -305,6 +311,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_FONT_WEIGHT,
+        assetNames: "assembled",
         displayName: "Get Font Weight",
         keywords: ["text", "font", "weight", "bold"],
         pins: [out("fontWeight", "Font Weight", "string")],
@@ -338,6 +345,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Align",
         keywords: ["text", "align", "horizontal"],
         pins: [out("textAlign", "Text Align", "string")],
@@ -354,6 +362,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_VERTICAL_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Vertical Align",
         keywords: ["text", "align", "vertical"],
         pins: [out("textVerticalAlign", "Vertical Align", "string")],
@@ -388,6 +397,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE,
+        assetNames: "assembled",
         displayName: "Get Wrap Mode",
         keywords: ["text", "wrap", "line"],
         pins: [out("textWrapMode", "Wrap Mode", "string")],
@@ -404,6 +414,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
+        assetNames: "assembled",
         displayName: "Get Effects",
         keywords: ["text", "effects", "style"],
         pins: [out("effects", "Effects", "json")],
@@ -422,6 +433,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
+        assetNames: "assembled",
         displayName: "Get All Properties",
         keywords: ["text", "properties", "all"],
         pins: textAllPropertyOutputs,

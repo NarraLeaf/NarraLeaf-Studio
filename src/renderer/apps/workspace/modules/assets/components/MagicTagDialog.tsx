@@ -17,7 +17,7 @@ export interface MagicTagDialogProps {
 }
 
 export function MagicTagDialog({ visible, assets, template, onClose, onApply }: MagicTagDialogProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const overlayHost = useWindowOverlayHost();
     // Asked here rather than inherited from the panel that opened this. The dialog is raised into the
     // window's overlay layer, so it has no ancestor in the assets panel at all and nothing the panel
@@ -255,13 +255,18 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                 ))}
                                 {preview.length > 10 && (
                                     <div className="text-xs text-fg-subtle italic pt-2 border-t border-edge">
-                                        {t("assets.magicTag.moreFiles", { count: preview.length - 10 })}
+                                        {tn("assets.magicTag.moreFiles", preview.length - 10)}
                                     </div>
                                 )}
                             </div>
                             <div className="flex items-center gap-2 text-sm text-fg-muted">
                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                <span>{t("assets.magicTag.summary", { tags: totalTagsToAdd, files: preview.length })}</span>
+                                <span>
+                                    {t("assets.magicTag.tagCounts", {
+                                        tags: tn("assets.magicTag.tagCount", totalTagsToAdd),
+                                        files: tn("assets.magicTag.fileCount", preview.length),
+                                    })}
+                                </span>
                             </div>
                         </div>
                     )}

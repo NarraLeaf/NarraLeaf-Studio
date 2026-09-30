@@ -48,9 +48,9 @@ function Layer(props: {
  *
  * Sizes are measured off the decoded bitmaps rather than read from asset metadata, which does not
  * carry them, and reported upwards because the canvas check is a diagnostic rather than a caption.
- * It matters because the canvas is a hard constraint rather than a preference: the engine scales
- * each layer independently under autoFit, so a layer of a different size is not slightly out of
- * place, it is stretched to the stage on its own.
+ * It matters because the canvas is a hard constraint rather than a preference: the engine sizes and
+ * places each layer independently, so a layer of a different size is not slightly out of place - it
+ * is a second picture of a second size stacked on the first.
  *
  * `onion` is the same stack under a different tag, drawn faint *below* the live one. Below rather
  * than above so the thing being aligned stays readable; it is a registration aid, not a blend.

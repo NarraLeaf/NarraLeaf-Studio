@@ -12,7 +12,13 @@ export const devMode = {
     issues: {
         // One word, like every other panel in the drawer.
         title: "Issues",
-        empty: "Nothing has failed",
+        // This list and this tally hold the failures THE RUNNING GAME reported, and say so. Dev Mode
+        // does not run the project check and is not meant to: a bare "Nothing has failed" or a bare
+        // "0 errors" is read as a clean project, which is a verdict nothing here is in a position to
+        // give - a project whose check has a hundred errors to say about can play a scene without
+        // reporting one. "This run" is exactly what is counted: the list is emptied every time the
+        // bundle reloads, because the rows it points into have been replaced.
+        empty: "Nothing has failed in this run",
         // The heading over a launch/reload failure, which happened before there was a story to point
         // into. It says what the message is about, since unlike every other entry it has no location.
         sessionFailure: "Session failed to start",
@@ -21,11 +27,38 @@ export const devMode = {
         // A Game UI blueprint failed. It has no story row - the author was drawing an interface, not
         // writing a scene - so the place it names is the surface they drew.
         onSurface: "On {surface}",
+        // A surface the document no longer has: said as gone, never by its id.
+        onSurfaceGone: "On a page no longer in this project",
+        // The third kind of place a report has: a plugin, for something true of the session rather
+        // than of a row or a drawing.
+        onPlugin: "Plugin {plugin}",
+        // Which plugins run is decided the way a build decides it, so a plugin the project does not
+        // depend on does not run here either. Said rather than merely done: its nodes degrade to the
+        // unknown-node stub, and a stub nobody explained is an author debugging their own graph.
+        pluginNotDeclared: "{plugin} is installed but not among this project's plugin dependencies. It does not run in this session and is not included in a build. Rescan them in Project ▸ App.",
+        pluginUnusable: "{plugin} is among this project's plugin dependencies and cannot be loaded. It does not run in this session and is not included in a build. Check its status in Project ▸ App.",
+        // A plugin this project does run, whose runtime entry threw. Its nodes and widgets stay
+        // unregistered and draw as the unknown-node stub, which reads as a mistake in the graph.
+        pluginEntryFailed: "{plugin} failed to load: {error}. Its blueprint nodes and widgets are not registered in this session.",
+        // The list of runtime plugins could not be read at all, so this names no plugin.
+        pluginListFailed: "The runtime plugin list could not be read: {error}. No plugin runs in this session.",
+        // A widget on a surface asked for an asset and drew nothing. `{property}` is the inspector's
+        // own label for the field and `{element}` the name the author gave the element (a surface's
+        // name, for its background). Three kinds of failure because the author does three different
+        // things about them: re-point the field, replace the file, or fix the binding feeding it; the
+        // unreadable one names the asset when the project has a name for it. None of them prints the
+        // value asked for - for a missing asset that is an id, which names nothing.
+        assetMissing: "“{property}” on “{element}” refers to an asset that is no longer in this project.",
+        assetUnreadable: "“{property}” on “{element}” refers to an asset that could not be read.",
+        assetUnreadableNamed: "“{property}” on “{element}” refers to “{asset}”, which could not be read.",
+        assetNotAsset: "“{property}” on “{element}” is set to a value that is not an asset.",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         stack: "Stack",
         dismissAll: "Dismiss all ({count})",
-        summary: "{errors} errors · {warnings} warnings",
+        // See `empty` above for why the run is named. Each slot is one whole count with its noun,
+        // from `common.count.*`.
+        counts: "{errors} · {warnings} in this run",
     },
     // The drawer's panels are named for their SUBJECT, one word each: Story, Interface, Debugger.
     // They are parallel on purpose - "Story Runtime" and "Blueprint DevTools" beside each other read
@@ -183,6 +216,17 @@ export const devMode = {
         openWorkspace: "Workspace",
         cannotOpen: "This blueprint cannot be opened from preview.",
         openFailed: "Unable to open blueprint.",
+        /**
+         * A script's row, expanded. "Loaded" is the whole of what can go wrong before a handler is
+         * reached: a script that failed to compile or threw while it was being evaluated has no
+         * module, and every event it declares silently does nothing.
+         */
+        scriptLoaded: "Loaded",
+        scriptNotLoaded: "Not loaded",
+        /** What the file exports, against what this position actually calls. */
+        scriptExports: "Exports: {names}",
+        scriptCalls: "Called here: {names}",
+        scriptExportsNone: "Exports nothing",
     },
     output: {
         logLevel: "Log Level",

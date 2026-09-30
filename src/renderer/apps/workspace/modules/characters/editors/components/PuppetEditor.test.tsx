@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * "Import a model" on the puppet inspector, on a frozen workspace.
+ * "Import a model" on the puppet inspector: on a frozen workspace, and when the folder is refused.
  *
  * A model bundle is a directory - a manifest, its textures and its motions - so this is the largest
  * single copy the character editor can start, and the picker it opens is a directory picker rather
@@ -19,16 +19,22 @@ let frozen = false;
 const FREEZE_REASON = "frozen-reason";
 
 const selectDirectory = vi.fn(async () => ({ success: true as const, data: { ok: true as const, data: [] as string[] } }));
-const importFromPaths = vi.fn(async () => ({ success: true as const, data: [] }));
+const importFromPaths = vi.fn(async (): Promise<unknown> => ({ success: true as const, data: [] }));
+const showNotification = vi.fn();
+const setPuppetAsset = vi.fn();
 
 /** Held identity: the inspector keys two disk reads on the workspace context. */
 const stable = vi.hoisted(() => ({ context: null as unknown }));
 
-// Keys, not prose: what is asserted is which control is off, and English wording is free to change
-// without this file having an opinion.
+// Keys, not prose: what is asserted is which control is off and which sentence is chosen, and English
+// wording is free to change without this file having an opinion. Parameters are appended, so a
+// sentence built from another shows what it was built from.
 vi.mock("@/lib/i18n", async importOriginal => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    useTranslation: () => ({ t: (key: string) => key, locale: "en" }),
+    useTranslation: () => ({
+        t: (key: string, params?: Record<string, unknown>) => (params ? `${key}${JSON.stringify(params)}` : key),
+        locale: "en",
+    }),
 }));
 
 // The real hook reads the workspace freeze service through a provider this test has no business
@@ -41,7 +47,11 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
 });
 
 vi.mock("@/apps/workspace/context", () => {
-    stable.context = { project: "/proj", services: { get: () => ({ getAssets: () => ({}) }) } };
+    // One stub answers every service the inspector asks for: the library, and the notices.
+    stable.context = {
+        project: "/proj",
+        services: { get: () => ({ getAssets: () => ({}), importFromPaths, showNotification }) },
+    };
     return { useWorkspace: () => ({ context: stable.context }) };
 });
 
@@ -69,7 +79,7 @@ function appearanceStub(): CharacterAppearance {
         getPuppet: () => ({ backend: "", assetId: null, entry: null, size: null, options: {} }),
         getPuppetDefaultState: () => ({ motion: null, expression: null, skin: null }),
         getKind: () => "puppet",
-        setPuppetAsset: () => undefined,
+        setPuppetAsset,
         setPuppetBackend: () => undefined,
     } as unknown as CharacterAppearance;
 }
@@ -79,6 +89,8 @@ afterEach(() => {
     frozen = false;
     selectDirectory.mockClear();
     importFromPaths.mockClear();
+    showNotification.mockClear();
+    setPuppetAsset.mockClear();
 });
 
 async function mount(): Promise<void> {
@@ -124,5 +136,58 @@ describe("PuppetEditor model import while the workspace is frozen", () => {
 
         expect(screen.getByText("characters.editor.puppet.noModel")).not.toBeNull();
         expect(screen.getByText("characters.editor.puppet.noModelAssets")).not.toBeNull();
+    });
+});
+
+describe("PuppetEditor model import that fails", () => {
+    async function importFolder(): Promise<void> {
+        await mount();
+        await act(async () => {
+            fireEvent.click(importButton());
+        });
+    }
+
+    it("names a refused folder and says why, instead of leaving the row as it was", async () => {
+        selectDirectory.mockImplementationOnce(async () => ({
+            success: true as const,
+            data: { ok: true as const, data: ["D:/models/hiyori"] },
+        }));
+        importFromPaths.mockImplementationOnce(async () => ({
+            success: true,
+            // The importer's own sentence names the storage path; only the refusal is shown.
+            data: [{ success: false, error: "Failed to copy into D:/game/assets/content/53/22", refusal: { kind: "emptyFolder" } }],
+        }));
+
+        await importFolder();
+
+        expect(showNotification).toHaveBeenCalledTimes(1);
+        const [message, tone] = showNotification.mock.calls[0];
+        expect(tone).toBe("error");
+        expect(message).toContain("hiyori");
+        expect(message).toContain("workspace.shell.import.reason.emptyFolder");
+        expect(message).not.toContain("content/53");
+        expect(setPuppetAsset).not.toHaveBeenCalled();
+    });
+
+    it("says so when the folder dialog cannot open", async () => {
+        selectDirectory.mockImplementationOnce(async () => ({ success: false, error: "dialog failed" }) as never);
+
+        await importFolder();
+
+        expect(showNotification).toHaveBeenCalledWith("workspace.shell.fileDialogFailed", "error");
+        expect(importFromPaths).not.toHaveBeenCalled();
+    });
+
+    it("stays quiet when the folder is imported, and selects it", async () => {
+        selectDirectory.mockImplementationOnce(async () => ({
+            success: true as const,
+            data: { ok: true as const, data: ["D:/models/hiyori"] },
+        }));
+        importFromPaths.mockImplementationOnce(async () => ({ success: true, data: [{ success: true, data: { id: "model-1" } }] }));
+
+        await importFolder();
+
+        expect(showNotification).not.toHaveBeenCalled();
+        expect(setPuppetAsset).toHaveBeenCalledWith("model-1");
     });
 });

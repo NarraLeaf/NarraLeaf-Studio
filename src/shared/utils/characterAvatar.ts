@@ -199,3 +199,27 @@ export function resolveCharacterAvatarAssetId(
     }
     return character.defaultAvatarAssetId?.trim() || null;
 }
+
+/**
+ * The picture that stands for a character where no differential is in play.
+ *
+ * Asked wherever a character is named rather than staged - `Get Character`, a backlog line, any row
+ * that says who spoke. Those places have a character and nothing else: the live portrait that decides
+ * which differential is on screen belongs to the stage, and a line already read is not on the stage
+ * any more.
+ *
+ * The character's *default* differential, not their profile field alone. `defaultAvatarAssetId` is
+ * documented as what shows when no differential resolves one, and a character whose default pose has
+ * a baked avatar does resolve one - answering with the profile field there would leave the picture
+ * blank for every character who only ever had baked avatars, which is most of them. One function so
+ * that every such surface gives the same answer; a second one would be a second face for the same
+ * character depending on which panel asked.
+ */
+export function resolveDefaultCharacterAvatarAssetId(
+    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
+): string | null {
+    if (!character) {
+        return null;
+    }
+    return resolveCharacterAvatarAssetId(character, characterAvatarKey(character.appearance, {}));
+}

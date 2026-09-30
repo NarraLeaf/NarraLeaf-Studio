@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 24,
+  "schemaVersion": 26,
   "id": "71bb159f-1322-4539-b09f-9593a426a67d",
   "name": "Skeleton",
   "entrySceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
@@ -26,7 +26,6 @@
       "description": "",
       "rootBlockIds": [
         "4ed7e788-e36a-4615-9d03-75b6c4432d58",
-        "db4296b2-35a8-4bd9-a86e-256716e9a383",
         "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37",
         "b2d057b6-b78e-4d4f-a744-7efe81e7ec3e",
         "f4d91404-7cdf-43a7-9207-5c0d5a18e1ec",
@@ -38,24 +37,6 @@
         "4ae3fc91-8959-4cb0-ac6c-15a0c6c05fc9"
       ],
       "blocks": {
-        "db4296b2-35a8-4bd9-a86e-256716e9a383": {
-          "id": "db4296b2-35a8-4bd9-a86e-256716e9a383",
-          "parentId": null,
-          "childrenIds": [],
-          "kind": "action",
-          "payload": {
-            "action": "setBackground",
-            "assetId": "93bad884-1f14-4ad2-85fb-c05d7b5ffef6",
-            "transition": {
-              "kind": "throughColor",
-              "durationMs": 800,
-              "props": {
-                "color": "#000000"
-              },
-              "holdMs": 200
-            }
-          }
-        },
         "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37": {
           "id": "a63fe9cb-8f8b-4b52-8b4d-1a6d88964c37",
           "parentId": null,
@@ -110,18 +91,6 @@
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
               "mode": "props",
-              "to": {
-                "zoom": 0.52,
-                "position": {
-                  "xalign": 0.5,
-                  "yalign": 0.5,
-                  "yoffset": -50
-                }
-              },
-              "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
               "durationMs": 400
             }
           }
@@ -230,7 +199,6 @@
       "runtimeName": "the_clubroom",
       "description": "",
       "rootBlockIds": [
-        "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b",
         "8ff953af-a0de-4461-a0fb-67bd5e1a294f",
         "74f948bf-0fe5-4c2e-b83e-7c238118b024",
         "a6d5bdd2-5b60-45c0-bf91-6bcc5b02d5a6",
@@ -244,20 +212,6 @@
         "b8b5fc31-5ac6-476a-8900-36f6e6386d15"
       ],
       "blocks": {
-        "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b": {
-          "id": "ffbcdd16-60d8-46fc-bdf8-b90aa5a15d4b",
-          "parentId": null,
-          "childrenIds": [],
-          "kind": "action",
-          "payload": {
-            "action": "setBackground",
-            "assetId": "64ce569f-7104-4c57-9baf-20d14d1e0ddb",
-            "transition": {
-              "kind": "dissolve",
-              "durationMs": 600
-            }
-          }
-        },
         "74f948bf-0fe5-4c2e-b83e-7c238118b024": {
           "id": "74f948bf-0fe5-4c2e-b83e-7c238118b024",
           "parentId": null,
@@ -298,18 +252,6 @@
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
               "mode": "props",
-              "to": {
-                "zoom": 0.52,
-                "position": {
-                  "xalign": 0.5,
-                  "yalign": 0.5,
-                  "yoffset": -50
-                }
-              },
-              "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
               "durationMs": 400
             }
           }
@@ -605,7 +547,6 @@
       "runtimeName": "last_light",
       "description": "",
       "rootBlockIds": [
-        "22f9d72d-8877-4a4a-b54e-069242054642",
         "199cc19a-a416-4a56-8687-ebf6ec9c5e7f",
         "1cafc69e-d83a-48b8-a0f5-00446e2f428c",
         "cc6cf0c3-f193-422c-96bd-8e86be37ed50",
@@ -615,23 +556,10 @@
         "a3dfeea5-1bdd-4943-b649-9140875e67ea",
         "6d06d8da-0f7b-49e6-a2b6-4a7d0112b11b",
         "deffff02-965b-44db-b126-6c0bec798a69",
-        "cf1f223c-4487-4787-aec3-1f3bf98d7240"
+        "cf1f223c-4487-4787-aec3-1f3bf98d7240",
+        "4abb5d57-e1eb-4500-b69e-eb3a7be7c46d"
       ],
       "blocks": {
-        "22f9d72d-8877-4a4a-b54e-069242054642": {
-          "id": "22f9d72d-8877-4a4a-b54e-069242054642",
-          "parentId": null,
-          "childrenIds": [],
-          "kind": "action",
-          "payload": {
-            "action": "setBackground",
-            "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce",
-            "transition": {
-              "kind": "dissolve",
-              "durationMs": 600
-            }
-          }
-        },
         "1cafc69e-d83a-48b8-a0f5-00446e2f428c": {
           "id": "1cafc69e-d83a-48b8-a0f5-00446e2f428c",
           "parentId": null,
@@ -657,18 +585,6 @@
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
               "mode": "props",
-              "to": {
-                "zoom": 0.52,
-                "position": {
-                  "xalign": 0.5,
-                  "yalign": 0.5,
-                  "yoffset": -50
-                }
-              },
-              "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
               "durationMs": 400
             }
           }
@@ -709,8 +625,10 @@
             "action": "character",
             "operation": "exit",
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
-            "transition": {
-              "kind": "dissolve",
+            "transform": {
+              "to": {
+                "opacity": 0
+              },
               "durationMs": 600
             }
           }
@@ -847,6 +765,16 @@
             "operation": "reset",
             "durationMs": 900,
             "easing": "easeInOut"
+          }
+        },
+        "4abb5d57-e1eb-4500-b69e-eb3a7be7c46d": {
+          "id": "4abb5d57-e1eb-4500-b69e-eb3a7be7c46d",
+          "parentId": null,
+          "childrenIds": [],
+          "kind": "control",
+          "payload": {
+            "control": "ending",
+            "name": "Same time tomorrow"
           }
         }
       },

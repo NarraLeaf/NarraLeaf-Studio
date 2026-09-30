@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -87,12 +87,12 @@ export class WorkspaceReportLoadResultHandler extends IPCHandler<IPCEventType.wo
  * Handed straight to the window, which is where the run that opened it is listening. Nothing else
  * subscribes, and a window nobody opened this way simply has no listeners.
  */
-export class WorkspaceCommandLineBuildHandler extends IPCHandler<IPCEventType.workspaceCommandLineBuild> {
-    readonly name = IPCEventType.workspaceCommandLineBuild;
+export class WorkspaceCommandLineRunHandler extends IPCHandler<IPCEventType.workspaceCommandLineRun> {
+    readonly name = IPCEventType.workspaceCommandLineRun;
     readonly type = IPCMessageType.message;
 
-    public handle(window: AppWindow, event: IPCEvents[IPCEventType.workspaceCommandLineBuild]["data"]) {
-        window.reportCommandLineBuildEvent(event);
+    public handle(window: AppWindow, event: IPCEvents[IPCEventType.workspaceCommandLineRun]["data"]) {
+        window.reportCommandLineRunEvent(event);
         return this.success(void 0 as never);
     }
 }
@@ -227,6 +227,38 @@ export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.wor
         workspace.setProps(rest);
 
         return this.success(void 0);
+    }
+}
+
+/**
+ * Take this window's project for this Studio, or report which one already has it.
+ *
+ * The window asks for itself, on the project in its own props, which is why the message carries
+ * nothing: a claim is about a window's right to write its own project, and a path in the message
+ * would make it about somebody else's.
+ *
+ * `App.openProject` has already asked once by the time a window exists, and this is not a
+ * duplicate of it. That call is what makes the claim before anything can be read; this one is what
+ * the window's startup gates itself on and what Retry on the error screen re-asks, so a project
+ * released by the other Studio in the meantime opens on the next press.
+ */
+export class WorkspaceAcquireSessionLockHandler extends IPCHandler<IPCEventType.workspaceAcquireSessionLock> {
+    readonly name = IPCEventType.workspaceAcquireSessionLock;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceAcquireSessionLock]["response"]>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window holds a project.");
+        }
+
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps().projectPath;
+        if (!projectPath) {
+            return this.failed("This window has no project to claim.");
+        }
+
+        return this.success(await window.app.getProjectSessionLockManager().acquire(projectPath));
     }
 }
 

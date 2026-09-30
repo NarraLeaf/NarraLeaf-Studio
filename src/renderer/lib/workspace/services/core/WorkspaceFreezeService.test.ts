@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSource } from "@shared/documents/documentSource";
-import { getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, getProjectWriteFreeze, thawForeignProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { clearProjectDocumentSource, getProjectDocumentSource } from "@/lib/app/documentSource";
 import { clearMergeConflictReads, mergeConflictReadPath } from "@/lib/app/mergeConflictReads";
 import { BaseFileSystemService } from "./FileSystem";
@@ -635,5 +635,52 @@ describe("WorkspaceFreezeService", () => {
         expect(service.isFrozen()).toBe(false);
         await BaseFileSystemService.write(`${PROJECT}/project.json`, "{}", "utf-8");
         expect(privilegedFs.requestWrite).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * Another NarraLeaf Studio has taken the project over. Main arms that freeze, not the author, and
+ * none of the ways this service offers out of a freeze may undo it: each of them either lifts the
+ * latch or re-reads the tree into editors, and the tree is the other Studio's now.
+ */
+describe("WorkspaceFreezeService after a takeover", () => {
+    const HOLDER = { hostname: "studio-two", startedAt: "2026-09-21T09:14:00.000Z", sameHost: false };
+
+    afterEach(() => {
+        thawForeignProjectWrites("D:/projects/somewhere-else");
+    });
+
+    it("tells main, so it refuses what a frozen workspace may not start", async () => {
+        await createService();
+
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "taken-over", holder: HOLDER } });
+
+        expect(reportWriteFreeze).toHaveBeenLastCalledWith("taken-over");
+    });
+
+    it("will not leave it, and does not re-read the other Studio's files into the editors", async () => {
+        const service = await createService();
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "taken-over", holder: HOLDER } });
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        service.thaw();
+
+        expect(reload).not.toHaveBeenCalled();
+        expect(service.getReason()?.kind).toBe("taken-over");
+        await BaseFileSystemService.write(`${PROJECT}/project.json`, "{}", "utf-8");
+        expect(privilegedFs.requestWrite).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    it("keeps it through a teardown and a start on the same project", async () => {
+        // A takeover that lands while the workspace is starting is armed before this service
+        // exists; the start clears only another project's freeze.
+        const service = await createService();
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "taken-over", holder: HOLDER } });
+
+        await service.teardown(service.getContext());
+        await service.initialize(createContext(), async () => undefined);
+
+        expect(service.getReason()?.kind).toBe("taken-over");
     });
 });

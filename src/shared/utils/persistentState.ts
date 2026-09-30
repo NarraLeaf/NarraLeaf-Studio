@@ -16,12 +16,23 @@ export class PersistentState<T extends Record<string, any>> implements IPersiste
         const cwd = path.dirname(config.dbPath);
         const name = path.basename(config.dbPath, path.extname(config.dbPath)) || "config";
 
-        this.store = new Store<T>({
-            cwd,
-            name,
-            defaults: config.defaults,
-            accessPropertiesByDotNotation: false,
-        });
+        // electron-store reads the file here, and a file it cannot parse fails with the parser's own
+        // message - "Unexpected token ... is not valid JSON" - which names no file at all. These are
+        // read while Studio starts, so that message is the whole of what a person (or a command-line
+        // run's log) is told; the path is what makes it something they can go and fix.
+        try {
+            this.store = new Store<T>({
+                cwd,
+                name,
+                defaults: config.defaults,
+                accessPropertiesByDotNotation: false,
+            });
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            // electron-store's own spelling of the file: the name without its extension, as JSON.
+            const file = path.join(cwd, `${name}.json`);
+            throw new Error(`${file} could not be read: ${reason}`, { cause: error });
+        }
     }
 
     public getItem<K extends StringKeyOf<T>>(key: K): T[K];

@@ -13,13 +13,24 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL,
+    GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     DEFAULT_GAME_CRASH_POLICY,
+    GAME_RUNTIME_PACK_SCHEMA_VERSION,
+    newerRuntimePackSchemaVersion,
     normalizeGameCrashPolicy,
     type GameCrashPolicy,
+    type GameCrashReportRequest,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
+import {
+    EMPTY_GAME_MENU_MODEL,
+    isGameMenuModelEmpty,
+    normalizeGameMenuModel,
+    type GameMenuModel,
+} from "@shared/types/gameMenu";
 import {
     normalizeWindowConfiguration,
     WINDOW_SCALE_DESIGN,
@@ -56,7 +67,7 @@ import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
-import { resolveModelBundleKey, resolveRuntimeStaticPath } from "./runtimeProtocol";
+import { resolveModelBundleKey, resolveRuntimeHostFile, resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
 import {
@@ -77,11 +88,17 @@ import {
     writeGameProgressFile,
     type GameProgressEnvironment,
 } from "@shared/utils/gameProgressFile";
+import { BLUEPRINT_SCREENSHOTS_DIR_NAME } from "@shared/types/blueprint/screenshot";
+import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { writeCrashReport, type CrashReportBuild } from "./crashReport";
+import { buildGameMenuTemplate } from "./gameMenu";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
+import { refuseToStart, type StartupRefusalHost } from "./startupRefusal";
+import { createCrashTeardown, describeRuntimeError, installMainProcessErrorReporting } from "./mainProcessErrors";
 import {
     currentWindowScale,
     fitInside,
@@ -94,7 +111,7 @@ import {
     writeWindowGeometry,
     type WindowChrome,
 } from "./windowGeometry";
-import { installWindowCrashHandling } from "./windowCrashHandling";
+import { installWindowCrashHandling, type WindowCrashHandle } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
     hasStartupSwitch,
@@ -104,6 +121,39 @@ import {
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
 import { silenceRuntimeConsole } from "./runtimeConsole";
+import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
+
+/**
+ * When this process was created, as the operating system recorded it - the zero of the game's
+ * performance timeline.
+ *
+ * Earlier than anything this file can observe for itself: by the time its first line runs,
+ * Electron has already started and loaded the bundle, and that is time a player waited through
+ * too. Node's own uptime stands in on a platform that cannot say.
+ */
+const processCreatedAt = process.getCreationTime?.() ?? Date.now() - process.uptime() * 1000;
+/** When Electron finished starting and this shell began its own work. */
+let appReadyAt: number | null = null;
+/** When the window existed and its page was asked for. */
+let windowCreatedAt: number | null = null;
+
+/**
+ * What the page is told about its own launch; see `@shared/types/gameLaunchTiming`.
+ *
+ * Handed over on the page's address, the same channel the crash policy takes, so a page reloaded
+ * after a crash is told the same thing - it is the same process, launched at the same moment.
+ */
+function gameLaunchTiming(): GameLaunchTiming {
+    const milestones: GameLaunchTiming["milestones"] = [];
+    if (appReadyAt !== null) {
+        milestones.push({ name: "appReady", at: appReadyAt });
+    }
+    if (windowCreatedAt !== null) {
+        milestones.push({ name: "windowCreated", at: windowCreatedAt });
+    }
+    return { origin: "process", zero: processCreatedAt, milestones };
+}
 
 const appDir = __dirname;
 
@@ -205,6 +255,23 @@ if (shellMode === "production" && !shellDebuggable
  */
 const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
 
+/**
+ * A test is driving this game, so it has to keep running when its window is not on screen.
+ *
+ * Chromium stops painting a window that is minimized, off-screen or covered by another window, and
+ * throttles its timers to one wake a second. A story waits on painted frames - to enter its first
+ * scene, to finish a transition - so a driven game that ended up behind the author's editor, or
+ * behind a window some other program opened, stood still while the test kept clicking at it, and
+ * the run failed a minute later for having stopped advancing. MEASURED: minimizing the window, or
+ * moving it off-screen, the moment it appeared failed the walkthrough every time, and an unattended
+ * batch failed about one run in thirty that way.
+ *
+ * Only for Studio's own test launches - `GameTestManager` sets the variable, and a shipped game
+ * never reads it. A player's hidden game should be throttled; nobody is looking at it and it has
+ * nothing to finish. A driven one does, and whether it is on top says nothing about the game.
+ */
+const testDriven = shellMode !== "production" && process.env.NARRALEAF_TEST_DRIVEN === "1";
+
 // Preview keeps saves next to the compiled app; a shipped game names its
 // per-user directory explicitly (see resolvePlayerDataDir).
 const previewUserDataDir = path.resolve(appDir, "..", "userData");
@@ -283,9 +350,20 @@ const logRuntime = installRuntimeLogSink(userDataDir);
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 /** The game's own name, once the pack has been read. Titles the crash dialogs. */
 let loadedPackName: string | null = null;
+/**
+ * What the pack says about the build this is, kept for the crash report.
+ *
+ * Copied out when the pack is read rather than read back from it at the moment it is wanted: a crash
+ * report is asked for by a page that has just stopped drawing, and the most likely crash of all is
+ * the one that happened while the pack was still being read. Null until then, which the report
+ * states rather than papers over - "this build does not say" is a fact about the failure.
+ */
+let loadedBuildIdentity: CrashReportBuild | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The main window's crash handling, which also decides what a page that will not load means. */
+let mainWindowCrashHandling: WindowCrashHandle | null = null;
 /** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
 let displaySleep: DisplaySleepInhibitor | null = null;
 /** What the project says its window may do; settled from the pack as the window is built. */
@@ -302,6 +380,15 @@ let windowDesign = { width: 1280, height: 720 };
 let normalWindowBounds: { width: number; height: number; x: number | null; y: number | null } | null = null;
 /** What this platform's window frame adds to the stage, measured from the window itself. */
 let windowChrome: WindowChrome = NO_WINDOW_CHROME;
+/**
+ * The menu bar the game asked for, or nothing.
+ *
+ * Held because the window outlives any one page: a renderer that reloads (a crash recovery, a
+ * language restart) is a renderer whose menu has to come back, and it is the one that says what the
+ * menu is. Cleared when a page starts loading so a game that no longer publishes one does not keep
+ * the last page's bar.
+ */
+let gameMenuModel: GameMenuModel = EMPTY_GAME_MENU_MODEL;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -329,6 +416,19 @@ let closeDecisionSeq = 0;
  * after which the window closes (the default is to close unless a blueprint cancels it).
  */
 const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
+/**
+ * Upper bound on how long a window that has been told to close is given to actually go away before
+ * it is destroyed outright.
+ *
+ * Closing is not the instant operation it looks like: Chromium dispatches `beforeunload` and
+ * `unload` into the page and waits for the answer, and the page is a running game - the busiest
+ * thread in the process. A renderer that has stopped answering would otherwise leave a window
+ * ordered off screen that is never destroyed, which is a leak nobody can see.
+ *
+ * A crash gives the save and persistence stores the same time to write out what they hold before
+ * the game closes (see the error reporting below).
+ */
+const CLOSE_TEARDOWN_DEADLINE_MS = 3000;
 
 /**
  * The active resource backend. Established once at startup; every packaged read
@@ -402,16 +502,61 @@ if (testNetworkBlocked) {
     );
 }
 
+if (testDriven) {
+    // Here for the same reason as the network switch above: Chromium reads these before it starts.
+    // A covered window is otherwise treated as hidden, and a hidden one loses its timers and its
+    // process priority. The window itself is told separately (`backgroundThrottling`), because a
+    // minimized window is hidden whatever these say.
+    app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+    app.commandLine.appendSwitch("disable-renderer-backgrounding");
+    app.commandLine.appendSwitch("disable-background-timer-throttling");
+}
+
+/**
+ * How every launch that does not go ahead ends: the log, one line on standard error, a code that is
+ * not 0. See `startupRefusal`.
+ *
+ * Standard error is written through its descriptor rather than through `process.stderr`: the write
+ * has to be complete before `app.exit`, which before app-ready ends the process on the spot.
+ */
+const startupRefusalHost: StartupRefusalHost = {
+    log: logRuntime,
+    writeStandardError: text => {
+        fsSync.writeSync(2, text);
+    },
+    exit: code => {
+        app.exit(code);
+    },
+};
+
+/**
+ * The line a refused command line is logged and reported with.
+ *
+ * The fixed half is masked in the bundle (it would otherwise be a plaintext beacon pointing a search
+ * straight at this refusal) and reconstructed here, so the log and standard error still read plainly.
+ * `REFUSAL_LOG_PREFIX` is "refusing to start: this build does not accept ". What follows it is only
+ * what the caller put on the command line - never what the game does accept.
+ */
+function commandLineRefusalReason(refused: readonly string[]): string {
+    return `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`;
+}
+
 /**
  * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
  * before any window or session exists. The post-pack-read check below stays as the authoritative
  * (tamper-resistant on asar-integrity platforms) second gate.
  *
- * Both halves matter and they are not the same half. Quitting states the policy; taking the
+ * Both halves matter and they are not the same half. Stopping states the policy; taking the
  * switches off the command line is what stops them being acted on, because Chromium reads several
  * of them after this script has run. Measured on Electron 38: a launch with
  * `--remote-debugging-port` that only quit here still had the port accepting connections about
- * 130ms later, and the same launch with the switch removed here never listened at all.
+ * 130ms later, and the same launch with the switch removed here never listened at all. The exit is
+ * immediate now (`app.exit` before app-ready ends the process where it stands), and the switches are
+ * still taken off first, so nothing depends on how quickly that happens.
+ *
+ * Said on standard error as well as in the log, with exit code 2. It used to be the log alone and an
+ * ordinary quit, which exits 0 - so the player who typed a switch into a launcher, and the launcher
+ * itself, were both told the game had run.
  */
 function refuseStartupArguments(): boolean {
     const refused = refusedStartupArguments();
@@ -421,14 +566,7 @@ function refuseStartupArguments(): boolean {
     for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
         app.commandLine.removeSwitch(name);
     }
-    // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
-    // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing. The fixed half of the line is masked in the bundle (it would otherwise
-    // be a plaintext beacon pointing a search straight at this refusal) and reconstructed here, so
-    // the log file still reads plainly. `REFUSAL_LOG_PREFIX` is "refusing to start: this build does
-    // not accept ".
-    logRuntime("error", `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`);
-    app.quit();
+    refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refused) });
     return true;
 }
 
@@ -444,6 +582,10 @@ const startupBlocked = shellMode === "production" && !shellDebuggable && refuseS
  *
  * After the command-line gate above, so a launch this build refuses is refused for that reason
  * rather than reported as a second copy.
+ *
+ * Not a refusal, and so an ordinary quit with exit code 0 rather than `refuseToStart`: what was asked
+ * for was the game on screen, and the copy that is running puts it there. A launcher that reads the
+ * code gets the same answer every single-instance application gives.
  */
 const secondCopy = shellMode === "production" && !startupBlocked && !claimSingleInstance({
     requestLock: () => app.requestSingleInstanceLock(),
@@ -463,63 +605,134 @@ void app.whenReady().then(async () => {
     if (startupBlocked || secondCopy) {
         return;
     }
-    resources = await createRuntimeResources(appDir, {
-        // Where a player puts a patch: the folder their copy of the game sits in,
-        // which is the first place anyone looks for one. The same folder the
-        // player's files may sit in, resolved by the same function, so a player
-        // told where their saves are has been told where a patch goes.
-        gameRootDir,
-        // Searched as well, so a patch can outlive reinstalling the game.
-        userDataDir,
-        // What applied, and what did not, is the only trace a patch leaves.
-        log: logRuntime,
-        // A build made to be inspected says why a patch was refused; a shipped one names the file
-        // and stops, because the reason describes how a patch is bound to its build.
-        explainRefusedPatches: shellMode !== "production" || shellDebuggable,
-    });
-    const pack = await readPack();
-    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
+    appReadyAt = Date.now();
+    let pack: GameRuntimePackV1;
+    try {
+        resources = await createRuntimeResources(appDir, {
+            // Where a player puts a patch: the folder their copy of the game sits in,
+            // which is the first place anyone looks for one. The same folder the
+            // player's files may sit in, resolved by the same function, so a player
+            // told where their saves are has been told where a patch goes.
+            gameRootDir,
+            // Searched as well, so a patch can outlive reinstalling the game.
+            userDataDir,
+            // What applied, and what did not, is the only trace a patch leaves.
+            log: logRuntime,
+            // A build made to be inspected says why a patch was refused; a shipped one names the file
+            // and stops, because the reason describes how a patch is bound to its build.
+            explainRefusedPatches: shellMode !== "production" || shellDebuggable,
+            // Content the player installed that this build cannot read. Told to them rather than only
+            // logged: the game is about to run exactly as it did before, and "nothing happened" is the
+            // one answer they cannot act on.
+            onContentTooNew: reportContentTooNew,
+        });
+        pack = await readPack();
+    } catch (error) {
+        // The game's own content would not open: a store that is damaged or incomplete, a pack that
+        // is missing or does not parse. Left to propagate, this was an unhandled rejection, which
+        // Electron's main process only warns about - measured on Electron 38, the error monitor
+        // below never saw it, so nothing reached the log or the player, and the process stayed up
+        // with no window, for nobody, until it was killed. There is nothing to run, so it is a launch
+        // that did not start.
+        const described = describeRuntimeError(error);
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's content could not be read: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
+        return;
+    }
+    // The game's own content, from inside its own archive, written by a Studio this build does not
+    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
+    // the pack's own bundle - so this is the native box and an exit that says the game did not
+    // start, which is the same last resort a crash loop ends at.
+    const packVersion = newerRuntimePackSchemaVersion(pack);
+    if (packVersion !== null) {
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "contentTooNew",
+            reason: `refusing to start: game content schema v${packVersion} is newer than this build reads`
+                + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
+            tellPlayer: () => reportFatalRuntimeError(shellText().contentTooNew),
+        });
+        return;
+    }
+    const refusedByPack = pack.mode === "production" && !packDebuggable(pack) ? refusedStartupArguments() : [];
+    if (refusedByPack.length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
-        // rewritten shell manifest does not get past on the platforms that validate one.
-        app.quit();
+        // rewritten shell manifest does not get past on the platforms that validate one. It is only
+        // reached when the first gate stood aside, which the manifest told it to; the switches were
+        // not taken off in time for that, and this stops the launch as the first gate would have.
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refusedByPack) });
         return;
     }
     if (packDebuggable(pack)) {
         console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
-    const allowHttp = pack.network?.allowHttp === true;
-    const networkAllowlist = packNetworkAllowlist(pack);
-    applyRuntimeAppIdentity(pack);
-    applyRuntimeMenu();
-    registerRuntimeProtocol(allowHttp, networkAllowlist);
-    sidecarHost = createSidecarHost(pack);
-    registerRuntimeIpc();
-    startPreviewControlServer(pack);
-    // Confine the renderer to the app protocol before it loads any document
-    // unless the project opted into HTTP - and unconditionally when a test asked
-    // for a network-less run, which overrides the project's own flag.
-    installRuntimeNetworkPolicy(session.defaultSession, {
-        allowHttp,
-        allowlist: networkAllowlist,
-        blockAll: testNetworkBlocked,
-    });
-    mainWindow = createWindow(pack);
+    let window: BrowserWindow;
+    let sidecars: SidecarHost;
+    try {
+        const allowHttp = pack.network?.allowHttp === true;
+        const networkAllowlist = packNetworkAllowlist(pack);
+        applyRuntimeAppIdentity(pack);
+        applyRuntimeMenu();
+        registerRuntimeProtocol(allowHttp, networkAllowlist);
+        sidecars = createSidecarHost(pack);
+        sidecarHost = sidecars;
+        registerRuntimeIpc();
+        startPreviewControlServer(pack);
+        // Confine the renderer to the app protocol before it loads any document
+        // unless the project opted into HTTP - and unconditionally when a test asked
+        // for a network-less run, which overrides the project's own flag.
+        installRuntimeNetworkPolicy(session.defaultSession, {
+            allowHttp,
+            allowlist: networkAllowlist,
+            blockAll: testNetworkBlocked,
+        });
+        window = createWindow(pack);
+        mainWindow = window;
+    } catch (error) {
+        // A pack that opened but that the window cannot be set up from - measured: an entry that
+        // names no surface kind threw from inside `createWindow`. This function is async, so a throw
+        // here is a rejection, which the game records and survives (see `mainProcessErrors`) - and
+        // survived with no window, for nobody, until it was killed. Nothing here has run yet that
+        // the player could lose, so it is a launch that did not start, like a pack that would not
+        // open.
+        const described = describeRuntimeError(error);
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's window could not be set up: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
+        return;
+    }
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
-    sidecarHost.startAutostart();
+    sidecars.startAutostart();
     // A preview stopped while it was still booting quits mid-load, and the pending navigation then
     // rejects with ERR_FAILED. That is the shutdown working, not a failure to report - and the
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
-    await mainWindow.loadURL(buildGameRuntimeIndexUrl({
+    windowCreatedAt = Date.now();
+    await window.loadURL(buildGameRuntimeIndexUrl({
         policy: normalizeGameCrashPolicy(pack.crash?.policy),
         logPath: runtimeLogPath(userDataDir),
+        launch: gameLaunchTiming(),
     })).catch(error => {
         if (isQuitting) {
             return;
         }
-        throw error;
+        // Not rethrown: a page that will not load is the window's crash handling's to decide, and
+        // it has almost always decided already from the same failure's `did-fail-load`. Rethrown, it
+        // became a rejection the game records and survives - with an empty window in front of the
+        // player for as long as the process lived.
+        mainWindowCrashHandling?.loadRejected(error);
     });
 });
 
@@ -607,7 +820,7 @@ process.on("exit", () => {
  * server for anything to subscribe on. That is what makes {@link emitTestEvent} safe to call from
  * anywhere, including a crash handler - with no subscribers it does nothing at all.
  *
- * Declared above the error monitor below rather than after it, so an exception thrown while this
+ * Declared above the error reporting below rather than after it, so an exception thrown while this
  * module is still evaluating finds an initialised set instead of a temporal-dead-zone error that
  * would replace the real crash with a bogus one.
  */
@@ -616,46 +829,46 @@ const testSubscribers = new Set<WebSocket>();
 /** `ws` readyState for an open socket; compared numerically so no `ws` value import is needed. */
 const WEBSOCKET_OPEN = 1;
 
-function describeRuntimeError(error: unknown): { message: string; stack?: string } {
-    if (error instanceof Error) {
-        return {
-            message: error.message || String(error),
-            ...(error.stack ? { stack: error.stack } : {}),
-        };
-    }
-    return { message: String(error) };
-}
-
 /**
- * Report an uncaught error in the game's main process without changing what happens next.
+ * Take over every error nobody caught in the game's main process. An exception ends the game - the
+ * log, a test that is watching, the save and persistence stores written out within the close budget,
+ * the fatal box, exit `GAME_EXIT_CODES.crashed`; a rejection is recorded and the game carries on. See
+ * `mainProcessErrors` for what Electron does with each on its own (measured, and not what Node does)
+ * and why the two are treated differently.
  *
- * `uncaughtExceptionMonitor` rather than `uncaughtException` / `unhandledRejection`: registering
- * either of those *replaces* Node's default handling, and the default is to die. A game left alive
- * after an uncaught exception - half-initialised, its invariants gone - is a worse bug than the
- * missing report this hook exists to fix, and a test watching that wreck would call it a pass.
- * The monitor observes and the process still ends exactly as it would have. Unhandled rejections
- * arrive here too: Node's default mode raises them as uncaught exceptions.
+ * The flush is the half of `before-quit` that a player would miss: the stores' queued writes. The
+ * other half, a polite shutdown of the sidecars, is not waited for - a crash kills them on the way out
+ * (`exit` below, and the process `exit` hook), which is what they are built to survive.
  *
- * Best-effort by nature - the frame is written to the socket on the way out, and a process that
- * dies before the kernel drains it loses the message. Studio still classifies the death from the
- * exit code, so a lost frame costs detail, not the verdict.
+ * The report to a test is best-effort by nature - the frame is written to the socket on the way, and
+ * a process that dies before the kernel drains it loses the message. Studio classifies the run from
+ * the exit code as well, so a lost frame costs detail, not the verdict.
+ *
+ * Registered here, below `testSubscribers`, so an error thrown while this module is still evaluating
+ * finds the set initialised.
  */
-process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
-    const described = describeRuntimeError(error);
-    const headline = origin === "unhandledRejection"
-        ? `Unhandled rejection: ${described.message}`
-        : described.message;
-    emitTestEvent({
-        kind: "runtime-error",
-        scope: "main",
-        message: headline,
-        ...(described.stack ? { stack: described.stack } : {}),
-    });
-    // Written before the box below, so the record survives even if drawing it is what fails. Both
-    // are new: this used to report to a test nobody was running and then let the process disappear
-    // off the player's screen without a word.
-    logRuntime("error", `[Crash] ${headline}${described.stack ? `\n${described.stack}` : ""}`);
-    reportFatalRuntimeError(headline);
+const endGameAfterCrash = createCrashTeardown({
+    log: logRuntime,
+    flushForCrash: () => {
+        isQuitting = true;
+        return Promise.allSettled([saveStore?.flush(), persistenceStore?.flush()]);
+    },
+    crashFlushBudgetMs: CLOSE_TEARDOWN_DEADLINE_MS,
+    reportFatal: reportFatalRuntimeError,
+    exit: code => {
+        isQuitting = true;
+        sidecarHost?.killAllSync();
+        app.exit(code);
+    },
+});
+
+installMainProcessErrorReporting({
+    on: (event: "uncaughtException" | "unhandledRejection", listener: (...args: never[]) => void) => {
+        process.on(event, listener as (...args: unknown[]) => void);
+    },
+    log: logRuntime,
+    emitTestEvent: event => emitTestEvent(event),
+    endAfterCrash: endGameAfterCrash,
 });
 
 /**
@@ -667,6 +880,26 @@ process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
  *
  * Wrapped whole. A failure to report a fatal error must not become a second fatal error.
  */
+/**
+ * Tell the player that a patch or a DLC beside the game needs a newer version of it.
+ *
+ * The same box a fatal error uses, and for the same reason: it needs no window, and this fires
+ * while the game is still starting. It is not fatal, though - the game runs on its own content
+ * exactly as it did - so it says which files did nothing and then gets out of the way.
+ *
+ * The files are named because that is what the player can act on. Why the build cannot read them is
+ * not: a version number in front of somebody who installed a file is a fact about the game, not
+ * about anything they can change.
+ */
+function reportContentTooNew(files: readonly string[]): void {
+    try {
+        const text = shellText();
+        dialog.showErrorBox(gameDisplayName(), `${text.contentTooNew}\n\n${text.contentNotApplied(files)}`);
+    } catch {
+        /* No window server, or a dialog that refused. The layer reader has already logged each file. */
+    }
+}
+
 function reportFatalRuntimeError(headline: string): void {
     try {
         const text = shellText();
@@ -795,6 +1028,21 @@ async function readPack(): Promise<GameRuntimePackV1> {
     return packPromise;
 }
 
+/**
+ * What the window is called: the game's name, and for a preview which of its two forms this is.
+ *
+ * A shipped game is only ever the project's name. A preview is the author's own window and can be
+ * either of two artifacts - loose files, or the same sealed store a protected build ships - and
+ * those differ in what an asset can be asked for and in which runtime files can be read at all. The
+ * title is where that is legible; a preview that had opened without saying so would send an author
+ * looking for the difference in their project.
+ */
+function gameWindowTitle(pack: GameRuntimePackV1): string {
+    return pack.mode === "preview"
+        ? shellText().previewTitle(pack.project.name, shellSealed)
+        : pack.project.name;
+}
+
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     const design = resolveInitialWindowSize(pack);
     windowConfig = normalizeWindowConfiguration(pack.bundle?.window);
@@ -829,8 +1077,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
         || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
+    const windowTitle = gameWindowTitle(pack);
     const win = new BrowserWindow({
-        title: pack.project.name,
+        title: windowTitle,
         // The design size is the STAGE, not the window: Electron's width/height are the outer size,
         // so without this a 1920x1080 project was drawn into a client area a title bar shorter than
         // it asked for and scaled to about 0.97 on the display it was made for.
@@ -871,9 +1120,12 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             additionalArguments: [
                 buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
             ],
+            // A test's game keeps painting and keeping time when it is not on screen - see
+            // `testDriven`. Every other window keeps Chromium's default.
+            ...(testDriven ? { backgroundThrottling: false } : {}),
         },
     });
-    win.setTitle(pack.project.name);
+    win.setTitle(windowTitle);
     windowDesign = design;
     /*
      * The frame, and then the geometry again.
@@ -966,9 +1218,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         event.preventDefault();
     });
     if (process.platform !== "darwin") {
-        // The window carries a menu of its own, and `autoHideMenuBar` only hides
-        // it - Alt would still pull it back down over the game. Removing it is
-        // what makes the bar unreachable rather than merely out of sight.
+        // The window carries a menu of its own, and `autoHideMenuBar` only hides it - Alt would
+        // still pull it back down over the game. Removing it is what makes the bar unreachable
+        // rather than merely out of sight. A game whose author wrote a menu gets one back here
+        // later, through `applyGameMenu`, which also re-measures what the strip costs the stage.
         win.removeMenu();
     }
     // Show on first paint. The timer is a safety net: a renderer that never
@@ -993,6 +1246,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     let closeDecisionPending = false;
     win.on("close", event => {
         if (isQuitting || closeApproved || win.isDestroyed()) {
+            // Nothing is holding this close any more, so everything from here to the window
+            // disappearing is teardown - the renderer's unload handlers and the page process going
+            // away, neither of which the player has any reason to watch the window sit through.
+            retireWindowFromScreen(win);
             return;
         }
         event.preventDefault();
@@ -1026,7 +1283,18 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("enter-full-screen", emitFullscreen(true));
     win.on("leave-full-screen", emitFullscreen(false));
-    installWindowCrashHandling(win, {
+    // The same shape for the window gaining and losing the player's attention, feeding
+    // `On Window Focus Changed` and the "mute when unfocused" preference. From the window rather
+    // than from the page's own focus events, so what the game hears is what the player did to the
+    // window - and so Dev Mode, a preview and this build all hear it from the same kind of place.
+    const emitWindowFocus = (isFocused: boolean) => () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, isFocused);
+        }
+    };
+    win.on("focus", emitWindowFocus(true));
+    win.on("blur", emitWindowFocus(false));
+    mainWindowCrashHandling = installWindowCrashHandling(win, {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
@@ -1035,11 +1303,15 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,
         isQuitting: () => isQuitting,
-        quit: () => {
+        failedToStart: (reason, headline) => {
             isQuitting = true;
-            app.quit();
+            refuseToStart(startupRefusalHost, {
+                kind: "failed",
+                reason,
+                tellPlayer: () => reportFatalRuntimeError(headline),
+            });
         },
-        reportFatal: reportFatalRuntimeError,
+        endAfterCrash: endGameAfterCrash,
         ask: async request => (await dialog.showMessageBox(win, {
             type: "warning",
             title: request.title,
@@ -1051,10 +1323,19 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             noLink: true,
         })).response,
         now: () => Date.now(),
+        launch: gameLaunchTiming,
     });
     // Auto mode plays for an hour without a single input, which the system reads as an idle
     // machine; the renderer says when the story is moving on its own and this holds the display
     // for as long as it is, and the window is on screen.
+    // A page that is going away takes its menu with it. The renderer publishes the bar, so the one
+    // that comes back publishes it again - and a build whose menu plugin was removed must not keep
+    // the last page's rows on a window nothing is listening behind.
+    win.webContents.on("did-start-loading", () => {
+        if (!isGameMenuModelEmpty(gameMenuModel)) {
+            applyGameMenu(EMPTY_GAME_MENU_MODEL);
+        }
+    });
     displaySleep = installDisplaySleepInhibitor(win, {
         hold: () => powerSaveBlocker.start("prevent-display-sleep"),
         release: id => {
@@ -1074,6 +1355,33 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         });
     }
     return win;
+}
+
+/**
+ * Take a closing window off screen, and destroy it if the close does not finish in time.
+ *
+ * The hide is the point. A close that has been approved still has to run the page's `beforeunload`
+ * and `unload` handlers and tear the page process down, and until that finishes the window is on
+ * screen and answering nothing - which on macOS is a spinning cursor over a window that will not go
+ * away. Ordered out first, the same work happens with nothing to look at.
+ *
+ * A fullscreen window on macOS is left where it is: hiding it orders it out of a Space the system
+ * then has to collapse on its own, which looks worse than the wait it saves.
+ */
+function retireWindowFromScreen(win: BrowserWindow): void {
+    if (win.isDestroyed()) {
+        return;
+    }
+    if (win.isVisible() && !(process.platform === "darwin" && win.isFullScreen())) {
+        win.hide();
+    }
+    // Unreferenced so a quit that is otherwise finished is not held open by this timer.
+    setTimeout(() => {
+        if (!win.isDestroyed()) {
+            logRuntime("warning", "[Window] the window did not finish closing in time; destroying it");
+            win.destroy();
+        }
+    }, CLOSE_TEARDOWN_DEADLINE_MS).unref();
 }
 
 /**
@@ -1104,19 +1412,21 @@ function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
 }
 
 /**
- * No mode ships Electron's default menu: it carries Reload and DevTools items
- * (and their accelerators) that have no place above a game, and a menu bar is
- * chrome the author's surface layout never accounts for. Preview is held to the
- * same rule deliberately - a playtest that grows a menu bar is not the window
- * the player gets - and it loses nothing, because preview's DevTools is on F12
- * and its reload comes from the Studio recompiling, neither of which was ever
- * the menu's doing.
+ * The bar a game starts with: Electron's default menu, never.
  *
- * macOS cannot simply drop the menu. It is the process's only route to Quit,
- * and the Edit roles are what make Cmd+C/V work inside a text field at all
- * (the OS routes those through the menu, so a game with no Edit menu has a save
- * name box nothing can be pasted into). That platform therefore keeps the
- * smallest set that leaves the OS's own operations intact, and nothing beyond it.
+ * It carries Reload and DevTools items (and their accelerators) that have no place above a game,
+ * and preview is held to the same rule - preview's DevTools is on F12 and its reload comes from
+ * Studio recompiling, neither of which was ever the menu's doing.
+ *
+ * What a game may have instead is the menu its author wrote, which arrives later and through
+ * `applyGameMenu` (see `gameMenu.ts`). Preview gets that one on exactly the same terms as
+ * production, and deliberately so: once a shipped game can have a bar, a playtest WITHOUT one is
+ * the window that is not what the player gets.
+ *
+ * macOS cannot simply drop the menu. It is the process's only route to Quit, and the Edit roles are
+ * what make Cmd+C/V work inside a text field at all (the OS routes those through the menu, so a
+ * game with no Edit menu has a save name box nothing can be pasted into). That platform therefore
+ * keeps the smallest set that leaves the OS's own operations intact, and nothing beyond it.
  */
 function applyRuntimeMenu(): void {
     if (process.platform === "darwin") {
@@ -1130,11 +1440,95 @@ function applyRuntimeMenu(): void {
     }
 }
 
+/**
+ * Take the frame's measurements again, and put the window back inside the screen.
+ *
+ * Windows and Linux lay the menu bar out INSIDE the window, so a bar arriving or leaving changes
+ * what the frame costs - and the first frame, every offered scale and every `setContentSize` are
+ * measured against that number. Asking the window again is the only honest way to get it: the strip
+ * depends on the platform, the theme and the display's scaling, exactly as the border does (which
+ * is why the border is measured rather than assumed - see `createWindow`).
+ *
+ * Re-applying the content size afterwards is not a resize of the stage: it asks for the size the
+ * stage already has, and `applyWindowContentSize` clamps the pair to the work area. That is what
+ * catches the case this exists for - a window that fitted the desktop exactly until a menu bar made
+ * it a strip taller, which Windows would otherwise silently clip off the bottom.
+ */
+function remeasureWindowChrome(): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || win.isFullScreen() || win.isMaximized()) {
+        return;
+    }
+    const outer = win.getBounds();
+    const [contentWidth, contentHeight] = win.getContentSize();
+    windowChrome = {
+        width: Math.max(0, outer.width - contentWidth),
+        height: Math.max(0, outer.height - contentHeight),
+    };
+    applyWindowContentSize(contentWidth, contentHeight);
+}
+
+/** Report a pick to the page that drew the menu. Nothing here knows what the item does. */
+function dispatchGameMenuCommand(itemId: string): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    win.webContents.send(GAME_RUNTIME_MENU_COMMAND_CHANNEL, { itemId });
+}
+
+/**
+ * Put the game's menu on the window, or take it away.
+ *
+ * The bar is the window's on Windows and Linux and the application's on macOS, which is not a
+ * detail: a per-window menu goes away with the window, while the macOS one is the process's only
+ * route to Quit and to a working clipboard inside a text field, so that platform is handed a
+ * template that still carries them (see `buildGameMenuTemplate`).
+ */
+function applyGameMenu(model: GameMenuModel): void {
+    gameMenuModel = model;
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    const template = buildGameMenuTemplate(model, process.platform, dispatchGameMenuCommand);
+    if (process.platform === "darwin") {
+        Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+        // Nothing to re-measure: the macOS bar is the system's own strip at the top of the screen
+        // and costs the window not one pixel.
+        return;
+    }
+    if (template.length === 0) {
+        win.removeMenu();
+    } else {
+        win.setMenu(Menu.buildFromTemplate(template));
+        // Both, and neither is redundant: the window was built with `autoHideMenuBar` so a bar left
+        // on auto-hide would only appear when the player pressed Alt, and a game whose author put a
+        // menu there means it to be visible.
+        win.setAutoHideMenuBar(false);
+        win.setMenuBarVisibility(true);
+    }
+    remeasureWindowChrome();
+}
+
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
     crashPolicy = normalizeGameCrashPolicy(pack.crash?.policy);
     // Also the title of any error box after this point. Before it there is no name to use, which
     // is itself a fact worth keeping honest rather than papering over with the product's name.
     loadedPackName = pack.project.name;
+    loadedBuildIdentity = {
+        gameName: pack.project.name,
+        gameVersion: pack.project.version ?? null,
+        studioVersion: pack.runtimeVersion ?? null,
+        engineVersion: pack.engineVersion ?? null,
+        mode: pack.mode ?? null,
+        builtAt: pack.generatedAt ?? null,
+        // The revision only; the branch is not in a pack at all, and deliberately - a build made on
+        // a branch the author named after a plot twist would be announcing it to every player.
+        projectRevision: pack.projectRevision
+            ? { id: pack.projectRevision.id, number: pack.projectRevision.number }
+            : null,
+    };
     app.setName(pack.project.name);
     app.setAboutPanelOptions({
         applicationName: pack.project.name,
@@ -1267,24 +1661,31 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
-                // Bundled runtime files come from the store; anything the store
-                // does not hold falls back to a loose read from the app dir. The
-                // document goes through the same door as the rest now that a
-                // protected build keeps it there too - it just has the CSP put
-                // into it on the way out.
-                const wanted = isIndexDocument(pathname) ? "index.html" : trimLeadingSlashes(pathname);
-                const bundled = await runtimeResources().readRuntimeFile(wanted);
+                // The document goes through the same door as the rest now that a protected build
+                // keeps it there too - it just has the CSP put into it on the way out.
                 if (isIndexDocument(pathname)) {
+                    const bundled = await runtimeResources().readRuntimeFile("index.html");
                     return serveIndexDocument(
-                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, pathname)),
+                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, "index.html")),
                         allowHttp,
                         allowlist,
                     );
                 }
-                if (bundled) {
-                    return serveBytes(bundled, getMimeType(pathname));
+                // Only what the page loads by URL - the shell's two bundles and the code the pack
+                // carries - is answered here, from the store when the build is sealed and from the
+                // app directory otherwise. The app directory also holds the store, the file beside
+                // it, the codec and the loaders Electron opens itself; none of those is a page
+                // resource, and a request for one is refused whatever the page meant to do with
+                // the bytes.
+                const wanted = resolveRuntimeHostFile(pathname);
+                if (!wanted) {
+                    return new Response("Not found", { status: 404 });
                 }
-                return serveFile(resolveRuntimeStaticPath(appDir, pathname));
+                const bundled = await runtimeResources().readRuntimeFile(wanted);
+                if (bundled) {
+                    return serveBytes(bundled, getMimeType(wanted));
+                }
+                return serveFile(resolveRuntimeStaticPath(appDir, wanted));
             }
             if (url.hostname === "pack") {
                 return serveBytes(await runtimeResources().readPack(), "application/json");
@@ -1494,15 +1895,6 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
-/** Drop the leading slashes a protocol path arrives with; a store entry has none. */
-function trimLeadingSlashes(pathname: string): string {
-    let at = 0;
-    while (at < pathname.length && pathname[at] === "/") {
-        at += 1;
-    }
-    return pathname.slice(at);
-}
-
 async function serveIndexDocument(
     document: Buffer,
     allowHttp: boolean,
@@ -1585,6 +1977,90 @@ function registerRuntimeIpc(): void {
     });
     ipcMain.handle("runtime:window:setSize", (_event, size: { width?: number; height?: number }) => {
         applyWindowContentSize(Number(size?.width), Number(size?.height));
+    });
+    // The renderer owns what the menu says; this only draws it. `normalizeGameMenuSpec` already ran
+    // on the far side, but the model still arrives over IPC, so the shapes are read defensively
+    // here rather than trusted - a malformed item drops out instead of taking the bar down.
+    ipcMain.handle("runtime:menu:set", (_event, model: unknown) => {
+        applyGameMenu(normalizeGameMenuModel(model));
+    });
+    ipcMain.handle("runtime:window:isFocused", () => mainWindow?.isFocused() === true);
+    // What the game's processes hold in memory, for a plugin granted `process.memory`. Every process
+    // this app has - the game is all of them - with the page's own marked. Nothing here is decided by
+    // the renderer: the list is the operating system's, read the moment it is asked for.
+    ipcMain.handle("runtime:processMemory:read", () => summarizeGameProcessMemory(app.getAppMetrics(), {
+        currentPid: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getOSProcessId() : null,
+    }));
+    /*
+     * The Save Screenshot family.
+     *
+     * Here because this is the process that can do it: `capturePage` is the window's, and the
+     * directory is one only this side knows - `screenshots/` beside the player's saves, so a
+     * screenshot lands wherever the author said player files go, travels with a game moved to
+     * another drive, and is somewhere a player looking for one would look. Nothing about the path
+     * comes from the renderer.
+     */
+    const screenshotsDir = () => path.join(playerFilesDir, BLUEPRINT_SCREENSHOTS_DIR_NAME);
+    ipcMain.handle("runtime:screenshot:save", async () => {
+        const win = mainWindow;
+        if (!win || win.isDestroyed()) {
+            return { outcome: "failed" as const, path: null, error: "There is no window to capture." };
+        }
+        return writeScreenshotFile({
+            directory: screenshotsDir(),
+            capture: async () => (await win.webContents.capturePage()).toPNG(),
+        });
+    });
+    ipcMain.handle("runtime:screenshot:openFolder", () => openScreenshotsFolder({
+        directory: screenshotsDir(),
+        openPath: directory => shell.openPath(directory),
+    }));
+    /*
+     * The crash screen's report file.
+     *
+     * Here because this is the process that can do it: the log is this side's, so is the profile
+     * directory, and so is the machine the game is running on. The page states only what a page
+     * knows - the failure it is drawing and where the story had got to - and nothing about the path
+     * comes from it.
+     *
+     * `showItemInFolder` rather than opening the file: the player is being handed something to send,
+     * so what they want is the file selected in a window they can drag it out of. It starts nothing
+     * of ours, which is why it needs no gate of its own.
+     */
+    ipcMain.handle("runtime:crash:saveReport", (_event, request: GameCrashReportRequest) => {
+        const result = writeCrashReport({
+            userDataDir,
+            // Read defensively rather than trusted: this arrives from a renderer that has just
+            // stopped drawing, and a malformed field must not be the second failure.
+            request: {
+                details: String(request?.details ?? ""),
+                language: String(request?.language ?? ""),
+                story: request?.story
+                    ? {
+                        storyName: String(request.story.storyName ?? ""),
+                        sceneName: String(request.story.sceneName ?? ""),
+                        ...(request.story.rowId ? { rowId: String(request.story.rowId) } : {}),
+                    }
+                    : null,
+            },
+            build: loadedBuildIdentity,
+            machine: {
+                platform: process.platform,
+                arch: process.arch,
+                osRelease: os.release(),
+                electron: process.versions.electron ?? null,
+                chrome: process.versions.chrome ?? null,
+            },
+            homeDirectory: os.homedir(),
+            reveal: filePath => shell.showItemInFolder(filePath),
+        });
+        logRuntime(
+            result.outcome === "written" ? "info" : "warning",
+            result.outcome === "written"
+                ? `[Crash] Wrote the crash report to ${result.path}`
+                : `[Crash] Could not write the crash report: ${result.error}`,
+        );
+        return result;
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

@@ -256,6 +256,16 @@ function stopPickerPointerBubble(event: { stopPropagation: () => void }) {
     event.stopPropagation();
 }
 
+/**
+ * The three things a commit carries, as one comparable string.
+ *
+ * Alpha is rounded before comparison: a drag that lands back where it started arrives through the
+ * HSL round trip rather than untouched, so an exact float test would report an edit that is not one.
+ */
+function committedValueKey(state: ColorState, link: string | undefined): string {
+    return `${state.hex.toUpperCase()}|${state.alpha.toFixed(4)}|${link ?? ""}`;
+}
+
 export function ColorPickerTrigger({
     value,
     displayMode = "icon",
@@ -324,6 +334,8 @@ export function ColorPickerTrigger({
     const onCommitRef = useRef(onCommit);
     onCommitRef.current = onCommit;
     const pendingPushHexRef = useRef<string | null>(null);
+    /** The colour the panel opened on, or null while it is closed. See {@link closePicker}. */
+    const openedValueRef = useRef<string | null>(null);
     const lastMapPushAtRef = useRef(0);
     const lastMapInteractionRef = useRef(false);
     const actualModes = useMemo(
@@ -516,6 +528,9 @@ export function ColorPickerTrigger({
      */
     const openPicker = useCallback(() => {
         if (disabled) return;
+        // What the panel opened on, so closing it can tell "the author chose this colour" from "the
+        // author looked at it". See `closePicker`.
+        openedValueRef.current = committedValueKey(colorStateRef.current, activeBrandLinkRef.current);
         syncAnchorRect();
         setIsOpen(true);
     }, [disabled, syncAnchorRect]);
@@ -528,11 +543,22 @@ export function ColorPickerTrigger({
         setIsDragging(false);
         setIsOpen(false);
         setAnchorRect(null);
-        onCommitRef.current?.({
+        const value: ColorValue = {
             hex: colorStateRef.current.hex,
             alpha: colorStateRef.current.alpha,
             ...(activeBrandLinkRef.current ? { link: activeBrandLinkRef.current } : {}),
-        });
+        };
+        // Opening the panel to read a colour and closing it again is not an edit, so it commits
+        // nothing. Three call sites each carried their own version of this guard and the rest did
+        // not, which is what made a field that stores "no colour" as *absent* - a character's accent,
+        // an icon's background - acquire one from being looked at: the picker opens on a starting
+        // point for the eye, and the close wrote that starting point in as a choice.
+        const opened = openedValueRef.current;
+        openedValueRef.current = null;
+        if (opened !== null && opened === committedValueKey(colorStateRef.current, activeBrandLinkRef.current)) {
+            return;
+        }
+        onCommitRef.current?.(value);
     }, [flushPendingMapDragNotify]);
 
     useEffect(() => {
@@ -1090,6 +1116,15 @@ export function ColorPickerTrigger({
             disabled={disabled}
             aria-readonly={readOnly || undefined}
             aria-label={ariaLabel}
+            // A bare swatch draws no fill of its own - the caller frames it and paints that frame -
+            // EXCEPT while the panel is open, when it shows the colour the panel is holding. The two
+            // are not the same thing: a frame paints the value the caller has stored, and the panel
+            // is where a colour is built, one pointer move at a time, before any of it is stored. Two
+            // of the three display modes already followed the drag (they paint `displayColor`); this
+            // one sat on the pre-drag colour, so the author judged their new colour against a swatch
+            // still showing the old one. Closed, the frame is the truth again, which is what keeps
+            // the settings window's hue wheel meaning "pick anything".
+            style={isBareSwatch && isOpen ? { backgroundColor: displayColor } : undefined}
             className={
                 isBareSwatch
                     // No box, no padding: the caller frames this one itself. It still needs a focus

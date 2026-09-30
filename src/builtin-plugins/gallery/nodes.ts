@@ -335,6 +335,10 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         // ---------------------------------------------------------------
         {
             type: `${PLUGIN_ID}.getEntries`,
+            // Every string this hands out is read from the catalogue the author wrote, which ships
+            // with the game as published data - so a picture or a track taken from a row is one the
+            // package carries. The other readers below say the same for the same reason.
+            assetNames: "written",
             displayName: "Get Gallery",
             category: "Gallery",
             keywords: ["gallery", "cg", "entries", "items", "list", "grid", "array", "artworks"],
@@ -375,6 +379,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         },
         {
             type: `${PLUGIN_ID}.getVariants`,
+            assetNames: "written",
             displayName: "Get Gallery Variants",
             category: "Gallery",
             keywords: ["gallery", "variant", "differential", "cg", "list", "array", "strip"],
@@ -412,6 +417,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         },
         {
             type: `${PLUGIN_ID}.getGroups`,
+            assetNames: "written",
             displayName: "Get Gallery Groups",
             category: "Gallery",
             keywords: ["gallery", "group", "category", "chapter", "tab", "section", "array"],
@@ -575,6 +581,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         // ---------------------------------------------------------------
         {
             type: `${PLUGIN_ID}.getVariant`,
+            assetNames: "written",
             displayName: "Get Gallery Variant At",
             category: "Gallery",
             keywords: ["gallery", "variant", "image", "cg", "differential", "index", "step"],
@@ -647,6 +654,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         },
         {
             type: `${PLUGIN_ID}.getCover`,
+            assetNames: "written",
             displayName: "Get Gallery Cover",
             category: "Gallery",
             keywords: ["gallery", "cover", "thumbnail", "image", "cg"],
@@ -701,6 +709,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         },
         {
             type: `${PLUGIN_ID}.getArtworkAt`,
+            assetNames: "written",
             displayName: "Get Gallery Artwork At",
             category: "Gallery",
             keywords: ["gallery", "artwork", "index", "iterate", "cg"],

@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { isVersioned } from "@shared/vcs/workingSet";
 import { COMPARISON_PREVIEW_BYTE_CEILING } from "./diff/documentDiff";

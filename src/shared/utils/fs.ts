@@ -1,7 +1,12 @@
 import path from "path";
-import fs from "fs/promises";
-import {Dirent, default as fsSync, Stats} from "fs";
+import type {Dirent, Stats} from "fs";
+import type { FileHandle } from "fs/promises";
 import {randomBytes} from "crypto";
+// Unpatched on purpose. Everything that goes through `Fs` - the renderer's file-system facade, the
+// `app://fs` protocol, document storage, the build's measurements - reaches files an author owns.
+// Studio's own archive (the bundles, `public`, package.json inside app.asar) is read with the patched
+// module where that happens, never through `Fs`: nothing here can reach inside it. See unpatchedFs.ts.
+import {unpatchedFs as fsSync, unpatchedFsPromises as fs} from "./unpatchedFs";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
 import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
@@ -71,6 +76,53 @@ export class Fs {
     }
 
     /**
+     * Open a regular file for reading and report its size, for a caller that serves it in pieces
+     * rather than holding all of it at once.
+     *
+     * The size is taken from the open handle, not from a separate `stat` of the path, so a response
+     * that declares a length and then reads bytes gets both from the same file even if the path is
+     * replaced in between. A directory opens without complaint on Windows, so it is refused here with
+     * the `EISDIR` a {@link readRaw} of it would have raised. The caller owns the handle and must
+     * close it.
+     */
+    public static openForRead(path: string): Promise<FsRequestResult<{ handle: FileHandle; size: number }>> {
+        return this.wrap((async () => {
+            const handle = await fs.open(path, "r");
+            try {
+                const stats = await handle.stat();
+                if (!stats.isFile()) {
+                    throw this.createNodeError("EISDIR", `Not a file: ${path}`);
+                }
+                return { handle, size: stats.size };
+            } catch (error) {
+                await handle.close().catch(() => undefined);
+                throw error;
+            }
+        })());
+    }
+
+    /**
+     * Bytes `start..start+length-1` of a file opened with {@link openForRead}, in one buffer.
+     *
+     * Shorter than `length` only when the file shrank after it was measured, so a caller reports the
+     * length it actually has rather than the one it expected. The handle stays open either way.
+     */
+    public static readSpan(handle: FileHandle, start: number, length: number): Promise<FsRequestResult<Buffer>> {
+        return this.wrap((async () => {
+            const buffer = Buffer.alloc(length);
+            let filled = 0;
+            while (filled < length) {
+                const { bytesRead } = await handle.read(buffer, filled, length - filled, start + filled);
+                if (bytesRead === 0) {
+                    break;
+                }
+                filled += bytesRead;
+            }
+            return filled === length ? buffer : buffer.subarray(0, filled);
+        })());
+    }
+
+    /**
      * Write a file so that a reader only ever sees the old contents or the new ones.
      *
      * The signature is unchanged; only the mechanism is. `fs.writeFile` truncates the target and
@@ -117,6 +169,36 @@ export class Fs {
                 throw error;
             }
         })());
+    }
+
+    /**
+     * Create `path` with `data`, and say whether this call is the one that created it.
+     *
+     * `data: true` means the file was not there and now is; `data: false` means something else was
+     * already at that path and nothing was written. Both are successes, because the question this
+     * verb answers is "did I get it", and only one caller can.
+     *
+     * This is the primitive a lock file needs and the one neither neighbour provides.
+     * {@link ensureRegularFile} performs the same `wx` create but reports nothing about which branch
+     * it took, so two processes calling it both come away believing they wrote the file; the atomic
+     * writers replace whatever is there, which for a lock is precisely the failure. The exclusivity
+     * is the filesystem's `O_EXCL`, so it holds between processes rather than only within one.
+     *
+     * Not atomic in the crash sense, deliberately: the payload is a few hundred bytes of JSON, and a
+     * temp-and-rename would have to replace the target, which is the guarantee being asked for here.
+     */
+    public static createFileExclusive(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<boolean>> {
+        return (async () => {
+            try {
+                await fs.writeFile(path, data, {encoding, flag: "wx"});
+                return {ok: true as const, data: true} satisfies FsRequestResult<boolean, true>;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+                    return {ok: true as const, data: false} satisfies FsRequestResult<boolean, true>;
+                }
+                return {ok: false, error: this.createError(error)} satisfies FsRequestResult<boolean, false>;
+            }
+        })();
     }
 
     /**
@@ -179,23 +261,6 @@ export class Fs {
             }
 
             await this.writeFileAtomicCore(path, Buffer.from(data, encoding), false);
-        })());
-    }
-
-    public static recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
-        return this.wrap((async () => {
-            const originalStat = await fs.lstat(path);
-            this.assertSafeFileStat(path, originalStat);
-
-            const handle = await this.openExistingFileNoFollow(path, originalStat);
-            try {
-                const corruptedContent = await handle.readFile();
-                await this.writeNewBackup(path, corruptedContent);
-
-                await this.replaceOpenFileContents(handle, replacement, encoding);
-            } finally {
-                await handle.close();
-            }
         })());
     }
 
@@ -638,51 +703,6 @@ export class Fs {
         }
     }
 
-    private static async replaceOpenFileContents(handle: Awaited<ReturnType<typeof fs.open>>, data: string, encoding: BufferEncoding): Promise<void> {
-        const buffer = Buffer.from(data, encoding);
-        await handle.write(buffer, 0, buffer.length, 0);
-        await handle.truncate(buffer.length);
-    }
-
-    private static async writeNewBackup(src: string, data: Buffer): Promise<void> {
-        for (let attempt = 0; attempt < 10; attempt++) {
-            const backupPath = attempt === 0
-                ? `${src}.bak`
-                : `${src}.bak.${Date.now()}.${process.pid}.${attempt}`;
-
-            try {
-                await fs.writeFile(backupPath, data, {flag: "wx"});
-                return;
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
-                    continue;
-                }
-                throw error;
-            }
-        }
-
-        throw this.createNodeError("EEXIST", `Unable to create a new backup file for ${src}`);
-    }
-
-    private static async openExistingFileNoFollow(filePath: string, expectedStat: Stats) {
-        const constants = fsSync.constants as typeof fsSync.constants & { O_NOFOLLOW?: number };
-        const flags = constants.O_RDWR | (constants.O_NOFOLLOW ?? 0);
-        const handle = await fs.open(filePath, flags);
-
-        try {
-            const currentStat = await handle.stat();
-            this.assertSafeFileStat(filePath, currentStat);
-            if (currentStat.dev !== expectedStat.dev || currentStat.ino !== expectedStat.ino) {
-                throw this.createNodeError("EINVAL", `Refusing to write changed file path: ${filePath}`);
-            }
-
-            return handle;
-        } catch (error) {
-            await handle.close();
-            throw error;
-        }
-    }
-
     private static createNodeError(code: string, message: string): NodeJS.ErrnoException {
         const error = new Error(message) as NodeJS.ErrnoException;
         error.code = code;
@@ -710,6 +730,8 @@ export class Fs {
                         return { code: FsRejectErrorCode.NOT_A_DIR, message: nodeError.message };
                     case 'EIO':
                         return { code: FsRejectErrorCode.IO_ERROR, message: nodeError.message };
+                    case 'ENOSPC':
+                        return { code: FsRejectErrorCode.NO_SPACE, message: nodeError.message };
                     default:
                         return { code: FsRejectErrorCode.UNKNOWN, message: nodeError.message };
                 }

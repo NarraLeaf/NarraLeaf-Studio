@@ -30,8 +30,7 @@
  * operating system is better at deciding whose packet goes first than a constant is.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import fs from "node:fs/promises";
+import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "node:path";
 import { Transform } from "node:stream";
 
@@ -422,7 +421,7 @@ export class TeamTransfers {
             return;
         }
 
-        const source = createReadStream(entry.localPath, { start: known.received });
+        const source = unpatchedFs.createReadStream(entry.localPath, { start: known.received });
         const answer = await sendBlob(target.target, {
             source: this.deps.slow() ? source.pipe(slowly(SLOW_BYTES_PER_SECOND)) : source,
             offset: known.received,
@@ -472,7 +471,7 @@ export class TeamTransfers {
         entry.bytes = already;
 
         if (already < entry.size) {
-            const sink = createWriteStream(staging, { flags: "a" });
+            const sink = unpatchedFs.createWriteStream(staging, { flags: "a" });
             let outcome: { status: number; wrote: number };
             try {
                 outcome = await receiveBlob(target.target, {
@@ -666,7 +665,7 @@ export function partial(destination: string): string {
 export async function measure(file: string): Promise<{ size: number; digest: string }> {
     const hash = createHash("sha256");
     let size = 0;
-    for await (const chunk of createReadStream(file)) {
+    for await (const chunk of unpatchedFs.createReadStream(file)) {
         const bytes = chunk as Buffer;
         size += bytes.length;
         hash.update(bytes);

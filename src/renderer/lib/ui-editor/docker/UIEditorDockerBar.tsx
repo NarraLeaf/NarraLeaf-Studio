@@ -21,7 +21,6 @@ import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { Select } from "@/lib/components/elements/Select";
 import { Component, MoreHorizontal, Search, X } from "lucide-react";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
 import {
     toReadOnlyDockerBarItems,
@@ -193,6 +192,14 @@ function PaletteDockerBar({
                     >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{mod.displayName}</span>
+                        {/*
+                          * Which plugin put this here. Only plugin widgets carry it, so the row
+                          * that says nothing is Studio's own - the author does not have to read a
+                          * label to know that.
+                          */}
+                        {entry.ownerPluginName ? (
+                            <span className="shrink-0 text-2xs text-fg-subtle">{entry.ownerPluginName}</span>
+                        ) : null}
                     </button>
                 );
             })}
@@ -894,9 +901,9 @@ export function UIEditorDockerBar({
         const doc = documentService.getDocument();
         return selection.data.elementIds
             .map((elementId) => doc.elements[elementId])
-            .filter((element): element is UIElement =>
-                Boolean(element) && element.type !== "nl.root" && !isComponentEditorRootElement(element)
-            );
+            // A component's frame gets its container's bar like any container; a page's root is not
+            // on the surface to be edited.
+            .filter((element): element is UIElement => Boolean(element) && element.type !== "nl.root");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selection, surfaceId, documentService, docVersion]);
     const selectedElement = selectedElements[selectedElements.length - 1] ?? null;

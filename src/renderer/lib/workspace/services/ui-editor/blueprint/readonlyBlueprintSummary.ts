@@ -1,7 +1,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
-import { getActiveBlueprintId } from "./ownerRecords";
+import { getSlotBlueprintId } from "./ownerRecords";
 import { componentWidgetMainOwnerKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
@@ -51,7 +51,7 @@ export function buildReadonlySurfaceMainSummary(
     surfaceId: string,
 ): ReadonlyBlueprintSurfaceSummary {
     const key = surfaceMainOwnerKey(surfaceId);
-    const blueprintId = getActiveBlueprintId(doc, key);
+    const blueprintId = getSlotBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
     if (!bp) {
         return emptyReadonlyBlueprintSurfaceSummary();
@@ -65,10 +65,7 @@ export function buildReadonlySurfaceMainSummary(
     const bindingCount = bindingList.length;
     const brokenBindingCount = bindingList.filter(b => b.status === "broken").length;
 
-    let eventGraphCount = 0;
-    if (bp.program.kind === "graph") {
-        eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
-    }
+    const eventGraphCount = Object.keys(bp.graphs.events ?? {}).length;
 
     return {
         hasSurfaceMain: true,
@@ -92,7 +89,7 @@ export function buildReadonlyWidgetMainSummary(
     const key = options.componentId
         ? componentWidgetMainOwnerKey(options.componentId, element.id)
         : widgetMainOwnerKey(surfaceId, element.id);
-    const blueprintId = getActiveBlueprintId(doc, key);
+    const blueprintId = getSlotBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
     const supportedEventCount = listWidgetLogicEventIds(element.type).length;
     if (!bp || !blueprintId) {
@@ -110,10 +107,7 @@ export function buildReadonlyWidgetMainSummary(
     const bindingCount = bindingList.length;
     const brokenBindingCount = bindingList.filter(b => b.status === "broken").length;
 
-    let eventGraphCount = 0;
-    if (bp.program.kind === "graph") {
-        eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
-    }
+    const eventGraphCount = Object.keys(bp.graphs.events ?? {}).length;
 
     return {
         hasWidgetMain: true,

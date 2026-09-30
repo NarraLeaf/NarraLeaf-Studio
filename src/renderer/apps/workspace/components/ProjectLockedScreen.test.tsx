@@ -1,0 +1,156 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProjectLockedScreen } from "./ProjectLockedScreen";
+
+/**
+ * What a workspace shows when its project is open in another NarraLeaf Studio.
+ *
+ * Three things are pinned here, and each of them was a decision:
+ *
+ *  - the author is told the machine and the time, and nothing else the claim carries;
+ *  - recovery mode is not offered, because it opens the project in a shell that runs before the
+ *    check this screen is standing on;
+ *  - Retry is, because the other Studio closing is the ordinary way out of this.
+ */
+
+vi.mock("@/lib/i18n", async importOriginal => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: () => ({
+        // The key and its arguments, so the assertions read as "the host and the time reach the
+        // sentence" rather than as a snapshot of one language's wording.
+        t: (key: string, params?: Record<string, string>) =>
+            (params ? `${key}|${Object.entries(params).map(([k, v]) => `${k}=${v}`).join(",")}` : key),
+        has: () => false,
+        tn: (key: string, count: number) => `${key}(${count})`,
+        locale: "en",
+    }),
+}));
+
+const workspaceBridge = vi.hoisted(() => ({
+    close: vi.fn(),
+    returnToLauncher: vi.fn(),
+    openRecent: vi.fn(),
+    setRecoveryMode: vi.fn(),
+}));
+
+vi.mock("@/lib/app/bridge", () => ({
+    getInterface: () => ({
+        getWindowProps: vi.fn().mockResolvedValue({ success: true, data: { projectPath: "D:/games/demo" } }),
+        workspace: workspaceBridge,
+        app: { exportDiagnostics: vi.fn() },
+        selectFolder: vi.fn(),
+    }),
+}));
+
+// The window chrome is not what this screen is being asked about, and it reaches for a growing set
+// of window-control calls the moment it mounts. Everything else in the barrel stays real, including
+// the buttons the assertions below look for.
+vi.mock("@/lib/components", async importOriginal => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    TitleBar: ({ title }: { title: string }) => <header>{title}</header>,
+}));
+
+const ELSEWHERE = {
+    hostname: "studio-two",
+    startedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    sameHost: false,
+};
+
+afterEach(cleanup);
+
+describe("ProjectLockedScreen", () => {
+    it("names the machine holding the project and when it took it", () => {
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        const sentence = screen.getByText(/workspace\.shell\.projectLockedElsewhere/);
+        expect(sentence.textContent).toContain("host=studio-two");
+        expect(sentence.textContent).toMatch(/time=\d{1,2}[:.]\d{2}/);
+    });
+
+    it("says the machine is this one rather than naming it", () => {
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, sameHost: true }} onRetry={() => undefined} />);
+
+        // A hostname the reader owns reads as somebody else's computer.
+        expect(screen.getByText(/workspace\.shell\.projectLockedHere/)).toBeTruthy();
+        expect(screen.queryByText(/studio-two/)).toBeNull();
+    });
+
+    it("offers Retry and the launcher, and not recovery mode", () => {
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        expect(screen.getByText("workspace.shell.retry")).toBeTruthy();
+        expect(screen.getByText("workspace.shell.openLauncher")).toBeTruthy();
+        // Recovery mode reloads the window into a shell that never reaches the claim, so offering
+        // it here would be offering a way into a project a second Studio is editing.
+        expect(screen.queryByText("workspace.recovery.enter")).toBeNull();
+    });
+
+    it("goes back to the launcher from the launcher button, rather than only closing the window", () => {
+        // A plain close on the last window leaves Studio running in the tray with nothing on
+        // screen, which is not what a button called "Open launcher" promises.
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        screen.getByText("workspace.shell.openLauncher").click();
+
+        expect(workspaceBridge.returnToLauncher).toHaveBeenCalledTimes(1);
+        expect(workspaceBridge.close).not.toHaveBeenCalled();
+    });
+
+    it("shows no stack trace, because nothing here failed", () => {
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        expect(screen.queryByText("workspace.shell.showStackTrace")).toBeNull();
+    });
+});
+
+/**
+ * The same screen for a window that had the project and lost it: another Studio took it over while
+ * this one's heartbeat stood still, and this window stopped writing when it found out.
+ */
+describe("ProjectLockedScreen after a takeover", () => {
+    it("says the project is open elsewhere now, and that nothing here is saved any more", () => {
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText("workspace.shell.projectTakenOverTitle")).toBeTruthy();
+        const sentence = screen.getByText(/workspace\.shell\.projectTakenOverElsewhere/);
+        expect(sentence.textContent).toContain("host=studio-two");
+        expect(screen.queryByText(/workspace\.shell\.projectLocked/)).toBeNull();
+    });
+
+    it("says the machine is this one rather than naming it", () => {
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, sameHost: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText(/workspace\.shell\.projectTakenOverHere/)).toBeTruthy();
+        expect(screen.queryByText(/studio-two/)).toBeNull();
+    });
+
+    it("says the project was opened elsewhere, not that it is, once the other Studio has closed it", () => {
+        // Found only after the other Studio let go again: there is nothing left to close there, and
+        // "Retry once it has been closed there" would send the author looking for a window that is gone.
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, released: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText("workspace.shell.projectDisplacedTitle")).toBeTruthy();
+        const sentence = screen.getByText(/workspace\.shell\.projectDisplacedElsewhere/);
+        expect(sentence.textContent).toContain("host=studio-two");
+        expect(screen.queryByText(/workspace\.shell\.projectTakenOver/)).toBeNull();
+    });
+
+    it("says the machine is this one there too", () => {
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, sameHost: true, released: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText(/workspace\.shell\.projectDisplacedHere/)).toBeTruthy();
+        expect(screen.queryByText(/studio-two/)).toBeNull();
+    });
+
+    it("offers the same ways out, and still not recovery mode", () => {
+        const onRetry = vi.fn();
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={onRetry} takenOver />);
+
+        screen.getByText("workspace.shell.retry").click();
+        expect(onRetry).toHaveBeenCalledTimes(1);
+        expect(screen.getByText("workspace.shell.openLauncher")).toBeTruthy();
+        expect(screen.queryByText("workspace.recovery.enter")).toBeNull();
+        expect(screen.queryByText("workspace.shell.showStackTrace")).toBeNull();
+    });
+});

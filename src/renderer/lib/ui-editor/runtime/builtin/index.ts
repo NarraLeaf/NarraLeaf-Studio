@@ -15,7 +15,7 @@ import { SwitchRenderer } from "@/lib/ui-editor/widget-modules/builtin/switch/re
 import { TextInputRenderer } from "@/lib/ui-editor/widget-modules/builtin/textInput/renderer";
 import { DialogSentenceRenderer } from "@/lib/ui-editor/widget-modules/builtin/dialog/renderer";
 import { NvlTextsRenderer } from "@/lib/ui-editor/widget-modules/builtin/nvl/renderer";
-import type { ElementRendererDefinition } from "../ElementRendererRegistry";
+import { markTrustedElementRenderers, type ElementRendererDefinition } from "../ElementRendererRegistry";
 
 /**
  * Runtime-only built-in renderers shared by Dev Mode and packaged Preview.
@@ -93,3 +93,7 @@ export const BuiltinElementRenderers: ElementRendererDefinition[] = [
         render: props => createElement(NvlTextsRenderer, props),
     },
 ];
+
+// Every entry above only describes a component from its props, which is what lets the element tree
+// reuse a node whose inputs did not change. See `markTrustedElementRenderers`.
+markTrustedElementRenderers(BuiltinElementRenderers);

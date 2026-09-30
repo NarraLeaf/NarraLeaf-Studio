@@ -20,6 +20,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
+import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { FontAssetFieldDefinition } from "../types";
 import { FieldLayout } from "./FieldLayout";
@@ -47,6 +48,7 @@ export function FontAssetField<TData extends UIInspectorData>({
 
     const assetId = field.getValue(data);
     const { cssFamily, loading: fontLoading, error: fontError } = useEditorFontFamily(assetId);
+    const fontNotice = useAssetFieldNotice(assetId, Boolean(fontError));
 
     /**
      * The project's own default is offered first, above the built-in stacks and the library.
@@ -183,9 +185,9 @@ export function FontAssetField<TData extends UIInspectorData>({
                 </button>
             </FieldLayout>
 
-            {assetId && fontError ? (
+            {fontNotice ? (
                 <p className="mt-1 text-2xs text-warning leading-snug">
-                    {t("properties.fontAsset.loadError", { error: fontError })}
+                    {fontNotice}
                 </p>
             ) : null}
 

@@ -1,5 +1,6 @@
 import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
-import type { TranslationKey, Translator } from "@shared/i18n";
+import type { PluralKey, TranslationKey, Translator } from "@shared/i18n";
+import { elideGeneratedIdentifiers } from "./identifierDisplay";
 
 /**
  * Turning a {@link DocumentDiff} into rows a surface can draw, without any surface in the picture.
@@ -125,7 +126,35 @@ const LABEL_SUMMARY_COUNT = "documentDiff.summary.count";
 /** Where a count's own name is translated. Absent falls back to the raw identifier. */
 const COUNT_NAME_PREFIX = "documentDiff.count.";
 
-export type LabelTranslator = Pick<Translator, "t" | "has">;
+export type LabelTranslator = Pick<Translator, "t" | "tn" | "has">;
+
+/**
+ * Counts a label states with their noun: "Scene added (1 row)", not "(1 rows)".
+ *
+ * The producer has no locale, so it sends the bare number under its own name and it is spelled here,
+ * in the reader's plural, the way byte counts are formatted below. The spelled phrase goes under a
+ * name of its own, so a translation written against the bare number still reads that number.
+ */
+const COUNTED_LABEL_PARAMS: Readonly<Record<string, { name: string; key: PluralKey }>> = {
+    blocks: { name: "rowCount", key: "documentDiff.units.rows" },
+    elements: { name: "elementCount", key: "documentDiff.units.elements" },
+    nodes: { name: "nodeCount", key: "documentDiff.units.nodes" },
+};
+
+/** A label's parameters with each count in {@link COUNTED_LABEL_PARAMS} also spelled with its noun. */
+export function spellLabelCounts(
+    params: Readonly<Record<string, string | number>> | undefined,
+    translator: Pick<Translator, "tn">,
+): Record<string, string | number> {
+    const spelled: Record<string, string | number> = { ...params };
+    for (const [param, { name, key }] of Object.entries(COUNTED_LABEL_PARAMS)) {
+        const value = params?.[param];
+        if (typeof value === "number") {
+            spelled[name] = translator.tn(key, value);
+        }
+    }
+    return spelled;
+}
 
 /**
  * Read one change out loud.
@@ -144,7 +173,7 @@ export function resolveDocumentChangeLabel(
     translator: LabelTranslator,
 ): DocumentChangeLabelView {
     const params = change.label.params;
-    const interpolated: Record<string, string | number> = { ...params };
+    const interpolated = spellLabelCounts(params, translator);
 
     // Byte counts are the one parameter the author reads as a size rather than as a number. Formatted
     // here rather than in the producer, which has no locale and no idea how wide the column is.
@@ -161,16 +190,22 @@ export function resolveDocumentChangeLabel(
     // Cast because a producer's key is a plain string by contract - the diff model is shared with the
     // main process, which has no business importing a renderer's key union. A key with no entry
     // renders as itself, which is what makes a stale producer visible rather than blank.
-    const text = translator.t(change.label.key as TranslationKey, interpolated);
-    const from = params?.from === undefined ? undefined : String(params.from);
-    const to = params?.to === undefined ? undefined : String(params.to);
-    const subject = change.subject;
-    const carriedByLabel = subject === undefined
-        || subject === params?.name
-        || subject === params?.from
-        || subject === params?.to;
+    //
+    // Every piece of text leaves here with its generated ids drawn as an ellipsis
+    // (`identifierDisplay.ts`). A producer states what it compared, and what it compared is often
+    // an id - a reference to a scene, a folder, a record - which is the one kind of value the
+    // interface never shows. The comparison below is made on the raw values, so eliding cannot make
+    // two different values read as the label carrying the subject.
+    const text = elideGeneratedIdentifiers(translator.t(change.label.key as TranslationKey, interpolated));
+    const from = params?.from === undefined ? undefined : elideGeneratedIdentifiers(String(params.from));
+    const to = params?.to === undefined ? undefined : elideGeneratedIdentifiers(String(params.to));
+    const carriedByLabel = change.subject === undefined
+        || change.subject === params?.name
+        || change.subject === params?.from
+        || change.subject === params?.to;
+    const subject = change.subject === undefined ? undefined : elideGeneratedIdentifiers(change.subject);
 
-    return carriedByLabel
+    return carriedByLabel || subject === undefined
         ? { primary: text, ...(from === undefined ? {} : { from }), ...(to === undefined ? {} : { to }) }
         : {
             primary: subject,

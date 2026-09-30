@@ -18,6 +18,10 @@ import type { SearchJumpTarget } from "../workspace/services/search/searchIndexM
  *  - **Macros are walked.** Nothing populates `graphs.macros` today, but half a dozen walkers read
  *    it defensively and a node buried in one would ship exactly like a node on an event. Costing
  *    nothing while the record is empty is the cheapest way to not be the walker that forgot.
+ *  - **A script layer is not a graph, and is not a site.** It has no nodes for any rule here to
+ *    read, and listing it as an empty graph made `blueprint/empty-event` report every script layer
+ *    as an event that runs nothing - in the build log, beside the script it was wrong about. What a
+ *    script does is the compiler's to report, and it does.
  */
 
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -45,31 +49,33 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
         return [];
     }
 
-    // blueprintId -> ownerKey. The active blueprint is listed first so it wins over the historical
-    // revisions kept beside it in the same record.
+    // blueprintId -> ownerKey. One each way: a slot names one blueprint and a blueprint belongs to
+    // one slot. This used to walk a list of revisions beside the active one, which put findings on
+    // the author's slot for graphs that were not running.
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
-        for (const blueprintId of [record.activeBlueprintId, ...(record.privateBlueprintIds ?? [])]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
+        if (record.blueprintId) {
+            ownerKeyByBlueprintId.set(record.blueprintId, ownerKey);
         }
     }
 
     const sites: BlueprintGraphSite[] = [];
     for (const blueprint of Object.values(document.blueprints ?? {})) {
         const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey || blueprint.program.kind !== "graph") {
+        if (!ownerKey) {
             continue;
         }
-        const graphs = blueprint.program.graphs;
-        const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr }> }[] = [
+        const graphs = blueprint.graphs;
+        const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr; script?: unknown }> }[] = [
             { graphKind: "event", entries: graphs.events ?? {} },
             { graphKind: "function", entries: graphs.functions ?? {} },
             { graphKind: "macro", entries: graphs.macros ?? {} },
         ];
         for (const { graphKind, entries } of slots) {
             for (const [graphId, slot] of Object.entries(entries)) {
+                if (slot?.script) {
+                    continue;
+                }
                 sites.push({
                     blueprintId: blueprint.id,
                     blueprintName: blueprint.name,
@@ -89,9 +95,9 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
  * The deep link that opens a site's graph with one node focused.
  *
  * Always produced, never withheld: a finding is worth reporting even when it cannot be navigated to,
- * and the alternative - dropping the site - would quietly narrow what the build gate refuses. The
- * one owner kind whose key `parseBlueprintOwnerKey` cannot read is `sharedAsset`, which has no
- * editor route at all; a row for one is clickable and does nothing, which is the lesser fault.
+ * and the alternative - dropping the site - would quietly narrow what the build gate refuses. A key
+ * `parseBlueprintOwnerKey` cannot read leaves a row that is clickable and does nothing, which is the
+ * lesser fault.
  */
 export function blueprintNodeJumpTarget(site: BlueprintGraphSite, nodeId: string): SearchJumpTarget {
     return {

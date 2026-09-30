@@ -71,8 +71,10 @@ vi.mock("@/lib/story/narralang/narralangReconcile", () => ({
     }),
 }));
 
-vi.mock("./narralangLookups", () => ({ narralangLookups: () => ({}) }));
-vi.mock("./narralangParseLookups", () => ({ narralangParseLookups: () => ({}) }));
+vi.mock("./narralangLookups", () => ({
+    narralangLookups: () => ({}),
+    narralangReferences: () => ({ lookups: {}, parseLookups: {} }),
+}));
 vi.mock("../scene-editor/storyCommandResolution", () => ({ expressionScope: () => ({}) }));
 vi.mock("./narralangEdit", () => ({
     NARRALANG_HISTORY_MERGE_WINDOW_MS: 1000,

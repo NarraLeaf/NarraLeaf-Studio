@@ -14,7 +14,7 @@ Studio 是**双主题**应用（暗色 / 亮色,由 `ui.themeMode` 设置驱动,
 
 > ⚠️ **不要用 JS 镜像主题。** Electron 在 `themeSource` 变化时会更新 `matchMedia("(prefers-color-scheme: …)")` 的 **值**,但**不派发 `change` 事件**（已 CDP 实测）。任何基于 matchMedia 监听的 JS 镜像层都会在首次加载后静默失效。CSS 媒体查询不受此影响,是唯一可靠的路径。
 
-少数元素**有意主题不变**(保持深色):媒体缩略图上的遮罩/渐变、模态背板 `bg-black/50`、accent 底上的 `text-white`、色板/用户颜色数据、阴影、游戏舞台周围的留黑与游戏预览。这些**保留硬编码是正确的**,不要"顺手"token 化。
+少数元素**有意主题不变**(保持深色):媒体缩略图上的遮罩/渐变、模态背板 `bg-black/50`、色板/用户颜色数据、阴影、游戏舞台周围的留黑与游戏预览。这些**保留硬编码是正确的**,不要"顺手"token 化。
 
 ## 1. 颜色 token
 
@@ -26,7 +26,32 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 `#40a8c4` 是**固定锚点,永不更改,且两个主题下同值**。其余强调色一律"低饱和 + 中亮度 + 仅旋转色相"派生,**禁止鲜艳(高饱和)色**;亮色主题保持同色相同饱和,仅压低亮度,直到作为文字压在自身 `/10` 染色底上时 ≥4.5:1(AA)。
 
-> ⚠️ **已知取舍**:`text-primary` 在亮色主题下对比度约 **2.4:1**(品牌青压在浅底上),低于 AA。因为品牌锚点不可更改、且 `primary` 在 tailwind config 里是字面 hex(不是通道变量,见 Phase 0 决策),此处未动。如需修正,要么给亮色主题单独派生一个更深的 `primary`(需把它改成通道变量并处理 `--narraleaf-accent` 的 `theme()` 依赖),要么新增一个 `primary-text` token。`bg-primary` + `text-white`(2.76:1)是两个主题共有的既有状况,与本次改动无关。
+### 强调色的两支墨色
+
+强调色是**用户可改的**（设置 ▸ 外观 ▸ 强调色；五个预设之外还能取任意 hex），所以「拿它画什么」分两种，各有一支派生墨色。两支都由 [`@shared/constants/accent`](../src/shared/constants/accent.ts) 算出、由 `lib/appearance` 写在根元素上。
+
+| Token | Tailwind | 什么时候是它 |
+|---|---|---|
+| `--nl-on-primary` | `text-on-primary` | 压在**实心强调色上**的字（主按钮、badge）。`accentForeground`：强调色亮过 0.5 就翻成深色墨。实心 `bg-primary` 上不要写 `text-white`。 |
+| `--nl-primary-ink` | `text-primary` / `border-primary` / `divide-primary` / `decoration-primary` | 强调色**画在普通表面上**的字与发丝线。`accentInk`：按当前主题把亮度夹到对 `--nl-surface` 至少 AA 4.5:1，**任何强调色、两个主题都不例外**。 |
+
+其余的 `*-primary` 都还是 `--nl-primary` 本身：填充面（`bg-primary`）、焦点圈（`ring-primary` / `outline-primary`）、SVG 的 `fill-` / `stroke-primary`。分界是这一色在干什么——**一块被填满的形状是被看见的，一个字形是要被读的**，只有后者必须保对比度。切换只需改 tailwind.config.js 里 `textColor` / `borderColor` 那两条，不用动调用方。
+
+两个主题的墨色不同，而主题是纯 CSS（§0）、JS 问不到当前是哪一档，所以 `lib/appearance` 把两支都发出来（`--nl-primary-ink-on-dark` / `--nl-primary-ink-on-light`），由 styles.css 的亮色块挑。换主题不需要任何 JS 参与。
+
+> ⚠️ **已知取舍**：夹取的两个边界都是 AA 4.5:1，**没有为预设开的口子**。暗色主题下五个预设本来就在区间内（最暗的 Slate 是 4.97:1），算出来仍是它自己、一像素不动；亮色主题下五个**全部被压暗**——包括品牌锚点。于是在亮色主题里，**色板上的那一格与同一处的文字颜色不是同一个值**。这是有意的：一块被填满的形状是被看见的，一个字形是要被读的，只有后者必须保对比度。锚点在"被看"的地方（`bg-primary`、焦点圈、SVG `fill-`/`stroke-primary`）仍然是 `#40a8c4` 原色。
+
+亮色主题下五个预设的墨色（由 `accentInk` 算出，下表只是给人看；锚点那一行由 `accent.test.ts` 钉住）：
+
+| 预设 | 强调色 | 亮色主题墨色 | 对 `--nl-surface` |
+|---|---|---|---|
+| Leaf teal | `#40a8c4` | `#2d768a` | 2.42:1 → 4.52:1 |
+| Sky | `#5394c6` | `#407299` | 2.87:1 → 4.51:1 |
+| Indigo | `#7384ca` | `#5d6aa3` | 3.13:1 → 4.54:1 |
+| Rose | `#c46e9c` | `#9c577c` | 3.04:1 → 4.52:1 |
+| Slate | `#738596` | `#606f7e` | 3.33:1 → 4.52:1 |
+
+压暗走的是"整体乘一个系数往黑色混"，三个通道同比缩放，所以**色相原样保留**——还是同一个颜色，只是能读了。自定义 hex 走同一条路：一个淡黄从 1.0:1 抬到 4.5:1，一个近黑色在暗色主题下被提亮到 4.5:1。
 
 | Token | 值 | HSL | 用途 |
 |---|---|---|---|

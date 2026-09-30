@@ -5,8 +5,7 @@ import { UI_SWITCH_ELEMENT_TYPE, getUISwitchChildSlot } from "@shared/types/ui-e
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
-import { filterSelectionToTopLevelMovers } from "./uiEditorSelection";
+import { filterToEditableTopLevel } from "./uiEditorSelection";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 const SLIDER_WIDGET_TYPE = "nl.slider";
@@ -79,12 +78,10 @@ function roundsToSameGeometry(next: number, current: number): boolean {
  * so aligning them against unrelated siblings moves the off state only and silently desyncs the two.
  */
 function getAlignMovers(document: UIDocument, selection: UIElementSelection): string[] {
-    return filterSelectionToTopLevelMovers(document, selection).filter(id => {
+    // The surface's own roots never move: a page's root, or a component's frame in its own editor.
+    return filterToEditableTopLevel(document, selection.elementIds).filter(id => {
         const element = document.elements[id];
         if (!element || element.parentId == null) {
-            return false;
-        }
-        if (element.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
             return false;
         }
         if (isUIElementFlowLayoutChild(document, element)) {

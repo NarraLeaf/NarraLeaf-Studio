@@ -32,16 +32,17 @@ export type MobileShellOrientation = "landscape" | "portrait" | "auto";
  * entry document paints, so the native window, the document and the game agree
  * on the first frame instead of flashing white.
  *
- * `contentKey` is the opaque token the shell hands to its decoder; it is present
- * only when the payload was protected at repack time, and absent for a plain
- * build. One shell template serves both. The field is optional, so a shell that
- * predates it simply ignores it — the schema version does not change.
+ * `contentKey` is the opaque token the shell hands to its decoder, and the payload under wwwRoot
+ * is sealed under it on every build: the container is the format a mobile package keeps its
+ * content in, not a protection, since the key travels in the package it opens. The shell reads
+ * the field as optional and serves a payload verbatim when it is absent, which is what a package
+ * written before the container was unconditional looks like to it.
  */
 export type MobileShellConfigV1 = {
     schemaVersion: number;
     orientation: MobileShellOrientation;
     backgroundColor: string;
-    contentKey?: string;
+    contentKey: string;
 };
 
 export type ShellPlaceholderIdentity = {

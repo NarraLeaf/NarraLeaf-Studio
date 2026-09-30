@@ -15,8 +15,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import {
     BLUEPRINT_GRAPH_KINDS,
@@ -30,6 +33,8 @@ import {
     resolveNodeType,
 } from "./catalog";
 import { checkBlueprintSource, checkProjectDocument, formatDiagnostics } from "./check";
+import { readAssetNameContext } from "./project";
+import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "./remove";
 import { printBlueprint, printBlueprints } from "./dsl/print";
 import {
     applyBlueprints,
@@ -71,6 +76,8 @@ const USAGE = `blueprint - query the node catalogue, write blueprints as text, c
   check [file.bp]             Check a text file, or the whole project when given no file.
   apply <file.bp>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
+  remove                      Take one blueprint out of a project. Needs --project.
+                              --blueprint <name|id>. Writes nothing without --write.
 
 Common flags
   --project <dir>             Project directory (the one holding editor/ui/uigraphs.json).
@@ -125,10 +132,12 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     check: { flags: { project: "string" }, run: commandCheck },
     apply: { flags: { project: "string", write: "boolean" }, run: commandApply },
+    remove: { flags: { project: "string", blueprint: "string", write: "boolean" }, run: commandRemove },
 };
 
 export function runCli(argv: readonly string[], io: CliIo): number {
     registerCoreBlueprintNodes();
+    registerBuiltInPluginBlueprintNodes();
     const command = argv.find(token => !token.startsWith("--")) ?? "";
     const askedForHelp = command === "help" || argv.includes("--help") || argv.includes("-h");
     if (askedForHelp || !command) {
@@ -213,7 +222,17 @@ function commandNode(args: Args, io: CliIo): number {
         io.err(`No node type "${resolved}".`);
         return 2;
     }
-    io.out(args.flags.json === true ? JSON.stringify(detail, null, 2) : formatNodeDetail(detail));
+    const plugin = builtInPluginOwnerOf(resolved);
+    if (args.flags.json === true) {
+        io.out(JSON.stringify(plugin ? { ...detail, plugin } : detail, null, 2));
+        return 0;
+    }
+    io.out(formatNodeDetail(detail));
+    if (plugin) {
+        // Said rather than left to the category name: a project using this node needs that plugin
+        // installed and switched on, and the bundled ones do not all ship switched on.
+        io.out(`  plugin     ${plugin} (bundled with Studio; a project using it depends on it)`);
+    }
     return 0;
 }
 
@@ -310,7 +329,7 @@ function commandList(args: Args, io: CliIo): number {
         id: blueprint.id,
         name: blueprint.name,
         ownerKey: ownerRefToIndexKey(blueprint.owner),
-        programKind: blueprint.programKind,
+        scripts: listScriptLayers(blueprint.graphs).length,
         events: countGraphs(blueprint, "events"),
         functions: countGraphs(blueprint, "functions"),
         nodes: countNodes(blueprint),
@@ -411,6 +430,8 @@ function commandCheck(args: Args, io: CliIo): number {
             persistentVariables: variables.persistent,
             savedVariables: variables.saved,
             resolveWidgetElement: widgetElementResolver(targets),
+            uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+            assetNameContext: readAssetNameContext(projectDir),
         });
         io.out(
             args.flags.json === true
@@ -433,6 +454,10 @@ function commandCheck(args: Args, io: CliIo): number {
         resolveWidgetElement: projectDir
             ? widgetElementResolver(readUiDocumentTargets(projectDir))
             : undefined,
+        uiElements: projectDir
+            ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
+            : undefined,
+        assetNameContext: projectDir ? readAssetNameContext(projectDir) : undefined,
     });
     io.out(
         args.flags.json === true
@@ -460,6 +485,8 @@ function commandApply(args: Args, io: CliIo): number {
         resolveWidgetElementType: widgetElementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
+        uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
+        assetNameContext: readAssetNameContext(projectDir),
     });
     const report = formatDiagnostics(result.diagnostics, {
         fileName: reportPath(resolved),
@@ -479,7 +506,7 @@ function commandApply(args: Args, io: CliIo): number {
         ...Object.fromEntries(
             result.blueprints.map(blueprint => [
                 ownerRefToIndexKey(blueprint.owner),
-                { activeBlueprintId: blueprint.id, privateBlueprintIds: [blueprint.id] },
+                { blueprintId: blueprint.id },
             ]),
         ),
     });
@@ -496,6 +523,51 @@ function commandApply(args: Args, io: CliIo): number {
     writeUiGraphs(file);
     io.out(
         `Wrote ${file.filePath}: ${what || "no change"}.\n`
+            + "Studio does not reload this file on its own - if the project is open, close and reopen it, "
+            + "and do not write while it is open or the next save will overwrite this.",
+    );
+    return 0;
+}
+
+function commandRemove(args: Args, io: CliIo): number {
+    const wanted = stringFlag(args, "blueprint");
+    if (!wanted) {
+        throw new UsageError("Which blueprint? `blueprint remove --blueprint <name|id> --project <dir> --write`.");
+    }
+    const projectDir = requireProject(args);
+    const file = readUiGraphs(projectDir);
+    // A removal names one blueprint exactly or not at all. `show` widens a part of a name to every
+    // blueprint it is part of, which is the right answer to "print it" and the wrong one to "delete it".
+    const matched = Object.values(file.blueprintDocument.blueprints)
+        .filter(item => item.id === wanted || item.name === wanted);
+    if (matched.length !== 1) {
+        io.err(
+            matched.length === 0
+                ? `No blueprint has the id or the whole name "${wanted}". Run \`blueprint list --project <dir>\`.`
+                : `${matched.length} blueprints are called "${wanted}": `
+                      + `${matched.map(item => `${item.id} (${ownerRefToIndexKey(item.owner)})`).join(", ")}. `
+                      + "Name one by its id.",
+        );
+        return 2;
+    }
+    const blueprint = matched[0];
+    const elements = readUiDocumentTargets(projectDir).raw as Readonly<Record<string, RemovalElement>>;
+    const plan = planBlueprintRemoval(file.blueprintDocument, blueprint, elements);
+    if (plan.refusals.length > 0) {
+        io.err(plan.refusals.map(reason => `error  blueprint.remove_refused  ${reason}`).join("\n"));
+        io.err("Nothing was written.");
+        return 1;
+    }
+    const what = `remove "${blueprint.name}" (${ownerRefToIndexKey(blueprint.owner)})`;
+    if (args.flags.write !== true) {
+        io.out(`Would ${what} from ${file.filePath}. Pass --write to do it.`);
+        return 0;
+    }
+    assertWritableSchema(file);
+    removeBlueprint(file.blueprintDocument, blueprint, plan);
+    writeUiGraphs(file);
+    io.out(
+        `Wrote ${file.filePath}: ${what}.\n`
             + "Studio does not reload this file on its own - if the project is open, close and reopen it, "
             + "and do not write while it is open or the next save will overwrite this.",
     );
@@ -527,17 +599,11 @@ function quoteAll(names: readonly string[]): string {
 }
 
 function countGraphs(blueprint: Blueprint, kind: "events" | "functions"): number {
-    if (blueprint.program.kind !== "graph") {
-        return 0;
-    }
-    return Object.keys(blueprint.program.graphs[kind] ?? {}).length;
+    return Object.keys(blueprint.graphs[kind] ?? {}).length;
 }
 
 function countNodes(blueprint: Blueprint): number {
-    if (blueprint.program.kind !== "graph") {
-        return 0;
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     let total = 0;
     for (const pool of [graphs.events, graphs.functions]) {
         for (const graph of Object.values(pool ?? {})) {

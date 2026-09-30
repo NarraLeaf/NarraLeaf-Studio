@@ -17,7 +17,11 @@ import type { RuntimePluginDescriptor } from "@shared/types/plugins";
 import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
 import { registerStoryCompilePass } from "../game/storyCompilePass";
-import type { ElementRendererRegistry } from "../ElementRendererRegistry";
+import type {
+    ElementRendererDefinition,
+    ElementRendererProps,
+    ElementRendererRegistry,
+} from "../ElementRendererRegistry";
 import {
     defineRuntimePlugin,
     isRuntimePluginDefinition,
@@ -27,14 +31,32 @@ import {
     type RuntimePluginLogLevel,
     type RuntimePluginSidecarHandle,
     type RuntimeWidgetRendererDef,
+    type RuntimeWidgetRendererProps,
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
+import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
+import { narrowWidgetEventDispatchForPlugin } from "../widgetEventDispatch";
+import {
+    notifyContributedWidgetsChanged,
+    registerContributedWidgetSource,
+    type ContributedWidgetDeclaration,
+} from "@shared/types/ui-editor/contributedWidgets";
+import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
+/**
+ * What became of one plugin's runtime entry.
+ *
+ * `pluginName` rides along on both branches because the only host that can say a failure out loud
+ * is the one that has an issue list, and by then the descriptor it came from is gone. The manifest
+ * name is what an author called the plugin in the store and in the dependency table, so it is what
+ * a report has to name; the id stands in for a manifest that carries no name.
+ */
 export type RuntimePluginLoadResult =
-    | { pluginId: string; ok: true }
-    | { pluginId: string; ok: false; error: string };
+    | { pluginId: string; pluginName: string; ok: true }
+    | { pluginId: string; pluginName: string; ok: false; error: string };
 
 export type RuntimePluginLoaderOptions = {
     log: (level: RuntimePluginLogLevel, message: string) => void;
@@ -71,8 +93,38 @@ type RuntimePluginModuleGlobal = {
 /** Owner plugin id per registered node type; guards cross-plugin collisions. */
 const runtimeNodeOwners = new Map<string, string>();
 
-/** Widget renderers collected from plugin setup, keyed by widget type. */
-const runtimeWidgetRenderers = new Map<string, { ownerPluginId: string; def: RuntimeWidgetRendererDef }>();
+/**
+ * Widget renderers collected from plugin setup, keyed by widget type. What is stored is
+ * the host-facing binding built by {@link bindWidgetRenderer}, never the plugin's own
+ * function: the narrowing has to be in place before anything can reach the registry.
+ */
+const runtimeWidgetRenderers = new Map<string, {
+    ownerPluginId: string;
+    renderer: ElementRendererDefinition;
+    /** What the def declared, already held to the plugin's own heads. */
+    logicApi: WidgetLogicApi | undefined;
+}>();
+
+function declarationOf(type: string, entry: { ownerPluginId: string; logicApi: WidgetLogicApi | undefined }): ContributedWidgetDeclaration {
+    return { type, ownerPluginId: entry.ownerPluginId, logicApi: entry.logicApi };
+}
+
+/**
+ * The widgets runtime entries registered, behind the shared capability lookups.
+ *
+ * The game's half of what the workspace does from its widget module registry: the dispatcher, the
+ * element wrapper and the Init lifecycle read a widget's events through `getWidgetLogicApi`, and a
+ * game has no widget module to read a plugin's from - only the def its runtime entry registered.
+ * Children are not answered here: the game draws whatever children an element has, and the
+ * question of where an author may put one is the editor's.
+ */
+registerContributedWidgetSource({
+    get: type => {
+        const entry = runtimeWidgetRenderers.get(type);
+        return entry ? declarationOf(type, entry) : undefined;
+    },
+    list: () => Array.from(runtimeWidgetRenderers, ([type, entry]) => declarationOf(type, entry)),
+});
 
 /**
  * Load-once cache keyed by plugin id + version + entry URL. Game environments
@@ -133,15 +185,78 @@ export async function loadRuntimePlugins(
  * Idempotent; never overrides a type the host (built-in) already provides.
  */
 function applyRuntimeWidgetRenderers(registry: ElementRendererRegistry): void {
-    for (const { def } of runtimeWidgetRenderers.values()) {
-        const existing = registry.get(def.type);
-        if (existing && existing.render !== def.render) {
+    for (const { renderer } of runtimeWidgetRenderers.values()) {
+        const existing = registry.get(renderer.type);
+        if (existing && existing.render !== renderer.render) {
             // Built-in renderers win; plugin types are prefix-namespaced so this
-            // only happens on a stale registry re-application.
+            // only happens on a stale registry re-application. The comparison holds
+            // because the binding is built once, at registration.
             continue;
         }
-        registry.register({ type: def.type, render: def.render });
+        registry.register(renderer);
     }
+}
+
+/**
+ * Bind one plugin widget renderer to the host's element renderer contract.
+ *
+ * The host props are narrowed on the way in, for the reason a node's execution context
+ * is: passing them through would hand the plugin `hostAdapter`, and with it every host
+ * API, none of which its manifest declared or the user approved. A widget legitimately
+ * needs more than a node does - the element, the document around it, its children, the
+ * row it is drawn in - and it needs one thing off the adapter, which is the ability to
+ * raise its own event slots. That much is rebuilt here, bound to this element; see
+ * {@link RuntimeWidgetRendererProps}.
+ */
+function bindWidgetRenderer(
+    type: string,
+    render: RuntimeWidgetRendererDef["render"],
+    game: RuntimePluginGame,
+): ElementRendererDefinition {
+    return {
+        type,
+        // Behind a boundary, and behind a component of its own so the boundary is above the throw:
+        // a plugin's render runs inside the game's surface tree, and without one a widget that
+        // throws unmounts the page it is on. See `WidgetRenderBoundary`.
+        render: (props: ElementRendererProps) => React.createElement(
+            WidgetRenderBoundary,
+            { type },
+            React.createElement(PluginWidgetRenderer, { render, props, game }),
+        ),
+    };
+}
+
+function PluginWidgetRenderer({
+    render,
+    props,
+    game,
+}: {
+    render: RuntimeWidgetRendererDef["render"];
+    props: ElementRendererProps;
+    game: RuntimePluginGame;
+}): React.ReactElement | null {
+    return render(narrowWidgetRendererProps(props, game));
+}
+
+function narrowWidgetRendererProps(
+    props: ElementRendererProps,
+    game: RuntimePluginGame,
+): RuntimeWidgetRendererProps {
+    return {
+        element: props.element,
+        surface: props.surface,
+        document: props.document,
+        children: props.children,
+        instanceKey: props.instanceKey,
+        listItemScope: props.listItemScope ?? null,
+        renderChildren: props.renderChildren,
+        runtimeData: props.runtimeData,
+        // The element tree's binding, narrowed: this element in the row and the placement it is
+        // drawn in. Rebuilt here from the host's runtime it carried the row but not the placement,
+        // and an event from a plugin widget inside a card never found the card's graph.
+        dispatchEvent: narrowWidgetEventDispatchForPlugin(props.dispatchEvent),
+        game,
+    };
 }
 
 async function loadRuntimePlugin(
@@ -149,6 +264,7 @@ async function loadRuntimePlugin(
     options: RuntimePluginLoaderOptions,
 ): Promise<RuntimePluginLoadResult> {
     const pluginId = descriptor.plugin.id;
+    const pluginName = descriptor.manifest.name || pluginId;
     try {
         const mod = await import(descriptor.entryUrl) as RuntimePluginModule;
         const definition = mod.default ?? mod.plugin;
@@ -157,11 +273,11 @@ async function loadRuntimePlugin(
         }
         await definition.setup(createRuntimePluginApp(descriptor, options));
         options.log("info", `[plugin:${pluginId}] runtime entry loaded`);
-        return { pluginId, ok: true };
+        return { pluginId, pluginName, ok: true };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         options.log("error", `[plugin:${pluginId}] runtime entry failed: ${message}`);
-        return { pluginId, ok: false, error: message };
+        return { pluginId, pluginName, ok: false, error: message };
     }
 }
 
@@ -224,10 +340,24 @@ function createRuntimePluginApp(
         if (existing && existing.ownerPluginId !== pluginId) {
             throw new Error(`Widget type already registered by another owner: ${type}`);
         }
+        const sanitized = sanitizeContributedWidgetLogicApi(pluginId, def.logicApi);
+        for (const problem of sanitized.problems) {
+            log(
+                "warning",
+                `widget ${type}, event "${problem.eventId}": ${problem.message}. A widget event names the head `
+                    + "nodes that start on it in `headNodeTypes`: a built-in widget event head, or a node type "
+                    + "this plugin registers.",
+            );
+        }
+        for (const problem of scriptEventsOfContributedLogicApi(sanitized.logicApi).problems) {
+            log("warning", `widget ${type}, event "${problem.eventId}": ${problem.message}.`);
+        }
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,
-            def: { type, render: def.render },
+            renderer: bindWidgetRenderer(type, def.render, game),
+            logicApi: sanitized.logicApi,
         });
+        notifyContributedWidgetsChanged();
     };
 
     const readData = <T,>(namespace: string): T | null => {
@@ -487,7 +617,43 @@ function buildCapabilityDomains(
                     return backend.current();
                 },
                 onChange: listener => backend.onChange(listener),
+                text: key => backend.text(key),
             };
+        }
+    }
+
+    if (declared.has("diagnostics")) {
+        const backend = host.diagnostics;
+        if (!backend) {
+            unavailable("diagnostics");
+        } else {
+            // No `unavailable` for "the game has not started yet": every reader here answers null
+            // until a session exists, which is a state a plugin polling for numbers meets on every
+            // launch and must handle anyway. Withholding the member instead would make a normal
+            // moment indistinguishable from a shell that cannot report at all.
+            domains.diagnostics = { imageCache: () => backend.imageCache() };
+        }
+    }
+
+    if (declared.has("process.memory")) {
+        const backend = host.process;
+        if (!backend) {
+            // The web export: one tab of somebody else's browser, with no processes of its own.
+            unavailable("process.memory");
+        } else {
+            domains.process = { memory: () => backend.memory() };
+        }
+    }
+
+    if (declared.has("menu")) {
+        const backend = host.menu;
+        if (!backend) {
+            // Not every shell has a bar, and this is the one place that difference is reported.
+            // Absent rather than throwing: a plugin whose menu is its whole point still has to load
+            // on the web export, where it simply has nowhere to put one.
+            unavailable("menu");
+        } else {
+            domains.menu = { set: spec => backend.set(spec) };
         }
     }
 

@@ -91,6 +91,18 @@ const FREEZE_OPERATION_ACTION_IDS: ReadonlySet<string> = new Set<string>([Worksp
  * straight to `refusesOperations`, which is also what the manager on the other side of the IPC
  * boundary asks before it starts the same thing.
  */
+/**
+ * Whether this action starts something the main process owns, whatever the reason for asking.
+ *
+ * The same set {@link staysLiveAsOperation} reads, exported because project trust needs the same
+ * question and must not answer it with a second list. Freeze exempts these under a condition;
+ * distrust refuses them outright - a project that arrived from elsewhere gets no operation at all -
+ * so the two callers combine one membership test with their own verdict rather than sharing a rule.
+ */
+export function startsMainOperation(actionId: string): boolean {
+    return FREEZE_OPERATION_ACTION_IDS.has(actionId);
+}
+
 function staysLiveAsOperation(actionId: string, freeze: WorkspaceFreezeKind | null): boolean {
     return freeze !== null && FREEZE_OPERATION_ACTION_IDS.has(actionId) && !refusesOperations(freeze);
 }

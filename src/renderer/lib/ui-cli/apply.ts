@@ -9,10 +9,18 @@
  * Structs and actions are document-wide tables and are merged by id rather than replaced, because a
  * file that declares one list's item shape has said nothing about the other eleven.
  *
+ * **A shape the apply stops naming goes with the last list that named it.** That is the editor's
+ * rule (`pruneUIStructs`, run whenever a list's fields change): a struct no element names has no
+ * existence an author can see, and left in the table it is found again by the reuse rule the next
+ * time somebody declares the same fields, under a name that belonged to a list that is gone. Only
+ * what this apply stopped naming is dropped - a table that already held an unnamed shape keeps it,
+ * and a shape the file itself declares is kept whether or not anything names it yet.
+ *
  * Comments in English per project convention.
  */
 
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { collectReachableUIStructIds } from "@shared/types/ui-editor/structLibrary";
 import { normalizeFlowChildLayouts } from "@services/ui-editor/uiDocumentTreeMove";
 import type { UiCompileResult } from "./dsl/compile";
 import { collectTree } from "./project";
@@ -25,8 +33,38 @@ export type ApplyResult = {
     elementsWritten: number;
     elementsRemoved: number;
     structsWritten: string[];
+    /** Shapes a list named before this apply and nothing names after it. */
+    structsRemoved: string[];
     actionsWritten: string[];
 };
+
+/**
+ * `next`, in the order `previous` already had it, with genuinely new keys appended.
+ *
+ * Nothing reads the key order of an element map - every element is addressed by id, and the
+ * semantic diff walks the tree - but a text diff does, and a reordered map is 20,000 lines of
+ * churn hiding the five that changed. That is a merge conflict for every other branch touching the
+ * same document, and a history nobody can read.
+ *
+ * Keys `previous` holds and `next` does not are dropped: this is a replacement, not a merge.
+ */
+export function mergePreservingOrder<T>(
+    previous: Readonly<Record<string, T>>,
+    next: Readonly<Record<string, T>>,
+): Record<string, T> {
+    const merged: Record<string, T> = {};
+    for (const key of Object.keys(previous)) {
+        if (Object.prototype.hasOwnProperty.call(next, key)) {
+            merged[key] = next[key] as T;
+        }
+    }
+    for (const [key, value] of Object.entries(next)) {
+        if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+            merged[key] = value;
+        }
+    }
+    return merged;
+}
 
 export function applyCompiled(document: UIDocument, compiled: UiCompileResult): ApplyResult {
     const result: ApplyResult = {
@@ -37,8 +75,10 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         elementsWritten: 0,
         elementsRemoved: 0,
         structsWritten: [],
+        structsRemoved: [],
         actionsWritten: [],
     };
+    const namedBefore = collectReachableUIStructIds(document);
 
     if (compiled.documentName) {
         document.name = compiled.documentName;
@@ -47,18 +87,26 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         document.id = compiled.documentId;
     }
 
-    // Ids the old trees held, so the report can count what actually stopped existing rather than
-    // counting every id that was rewritten over itself.
+    // Ids the trees being replaced hold today, collected before anything is written.
+    //
+    // Before the loop rather than inside it, because a tree walked after a sibling surface had
+    // already landed could reach an id the new document now owns - and the removal pass at the
+    // bottom would then delete an element that is in use.
     const lifted = new Set<string>();
+    for (const compiledSurface of compiled.surfaces) {
+        const existing = document.surfaces.find(surface => surface.id === compiledSurface.surface.id);
+        if (!existing) {
+            continue;
+        }
+        for (const element of collectTree(document.elements, existing.rootElementId)) {
+            lifted.add(element.id);
+        }
+    }
+
+    const written = new Set<string>();
     for (const compiledSurface of compiled.surfaces) {
         const index = document.surfaces.findIndex(surface => surface.id === compiledSurface.surface.id);
         if (index >= 0) {
-            // Every element the old tree held goes, then the new tree lands. Ids the file kept are
-            // written straight back over themselves, so anything pointing at one still resolves.
-            for (const element of collectTree(document.elements, document.surfaces[index].rootElementId)) {
-                delete document.elements[element.id];
-                lifted.add(element.id);
-            }
             document.surfaces[index] = compiledSurface.surface;
             result.surfacesReplaced.push(compiledSurface.surface.name);
         } else {
@@ -66,14 +114,22 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
             result.surfacesAdded.push(compiledSurface.surface.name);
         }
         for (const [id, element] of Object.entries(compiledSurface.elements)) {
+            // Written over itself rather than deleted and re-added, which is the whole of order
+            // preservation: assigning a key an object already has leaves it where it is, and a key
+            // it does not have is appended. See the note on {@link mergePreservingOrder}.
             document.elements[id] = element as UIElement;
+            written.add(id);
             result.elementsWritten += 1;
         }
     }
+    // Only now, and only what the new trees really dropped: an id the file kept was written back
+    // over itself above, so deleting the old tree first would have moved every one of them.
     for (const id of lifted) {
-        if (!document.elements[id]) {
-            result.elementsRemoved += 1;
+        if (written.has(id)) {
+            continue;
         }
+        delete document.elements[id];
+        result.elementsRemoved += 1;
     }
 
     if (compiled.components.length > 0) {
@@ -81,7 +137,16 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         for (const compiledComponent of compiled.components) {
             const index = components.findIndex(component => component.id === compiledComponent.component.id);
             if (index >= 0) {
-                components[index] = compiledComponent.component;
+                // The component's own element map gets the same treatment the document's does, for
+                // the same reason: replacing it wholesale would reorder every element of a
+                // definition whose only change was one added child.
+                components[index] = {
+                    ...compiledComponent.component,
+                    elements: mergePreservingOrder(
+                        components[index].elements ?? {},
+                        compiledComponent.component.elements ?? {},
+                    ),
+                };
                 result.componentsReplaced.push(compiledComponent.component.name);
             } else {
                 components.push(compiledComponent.component);
@@ -99,6 +164,17 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
     if (Object.keys(compiled.actions).length > 0) {
         document.actions = { ...(document.actions ?? {}), ...compiled.actions };
         result.actionsWritten = Object.keys(compiled.actions);
+    }
+
+    if (document.structs) {
+        const namedAfter = collectReachableUIStructIds(document);
+        for (const id of Object.keys(document.structs)) {
+            const declaredHere = Object.prototype.hasOwnProperty.call(compiled.structs, id);
+            if (namedBefore.has(id) && !namedAfter.has(id) && !declaredHere) {
+                delete document.structs[id];
+                result.structsRemoved.push(id);
+            }
+        }
     }
 
     // The same pass the editor runs after every tree change: a child of a stack or a list holds no
@@ -120,6 +196,7 @@ export function formatApplyResult(result: ApplyResult, written: boolean): string
     say("Components added", result.componentsAdded);
     say("Components replaced", result.componentsReplaced);
     say("Structs written", result.structsWritten);
+    say("Structs removed, as nothing names them any more", result.structsRemoved);
     say("Actions written", result.actionsWritten);
     lines.push(`${result.elementsWritten} element(s) written, ${result.elementsRemoved} removed.`);
     lines.push(written ? "Written." : "Dry run - pass --write to save.");

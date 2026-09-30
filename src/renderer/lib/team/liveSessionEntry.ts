@@ -31,7 +31,8 @@ export type LiveSessionRefusalKey =
     | "workspace.shell.team.liveBlockedManual"
     | "workspace.shell.team.liveBlockedMerge"
     | "workspace.shell.team.liveBlockedRecovery"
-    | "workspace.shell.team.liveBlockedSession";
+    | "workspace.shell.team.liveBlockedSession"
+    | "workspace.shell.team.liveBlockedTakenOver";
 
 /**
  * A sentence per freeze, exhaustive over the kinds.
@@ -48,6 +49,9 @@ const REFUSALS: Record<WorkspaceFreezeReason["kind"], LiveSessionRefusalKey> = {
     // Already in one. Its freeze is this project's, and a second session would take the first one's
     // writable path set away from it while the host was still broadcasting effects for it.
     "live-session": "workspace.shell.team.liveBlockedSession",
+    // The project is another Studio's now; a session opened from here would broadcast edits this
+    // window can no longer save.
+    "taken-over": "workspace.shell.team.liveBlockedTakenOver",
 };
 
 /**

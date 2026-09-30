@@ -11,7 +11,7 @@
  * build. One record, not a history; the dashboard's own build activity is where a run joins a list.
  */
 
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import type { LastGameBuildRun } from "@shared/types/gameBuild";
 

@@ -26,26 +26,24 @@ export const assets = {
         inUseMessage: "削除すると、次の場所が参照先を失う：",
         moreReferences: "…ほか {count} 件",
         unverifiedTitle: "これらのアセットの使用状況を調べられない",
-        unverifiedMessage:
-            "参照の索引を読めなかったので、どこで使われているか分からない。それでも削除するか",
+        unverifiedMessage: "どこで使われているか分からない。それでも削除するか",
+        unverifiedComputed: "次の場所のアセット名は実行時に組み立てられる：",
+        unverifiedUnreadable: "次の場所を読めなかった：",
         confirmTitle: {
             other: "{count} 件を削除するか",
         },
         confirmMessage: "選んだグループの中身もすべて削除される",
         /** 参照の警告に出る削除ボタン。危険色にし、キーボードの既定にはしない。 */
         action: "削除",
-        /** 作者が確認した後にサービスが拒んだ削除。 */
-        failedTitle: "削除できなかった",
         /**
-         * 行ごとではなく全体として倒れた削除。読むべき一覧が無く、この 1 行が答えのすべて。
-         * 行ごとの拒否は上の `failedTitle` に出る。
+         * 作者が確認した後にサービスが拒んだ削除。拒まれた行の上に出し、全体が倒れたときは単独で出す。
+         * フォルダー一覧の書き込みだけに失敗したフォルダーは行に含めない。保存状態の側がすでに言っている。
          */
-        failed: "削除できなかった：{error}",
+        failedTitle: "削除できなかった",
     },
     /**
-     * 1 行の名前を変える。行の名前を言って終える。理由を書かないのは下の `createGroup.failed` と
-     * 同じで、名前の変更が拒まれるのは書き込みに失敗したときだけ。そのときはワークスペース自身の
-     * 保存失敗が、ファイル名と再試行を添えてすでに画面に出ている。
+     * 1 行の名前を変える。フォルダーの名前の変更は、新しいフォルダーと同じく自分の書き込みを自分で
+     * 報告する（下の `createGroup.failed` を参照）。これが唯一の通知で、ディスクが返した理由をその下に出す。
      *
      * 言うべきは古い名前のほう。書き込みに失敗すると記録は元に戻るので、行に出ているのはその名前で、
      * 作者が探せるのもその名前。
@@ -55,12 +53,10 @@ export const assets = {
     },
     /**
      * 残らなかった新しいグループ。名前どうしの重複は見ていないので、ここに来る道は
-     * グループの一覧がディスクに届かなかった場合だけ。
+     * グループの一覧がディスクに届かなかった場合だけで、そのときグループは一覧に入らない。
      *
-     * 理由をわざと書かない。その書き込みはワークスペース自身の保存失敗も起こし、そちらが
-     * ファイル名と再試行を添えてすでに出ている。同じ文を 2 つ目のトーストで繰り返しても
-     * 同じことを二度言うだけ。そちらが言えないのは、どの操作が失われたか。行はどちらにせよ
-     * 描かれるので、目の前のグループが本物ではないと作者に伝えられるのはここだけ。
+     * その失敗についての唯一の通知。書き込みはこの操作が報告するものとして出すので、保存状態の側は
+     * ログに残すだけ。どの変更が失われたかをここで言い、ディスクの理由をその下に添える。
      */
     createGroup: {
         failed: "グループを作成できなかった",
@@ -89,7 +85,6 @@ export const assets = {
         audio: "音声",
         video: "動画",
         json: "JSON ファイル",
-        blueprint: "ブループリント",
         font: "フォント",
         model: "モデル",
         other: "その他",
@@ -105,6 +100,27 @@ export const assets = {
     },
     itemCount: {
         other: "{count} 件",
+    },
+    unreadable: {
+        category: "この区分は読み込めなかった。ファイルは変わっていない",
+        notSaved: "この区分の変更は保存されていない",
+        notSavedDetail: "「{category}」の区分を読めなかった。上書きもしていない",
+    },
+    reference: {
+        missing: "このプロジェクトに存在しないアセットを参照している",
+        unreadable: "参照するアセットを読み込めない",
+        unreadableNamed: "アセット「{asset}」を読み込めない",
+        notAsset: "値がアセットではない",
+        // エディターが開いたアセットを読めなかったとき、まず上のどれかを言い、プロジェクトにまだその
+        // アセットがあれば、読み込みの結果のうち作者が対処できるものを続ける。読み込み自身の
+        // メッセージは出さない。アセットの保存先のパスが入っている。
+        withReason: "{headline}。{reason}",
+        reason: {
+            fileMissing: "ファイルがプロジェクトフォルダーにない",
+            accessDenied: "Studio にファイルの読み取り権限がない",
+            undecodable: "ファイルが壊れているか、Studio で開けない形式",
+            newerVersion: "ファイルが新しいバージョンの NarraLeaf Studio で保存されている",
+        },
     },
     /**
      * 読み取り専用のアセット概要ページ。「実際」と「切り詰めた場合」は要となる語。ビルドは
@@ -314,7 +330,9 @@ export const assets = {
         noneFoundHint: "上で選んだ種類を確かめ、次にフォルダを確かめる。書き出し側が作ったフォルダである必要がある",
         entry: "エントリ",
         /** 行の副題。複製する前に、そのフォルダが何を持っているか。 */
-        fileSummary: "{count} ファイル · {size}",
+        fileSummary: {
+            other: "{count} ファイル · {size}",
+        },
         selectAll: "すべて選択",
         selectNone: "選択を解除",
         importAction: "読み込む",
@@ -371,6 +389,7 @@ export const assets = {
             locale: "言語",
             release: "バリアント",
         },
+        deletedVariant: "削除されたバリアント",
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",
@@ -448,9 +467,18 @@ export const assets = {
         success: {
             other: "{count} ファイルを書き出した",
         },
-        partial: "{exported} ファイルを書き出し、{failed} ファイルは書き出せなかった",
+        partialCounts: "{exported}を書き出し、{failed} ファイルは書き出せなかった",
+        fileCount: {
+            other: "{count} ファイル",
+        },
         partialTitle: "書き出せなかったファイルがある",
         failed: "書き出しに失敗：{error}",
+        reason: {
+            permissionDenied: "アクセスが拒否された",
+            sourceMissing: "プロジェクトフォルダーにファイルがない",
+            diskFull: "ディスクの空き容量がない",
+            copyFailed: "ファイルをコピーできなかった",
+        },
     },
     selector: {
         selectType: "{type} を選択",
@@ -474,8 +502,16 @@ export const assets = {
         categoryMapping: "タグの区分の割り当て",
         exampleFilename: "ファイル名の例：{filename}",
         categoryPlaceholder: "タグの区分（例：char、emo）",
-        moreFiles: "…ほか {count} ファイル",
-        summary: "{files} ファイルに合計 {tags} 個のタグを付ける",
+        moreFiles: {
+            other: "…ほか {count} ファイル",
+        },
+        tagCounts: "{files}に合計 {tags}を付ける",
+        tagCount: {
+            other: "{count} 個のタグ",
+        },
+        fileCount: {
+            other: "{count} ファイル",
+        },
         applying: "適用している…",
         applyTags: "タグを適用",
         parseFailedTitle: "マジックタグの解析に失敗",
@@ -508,6 +544,34 @@ export const assets = {
             markLoop: "再生位置をループ点にする",
             markOut: "再生位置をアウト点にする",
             channels: "{count} ch",
+            seam: "ループのつなぎ目",
+            auditionSeam: "つなぎ目を試聴",
+            auditionSeamTip: "つなぎ目の前後 {seconds} 秒ずつを再生する",
+            clearMarkers: "すべてのマーカーを消す",
+            gain: "ゲイン",
+            gainTip: "ゲーム内でこのクリップの音量を下げる。上げることはできない",
+            align: "ラウドネスを揃える",
+            alignTip: "測定したラウドネスからゲインを決め、揃えたクリップはすべて同じ大きさで鳴る。もともと小さいクリップはそのまま",
+            seamEnd: {
+                out: "アウト点",
+                clipEnd: "クリップの末尾",
+            },
+            seamStart: {
+                loop: "ループ点",
+                in: "イン点",
+                clipStart: "クリップの先頭",
+            },
+            levels: "レベル",
+            peak: "ピーク",
+            loudness: "ラウドネス",
+            leadingSilence: "冒頭の無音",
+            trailingSilence: "末尾の無音",
+            clipping: "クリッピング",
+            clippingNone: "なし",
+            clippingCount: {
+                other: "{count} か所",
+            },
+            seconds: "{value} 秒",
         },
         // キーボードショートカットの設定表と「?」の一覧に出る。
         keybindings: {
@@ -528,6 +592,7 @@ export const assets = {
             clearIn: "イン点を消す",
             clearLoop: "ループ点を消す",
             clearOut: "アウト点を消す",
+            clearMarkers: "すべてのマーカーを消す",
             undo: "マーカーの変更を元に戻す",
             redo: "マーカーの変更をやり直す",
             selectAll: "クリップ全体を選択",
@@ -535,6 +600,43 @@ export const assets = {
             zoomIn: "拡大",
             zoomOut: "縮小",
             zoomFit: "クリップ全体を表示",
+            auditionSeam: "ループのつなぎ目を試聴",
+        },
+    },
+    // 動画プレビューの再生、表示、ステータスバー。動画ファイルにもその記録にも触れない。
+    // フレームを保存すると画像アセットが新しく作られる。
+    video: {
+        loading: "動画を読み込んでいる…",
+        loadError: "動画を読み込めなかった",
+        editor: {
+            previousFrame: "前のフレーム",
+            nextFrame: "次のフレーム",
+            speed: "再生速度",
+            zoom: "表示倍率",
+            zoomFit: "全体表示",
+            saveFrame: "このフレームを画像として保存",
+            frameSaved: "フレームを {name} として保存した",
+            frameSaveFailed: "フレームを保存できなかった",
+            open: "開く",
+            frame: "{frame} / {total} フレーム",
+            transparent: "透過あり",
+        },
+        // キーボードショートカットの設定表と「?」の一覧に出る。
+        keybindings: {
+            playPause: "再生と一時停止",
+            auditionSeam: "ループのつなぎ目を確認",
+            toStart: "先頭へ",
+            toEnd: "末尾へ",
+            previousFrame: "前のフレームへ",
+            nextFrame: "次のフレームへ",
+            backSecond: "1 秒戻す",
+            forwardSecond: "1 秒進める",
+            loop: "ループを切り替え",
+            selectAll: "クリップ全体を選択",
+            clearSelection: "選択を解除",
+            zoomIn: "タイムラインを拡大",
+            zoomOut: "タイムラインを縮小",
+            zoomFit: "タイムラインにクリップ全体を表示",
         },
     },
     image: {
@@ -549,12 +651,6 @@ export const assets = {
         cut: "選んだアセットを切り取り",
         paste: "アセットを貼り付け",
         rename: "選んだアセットまたはグループの名前を変更",
-    },
-    // アセットが削除できない理由（AssetLockReason をキーにする）。
-    lockReason: {
-        character: "キャラクターが使っているアセット",
-        scene: "シーンが使っているアセット",
-        editor: "エディタが使っているアセット",
     },
     previewEditor: {
         loadFailed: "このアセットを読み込めなかった",

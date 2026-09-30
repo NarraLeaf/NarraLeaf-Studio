@@ -34,6 +34,9 @@ import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
+import { useOptionalWorkspace } from "@/apps/workspace/context";
+import { Services } from "@/lib/workspace/services/services";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import {
     buildBreakpointContextMenu,
     canBlueprintNodeCarryBreakpoint,
@@ -56,6 +59,7 @@ import {
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
     applyBlueprintIrConnection,
+    countHiddenBlueprintConnectionsForNodes,
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
     writeNodeEditorLayout,
@@ -491,7 +495,14 @@ function BlueprintFlowCanvasInner({
     // were. There is nothing to grey out on a drag, so the only honest affordance is that it never
     // starts; see `components/ui/freezeGuard`.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
+    // Optional: the canvas also renders where there is no workspace provider (Dev Mode). Null there,
+    // and the delete notice below simply does not fire.
+    const workspace = useOptionalWorkspace();
+    const uiService = useMemo(() => {
+        const ctx = workspace?.context;
+        return workspace?.isInitialized && ctx ? ctx.services.get<UIService>(Services.UI) : null;
+    }, [workspace]);
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1669,14 +1680,22 @@ function BlueprintFlowCanvasInner({
             if (real.length === 0) {
                 return;
             }
-            const next = cloneBlueprintIr(irRef.current);
+            const snap = irRef.current;
+            // Measured before the edit: how many of the removed connections the author never saw,
+            // because they sat on an unknown node's unrendered pins. The delete stays a single
+            // undoable step; the notice makes the invisible part of it visible.
+            const hiddenConnections = countHiddenBlueprintConnectionsForNodes(snap, real);
+            const next = cloneBlueprintIr(snap);
             for (const id of real) {
                 removeBlueprintNodeFromIr(next, id);
             }
             onSelectNodeIds([]);
             commitBlueprintIr(next);
+            if (hiddenConnections > 0) {
+                uiService?.showNotification(tn("blueprint.canvas.unknownNodeDeleted", hiddenConnections), "warning");
+            }
         },
-        [commitBlueprintIr, onSelectNodeIds],
+        [commitBlueprintIr, onSelectNodeIds, tn, uiService],
     );
 
     const onNodesDelete = useCallback(

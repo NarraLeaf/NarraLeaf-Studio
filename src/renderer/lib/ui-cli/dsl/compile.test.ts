@@ -64,6 +64,13 @@ describe("compiling a .ui file", () => {
             .toContain("ui.no_children");
     });
 
+    it("says only that a widget type is unknown, not that it takes no children", () => {
+        // A plugin's container is unknown here - this tool loads no plugins - and whether it holds
+        // children is the plugin's to declare, so "takes no children" would be a guess, and wrong.
+        const text = `${MINIMAL}        Box: acme.widgets.box @0,0 10x10\n            Inner: nl.text @0,0 1x1\n`;
+        expect(codes(text)).toEqual(["ui.unknown_widget_type"]);
+    });
+
     it("refuses a child that is not one of a part-owning widget's own parts", () => {
         const text = `${MINIMAL}        Toggle: nl.switch id=sw @0,0 60x32\n`
             + "            Stray: nl.container @0,0 10x10\n";
@@ -97,12 +104,43 @@ describe("compiling a .ui file", () => {
         expect(codes(text)).toContain("ui.list_field_outside_item");
     });
 
+    it("says nothing about a list item field read inside a component definition, which reads the row it is placed in", () => {
+        const text = `component "Card" id=card size=100x20
+    Card: nl.container id=card-root @0,0 100x20
+        Label: nl.text @0,0 100x20
+            bind text = field caption
+`;
+        expect(codes(text)).not.toContain("ui.list_field_outside_item");
+    });
+
     it("says nothing about a list item field read from inside the item template", () => {
         const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
             + "            Row: nl.container @0,0 100x20\n"
             + "                Label: nl.text @0,0 100x20\n"
             + "                    bind text = field caption\n";
         expect(codes(text)).not.toContain("ui.list_field_outside_item");
+    });
+
+    it("takes a row field for whether an element shows, on any type", () => {
+        // What the inspector's visibility field picker writes and `print` writes back out, so a
+        // dump of a surface that uses it has to compile again.
+        const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
+            + "            Row: nl.container @0,0 100x20\n"
+            + "                Lock: nl.container id=lock @0,0 20x20\n"
+            + "                    bind layout.visible = field locked\n";
+        const result = compile(text);
+        expect(result.diagnostics).toEqual([]);
+        expect(result.surfaces[0].elements.lock.valueBindings).toEqual({
+            "layout.visible": { kind: "listItemField", fieldId: "locked" },
+        });
+    });
+
+    it("refuses a value blueprint for whether an element shows, which nothing would evaluate", () => {
+        const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
+            + "            Row: nl.container @0,0 100x20\n"
+            + "                Lock: nl.container id=lock @0,0 20x20\n"
+            + "                    bind layout.visible = blueprint bp-1\n";
+        expect(codes(text)).toContain("ui.prop_not_bindable");
     });
 
     it("notes a stage widget put on an app surface", () => {

@@ -102,9 +102,20 @@ describe("the story library merges", () => {
 
         expect(merged.decisions).toEqual([]);
         expect(merged.conflicts).toBe(0);
-        // Mine's stamp, not the later one: it is a copy of the story document's own timestamp, and
-        // which side of THAT document survives is settled separately.
-        expect(merged.document.stories).toEqual([story("a", {updatedAt: LATER})]);
+        // The later stamp: it is a copy of the story document's own `meta.updatedAt`, and the
+        // document's merge keeps the later reading too, so the copy still mirrors it.
+        expect(merged.document.stories).toEqual([story("a", {updatedAt: EVEN_LATER})]);
+    });
+
+    it("keeps the later stamp whichever side wrote it", () => {
+        const base = index([story("a", {updatedAt: NOW})]);
+        const mine = index([story("a", {updatedAt: EVEN_LATER})]);
+        const theirs = index([story("a", {updatedAt: LATER})]);
+
+        const merged = merge3(base, mine, theirs);
+
+        expect(merged.decisions).toEqual([]);
+        expect(merged.document.stories).toEqual([story("a", {updatedAt: EVEN_LATER})]);
     });
 
     it("merges two renames of two different stories with nothing to ask", () => {
@@ -138,7 +149,7 @@ describe("the story library merges", () => {
 
         const kept = settle(merged, {[mergeDecisionKey(["stories", "a", "name"])]: "theirs"});
         expect(kept.stories).toEqual([
-            story("a", {name: "Lantern", dlcId: "side-story", updatedAt: LATER}),
+            story("a", {name: "Lantern", dlcId: "side-story", updatedAt: EVEN_LATER}),
         ]);
     });
 
@@ -198,7 +209,7 @@ describe("the story library merges", () => {
         const merged = merge3(base, mine, theirs);
 
         expect(merged.decisions).toEqual([]);
-        expect(merged.document.meta).toEqual({updatedAt: LATER});
+        expect(merged.document.meta).toEqual({updatedAt: EVEN_LATER});
     });
 
     it("conflicts over every story when the two sides share no ancestor", () => {

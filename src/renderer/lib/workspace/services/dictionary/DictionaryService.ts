@@ -19,6 +19,7 @@ import type { LiveDictionaryOp } from "@shared/live/ops";
 import { SPELLCHECK_LANGUAGE_KEY, type SpellcheckStatus } from "@shared/types/spellcheck";
 import { getInterface } from "@/lib/app/bridge";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -494,7 +495,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.dictionary", "retried"));
     }
 }
 

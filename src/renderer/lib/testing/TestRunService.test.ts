@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
 import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { resetProjectTrustCacheForTests } from "@/lib/workspace/projectTrust";
 import { testRegistry } from "./registry";
 import { TestRunService } from "./TestRunService";
-import { TEST_PROTOCOL_VERSION, type TestDefinition, type TestGameEvent, type TestRunContext } from "./types";
+import {
+    TEST_PROTOCOL_VERSION,
+    type TestAvailabilityContext,
+    type TestDefinition,
+    type TestGameEvent,
+    type TestRunContext,
+} from "./types";
 
 const bridgeMock = vi.hoisted(() => ({
     onEvent: vi.fn((_handler: (payload: GameTestEventPayload) => void) => ({ cancel: () => undefined })),
@@ -12,8 +19,11 @@ const bridgeMock = vi.hoisted(() => ({
     stop: vi.fn(),
 }));
 
+/** Main's trust ledger, which `isProjectTrusted` asks across IPC. Answers "trusted" unless a case says otherwise. */
+const trustMock = vi.hoisted(() => ({ query: vi.fn() }));
+
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ gameTest: bridgeMock }),
+    getInterface: () => ({ gameTest: bridgeMock, projectTrust: trustMock }),
     getPrivilegedInterface: () => ({}),
 }));
 
@@ -136,6 +146,11 @@ beforeEach(() => {
     bridgeMock.launch.mockReset();
     bridgeMock.stop.mockReset();
     bridgeMock.stop.mockResolvedValue({ success: true, data: undefined });
+    // Answers are memoized per project path for the life of a window, so one case's answer would
+    // otherwise be every later case's answer.
+    resetProjectTrustCacheForTests();
+    trustMock.query.mockReset();
+    trustMock.query.mockResolvedValue({ success: true, data: { trusted: true } });
 });
 
 afterEach(() => {
@@ -385,6 +400,88 @@ describe("TestRunService host gates", () => {
         const windowed = registerTest({ presentation: "windowed" });
 
         expect(service.getAvailability(windowed)).toEqual({ available: true });
+    });
+
+    it("greys every test out in a project nobody has vouched for, and refuses to start one", async () => {
+        trustMock.query.mockResolvedValue({ success: true, data: { trusted: false } });
+        const service = await createService();
+        const headless = registerTest({ presentation: "headless" });
+        const windowed = registerTest({ presentation: "windowed" });
+
+        await service.prepareAvailability();
+
+        // The same seam the freeze cuts, reached separately: a windowed test starts a game on the
+        // project's behalf, which is what trust governs and what `GameTestManager.launch` refuses.
+        // A headless one reads the project and starts nothing, and reading is exactly what an
+        // untrusted project keeps - greying it would take away browsing to no end.
+        expect(service.getAvailability(windowed)).toEqual({
+            available: false,
+            reason: { key: "test.reason.distrusted" },
+        });
+        expect(service.getAvailability(headless)).toEqual({ available: true });
+        await expect(service.start(windowed)).rejects.toThrow();
+    });
+
+    it("leaves a trusted project alone", async () => {
+        const service = await createService();
+        const testId = registerTest();
+
+        await service.prepareAvailability();
+
+        expect(service.getAvailability(testId)).toEqual({ available: true });
+    });
+
+    it("settles trust on activation, so Run again on a report reads a settled answer", async () => {
+        // The report tab has no prepare step of its own - it asks the service and renders what it
+        // says. Nothing but activation has run here.
+        trustMock.query.mockResolvedValue({ success: true, data: { trusted: false } });
+        const service = await createService();
+        const testId = registerTest({ presentation: "windowed" });
+
+        service.activate(service.getContext());
+        await tick();
+
+        expect(service.getAvailability(testId).available).toBe(false);
+    });
+
+    it("re-asks after a query that failed rather than distrusting the project for the session", async () => {
+        trustMock.query.mockRejectedValueOnce(new Error("the channel is down"));
+        const service = await createService();
+        const testId = registerTest({ presentation: "windowed" });
+
+        // A query that cannot be answered is answered "not trusted": absence of an answer is not
+        // evidence that somebody else's code is safe to run.
+        await service.prepareAvailability();
+        expect(service.getAvailability(testId).available).toBe(false);
+
+        // But it is not remembered, so the next open asks again instead of leaving the author with
+        // every test greyed out for the rest of the window's life.
+        await service.prepareAvailability();
+        expect(service.getAvailability(testId)).toEqual({ available: true });
+    });
+
+    it("shows a definition's option list the same distrust the host judged on", async () => {
+        trustMock.query.mockResolvedValue({ success: true, data: { trusted: false } });
+        const service = await createService();
+        const seen: TestAvailabilityContext[] = [];
+        const testId = registerTest({
+            parameters: [{
+                id: "ending",
+                kind: "select",
+                label: { text: "Ending" },
+                options: ctx => {
+                    seen.push(ctx);
+                    return [{ value: "good", label: { text: "Good end" } }];
+                },
+            }],
+        });
+
+        await service.prepareAvailability();
+        service.listParameters(testId);
+
+        // `options` is the one place a definition sees this: the gate above answers before
+        // `checkAvailability` is asked anything.
+        expect(seen.at(-1)?.distrusted).toBe(true);
     });
 
     it("lets a definition decline for itself, and reports a definition that throws", async () => {

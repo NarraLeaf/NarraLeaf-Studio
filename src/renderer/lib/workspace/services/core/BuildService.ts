@@ -22,11 +22,17 @@ import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
-import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
-import type { Blueprint, BlueprintDocument, SharedBlueprintAsset } from "@shared/types/blueprint/document";
-import { collectBlueprintNetworkNodes, collectBlueprintPointerNodes } from "@/lib/lint/rules";
+import { resolveLintMessageParams, type LintReport, type LintReportEntry, type LintSeverity } from "@/lib/lint/types";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import {
+    collectBlueprintNetworkNodes,
+    collectBlueprintPointerNodes,
+    collectBlueprintScreenshotNodes,
+} from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
+import { tallyLintFindingsByRule } from "@/lib/lint/ruleTally";
+import { formatLintFinishedLine } from "@/lib/lint/finishedLine";
 export { nonRedundantLintLocation };
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
@@ -48,19 +54,17 @@ import {
 } from "@/lib/build/releaseContent";
 import {
     collectUnfoldableAppTagGraphs,
-    collectUnfoldableAppTagGraphsInBlueprint,
     type UnfoldableAppTagGraph,
     type AppTagGraphRefusalReason,
 } from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
-// Type-only, like `LintService` below: this gate needs `listSharedBlueprints()` and nothing else,
-// and a value import would pull every asset service into the build path and its tests.
-import type { AssetsService } from "./AssetsService";
 import type { ReferenceIndexGap } from "../references/referenceModel";
+import { describeAssetNameGap } from "../references/assetNameGapText";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
 import { translate, translateN } from "@/lib/i18n";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import type { LintingConfiguration } from "../../project/configuration";
@@ -144,7 +148,16 @@ export const BUILD_CONSOLE_SOURCE = "Build";
  * It snaps to a solid 100% only on real completion, which is the status saying so and never a
  * counter reaching its total.
  */
-const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
+const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["checking", "preparing", "compiling", "packaging"];
+
+/**
+ * The phases the main process owns, and therefore the only ones worth polling it about.
+ *
+ * `checking` is not among them: the pre-build checks run here, and the pipeline has not been asked
+ * for anything yet, so a poll during them answers `idle` - which would overwrite the phase the
+ * window is in the middle of. See {@link GameBuildStatus}.
+ */
+const PIPELINE_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
 
 /** How long the full bar lingers after a successful build before it clears. */
 const BUILD_DONE_LINGER_MS = 1400;
@@ -212,6 +225,14 @@ export class BuildService extends Service<BuildService> {
     /** What the run now in flight was asked for; read when it reaches a terminal state. */
     private pendingRun: { kind: GameBuildRunKind; appTagId?: string } | null = null;
     private cancelRequested = false;
+    /**
+     * Aborts the pre-build checks, which are the one part of a run this window performs itself.
+     *
+     * The pipeline's own cancel cannot reach them: it has not been asked for anything yet. Without
+     * this, Stop during the checks would have asked the main process to stop a run it does not have
+     * and the checks would have gone on to start the build the author had just stopped.
+     */
+    private gateAbort: AbortController | null = null;
     private lastFinishedRun: FinishedGameBuildRun | null = null;
     private finishedRunCount = 0;
 
@@ -322,7 +343,12 @@ export class BuildService extends Service<BuildService> {
         this.refreshInFlight = true;
         try {
             const result = await getInterface().gameBuild.getStatus(this.projectPath());
-            if (result.success) {
+            // Never while the pre-build checks are running. They belong to this window and the
+            // pipeline has not been asked for anything yet, so its honest answer is `idle` - which
+            // would put the window back to "no build running" halfway through starting one. The
+            // poller is stopped during `checking` for the same reason; this covers the callers that
+            // refresh on their own (a mount, a window regaining focus).
+            if (result.success && this.state.status !== "checking") {
                 this.updateState(result.data.state);
             }
         } finally {
@@ -343,6 +369,12 @@ export class BuildService extends Service<BuildService> {
         // the platforms for them - and a build that died in preflight is exactly the one an author
         // comes back to in the dashboard's history wanting to know what it was building.
         const platforms = [...new Set(request.targets.map(target => target.platform))];
+        // Before the checks, not after them. They read every story, every graph and every asset the
+        // project has, so they are the part of a run an author is most likely to be left waiting
+        // through - and until this existed the window said nothing at all while they ran: no phase,
+        // no bar, and a Production Build row that still offered to start the build that had already
+        // started. See `GameBuildStatus`.
+        this.updateState({ status: "checking", progress: null, startedAt, platforms });
         const refusal = await this.runPreBuildGates(startedAt, platforms, request.appTagId);
         if (refusal) {
             return refusal;
@@ -383,6 +415,55 @@ export class BuildService extends Service<BuildService> {
         startedAt: number,
         platforms: GameBuildPlatform[],
         appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
+        const abort = new AbortController();
+        this.gateAbort = abort;
+        try {
+            return await this.runPreBuildGatesInner(startedAt, platforms, appTagId, abort.signal);
+        } catch (error) {
+            // Nothing may escape the checks.
+            //
+            // Only one gate wraps itself (the editor flush); the rest can throw - a document that
+            // will not parse, an IPC round trip that rejects, a sweep of sixty-eight rules over
+            // every story, graph and asset the project has. Before the checks had a phase of their
+            // own an escape here left the state untouched and the pipeline's poll went on saying
+            // what was true, so it cost the author a build and nothing else. Now it would leave the
+            // window in `checking` with nothing running: the poller is stopped for that phase and
+            // `refreshState` refuses to overwrite it, both deliberately, so the run would sit there
+            // saying it was checking the project until the project was reopened.
+            //
+            // Untranslated for the same reason as the sweep's own failure below: this reports
+            // Studio malfunctioning, not something the project did.
+            console.error("[Build] a pre-build check failed to run", error);
+            const message = "A pre-build check failed to run";
+            this.tryGetConsole()?.log(BUILD_CONSOLE_CHANNEL, "error", message, { source: BUILD_CONSOLE_SOURCE });
+            this.updateState({
+                status: "error",
+                progress: null,
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: message,
+            });
+            return this.state;
+        } finally {
+            this.gateAbort = null;
+        }
+    }
+
+    /**
+     * The gates themselves. Split from {@link runPreBuildGates} only so the abort controller above
+     * is cleared however this returns; every refusal below is the one that function documents.
+     *
+     * The signal is checked between gates rather than inside them. Each gate is one pass over one
+     * kind of document and the longest of them (the project check) takes the signal itself, so a
+     * stop lands within a rule rather than within a build.
+     */
+    private async runPreBuildGatesInner(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+        signal: AbortSignal,
     ): Promise<GameBuildStateSnapshot | null> {
         try {
             await this.prepareProjectForBuild();
@@ -506,6 +587,9 @@ export class BuildService extends Service<BuildService> {
         if (contentRefusal) {
             return contentRefusal;
         }
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         // The blueprint half of the `AppTag` gate above, and unconditional for the same reason: a
         // graph that names the variant without deciding a branch with it cannot be compiled under any
         // variant, release included. Free like the two before it - it walks the blueprint document
@@ -546,6 +630,9 @@ export class BuildService extends Service<BuildService> {
         // setting an author has may turn that into a pass. Putting it behind `runOnBuild` would
         // mean a project that switched lint off ships broken media silently, which is exactly the
         // reasoning ruling R4 already applied to unresolved command lines.
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         const mediaRefusal = await this.runMediaGate(startedAt, platforms);
         if (mediaRefusal) {
             return mediaRefusal;
@@ -553,11 +640,36 @@ export class BuildService extends Service<BuildService> {
         // The project check (ruling R3), behind the gate above and never instead of it: that one is
         // unconditional (ruling R4), and a sweep an author can switch off in settings must not be
         // what decides whether a story the compiler refuses gets to ship.
-        const lintRefusal = await this.runLintGate(startedAt, platforms);
+        const lintRefusal = await this.runLintGate(startedAt, platforms, signal);
         if (lintRefusal) {
             return lintRefusal;
         }
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         return null;
+    }
+
+    /**
+     * The run the author stopped while its checks were still going.
+     *
+     * Reported as an error like every other refusal, because that is what a run that produced
+     * nothing is: the dashboard archives it beside the others and the console says why it ended.
+     * The message is the pipeline's own wording for a stopped run, so a build stopped here and a
+     * build stopped a second later read the same.
+     */
+    private refuseCancelledChecks(startedAt: number, platforms: GameBuildPlatform[]): GameBuildStateSnapshot {
+        const message = translate("build.cancelled");
+        this.tryGetConsole()?.log(BUILD_CONSOLE_CHANNEL, "warning", message, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({
+            status: "error",
+            progress: null,
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: message,
+        });
+        return this.state;
     }
 
     /**
@@ -578,6 +690,7 @@ export class BuildService extends Service<BuildService> {
         // Gated on the content's variant, not the one the patch attaches to: what a gate refuses is
         // a payload, and the payload is that variant's. A patch must not carry what a build of the
         // same content would have been stopped from shipping.
+        this.updateState({ status: "checking", progress: null, startedAt, platforms });
         const refusal = await this.runPreBuildGates(startedAt, platforms, request.contentAppTagId ?? request.appTagId);
         if (refusal) {
             return refusal;
@@ -611,6 +724,21 @@ export class BuildService extends Service<BuildService> {
         // Recorded before the request, because the pipeline reports a stopped run as a failure with
         // a message of its own making. This flag is what tells the two apart on the way back.
         this.cancelRequested = true;
+        // Still in the checks: they belong to this window, so this is the only thing that can stop
+        // them - and asking the pipeline would be asking it to stop a run it has not been given.
+        if (this.state.status === "checking") {
+            if (this.gateAbort) {
+                // The gates are still running and will report the refusal themselves between one
+                // gate and the next, so nothing is updated here.
+                this.gateAbort.abort();
+                return this.state;
+            }
+            // In `checking` with no gates left to abort. That should not be reachable - the guard
+            // above turns every escape into a terminal state - but the cost of being wrong is a
+            // window stuck on "checking the project" with its build control disabled and no way
+            // back, so Stop puts it back itself rather than trusting that.
+            return this.refuseCancelledChecks(this.state.startedAt ?? Date.now(), this.state.platforms ?? []);
+        }
         const result = await getInterface().gameBuild.cancel(this.projectPath());
         if (result.success) {
             this.updateState(result.data.state);
@@ -828,18 +956,19 @@ export class BuildService extends Service<BuildService> {
      * ## The one gap that matters wherever it is
      *
      * A trimming build also leaves out assets, and it decides which by reading the ids written in the
-     * bytes it ships. An asset the running game *computes* the id of is invisible to that reading -
-     * and `computedAssetPin` is the index reporting exactly that shape, in any document. It is
-     * refused rather than worked around, because the alternative is a shipped game whose art is
-     * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
-     * instead of wiring a value into it.
+     * bytes it ships. An asset whose name the running game *assembles* is invisible to that reading -
+     * and `computedAssetPin` is the index reporting exactly that shape (`findAssetNameGaps`), in any
+     * document. It is refused rather than worked around, because the alternative is a shipped game
+     * whose art is missing with nothing anywhere having said so. A name read out of something the
+     * project writes down - a list row filled from the Gallery, a variable set from a picker - is
+     * not that shape and is not refused: the package carries it.
      *
      * ## The two scopes, which are two different questions
      *
      * `assets` is asked of every package. What it refuses is the one construct the id sweep cannot
-     * see - an asset arriving on a pin from a computed value - and nothing else, because that
-     * question has nothing to do with which scenes a build keeps. The remedy is to select the asset
-     * on the pin.
+     * see - an asset picked by a name assembled at run time - and nothing else, because that
+     * question has nothing to do with which scenes a build keeps. Each refusal is printed in the
+     * project check's own sentence, which says what to do instead.
      *
      * `content` is asked only where the build also drops scenes. It adds the gaps that make the
      * scene answer itself incomplete: a story document that would not load, and an index that never
@@ -889,20 +1018,29 @@ export class BuildService extends Service<BuildService> {
         }
 
         const consoleService = this.tryGetConsole();
-        const gapKey = scope === "assets" ? "build.contentComputedPinGap" : "build.contentCoverageGap";
         for (const gap of touching) {
-            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(gapKey, {
-                // A gap with no site is the index itself; it has no location to name, and the
-                // sentence has to read as one either way.
-                location: gap.location ?? translate("build.contentCoverageWholeProject"),
-                variant,
-            }), { source: BUILD_CONSOLE_SOURCE });
+            // An asset picked by a computed value is reported in the sentence the canvas and the
+            // project check print for it, naming the node the way its card does.
+            const line = gap.assetName
+                ? describeAssetNameGap(gap.assetName, translate)
+                : translate("build.contentCoverageGap", {
+                    // A gap with no site is the index itself; it has no location to name, and the
+                    // sentence has to read as one either way.
+                    location: gap.location ?? translate("build.contentCoverageWholeProject"),
+                    variant,
+                });
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", line, { source: BUILD_CONSOLE_SOURCE });
         }
-        const refusal = translateN(
-            scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
-            touching.length,
-            { count: touching.length, variant },
-        );
+        // The headline is what the build state carries, and the dashboard archives it, so it has to
+        // be true of every line beneath it. A project built on a plugin's nodes, opened where that
+        // plugin is not loaded, refuses here with nothing it names having been assembled by anyone:
+        // the remedy is a plugin to switch on, and the headline says so when that is the whole of it.
+        const allUnloaded = touching.every(gap => gap.assetName?.origin.kind === "node"
+            && gap.assetName.origin.unknownType === true);
+        const summaryKey = scope === "assets"
+            ? (allUnloaded ? "build.contentUnloadedNodeSummary" : "build.contentComputedPinSummary")
+            : "build.contentCoverageSummary";
+        const refusal = translateN(summaryKey, touching.length, { count: touching.length, variant });
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;
@@ -971,21 +1109,11 @@ export class BuildService extends Service<BuildService> {
      * second implementation: a refusal and a removal that judged different graphs would be exactly the
      * failure both exist to prevent.
      *
-     * ## Shared blueprint assets are judged here too
-     *
-     * They did not use to be, and the gap had a shape worth remembering: a `.nlbp` is an asset file
-     * rather than an entry in the document, so nothing on this side enumerated them and the refusal
-     * only arrived when the main process folded the pack and threw. That is a refusal *after* the
-     * author has committed to a build, phrased in the packer's words rather than the editor's.
-     * `AssetsService.listSharedBlueprints` is what closed it.
-     *
-     * The main process still folds and still throws, and that has to stay: this gate reads the assets
-     * as the author's project holds them right now, and a build is entitled to assume nothing about
-     * what ran before it. Do not narrow the removal to match the refusal - a shared asset that
-     * shipped unfolded would answer the release name in every edition, which is a silently wrong
-     * package rather than a failed build.
-     *
-     * Asynchronous only because of those assets; the document half is in memory as before.
+     * The main process still folds and still throws, and that has to stay: this gate reads the
+     * document as the author's project holds it right now, and a build is entitled to assume nothing
+     * about what ran before it. Do not narrow the removal to match the refusal - a graph that shipped
+     * unfolded would answer the release name in every edition, which is a silently wrong package
+     * rather than a failed build.
      */
     private async runAppTagGraphGate(
         startedAt: number,
@@ -1005,10 +1133,7 @@ export class BuildService extends Service<BuildService> {
         // The name is passed for completeness only. Whether a graph reduces is a property of the
         // graph, so a chain that stops at a text field stops under every variant.
         const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
-        const refused = [
-            ...collectUnfoldableAppTagGraphs(document, { tagName }),
-            ...await this.collectUnfoldableSharedBlueprints(tagName),
-        ];
+        const refused = collectUnfoldableAppTagGraphs(document, { tagName });
         if (refused.length === 0) {
             return null;
         }
@@ -1038,30 +1163,6 @@ export class BuildService extends Service<BuildService> {
             error: refusal,
         });
         return this.state;
-    }
-
-    /**
-     * The same sweep over the project's shared blueprint assets.
-     *
-     * Named by the asset rather than by the blueprint inside it: an author looking for "Continue" in
-     * the asset browser will not find a blueprint whose inner `name` drifted from the file's, and the
-     * asset's name is the one the browser shows.
-     *
-     * Answers an empty list if the assets cannot be listed at all. The removal in the main process is
-     * the backstop, and a build refused because a *gate* could not read something is a build refused
-     * for a reason the author cannot act on.
-     */
-    private async collectUnfoldableSharedBlueprints(tagName: string): Promise<UnfoldableAppTagGraph[]> {
-        let assets: SharedBlueprintAsset[];
-        try {
-            assets = await this.getContext().services.get<AssetsService>(Services.Assets).listSharedBlueprints();
-        } catch (error) {
-            console.error("[Build] could not read the shared blueprints for the variant check", error);
-            return [];
-        }
-        return assets.flatMap(asset =>
-            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, { tagName })
-                .map(graph => ({ ...graph, blueprintName: asset.name || graph.blueprintName })));
     }
 
     /**
@@ -1115,19 +1216,25 @@ export class BuildService extends Service<BuildService> {
             // guess at - and a warning is the last thing that should stop a build.
             return;
         }
-        const blueprints = new Set(collectBlueprintPointerNodes(document).map(site => site.blueprintName));
-        if (blueprints.size === 0) {
-            return;
-        }
         const consoleService = this.tryGetConsole();
-        for (const blueprint of blueprints) {
-            consoleService?.log(
-                BUILD_CONSOLE_CHANNEL,
-                "warning",
-                translate("build.pointerNodeUnsupported", { blueprint, platforms: nonDesktop.join(", ") }),
-                { source: BUILD_CONSOLE_SOURCE },
-            );
-        }
+        const warn = (blueprintNames: Set<string>, key: "build.pointerNodeUnsupported" | "build.screenshotNodeUnsupported") => {
+            for (const blueprint of blueprintNames) {
+                consoleService?.log(
+                    BUILD_CONSOLE_CHANNEL,
+                    "warning",
+                    translate(key, { blueprint, platforms: nonDesktop.join(", ") }),
+                    { source: BUILD_CONSOLE_SOURCE },
+                );
+            }
+        };
+        warn(new Set(collectBlueprintPointerNodes(document).map(site => site.blueprintName)), "build.pointerNodeUnsupported");
+        // The screenshot pair takes the cursor family's treatment for the cursor family's reason: a
+        // web or mobile build of a project that offers a screenshot button is a legitimate thing to
+        // ship, and the button reports the platform has none rather than pretending.
+        warn(
+            new Set(collectBlueprintScreenshotNodes(document).map(site => site.blueprintName)),
+            "build.screenshotNodeUnsupported",
+        );
     }
 
     private runNetworkGate(
@@ -1322,10 +1429,21 @@ export class BuildService extends Service<BuildService> {
             return null;
         }
 
-        if (uncheckedCount > 0) {
-            // Said at `info` rather than `verbose` because the console hides verbose by default, and
-            // an author on a host with no converter is entitled to know the check did not happen -
-            // otherwise a silent pass reads as a clean bill of health.
+        // Said at `info` rather than `verbose` because the console hides verbose by default, and an
+        // author on a host with no converter is entitled to know the check did not happen -
+        // otherwise a silent pass reads as a clean bill of health.
+        //
+        // Only for a trusted project, though. A distrusted one leaves every clip unanswered as well,
+        // for a reason that has nothing to do with this machine - main refuses the probe - so this
+        // sentence would name a missing converter that is in fact installed. Saying nothing is the
+        // honest answer there: main refuses the build itself at `gameBuild.start`, just past these
+        // gates, so the one refusal the author needs is already on its way and a wrong explanation
+        // ahead of it only has to be unlearned. Asking is cheap - the answer is settled once per
+        // project path and held for the life of the window, and the scan just above asks main the
+        // same thing. A trust query that never answered reads as distrusted and so costs this line;
+        // that is cheaper than printing a false cause, and the no-converter case on a trusted
+        // project is untouched.
+        if (uncheckedCount > 0 && await isProjectTrusted(this.projectPath())) {
             consoleService?.log(
                 BUILD_CONSOLE_CHANNEL,
                 "info",
@@ -1376,6 +1494,7 @@ export class BuildService extends Service<BuildService> {
     private async runLintGate(
         startedAt: number,
         platforms: GameBuildPlatform[],
+        signal?: AbortSignal,
     ): Promise<GameBuildStateSnapshot | null> {
         const consoleService = this.tryGetConsole();
         const services = this.getContext().services;
@@ -1389,9 +1508,32 @@ export class BuildService extends Service<BuildService> {
             return null;
         }
 
+        // Said on the build channel, which is the one an author watching a build is looking at. The
+        // sweep also logs to its own channel, but a build that stops here has to account for the
+        // time on the record the dashboard archives per run - and this gate is the longest thing
+        // between the click and the first sign of a package.
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.build.started"), {
+            source: BUILD_CONSOLE_SOURCE,
+        });
+
         let report: LintReport;
         try {
-            report = await services.get<LintService>(Services.Lint).run();
+            report = await services.get<LintService>(Services.Lint).run({
+                // Stopping a build stops the sweep it is waiting on, rather than letting it run to
+                // the end and then discarding the report. The engine returns what it has with the
+                // unrun rules listed as skipped; the run is refused above either way.
+                signal,
+                // The build channel's own bar, filled by the sweep it is waiting on. Without it the
+                // bar animates for the whole gate and says only "something is happening"; a rule
+                // count is the one number this stretch actually has.
+                onProgress: progress => {
+                    consoleService?.setProgress(BUILD_CONSOLE_CHANNEL, {
+                        value: progress.total === 0 ? 1 : progress.done / progress.total,
+                        indeterminate: false,
+                        error: false,
+                    });
+                },
+            });
         } catch (error) {
             // Fail the build rather than log and continue. The gate answers one question - "is
             // anything wrong with this project" - and a sweep that crashed did not answer it;
@@ -1422,7 +1564,7 @@ export class BuildService extends Service<BuildService> {
         // the dashboard keeps per run, and without this line that record ends at "12 warnings in
         // 1.2s" and never says the build stopped at all - let alone which of those findings stopped
         // it, which is what the count is for.
-        const refusal = translate("lint.build.blocked", { count: blocking });
+        const refusal = translateN("lint.build.blocked", blocking);
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.logLintGateHint(consoleService);
         // `startedAt` and `platforms` carried through for the same reason the gate above carries
@@ -1455,7 +1597,7 @@ export class BuildService extends Service<BuildService> {
         });
     }
 
-    /** Every finding on the build channel at the level its severity maps to, then one summary. */
+    /** Every finding on the build channel at the level its severity maps to, then a count per rule, then one summary. */
     private logLintReport(consoleService: ConsoleService | null, report: LintReport): void {
         if (!consoleService) {
             return;
@@ -1476,14 +1618,27 @@ export class BuildService extends Service<BuildService> {
                 source: BUILD_CONSOLE_SOURCE,
             });
         }
+        // What the cap cut off, as a count per rule. The first two hundred findings of a sweep that
+        // is 99.8% one rule are two hundred copies of one sentence, and without this the console
+        // says nothing at all about the rules underneath it.
+        const tally = tallyLintFindingsByRule(report.entries);
+        if (tally.length > 0) {
+            consoleService.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.console.byRule"), {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            for (const rule of tally) {
+                consoleService.log(
+                    BUILD_CONSOLE_CHANNEL,
+                    LINT_CONSOLE_LEVELS[rule.severity],
+                    translate("lint.console.ruleCount", { rule: rule.ruleId, count: rule.count }),
+                    { source: BUILD_CONSOLE_SOURCE },
+                );
+            }
+        }
         consoleService.log(
             BUILD_CONSOLE_CHANNEL,
             report.counts.error > 0 ? "error" : report.counts.warning > 0 ? "warning" : "success",
-            translate("lint.console.finished", {
-                errors: report.counts.error,
-                warnings: report.counts.warning,
-                duration: `${((report.finishedAt - report.startedAt) / 1000).toFixed(1)}s`,
-            }),
+            formatLintFinishedLine(report),
             { source: BUILD_CONSOLE_SOURCE },
         );
     }
@@ -1597,9 +1752,10 @@ export class BuildService extends Service<BuildService> {
             return;
         }
 
-        // Active build. "preparing" opens a fresh run: drop the previous run's bar, so the one
-        // set below is a new one and starts without its warning colour.
-        if (status === "preparing" && phaseChanged) {
+        // Active build. "checking" opens a fresh run (and "preparing" does when there were no checks
+        // to run before it): drop the previous run's bar, so the one set below is a new one and
+        // starts without its warning colour.
+        if ((status === "checking" || status === "preparing") && phaseChanged) {
             consoleService.setProgress(BUILD_CONSOLE_CHANNEL, null);
         }
 
@@ -1625,7 +1781,7 @@ export class BuildService extends Service<BuildService> {
     }
 
     private syncPolling(status: GameBuildStatus): void {
-        if (isActiveStatus(status)) {
+        if (PIPELINE_ACTIVE_STATUSES.includes(status)) {
             this.startPolling();
         } else {
             this.stopPolling();
@@ -1651,7 +1807,7 @@ export class BuildService extends Service<BuildService> {
 }
 
 function isActiveStatus(status: GameBuildStatus): boolean {
-    return status === "preparing" || status === "compiling" || status === "packaging";
+    return BUILD_ACTIVE_STATUSES.includes(status);
 }
 
 /**
@@ -1696,7 +1852,7 @@ function isBlockingLintSeverity(
  * {@link nonRedundantLintLocation}.
  */
 export function formatLintFinding(entry: LintReportEntry): string {
-    const message = translate(entry.messageKey, entry.messageParams);
+    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN));
     return translate("lint.console.finding", {
         rule: entry.ruleId,
         location: nonRedundantLintLocation(describeLintLocation(entry.location), message),

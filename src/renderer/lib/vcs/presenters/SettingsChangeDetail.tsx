@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { EmptyState, SectionCard } from "@/lib/components/elements";
 import { DocumentChangeList } from "../DocumentChangeList";
+import { readableChangePath } from "../identifierDisplay";
 import {
     CHANGE_KIND_GLYPH,
     CHANGE_KIND_TINT,
@@ -103,10 +104,10 @@ export function SettingsChangeDetail({ entry, change }: ChangePresenterProps) {
 export function SectionHeading({ change }: { change: DocumentChange }) {
     const translator = useTranslation();
     const label = resolveDocumentChangeLabel(change, translator);
-    const path = change.path.join(" / ");
+    const path = readableChangePath(change.path);
 
     return (
-        <span className="flex min-w-0 items-baseline gap-1.5" data-tip={path || undefined}>
+        <span className="flex min-w-0 items-baseline gap-1.5" data-tip={path}>
             <span
                 aria-hidden
                 className={cn("w-2 shrink-0 text-center font-mono", CHANGE_KIND_TINT[change.kind])}

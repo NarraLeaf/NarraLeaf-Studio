@@ -3,9 +3,17 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 
 export const PLUGINS_PANEL_ID = "narraleaf-studio:plugins";
 
-/** Deep-link payload: open the panel already showing one plugin. */
+/** Deep-link payload: open the panel already showing one plugin, or on the project's dependencies. */
 export type PluginsPanelPayload = {
     pluginId?: string;
+    /**
+     * Which reading of the plugin set to open on. Omitted means the installed list.
+     *
+     * `dependencies` is a temporary state of the same panel: what this project declares it needs,
+     * with the remedy each row wants. Anything that noticed an unmet dependency asks for it by
+     * name rather than describing where to find it.
+     */
+    view?: "dependencies";
 };
 
 /**

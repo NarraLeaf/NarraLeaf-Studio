@@ -24,6 +24,7 @@ import { registerCharacterAvatarAssets } from "@/lib/ui-editor/runtime/character
 import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
+import { needsRunningGame } from "@/lib/ui-editor/runtime/app/runtimeRefusals";
 
 const RECOMPILE_DEBOUNCE_MS = 300;
 /** Pure row switches (same document, new target) rebuild sooner - they are the hot path. */
@@ -419,6 +420,9 @@ export function useStoryScenePreviewController(input: {
                 targetBlockId,
                 animations,
                 savedVariables: variableTables?.saved,
+                // The same cast the compile below is handed: the frozen preview poses a character
+                // from this snapshot, so it has to fold her entrance defaults the same way.
+                characters: host.characters,
             });
             if (runId !== runIdRef.current) {
                 return;
@@ -466,10 +470,10 @@ export function useStoryScenePreviewController(input: {
             const sessionId = `story-preview-${runId}`;
             const previewGame = host.createPreviewGame({
                 sessionId,
-                requireLiveGame: operation => {
+                requireLiveGame: asker => {
                     const liveGame = findRunBySessionId(sessionId)?.liveGame ?? null;
                     if (!liveGame) {
-                        throw new Error(`${operation}: game runtime is not available`);
+                        throw needsRunningGame(asker);
                     }
                     return liveGame;
                 },

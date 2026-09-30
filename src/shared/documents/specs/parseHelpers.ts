@@ -70,6 +70,7 @@ export function rejectNewerSchema(
     if (typeof schemaVersion === "number" && schemaVersion > version) {
         context.corrupt(
             `written by a newer version of Studio (schema v${schemaVersion}; this build reads v${version})`,
+            {defect: "newerVersion"},
         );
     }
 }

@@ -16,9 +16,17 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -26,13 +34,21 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SAVED_SET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
+import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { createBlueprintFnRef } from "./fnCatalog";
 import { ownerRefToIndexKey } from "./ownerKeys";
-import { validateBlueprintDocumentGraphs, validateBlueprintGraphIr } from "./graphValidation";
+import {
+    validateBlueprintDocumentGraphs,
+    validateBlueprintGraphIr,
+    type BlueprintGraphEditorDiagnostic,
+} from "./graphValidation";
 
 describe("blueprint graph validation", () => {
     it("reports multiple outgoing edges from one output pin", () => {
@@ -260,34 +276,29 @@ describe("blueprint graph validation", () => {
                     id: "widget",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            declare: {
-                                                id: "declare",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                                                params: { variableId: "score", name: "Score", valueType: "integer", defaultValue: 0 },
-                                            },
-                                            get: {
-                                                id: "get",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
-                                                params: { variableId: "score" },
-                                            },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        declare: {
+                                            id: "declare",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                            params: { variableId: "score", name: "Score", valueType: "integer", defaultValue: 0 },
                                         },
-                                        edges: [],
+                                        get: {
+                                            id: "get",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                            params: { variableId: "score" },
+                                        },
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -296,8 +307,8 @@ describe("blueprint graph validation", () => {
 
         expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).not.toContain("node.variable_id_invalid");
         const widget = doc.blueprints.widget!;
-        if (widget.program.kind === "graph") {
-            delete widget.program.graphs.events.init!.graph!.nodes!.declare;
+        {
+            delete widget.graphs.events.init!.graph!.nodes!.declare;
         }
         expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).toContain("node.variable_id_invalid");
     });
@@ -311,45 +322,40 @@ describe("blueprint graph validation", () => {
                     id: "widget",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            declare: {
-                                                id: "declare",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                                                params: {
-                                                    variableId: "score",
-                                                    name: "Score",
-                                                    valueType: "integer",
-                                                    defaultValue: 0,
-                                                },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        declare: {
+                                            id: "declare",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                            params: {
+                                                variableId: "score",
+                                                name: "Score",
+                                                valueType: "integer",
+                                                defaultValue: 0,
                                             },
-                                            get: {
-                                                id: "get",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
-                                                params: { variableId: "score" },
-                                            },
-                                            format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
                                         },
-                                        edges: [
-                                            {
-                                                from: { nodeId: "get", port: "value" },
-                                                to: { nodeId: "format", port: "values" },
-                                            },
-                                        ],
+                                        get: {
+                                            id: "get",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                            params: { variableId: "score" },
+                                        },
+                                        format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
                                     },
+                                    edges: [
+                                        {
+                                            from: { nodeId: "get", port: "value" },
+                                            to: { nodeId: "format", port: "values" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -361,9 +367,7 @@ describe("blueprint graph validation", () => {
         expect(diagnostics.find(d => d.code === "edge.connection_invalid")?.message).toContain(
             "Type mismatch: integer -> json",
         );
-        const graph = doc.blueprints.widget?.program.kind === "graph"
-            ? doc.blueprints.widget.program.graphs.events.init?.graph
-            : undefined;
+        const graph = doc.blueprints.widget?.graphs.events.init?.graph;
         expect(graph?.edges).toHaveLength(1);
 
         const declare = graph?.nodes?.declare;
@@ -429,7 +433,6 @@ describe("blueprint graph validation", () => {
             graphId: "init",
             blueprintOwner: { kind: "widgetMain", surfaceId: "surface", elementId: "text" },
             widgetElementType: "nl.text",
-            isBlueprintValueGraph: false,
         });
 
         const contextError = diagnostics.find(d => d.code === "node.context_invalid");
@@ -462,7 +465,6 @@ describe("blueprint graph validation", () => {
                 propPath: "props.text",
             },
             widgetElementType: "nl.text",
-            isBlueprintValueGraph: true,
         });
 
         expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
@@ -580,18 +582,12 @@ describe("blueprint fn validation", () => {
                 id,
                 name: id,
                 owner: entry.owner,
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
                 bindings: {},
-                program: {
-                    kind: "graph",
-                    graphs: { events: { main: { id: "main", graph: entry.ir } }, functions: {} },
-                },
+                graphs: { events: { main: { id: "main", graph: entry.ir } }, functions: {} },
             };
             ownerRecords[ownerRefToIndexKey(entry.owner)] = {
-                activeBlueprintId: id,
-                privateBlueprintIds: [id],
+                blueprintId: id,
             };
         }
         return {
@@ -814,5 +810,342 @@ describe("blueprint fn validation", () => {
         const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-a");
         const contextInvalid = diagnostics.find(d => d.code === "node.context_invalid");
         expect(contextInvalid?.target).toMatchObject({ kind: "node", nodeId: "head" });
+    });
+
+    it("flags an unknown node type with node.unknown_type, not node.no_runtime", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+        });
+
+        const unknown = diagnostics.find(d => d.code === "node.unknown_type");
+        expect(unknown?.target).toMatchObject({ kind: "node", nodeId: "mystery" });
+        expect(unknown?.severity).toBe("warning");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.no_runtime");
+    });
+
+    it("anchors edge.port_mismatch on the node missing the pin, not its upstream neighbour", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                getter: { id: "getter", type: BLUEPRINT_NODE_TYPE_LOCAL_GET },
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+            },
+            // Feeds a pin the unknown stub does not expose. The value node upstream is healthy; the
+            // mismatch belongs to the unknown node downstream.
+            edges: [{ from: { nodeId: "getter", port: "value" }, to: { nodeId: "mystery", port: "value" } }],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+        });
+
+        const mismatch = diagnostics.find(d => d.code === "edge.port_mismatch");
+        expect(mismatch?.target).toMatchObject({ kind: "node", nodeId: "mystery" });
+    });
+});
+
+/**
+ * The palette decides what an author may drop on the canvas; this validator decides what a saved
+ * graph may hold. When the two part company the author gets a node that is an error the moment it
+ * lands and cannot be cleared, and `blueprint apply` then refuses to write that blueprint at all -
+ * so the command-line tools are locked out of a graph the editor itself made. These tests build a
+ * graph out of exactly what the palette offered and expect this validator to accept all of it.
+ */
+describe("palette and validator agreement", () => {
+    function surfaceDocument(): Pick<UIDocument, "elements"> {
+        const layout = { x: 0, y: 0, width: 10, height: 10 };
+        const element = (id: string, type: string, parentId: string | null, childrenIds: string[]): UIElement => ({
+            id,
+            type,
+            parentId,
+            childrenIds,
+            layout,
+        });
+        return {
+            elements: {
+                root: element("root", "nl.root", null, ["list", "loose"]),
+                list: element("list", "nl.list", "root", ["row"]),
+                row: element("row", "nl.container", "list", ["label"]),
+                label: element("label", "nl.text", "row", []),
+                loose: element("loose", "nl.text", "root", []),
+            },
+        };
+    }
+
+    /** Every node type the add-node palette offers for this owner, on this element. */
+    function paletteTypes(owner: BlueprintOwnerRef, elementId?: string): string[] {
+        registerCoreBlueprintNodes();
+        const document = surfaceDocument();
+        return BlueprintNodeCatalogService.getInstance()
+            .listPaletteEntries(buildBlueprintGraphContext({
+                graphKind: "event",
+                owner,
+                widgetElement: elementId ? document.elements[elementId] : undefined,
+                uiDocument: document,
+                // No layer wired yet, which is what the head picker asks about: offer every head
+                // this widget can carry rather than the ones one open layer is wired to.
+                widgetEventLayerSlots: elementId ? [] : undefined,
+            }))
+            .map(entry => entry.type);
+    }
+
+    /** One event graph holding all of `types`, judged the way the editor judges a saved graph. */
+    function contextRefusals(
+        owner: BlueprintOwnerRef,
+        types: readonly string[],
+        elementId?: string,
+    ): BlueprintGraphEditorDiagnostic[] {
+        registerCoreBlueprintNodes();
+        const document = surfaceDocument();
+        const nodes: NonNullable<BlueprintGraphIr["nodes"]> = {};
+        for (const type of types) {
+            nodes[type] = { id: type, type };
+        }
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Blueprint",
+                    owner,
+                    members: { variables: {}, fields: {}, functions: {} },
+                    graphs: { events: { layer: { id: "layer", graph: { nodes, edges: [] } } }, functions: {} },
+                },
+            },
+            ownerRecords: {},
+        };
+        return validateBlueprintDocumentGraphs(doc, "bp", {
+            widgetElement: elementId ? document.elements[elementId] : undefined,
+            uiDocument: document,
+            widgetSurfaceId: "surface",
+        }).filter(d => d.code === "node.context_invalid");
+    }
+
+    const CASES: Array<{ name: string; owner: BlueprintOwnerRef; elementId?: string }> = [
+        {
+            name: "a story control-flow condition",
+            owner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+        },
+        {
+            name: "a story inline value",
+            owner: { kind: "storyAction", blueprintId: "bp", mode: "value" },
+        },
+        {
+            name: "a story action",
+            owner: { kind: "storyAction", blueprintId: "bp" },
+        },
+        {
+            name: "an element a list draws once per row",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "row" },
+            elementId: "row",
+        },
+        {
+            name: "the list itself",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
+            elementId: "list",
+        },
+        {
+            name: "an element no list draws",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "loose" },
+            elementId: "loose",
+        },
+        {
+            name: "a widget value binding",
+            owner: { kind: "widgetValue", surfaceId: "surface", elementId: "label", propPath: "props.text" },
+            elementId: "label",
+        },
+        {
+            name: "a surface",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+        },
+    ];
+
+    for (const testCase of CASES) {
+        it(`accepts every node the palette offers for ${testCase.name}`, () => {
+            const offered = paletteTypes(testCase.owner, testCase.elementId);
+            expect(offered.length).toBeGreaterThan(0);
+            expect(contextRefusals(testCase.owner, offered, testCase.elementId).map(d => d.message)).toEqual([]);
+        });
+    }
+
+    it("lets a story condition read a scene variable and return it", () => {
+        const owner: BlueprintOwnerRef = { kind: "storyAction", blueprintId: "bp", mode: "condition" };
+        const wanted = [
+            BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+            BLUEPRINT_NODE_TYPE_SCENE_GET,
+            BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+        ];
+        expect(paletteTypes(owner)).toEqual(expect.arrayContaining(wanted));
+        expect(contextRefusals(owner, wanted)).toEqual([]);
+    });
+
+    it("offers the List Item Refresh head where a list draws the element, and accepts it there", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "row" };
+        expect(paletteTypes(owner, "row")).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH);
+        expect(contextRefusals(owner, [BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH], "row")).toEqual([]);
+    });
+
+    it("offers list row readers on the list's own blueprint, where its item heads supply the row", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "list" };
+        expect(paletteTypes(owner, "list")).toContain(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
+        expect(contextRefusals(owner, [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD], "list")).toEqual([]);
+    });
+
+    it("hides and refuses list row readers where nothing draws a row", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "loose" };
+        expect(paletteTypes(owner, "loose")).not.toContain(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX);
+        const refused = contextRefusals(owner, [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX], "loose");
+        expect(refused).toHaveLength(1);
+        expect(refused[0]?.target).toMatchObject({ kind: "node", nodeId: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX });
+    });
+
+    it("does not refuse a list row reader when there was no document to walk", () => {
+        // The command-line tools check blueprints without an interface document to hand. A scope
+        // nothing established is not a scope that is absent, and refusing on one would lock those
+        // tools out of graphs the editor writes happily.
+        registerCoreBlueprintNodes();
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Blueprint",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "loose" },
+                    members: { variables: {}, fields: {}, functions: {} },
+                    graphs: {
+                        events: {
+                            layer: {
+                                id: "layer",
+                                graph: {
+                                    nodes: {
+                                        read: { id: "read", type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX },
+                                    },
+                                    edges: [],
+                                },
+                            },
+                        },
+                        functions: {},
+                    },
+                },
+            },
+            ownerRecords: {},
+        };
+
+        expect(validateBlueprintDocumentGraphs(doc, "bp").map(d => d.code)).not.toContain("node.context_invalid");
+    });
+});
+
+describe("node.input_missing", () => {
+    /** A click head wired into one node, which is the shape every one of these cases shares. */
+    function graphWith(
+        node: { id: string; type: string; params?: Record<string, unknown> },
+        extraEdges: BlueprintGraphIr["edges"] = [],
+        extraNodes: BlueprintGraphIr["nodes"] = {},
+    ): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                ...extraNodes,
+                [node.id]: node,
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: node.id, port: "in" } },
+                ...(extraEdges ?? []),
+            ],
+        };
+    }
+
+    function validate(ir: BlueprintGraphIr): BlueprintGraphEditorDiagnostic[] {
+        registerCoreBlueprintNodes();
+        return validateBlueprintGraphIr(ir, { blueprintId: "bp", graphKind: "event", graphId: "mouseClick" });
+    }
+
+    it("warns about a required data input with nothing wired to it", () => {
+        const diagnostics = validate(
+            graphWith({ id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } }),
+        );
+
+        const missing = diagnostics.filter(d => d.code === "node.input_missing");
+        expect(missing).toHaveLength(1);
+        expect(missing[0].severity).toBe("warning");
+        // Named by what the card says, never by the node id.
+        expect(missing[0].message).toContain("Set Text");
+        expect(missing[0].message).toContain("Element");
+        expect(missing[0].target).toMatchObject({ kind: "node", nodeId: "setText" });
+    });
+
+    it("says nothing once the pin is wired", () => {
+        const diagnostics = validate(
+            graphWith(
+                { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } },
+                [{ from: { nodeId: "element", port: "element" }, to: { nodeId: "setText", port: "element" } }],
+                { element: { id: "element", type: BLUEPRINT_NODE_TYPE_ELEMENT_REF, params: { elementId: "label" } } },
+            ),
+        );
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("says nothing about a pin the card carries a value for", () => {
+        // `Log`'s Value is an inline literal, and an author who cleared it chose the empty string.
+        const withValue = validate(graphWith({ id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: { value: "" } }));
+        expect(withValue.map(d => d.code)).not.toContain("node.input_missing");
+
+        const withoutValue = validate(graphWith({ id: "log", type: BLUEPRINT_NODE_TYPE_LOG }));
+        expect(withoutValue.map(d => d.code)).toContain("node.input_missing");
+    });
+
+    it("says nothing about a pin the definition marks optional", () => {
+        // Play Sound takes its asset, volume, loop and fade from the inspector when unwired, and
+        // says so on the pins - which is the only place a node may say it.
+        const diagnostics = validate(graphWith({ id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY }));
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("leaves an unfinished draft alone", () => {
+        // Nothing reaches it, so `blueprint/unreachable-node` is the one report it gets.
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT },
+            },
+            edges: [],
+        };
+
+        expect(validate(ir).map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("leaves Return Value to the condition check", () => {
+        // One node with two explanations is worse than one; `condition.return_missing` owns this pin.
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } }],
+        };
+        registerCoreBlueprintNodes();
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "onCall",
+            blueprintOwner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+        });
+
+        expect(diagnostics.map(d => d.code)).toContain("condition.return_missing");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
     });
 });

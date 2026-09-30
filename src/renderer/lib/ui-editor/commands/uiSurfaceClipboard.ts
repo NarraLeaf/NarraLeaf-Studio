@@ -2,6 +2,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { InterpolationParams, PluralKey, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElement, UIElementId, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import {
@@ -294,30 +295,20 @@ function cloneJson<T>(value: T): T {
  * travel - a global graph, a story action's graph and every other surface's stay where they are,
  * which keeps a copy from putting the whole project's logic on the system clipboard.
  *
- * A record whose active blueprint is not among the ones it lists is dropped rather than carried:
- * that is the invariant `assertValidBlueprintDocument` enforces on the far side, and one broken
- * record there costs the import every blueprint the surface has.
+ * A record naming a blueprint this document does not hold is dropped rather than carried: that is
+ * the invariant `assertValidBlueprintDocument` enforces on the far side, and one broken record there
+ * costs the import every blueprint the surface has.
  */
 function collectSurfaceBlueprints(source: BlueprintDocument | null, surfaceId: string): BlueprintDocument {
     const blueprints: Record<string, Blueprint> = {};
     const ownerRecords: BlueprintDocument["ownerRecords"] = {};
     for (const [ownerKey, record] of Object.entries(source?.ownerRecords ?? {})) {
-        const owned = (record.privateBlueprintIds ?? [])
-            .map(blueprintId => source?.blueprints[blueprintId])
-            .filter((blueprint): blueprint is Blueprint => Boolean(blueprint));
-        if (owned.length === 0 || !ownsSurface(owned[0].owner, surfaceId)) {
+        const blueprint = source?.blueprints[record.blueprintId];
+        if (!blueprint || !ownsSurface(blueprint.owner, surfaceId)) {
             continue;
         }
-        if (!owned.some(blueprint => blueprint.id === record.activeBlueprintId)) {
-            continue;
-        }
-        for (const blueprint of owned) {
-            blueprints[blueprint.id] = cloneJson(blueprint);
-        }
-        ownerRecords[ownerKey] = {
-            ...cloneJson(record),
-            privateBlueprintIds: owned.map(blueprint => blueprint.id),
-        };
+        blueprints[blueprint.id] = cloneJson(blueprint);
+        ownerRecords[ownerKey] = { blueprintId: blueprint.id };
     }
     return {
         schemaVersion: source?.schemaVersion ?? BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
@@ -327,8 +318,7 @@ function collectSurfaceBlueprints(source: BlueprintDocument | null, surfaceId: s
 }
 
 function ownsSurface(owner: BlueprintOwnerRef, surfaceId: string): boolean {
-    return (owner.kind === "surfaceMain" || owner.kind === "widgetMain" || owner.kind === "widgetValue")
-        && owner.surfaceId === surfaceId;
+    return anchorSurfaceId(owner) === surfaceId;
 }
 
 /**

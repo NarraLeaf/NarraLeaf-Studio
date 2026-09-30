@@ -86,6 +86,12 @@ describe("the transition vocabulary", () => {
         expect(transitionKindFor("expression", "dissolve")).toBe("dissolve");
         expect(supportedTransitionWords("expression")).toContain("dissolve");
         expect(supportedTransitionWords("scene")).not.toContain("dissolve");
+        // And on a character, whose `fade` is the fade-in for the same reason a swap's is. The word
+        // was missing here alone, so a stored crossfade on a character row named nothing - and a
+        // context that cannot name a kind it can hold reads that row back as no transition at all.
+        expect(transitionKindFor("character", "dissolve")).toBe("dissolve");
+        expect(transitionWordFor("character", "dissolve")).toBe("dissolve");
+        expect(transitionWordFor("character", "fadeIn")).toBe("fade");
         // Not offered is not the same as not accepted: `/bg t=dissolve` has always parsed, and still
         // resolves to the word the scene shows for it.
         expect(matchEnumOption({ kind: "enum", options: transitionOptions("scene") }, "dissolve")?.value).toBe("fade");

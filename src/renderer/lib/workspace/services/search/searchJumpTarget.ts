@@ -17,6 +17,8 @@ export type SearchJumpTarget =
     | { kind: "storyFlow"; storyId: string; storyName: string }
     | { kind: "character"; characterId: string }
     | { kind: "uiSurface"; surfaceId: string }
+    /** A component definition: its own editor tab, the one the component library opens. */
+    | { kind: "uiComponent"; componentId: string }
     | { kind: "asset"; assetId: string; assetType: string }
     /**
      * An asset set - a thing a reference can point at that is not a file.

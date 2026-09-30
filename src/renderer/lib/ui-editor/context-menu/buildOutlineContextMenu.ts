@@ -2,10 +2,11 @@ import { addElementState, canAddElementState } from "@/lib/ui-editor/widget-modu
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { isSurfaceRootElement } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { translate } from "@/lib/i18n";
 
 const ROOT = "nl.root";
@@ -47,14 +48,10 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     }
 
     if (!rowElement) {
-        const insertSubmenu = widgetModules.map(mod => ({
-            id: `outline-blank-insert-${mod.type}`,
-            label: mod.displayName,
-            onClick: () => {
-                actions.hideMenu();
-                actions.insertChildInOutline(mod.type);
-            },
-        }));
+        const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "outline-blank-insert-", type => {
+            actions.hideMenu();
+            actions.insertChildInOutline(type);
+        });
         if (insertSubmenu.length > 0) {
             items.push({
                 id: "insert",
@@ -91,17 +88,14 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         return items;
     }
 
-    const isRoot = rowElement.type === ROOT || isComponentEditorRootElement(rowElement);
+    // A page's root has no name or visibility of its own; a component's frame has both.
+    const isRoot = rowElement.type === ROOT;
 
     if (insertParentIdForRow) {
-        const insertSubmenu = widgetModules.map(mod => ({
-            id: `outline-insert-${mod.type}`,
-            label: mod.displayName,
-            onClick: () => {
-                actions.hideMenu();
-                actions.insertChildInOutline(mod.type);
-            },
-        }));
+        const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "outline-insert-", type => {
+            actions.hideMenu();
+            actions.insertChildInOutline(type);
+        });
         items.push({
             id: "insert-child",
             label: translate("uiEditor.contextMenu.insertChild"),
@@ -110,9 +104,10 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         items.push({ separator: true, id: "sep-ins" });
     }
 
+    // Never the surface itself - a page's root, or a component's frame in its own editor.
     const editableIds = (menuSelection?.elementIds ?? []).filter(id => {
         const el = input.document.elements[id];
-        return el && el.type !== ROOT && !isComponentEditorRootElement(el);
+        return el != null && !isSurfaceRootElement(el);
     });
     const hasEditable = editableIds.length > 0;
 
@@ -276,7 +271,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     if (menuSelection?.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];
-        if (el && el.type !== ROOT && !isComponentEditorRootElement(el)) {
+        if (el && el.type !== ROOT) {
             const mod = widgetModuleRegistry.get(el.type);
             const extra = mod?.createContextMenuItems?.({
                 element: el,

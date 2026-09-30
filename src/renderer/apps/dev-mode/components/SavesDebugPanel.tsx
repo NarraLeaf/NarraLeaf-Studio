@@ -284,8 +284,8 @@ export function SavesDebugPanel(props: SavesDebugPanelProps): ReactNode {
         await refresh();
     }, [recordResult, refresh, saves]);
 
-    // `.nl-editor-surface` rather than `bg-surface-sunken`: the same paint at the author's
-    // `editor.surfaceOpacity`, matching the sibling panels.
+    // `.nl-editor-surface` rather than `bg-surface-sunken`, matching the sibling panels. This window
+    // has no wallpaper, so it resolves to the same opaque paint.
     const rootClass = cn(
         "nl-editor-surface flex h-full min-h-0 shrink-0 flex-col text-2xs text-fg-muted",
         // Docked, the left hairline is the seam against the stage. Floating, the panel carries its

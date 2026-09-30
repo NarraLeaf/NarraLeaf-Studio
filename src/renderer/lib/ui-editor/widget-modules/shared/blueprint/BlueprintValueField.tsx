@@ -132,6 +132,8 @@ export type BlueprintValueFieldConfig = {
     renderLiteralEditor?: (input: {
         data: UIInspectorData;
         liveElement: UIElement;
+        /** Look, do not touch: the project is frozen, so the editor renders but writes nothing. */
+        readOnly: boolean;
     }) => ReactNode;
 };
 
@@ -259,7 +261,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         return (
             <div className="space-y-2">
                 {fieldRow}
-                {config.renderLiteralEditor?.({ data: props.data, liveElement: live }) ?? (
+                {config.renderLiteralEditor?.({ data: props.data, liveElement: live, readOnly: props.readOnly === true }) ?? (
                     <div className="rounded-md border border-edge bg-surface px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">
                             <GitBranch className="h-4 w-4 shrink-0 text-fg-subtle" />

@@ -16,6 +16,7 @@ import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBluep
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type { BehaviorNodeExecuteResult, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
+import { translate } from "@/lib/i18n";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import type { ExecuteGraphResult } from "./GraphExecutor";
@@ -37,7 +38,7 @@ const DEFAULT_MAX_STEPS = 1024;
 /** Thrown when a graph evaluated synchronously reaches a node whose `execute` is asynchronous. */
 export class AsyncNodeInSyncGraphError extends BlueprintGraphExecutionError {
     constructor(public readonly nodeType: string, nodeId: string) {
-        super(`Async blueprint node "${nodeType}" cannot be evaluated synchronously`, nodeId);
+        super(translate("blueprint.runtimeError.asyncInSyncGraph"), nodeId);
         this.name = "AsyncNodeInSyncGraphError";
     }
 }
@@ -80,18 +81,18 @@ export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraph
         steps += 1;
         if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
             throw new BlueprintGraphExecutionError(
-                `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`,
+                translate("blueprint.runtimeError.stepLimitSync", { steps: String(options.maxSteps ?? DEFAULT_MAX_STEPS) }),
                 currentCursor,
             );
         }
 
         const node = graph.nodes[currentCursor];
         if (!node) {
-            throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.nodeMissing"), currentCursor);
         }
         const definition = behaviorNodeRegistry.get(node.type);
         if (!definition) {
-            throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, currentCursor);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.nodeTypeMissing"), currentCursor);
         }
 
         const context: BehaviorNodeExecutionContext = {

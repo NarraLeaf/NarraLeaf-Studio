@@ -7,8 +7,9 @@ import type {
     VcsMergeSideChoice,
     VcsMergeState,
 } from "@shared/types/vcs";
-import type { LabelTranslator } from "./documentChangeView";
-import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
+import { spellLabelCounts, type LabelTranslator } from "./documentChangeView";
+import { documentNameOf, numberRepeatedNames, type DocumentName, type DocumentNameContext } from "./documentName";
+import { elideGeneratedIdentifiers, readableChangePath } from "./identifierDisplay";
 
 /**
  * Reading a three-way merge's decisions as rows, without a component in the picture.
@@ -142,7 +143,10 @@ export function buildConflictRows(
     state: MergeChoiceState,
     names: DocumentNameContext,
 ): ConflictRowView[] {
-    return paths.map(path => {
+    // Numbered over the whole list, for `numberRepeatedNames`' reason: two stories whose titles are
+    // in a conflicted index cannot both be "Story" on the list an author has to work through.
+    const rowNames = numberRepeatedNames(paths.map(path => documentNameOf(path, names)));
+    return paths.map((path, position) => {
         const whole = state.decisions[path];
         const entry = state.documents[path];
         const document = entry?.status === "ready" ? entry.document : null;
@@ -153,7 +157,7 @@ export function buildConflictRows(
             : 0;
         return {
             path,
-            name: documentNameOf(path, names),
+            name: rowNames[position],
             decision: whole ?? (merging ? "per-change" : "none"),
             // Per-change counts only when every `conflict` inside has a side; an `auto-*` row needs
             // nothing, because the merge already had a right answer for it. A blocked document can
@@ -177,7 +181,8 @@ export function countUndecidedFiles(rows: readonly ConflictRowView[]): number {
  * lands before its semantic diff has no vocabulary yet. **The fallback is the path itself, drawn as
  * the raw thing it is** - inventing a sentence here would put a translated-looking label on a row
  * nobody has words for, which is worse than an obviously untranslated one because it cannot be
- * spotted.
+ * spotted. Its ids are drawn as an ellipsis (`identifierDisplay.ts`): the path's shape is what says
+ * where the change is, and a uuid in it is never shown.
  */
 export interface MergeDecisionLabelView {
     /** The row's leading text: the author's own word where there is one, else the translated label. */
@@ -194,13 +199,13 @@ export function resolveMergeDecisionLabel(
 ): MergeDecisionLabelView {
     if (!decision.label) {
         return {
-            primary: decision.subject ?? decision.path.join(" / "),
+            primary: decision.subject ?? readableChangePath(decision.path) ?? "",
             untranslated: decision.subject === undefined,
         };
     }
     // Cast for `resolveDocumentChangeLabel`'s reason: a producer's key is a plain string by
     // contract, and one with no entry renders as itself rather than as nothing.
-    const text = translator.t(decision.label.key as TranslationKey, { ...decision.label.params });
+    const text = translator.t(decision.label.key as TranslationKey, spellLabelCounts(decision.label.params, translator));
     return decision.subject === undefined
         ? { primary: text, untranslated: false }
         : { primary: decision.subject, detail: text, untranslated: false };
@@ -241,6 +246,12 @@ export interface MergeValueView {
     readonly hidden: number;
 }
 
+/** Both sides of one decision, as the two boxes of its row draw them. */
+export interface MergeSidesView {
+    readonly mine: MergeValueView;
+    readonly theirs: MergeValueView;
+}
+
 /**
  * How far into a value the field names go before what is left becomes one line of JSON.
  *
@@ -273,7 +284,7 @@ export const MERGE_VALUE_MAX_DEPTH = 3;
 export function describeMergeSides(
     mine: DocumentMergeSide,
     theirs: DocumentMergeSide,
-): { readonly mine: MergeValueView; readonly theirs: MergeValueView } {
+): MergeSidesView {
     const ABSENT: MergeValueView = { absent: true, lines: [], hidden: 0 };
     if (!mine.present && !theirs.present) {
         return { mine: ABSENT, theirs: ABSENT };
@@ -297,7 +308,15 @@ export function describeMergeSides(
             // A name a side does not hold draws as an empty value rather than as a missing row: the
             // two columns have to stay rows of each other, and "this side has nothing here" is the
             // fact the author is choosing about.
-            lines: shown.map(name => ({ ...(name ? { name } : {}), text: fields.get(name) ?? "" })),
+            //
+            // Names and values both lose their generated ids here - a record's `id`, a list of
+            // scene ids, a map keyed by block - because this is text drawn verbatim and the
+            // interface never shows a uuid. Compared BEFORE that, above, so two different ids still
+            // count as a disagreement and still sort to the top.
+            lines: shown.map(name => ({
+                ...(name ? { name: elideGeneratedIdentifiers(name) } : {}),
+                text: elideGeneratedIdentifiers(fields.get(name) ?? ""),
+            })),
             hidden,
         };
     };

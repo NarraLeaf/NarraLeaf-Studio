@@ -138,10 +138,11 @@ function NotificationItem({
             onMouseLeave={() => setHovered(false)}
             className={cn(
                 "flex w-full items-start gap-3 rounded-lg p-3",
-                // Per-side widths rather than `border` + `border-l-2`: the engine
-                // (narraleaf-react) ships a compiled Tailwind v4 sheet that the
-                // workspace window injects after its own, and its `.border` rule
-                // lands last and resets all four widths to 1px.
+                // The left edge is twice as thick as the other three: it is the stripe
+                // that carries the card's type colour (see TYPE_ACCENT). Each side's
+                // width is named on its own rather than a blanket `border` that a
+                // `border-l-2` then has to override - one declaration per edge, with
+                // nothing to undo.
                 "border-y border-r border-l-2 border-edge bg-surface-overlay",
                 // A light shadow rather than a dramatic one. The card is opaque and bordered
                 // already, so the shadow only has to lift it off what is behind it; a heavy one
@@ -163,8 +164,10 @@ function NotificationItem({
                     style={folded ? { maxHeight: TEXT_FOLD_HEIGHT } : undefined}
                 >
                     <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
+                    {/* Line breaks in the detail are kept: a detail listing several files puts one on
+                        each line, and run together they read as one sentence. */}
                     {notification.detail && (
-                        <p className="nl-selectable-text mt-1 text-xs text-fg-muted">{notification.detail}</p>
+                        <p className="nl-selectable-text mt-1 whitespace-pre-line text-xs text-fg-muted">{notification.detail}</p>
                     )}
                     {/* The last line fades out instead of being cut through the middle of itself, so a
                         folded card reads as "there is more" rather than as a rendering fault. */}

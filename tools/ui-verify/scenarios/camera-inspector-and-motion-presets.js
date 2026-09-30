@@ -275,7 +275,7 @@ const MOTION_PICKER = function () {
         .find(e => /max-h-\[420px\]/.test(e.className || '') && e.getBoundingClientRect().width > 200);
     if (!panel) return null;
     const buttons = [...panel.querySelectorAll('button')];
-    const tabButtons = buttons.filter(b => /^(Project|Presets|工程|预设)$/.test((b.textContent || '').trim()));
+    const tabButtons = buttons.filter(b => /^(Project|Presets|项目|预设)$/.test((b.textContent || '').trim()));
     const cards = buttons.map(b => (b.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
     return {
         found: true,

@@ -1,5 +1,6 @@
 import path from "path";
-import { collectBlueprintNodeSites, collectBlueprintNodeSitesIn } from "@shared/blueprint/blueprintNodeSites";
+import { refuseNewerProjectDocument } from "@shared/documents/newerSchema";
+import { collectBlueprintNodeSites } from "@shared/blueprint/blueprintNodeSites";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import {
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
@@ -7,9 +8,10 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { BuildPreflightFinding, GameBuildPlatform } from "@shared/types/gameBuild";
 import { isMobileBuildPlatform } from "@shared/types/gameBuild";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { Fs } from "@shared/utils/fs";
-import { loadSharedBlueprints } from "../devMode/pipeline/bundleAssembler";
+import { rethrowIfTooNew } from "../../utils/projectDocumentGate";
 
 /**
  * Targets whose shell cannot carry a playthrough from one edition of a title to the next.
@@ -69,11 +71,7 @@ export async function collectProgressCarryFindings(
 }
 
 /**
- * Distinct names of the blueprints holding a progress node, document and shared assets alike.
- *
- * The shared assets are half the answer, not a nicety: a title screen's "continue" button is exactly
- * the kind of graph an author factors out into a shared blueprint, and a check that read only
- * `uigraphs.json` would go quiet on the projects most likely to be affected.
+ * Distinct names of the blueprints holding a progress node.
  */
 async function readProgressNodeBlueprints(projectPath: string): Promise<string[]> {
     const names = new Set<string>();
@@ -82,6 +80,15 @@ async function readProgressNodeBlueprints(projectPath: string): Promise<string[]
     if (raw.ok) {
         try {
             const document = JSON.parse(raw.data) as UIGraphDocument;
+            // The one failure this must not absorb. Everything else here degrades to "no progress
+            // nodes found", which is a missing warning; a blueprint document a newer Studio wrote
+            // would be read as if it were this build's, and the answer would be wrong rather than
+            // absent - so it is refused by name and the build stops on it.
+            refuseNewerProjectDocument(document?.blueprintDocument, {
+                kind: "blueprints",
+                subject: "editor/ui/uigraphs.json",
+                supportedVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            });
             const sites = collectBlueprintNodeSites(
                 migrateBlueprintDocumentToLatest(document.blueprintDocument),
                 PROGRESS_NODE_TYPES,
@@ -89,14 +96,10 @@ async function readProgressNodeBlueprints(projectPath: string): Promise<string[]
             for (const site of sites) {
                 names.add(site.blueprintName);
             }
-        } catch {
+        } catch (error) {
+            rethrowIfTooNew(error);
             // A document that will not parse is the packer's to report; a dialog that warned on the
             // strength of a file it never read would be warning about a question it never asked.
-        }
-    }
-    for (const asset of await loadSharedBlueprints(projectPath)) {
-        if (collectBlueprintNodeSitesIn(asset.blueprint, PROGRESS_NODE_TYPES).length > 0) {
-            names.add(asset.name || asset.blueprint.name || asset.assetId);
         }
     }
     return [...names];

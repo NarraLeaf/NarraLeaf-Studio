@@ -1,44 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiCapability } from "../types/pluginPermissions";
-import {
-    describePluginInstallPermissions,
-    isPermissionSubset,
-    NO_INSTALL_PERMISSIONS_COPY,
-} from "./pluginInstallPermissions";
-
-describe("plugin install permission copy", () => {
-    it("synthesizes install permission text from structured filesystem and api permissions", () => {
-        expect(describePluginInstallPermissions([
-            {
-                kind: "filesystem",
-                path: "/Users/test/Desktop/narraleaf-plugin-permission-test.txt",
-                mode: "readwrite",
-                recursive: false,
-            },
-            {
-                kind: "api",
-                capability: ApiCapability.BashExecute,
-            },
-        ])).toEqual([
-            "Read and write access for /Users/test/Desktop/narraleaf-plugin-permission-test.txt",
-            "Use Studio API capability: bash.execute",
-        ]);
-    });
-
-    it("uses system fallback copy when install approval has no privileged controls", () => {
-        expect(describePluginInstallPermissions(undefined)).toEqual([NO_INSTALL_PERMISSIONS_COPY]);
-        expect(describePluginInstallPermissions([])).toEqual([NO_INSTALL_PERMISSIONS_COPY]);
-    });
-
-    it("normalizes structured values before rendering them", () => {
-        expect(describePluginInstallPermissions([
-            {
-                kind: "api",
-                capability: "custom.capability\nwith.extra\tspacing",
-            },
-        ])).toEqual(["Use Studio API capability: custom.capability with.extra spacing"]);
-    });
-});
+import { isPermissionSubset } from "./pluginInstallPermissions";
 
 describe("isPermissionSubset", () => {
     const fs = (path: string, mode: "read" | "write" | "readwrite", recursive = false) =>
@@ -170,35 +132,11 @@ describe("isPermissionSubset — sidecar", () => {
         )).toBe(false);
     });
 });
+describe("process memory", () => {
+    const runtime = (capability: "diagnostics" | "process.memory") => ({ kind: "runtime", capability }) as const;
 
-describe("plugin install permission copy — sidecar", () => {
-    it("says which of the two a sidecar is", () => {
-        expect(describePluginInstallPermissions([
-            {
-                kind: "sidecar",
-                id: "acme.steam.bridge",
-                sidecarKind: "executable",
-                platforms: ["windows-x64"],
-            },
-            {
-                kind: "sidecar",
-                id: "acme.steam.helper",
-                sidecarKind: "node",
-                platforms: ["windows-x64"],
-            },
-        ])).toEqual([
-            "Ship a separate program and run it with your game (acme.steam.bridge, for windows-x64)",
-            "Ship the plugin's own code and run it as part of your game (acme.steam.helper, for windows-x64)",
-        ]);
-    });
-});
-
-describe("plugin install permission copy — externalLink", () => {
-    it("names every pattern rather than counting them", () => {
-        expect(describePluginInstallPermissions([
-            { kind: "externalLink", patterns: ["steam://*", "https://store.example.com/app/*"] },
-        ])).toEqual([
-            "In your game: send the player to steam://*, https://store.example.com/app/*",
-        ]);
+    it("is not covered by a grant of diagnostics, so an update that starts asking is asked again", () => {
+        expect(isPermissionSubset([runtime("diagnostics"), runtime("process.memory")], [runtime("diagnostics")])).toBe(false);
+        expect(isPermissionSubset([runtime("process.memory")], [runtime("process.memory")])).toBe(true);
     });
 });

@@ -20,6 +20,16 @@ export interface BuildArtifactRow {
     path: string;
     /** Last path segment - what the file is called in the output folder. */
     name: string;
+    /**
+     * Which folder inside the output folder holds it, with a trailing separator; `""` when it sits
+     * in the output folder itself.
+     *
+     * A run does not write everything side by side: a web export is a folder of its own, each DLC
+     * gets `dlc/<id>/`, and a patch is written into a delivery folder. A list of bare file names
+     * therefore hides where half of a multi-target build went, which is the digging this page
+     * exists to save. Read off the recorded paths - nothing is looked up on disk.
+     */
+    location: string;
     /** Absent where the size could not be read, which is a different fact from zero. */
     bytes?: number;
 }
@@ -45,6 +55,30 @@ export function artifactFileName(path: string): string {
 }
 
 /**
+ * Where one artifact sits relative to the output folder, with a trailing separator.
+ *
+ * `""` for an artifact directly in the folder, and for one that cannot be related to it at all - a
+ * path outside the recorded folder is not something to state a false relation about, and the row
+ * still carries the absolute path. Compared case-insensitively and with both separators accepted,
+ * because the snapshot crosses from a main process that builds for Windows and for POSIX hosts.
+ */
+export function artifactLocation(path: string, outputDir: string | undefined): string {
+    if (!outputDir) {
+        return "";
+    }
+    // One separator either way, so the same comparison serves a Windows build and a POSIX one.
+    const flatten = (value: string): string => value.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+    const root = `${flatten(outputDir).toLowerCase()}/`;
+    const flat = flatten(path);
+    if (!flat.toLowerCase().startsWith(root) || flat.length <= root.length) {
+        return "";
+    }
+    const rest = flat.slice(root.length);
+    const cut = rest.lastIndexOf("/");
+    return cut < 0 ? "" : rest.slice(0, cut + 1);
+}
+
+/**
  * The artifacts of a finished run, in the order the build reported them.
  *
  * Sizes are matched by path rather than by position: `artifactSizes` is documented as parallel to
@@ -60,9 +94,12 @@ export function buildArtifactRows(state: GameBuildStateSnapshot): BuildArtifactR
     }
     return (state.artifacts ?? []).map(path => {
         const bytes = bytesByPath.get(path);
-        return bytes === undefined
-            ? { path, name: artifactFileName(path) }
-            : { path, name: artifactFileName(path), bytes };
+        const row = {
+            path,
+            name: artifactFileName(path),
+            location: artifactLocation(path, state.outputDir),
+        };
+        return bytes === undefined ? row : { ...row, bytes };
     });
 }
 

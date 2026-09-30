@@ -1,4 +1,4 @@
-import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
+import { createTranslator, getLocaleRegistryVersion, listOverlayLocales, SOURCE_LOCALE, SUPPORTED_LOCALES, type TranslationKey } from "@shared/i18n";
 import { commandI18nStore, translateCommand } from "@/lib/i18n";
 import type { StoryCommandDef, StoryCommandParam } from "../storyCommandGrammar";
 import type { StoryCommandParamsShape, StoryCommandSpec } from "./spec";
@@ -297,4 +297,168 @@ export function getCommandDef(token: string): StoryCommandDef | null {
         ?? localizedTokenMap().get(normalized)
         ?? DEFS.find(def => def.commandId.toLowerCase() === normalized)
         ?? null;
+}
+
+/**
+ * The command a typed word most nearly names, or `null` when nothing in the catalogue is close.
+ *
+ * Read only when a line has already failed to resolve, so that the message can say more than "there
+ * is no such command". The word an author reaches for is not always a word that ever parsed here -
+ * it can be one that USED to (`/face` became `/char`, and its Chinese label went from 表情 to 外观
+ * with it), or the word for the same thing in a neighbouring part of the vocabulary. Both cases have
+ * the same answer, and it is not a table of retired words: the catalogue already says, in the
+ * author's own language, what every command is and what it does, so the word is looked for in what
+ * is there NOW rather than in a record of what used to be. A second, historical vocabulary would be
+ * a list nobody maintains and every rename would have to remember to grow.
+ *
+ * Three passes, most specific first, and each of them silent unless the answer is unique:
+ *
+ *  1. a spelling this word is the beginning of - the abbreviation an author stopped short on;
+ *  2. a spelling one or two edits away - the typo;
+ *  3. a command whose own label or description uses the word - which is what catches a renamed
+ *     command, since the thing it does has not changed and its description still says so.
+ *
+ * Every locale is read, not just the active one: an author can have the interface in one language
+ * and the old word from another in their fingers, and the answer costs nothing extra.
+ */
+export function suggestCommandDef(token: string): StoryCommandDef | null {
+    const typed = token.trim().toLowerCase();
+    // One character is not a guess, it is every command at once - and the parser has not decided the
+    // author is finished with a token that short anyway.
+    if (typed.length < 2) {
+        return null;
+    }
+    const hints = commandHints();
+    let prefix: { def: StoryCommandDef; length: number } | null = null;
+    let nearest: { def: StoryCommandDef; distance: number } | null = null;
+    // Two edits on a long word, one on a short one: at three characters, two edits reaches most of
+    // the catalogue and the answer stops meaning anything.
+    const limit = typed.length <= 4 ? 1 : 2;
+    for (const [spelling, def] of hints.spellings) {
+        if (spelling.startsWith(typed) && (!prefix || spelling.length < prefix.length)) {
+            prefix = { def, length: spelling.length };
+        }
+        const distance = editDistance(typed, spelling, limit);
+        if (distance !== null && (!nearest || distance < nearest.distance)) {
+            nearest = { def, distance };
+        }
+    }
+    if (prefix) {
+        return prefix.def;
+    }
+    // Before the near spellings, not after: a word that appears WHOLE in exactly one command's own
+    // description is stronger evidence than a word one character away from something. It has to be,
+    // across locales - Japanese spells `/show` 表示, which is one character from the Chinese 表情, and
+    // an author reaching for the appearance command would have been sent to the wrong one.
+    const described = DEFS.filter(def => hints.described.get(def.commandId)?.some(text => mentions(text, typed)));
+    if (described.length === 1) {
+        return described[0];
+    }
+    return nearest?.def ?? null;
+}
+
+/**
+ * Whether a description uses this word - as a word, where the script has words.
+ *
+ * A boundary check for a token written in letters and digits, so `set` does not match inside
+ * `preset`; plain containment for a script that does not space its words, where there is no boundary
+ * to find and the token is a whole word by construction.
+ */
+function mentions(text: string, typed: string): boolean {
+    if (!/^[a-z0-9]+$/.test(typed)) {
+        return text.includes(typed);
+    }
+    const at = text.indexOf(typed);
+    if (at < 0) {
+        return false;
+    }
+    const before = text[at - 1];
+    const after = text[at + typed.length];
+    return !/[a-z0-9]/.test(before ?? "") && !/[a-z0-9]/.test(after ?? "");
+}
+
+/**
+ * Levenshtein distance, or `null` once it is certain to exceed `limit`.
+ *
+ * Bounded rather than complete because the answer is only ever compared against a threshold, and the
+ * length check alone drops most of the catalogue before a single row is filled.
+ */
+function editDistance(a: string, b: string, limit: number): number | null {
+    if (Math.abs(a.length - b.length) > limit) {
+        return null;
+    }
+    let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i++) {
+        const row = [i];
+        let best = i;
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            const value = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + cost);
+            row.push(value);
+            best = Math.min(best, value);
+        }
+        if (best > limit) {
+            return null;
+        }
+        previous = row;
+    }
+    const distance = previous[b.length];
+    return distance <= limit ? distance : null;
+}
+
+type CommandHints = {
+    /** The locale registry's version this was built against - a language pack invalidates it. */
+    version: number;
+    /** Folded spelling → def: every canonical token, spec id, alias, and every locale's label. */
+    spellings: Map<string, StoryCommandDef>;
+    /** Command id → its own label and description in every locale, folded, for the third pass. */
+    described: Map<string, string[]>;
+};
+
+let hints: CommandHints | null = null;
+commandI18nStore.subscribe(() => {
+    hints = null;
+});
+
+function commandHints(): CommandHints {
+    const version = getLocaleRegistryVersion();
+    if (hints?.version === version) {
+        return hints;
+    }
+    const spellings = new Map<string, StoryCommandDef>();
+    const described = new Map<string, string[]>();
+    const claim = (spelling: string, def: StoryCommandDef): void => {
+        const folded = spelling.trim().toLowerCase();
+        // A spelling two commands share answers to the first, the same rule the localized token table
+        // applies - and a suggestion has to name one command or it is not a suggestion.
+        if (folded && !/\s/.test(folded) && !spellings.has(folded)) {
+            spellings.set(folded, def);
+        }
+    };
+    const locales = [...SUPPORTED_LOCALES, ...listOverlayLocales()];
+    const translators = locales.map(locale => createTranslator(locale));
+    for (const def of DEFS) {
+        claim(def.token, def);
+        claim(def.commandId, def);
+        for (const alias of def.aliases ?? []) {
+            claim(alias, def);
+        }
+        const texts: string[] = [];
+        for (const translator of translators) {
+            for (const key of [commandLabelKey(def.commandId), commandDetailKey(def.commandId)]) {
+                const value = translator.t(key).trim();
+                // `t` echoes the key back when nothing answers it, which is not a word of anything.
+                if (!value || value === key) {
+                    continue;
+                }
+                if (key === commandLabelKey(def.commandId)) {
+                    claim(value, def);
+                }
+                texts.push(value.toLowerCase());
+            }
+        }
+        described.set(def.commandId, texts);
+    }
+    hints = { version, spellings, described };
+    return hints;
 }

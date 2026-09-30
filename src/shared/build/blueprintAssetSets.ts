@@ -1,5 +1,5 @@
 import { resolveAssetSetForBuild } from "./assetSetMaterialization";
-import type { AssetSetRecordProblem } from "./characterAssetSets";
+import type { AssetSetRecordProblem, AssetSetRecordSlice } from "./characterAssetSets";
 import {
     blueprintAssetSlotAcceptsSets,
     forEachBlueprintAssetSlot,
@@ -38,8 +38,8 @@ export type BlueprintAssetSetResult = {
     collapsedBuildAxis: boolean;
 };
 
-/** The slice name blueprint faults report under, as an author reads it in a build console. */
-const BLUEPRINT_SLICE = "a blueprint";
+/** The part of the project blueprint faults report under. The build words it in the author's language. */
+const BLUEPRINT_SLICE: AssetSetRecordSlice = "blueprint";
 
 /**
  * Fill in a blueprint document's answers, in place.
@@ -65,7 +65,7 @@ export function attachBlueprintAssetSetVariants(input: {
     }
 
     // One answer per set however many nodes name it - and, unlike the other passes, however many
-    // blueprints name it, because a shared blueprint is used from several places at once.
+    // blueprints name it, because one set is commonly read from several graphs at once.
     const answers = new Map<string, ReturnType<typeof resolveAssetSetForBuild>>();
     const answerFor = (setId: string) => {
         const cached = answers.get(setId);
@@ -155,12 +155,12 @@ export function blueprintGraphs(
 ): BlueprintGraphIr[] {
     const graphs: BlueprintGraphIr[] = [];
     for (const blueprint of blueprints) {
-        if (!blueprint || blueprint.program.kind !== "graph") {
+        if (!blueprint) {
             // A `scriptModule` blueprint is TypeScript the author wrote, and an asset id in that
             // source is a string literal this file has no business parsing.
             continue;
         }
-        const program = blueprint.program.graphs;
+        const program = blueprint.graphs;
         for (const slot of [
             ...Object.values(program.events),
             ...Object.values(program.functions),

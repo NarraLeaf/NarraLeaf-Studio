@@ -29,6 +29,9 @@ export function createTestLintContext(
         storiesComplete: true,
         blueprintDocument: null,
         uiDocument: null,
+        // Unread, like `io`: a context built from files on disk has not been handed the plugins'
+        // stores, and a rule has to be able to tell that from a project whose plugins keep none.
+        pluginStores: null,
         assets: [],
         assetSets: [],
         referencedAssetIds: new Set<string>(),

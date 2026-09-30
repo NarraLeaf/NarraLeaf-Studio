@@ -27,6 +27,21 @@ export const actions = {
         runAs: "运行为",
             runWithDlc: "带 DLC 运行",
             dlcCount: "{active} / {total}",
+        // 预览是否按受保护构建的方式存放内容。仅在项目开启资产保护时出现，且默认关闭。
+        previewAsShipped: "按出货方式预览",
+        previewAsShippedDetail: "预览按玩家收到的受保护形式运行，启动更慢",
+        // 同一个选择在 Run 按钮上的写法，避免封库的预览被当成普通预览。
+        asShipped: "出货形式",
+        // 清除一次运行留下的存档与持久化数据，用于游戏自身让该状态出错、启动即崩溃时。开发模式与预览各存各的，
+        // 子菜单只重置其中一个，不影响另一个。
+        resetData: "重置玩家数据",
+        // 正在运行的那个模式对应的行，置灰:在运行进程之下重置会与它的下一次写入发生竞争。
+        resetWhileRunning: "停止后可重置其数据",
+        resetDevModeConfirm: "重置开发模式的玩家数据",
+        resetPreviewConfirm: "重置预览的玩家数据",
+        resetDetail: "该项目的所有存档与持久化数据将被清除",
+        resetDone: "玩家数据已重置",
+        resetFailed: "无法重置玩家数据",
     },
     file: {
         label: "文件",
@@ -69,7 +84,18 @@ export const actions = {
     },
     export: {
         chooseFolder: "选择导出项目包的存放文件夹",
-        failed: "导出项目失败",
+        failed: "无法导出项目",
+        failedWithReason: "{headline}；{reason}",
+        // 导出失败的原因，按主进程给的码措辞。读的是项目、写的是所选文件夹，每句只说其中一边。
+        reason: {
+            folderProtected: "所选文件夹位于 Studio 自身的存储目录中；请选择其他文件夹",
+            folderReadOnly: "Studio 没有写入所选文件夹的权限",
+            folderMissing: "所选文件夹已不存在",
+            diskFull: "磁盘空间不足",
+            projectUnreadable: "Studio 没有读取项目中部分文件的权限",
+            projectFileBusy: "项目中有文件正被其他程序占用",
+            projectChanged: "导出期间项目中有文件被移动或删除；请重新导出",
+        },
         success: {
             one: "已导出包含 {count} 个文件的项目包",
             other: "已导出包含 {count} 个文件的项目包",

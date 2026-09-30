@@ -12,7 +12,7 @@
 import type {
     Blueprint,
     BlueprintDocument,
-    BlueprintEventGraph,
+    BlueprintLayer,
     BlueprintFunctionGraph,
     BlueprintGraphEdge,
     BlueprintGraphIr,
@@ -22,12 +22,17 @@ import type {
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
 } from "@shared/types/blueprint/document";
-import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
+import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
+import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
     isBlueprintNodeAllowedInGraphContext,
 } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { isValidBlueprintPinConnection } from "@/lib/ui-editor/blueprint-nodes/connectionPolicy";
 import {
@@ -37,6 +42,7 @@ import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import type { BpBlueprintAst, BpDiagnostic, BpDocumentAst, BpEndpointAst, BpGraphAst, BpNodeAst } from "./ast";
 import { autoLayout } from "./layout";
 import { valueToJs } from "./values";
+import { BLUEPRINT_OWNER_KINDS, isBlueprintOwnerKind, requiredBlueprintOwnerProps } from "./ownerGrammar";
 
 export type BpCompileOptions = {
     /**
@@ -62,6 +68,12 @@ export type BpCompileOptions = {
      * carry a line no author would think to write.
      */
     resolveElementType?: (elementId: string) => string | undefined;
+    /**
+     * Every element in the project, by id, so that the scopes which depend on where an element sits
+     * can be walked. Without it such a scope counts as reachable rather than as absent - see
+     * `BlueprintGraphContextInput`.
+     */
+    uiElements?: Readonly<Record<string, UIElement>>;
 };
 
 export type BpCompileResult = {
@@ -70,15 +82,6 @@ export type BpCompileResult = {
     diagnostics: BpDiagnostic[];
 };
 
-const OWNER_REQUIRED_FIELDS: Record<string, string[]> = {
-    globalMain: [],
-    surfaceMain: ["surfaceId"],
-    widgetMain: ["surfaceId", "elementId"],
-    widgetValue: ["surfaceId", "elementId", "propPath"],
-    componentWidgetMain: ["componentId", "elementId"],
-    sharedAsset: ["assetId"],
-    storyAction: ["blueprintId"],
-};
 
 export function compileBlueprintDocument(
     ast: BpDocumentAst,
@@ -96,8 +99,7 @@ export function compileBlueprintDocument(
         }
         blueprints.push(compiled);
         ownerRecords[ownerRefToIndexKey(compiled.owner)] = {
-            activeBlueprintId: compiled.id,
-            privateBlueprintIds: [compiled.id],
+            blueprintId: compiled.id,
         };
     }
 
@@ -117,7 +119,7 @@ function compileBlueprint(
     const previous = findExistingBlueprint(options.existing ?? null, ast.id, owner);
     const id = ast.id ?? previous?.id ?? newId();
 
-    const events: Record<string, BlueprintEventGraph> = {};
+    const events: Record<string, BlueprintLayer> = {};
     const eventIds: string[] = [];
     const functions: Record<string, BlueprintFunctionGraph> = {};
     const functionIds: string[] = [];
@@ -125,6 +127,19 @@ function compileBlueprint(
     for (const graphAst of ast.graphs) {
         const previousGraph = findExistingGraph(previous, graphAst);
         const graphId = graphAst.id ?? previousGraph?.id ?? newId();
+        if (graphAst.kind === "script") {
+            const scriptRef = checkedScriptRef(graphAst, owner, diagnostics);
+            if (scriptRef === null) {
+                continue;
+            }
+            if (events[graphId]) {
+                pushError(diagnostics, graphAst.line, "compile.duplicate_graph", `Two layers share id "${graphId}".`);
+                continue;
+            }
+            events[graphId] = { id: graphId, script: { scriptRef } };
+            eventIds.push(graphId);
+            continue;
+        }
         const ir = compileGraph(graphAst, owner, previousGraph?.graph ?? null, options, diagnostics);
         if (graphAst.kind === "event") {
             if (events[graphId]) {
@@ -162,9 +177,7 @@ function compileBlueprint(
         id,
         name: ast.name,
         owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: { kind: "graph", graphs: { eventIds, events, functionIds, functions } },
+        graphs: { eventIds, events, functionIds, functions },
         members: {
             variables,
             fields: (ast.fields as BlueprintMemberIndex["fields"]) ?? {},
@@ -179,6 +192,41 @@ function compileBlueprint(
 }
 
 /**
+ * The file a script layer runs, checked for being one this project owns.
+ *
+ * Null when the line cannot be used, with the reason already reported. A value binding is refused
+ * here as well: it is re-run whenever a dependency changes, and only a graph has a palette cut down
+ * to the nodes that are safe to re-run.
+ */
+function checkedScriptRef(
+    graphAst: BpGraphAst,
+    owner: BlueprintOwnerRef,
+    diagnostics: BpDiagnostic[],
+): string | null {
+    const scriptRef = graphAst.scriptRef ?? "";
+    if (!isScriptSourcePath(scriptRef)) {
+        diagnostics.push({
+            severity: "error",
+            code: "dsl.script_not_a_script_path",
+            message: `"${scriptRef}" is not a script in this project.`,
+            hint: `A script is a .ts or .js file under ${SCRIPTS_DIR}/, outside ${SCRIPTS_MODULES_DIR}/.`,
+            line: graphAst.line,
+        });
+        return null;
+    }
+    if (blueprintContract(owner).invocation === "valueBinding") {
+        diagnostics.push({
+            severity: "error",
+            code: "dsl.script_on_value_binding",
+            message: "A value binding is written as a blueprint, not as a script.",
+            line: graphAst.line,
+        });
+        return null;
+    }
+    return scriptRef;
+}
+
+/**
  * A file describes a whole blueprint, so compiling one replaces every graph it holds - including the
  * layers the file did not mention. That is the right rule (there is nowhere else for "delete this
  * layer" to live) and a quiet way to lose work, so what is about to go is named.
@@ -190,14 +238,14 @@ function reportDroppedGraphs(
     functionIds: readonly string[],
     diagnostics: BpDiagnostic[],
 ): void {
-    if (!previous || previous.program.kind !== "graph") {
+    if (!previous) {
         return;
     }
     const kept = new Set([...eventIds, ...functionIds]);
     const dropped: string[] = [];
     for (const [kind, pool] of [
-        ["event", previous.program.graphs.events],
-        ["function", previous.program.graphs.functions],
+        ["event", previous.graphs.events],
+        ["function", previous.graphs.functions],
     ] as const) {
         for (const [id, graph] of Object.entries(pool ?? {})) {
             if (!kept.has(id)) {
@@ -347,7 +395,8 @@ function compileParams(
         raw[param.key] = valueToJs(param.value);
     }
 
-    const widgetElementType = isWidgetOwner(owner) ? options.resolveWidgetElementType?.(owner) : undefined;
+    const widgetElementType = isWidgetEventGraph(owner) ? options.resolveWidgetElementType?.(owner) : undefined;
+    const widgetElement = "elementId" in owner ? options.uiElements?.[owner.elementId] : undefined;
     const definition = blueprintNodeRegistry.get(nodeAst.type);
     if (!definition) {
         pushError(
@@ -359,22 +408,25 @@ function compileParams(
         );
         return raw;
     }
-    if (!definition.graphKinds.includes(graphAst.kind)) {
+    const graphKind: BlueprintGraphKind = graphAst.kind === "function" ? "function" : "event";
+    if (!definition.graphKinds.includes(graphKind)) {
         pushError(
             diagnostics,
             nodeAst.line,
             "compile.wrong_graph_kind",
-            `"${definition.displayName}" (${nodeAst.type}) is not allowed in a ${graphAst.kind} graph.`,
+            `"${definition.displayName}" (${nodeAst.type}) is not allowed in a ${graphKind} graph.`,
             `It is available in: ${definition.graphKinds.join(", ")}.`,
         );
     } else if (
-        !isBlueprintNodeAllowedInGraphContext(definition, {
-            graphKind: graphAst.kind,
+        !isBlueprintNodeAllowedInGraphContext(definition, buildBlueprintGraphContext({
+            graphKind,
             owner,
             widgetElementType,
-            isSyncOnlyGraph: isStorySyncValueOwner(owner),
-        })
-        && !(definition.role === "eventHead" && isWidgetOwner(owner) && !widgetElementType)
+            widgetElement,
+            uiDocument: options.uiElements ? { elements: options.uiElements } : null,
+            isComponentDefinitionGraph: anchorComponentId(owner) !== null,
+        }))
+        && !(definition.role === "eventHead" && isWidgetEventGraph(owner) && !widgetElementType)
     ) {
         diagnostics.push({
             severity: "warning",
@@ -646,25 +698,21 @@ function describeParamOptions(
     return parts.length > 0 ? parts.join(". ") : "This node takes no fields.";
 }
 
-function isWidgetOwner(owner: BlueprintOwnerRef): boolean {
-    return owner.kind === "widgetMain" || owner.kind === "componentWidgetMain";
-}
-
 function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): BlueprintOwnerRef | null {
     const kind = ast.ownerKind;
-    const required = OWNER_REQUIRED_FIELDS[kind];
-    if (!required) {
+    if (!isBlueprintOwnerKind(kind)) {
         if (kind.length > 0) {
             pushError(
                 diagnostics,
                 ast.line,
                 "compile.unknown_owner",
                 `Unknown owner kind "${kind}".`,
-                `One of: ${Object.keys(OWNER_REQUIRED_FIELDS).join(", ")}.`,
+                `One of: ${BLUEPRINT_OWNER_KINDS.join(", ")}.`,
             );
         }
         return null;
     }
+    const required = requiredBlueprintOwnerProps(kind);
     const missing = required.filter(field => !ast.ownerFields[field]);
     if (missing.length > 0) {
         pushError(
@@ -693,16 +741,18 @@ function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): Bluepr
             };
         case "componentWidgetMain":
             return { kind: "componentWidgetMain", componentId: fields.componentId, elementId: fields.elementId };
-        case "sharedAsset":
-            return { kind: "sharedAsset", assetId: fields.assetId };
         case "storyAction":
             return {
                 kind: "storyAction",
                 blueprintId: fields.blueprintId,
                 ...(fields.mode ? { mode: fields.mode as "action" | "value" | "condition" } : {}),
             };
-        default:
-            return null;
+        default: {
+            // `kind` is the union by here, so an owner kind added without an arm is a compile error
+            // rather than a `.bp` file the reader silently refuses.
+            const unbuilt: never = kind;
+            return unbuilt;
+        }
     }
 }
 
@@ -718,7 +768,7 @@ function findExistingBlueprint(
         return document.blueprints[id];
     }
     const ownerKey = ownerRefToIndexKey(owner);
-    const activeId = document.ownerRecords?.[ownerKey]?.activeBlueprintId;
+    const activeId = document.ownerRecords?.[ownerKey]?.blueprintId;
     if (activeId && document.blueprints[activeId]) {
         return document.blueprints[activeId];
     }
@@ -733,10 +783,10 @@ function findExistingGraph(
     previous: Blueprint | null,
     ast: BpGraphAst,
 ): { id: string; graph?: BlueprintGraphIr } | null {
-    if (!previous || previous.program.kind !== "graph") {
+    if (!previous) {
         return null;
     }
-    const pool = ast.kind === "event" ? previous.program.graphs.events : previous.program.graphs.functions;
+    const pool = ast.kind === "event" ? previous.graphs.events : previous.graphs.functions;
     if (!pool) {
         return null;
     }

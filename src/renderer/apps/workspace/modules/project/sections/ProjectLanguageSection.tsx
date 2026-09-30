@@ -8,7 +8,7 @@
  * what is being decided here is what the player gets, not when the game writes one.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Select, type SelectOption } from "@/lib/components/elements";
@@ -17,6 +17,7 @@ import {
     type LanguageChangeConfig,
 } from "@/lib/workspace/project/configuration";
 import { SettingStack } from "./settingRows";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -28,29 +29,16 @@ export function ProjectLanguageSection({
 }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const [policy, setPolicy] = useState<LanguageChangeConfig>(
+    const stored = useMemo(
         () => normalizeLanguageChangeConfiguration(config.app?.languageChange),
+        [config.app?.languageChange],
     );
-    const [saving, setSaving] = useState(false);
-
-    const commit = useCallback(async (patch: Partial<LanguageChangeConfig>) => {
-        if (saving) {
-            return;
-        }
-        const previous = policy;
-        setSaving(true);
-        setPolicy(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateLanguageChangeConfiguration(patch);
-            setPolicy(normalizeLanguageChangeConfiguration(updated.app?.languageChange));
-            onConfigChange(updated);
-        } catch (error) {
-            setPolicy(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(false);
-        }
-    }, [onConfigChange, policy, projectService, saving, uiService]);
+    const { value: policy, commit } = useConfigSlice<LanguageChangeConfig>({
+        stored,
+        write: patch => projectService.updateLanguageChangeConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     // Ordered by how much of the playthrough the player keeps, most to least, so the list reads as
     // a scale rather than as three unrelated answers.
@@ -75,7 +63,7 @@ export function ProjectLanguageSection({
                     className="min-w-0"
                     options={options}
                     value={policy.inGame}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.game.languageInGameTitle")}
                     onChange={value => void commit({ inGame: value as LanguageChangeConfig["inGame"] })}
                 />

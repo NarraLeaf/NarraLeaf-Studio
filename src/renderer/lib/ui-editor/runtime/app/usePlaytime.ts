@@ -155,7 +155,9 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
 
     // The last chance to write on a real quit: `beforeunload` fires for a closing Electron window
     // and for the web export's tab. The write itself is synchronous into the store bridge, which is
-    // what makes it usable from here at all.
+    // what makes it usable from here at all. It runs after the window has started closing, so the
+    // shell's store has to go on accepting writes from a closing window - Studio's persistence
+    // channels say so with `servesClosingWindow`, and refused this one until they did.
     useEffect(() => {
         if (typeof window === "undefined") {
             return;

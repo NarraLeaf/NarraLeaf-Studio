@@ -8,6 +8,12 @@
  * through refs so a re-render never rebuilds it - rebuilding would reset both
  * the rotation cursor and the "story advanced" flag, and the ring would start
  * clobbering slot 0 on every render.
+ *
+ * Nothing here tears the scheduler down. The only thing this hook owns that has
+ * to stop is the timer, and `clearInterval` stops it; the scheduler itself has
+ * no off switch on purpose, because `React.StrictMode` - on in every unpackaged
+ * build - runs this hook's cleanups on a mount it then throws away, while the
+ * `useMemo` instance survives into the mount that stays. See `autoSaveScheduler`.
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -46,8 +52,6 @@ export function useAutoSave(options: UseAutoSaveOptions): AutoSaveRuntime {
         }),
         [],
     );
-
-    useEffect(() => () => scheduler.dispose(), [scheduler]);
 
     // Every action the story plays makes the current state worth re-saving. The
     // subscription runs whether or not autosaving is enabled: the `Auto Save`

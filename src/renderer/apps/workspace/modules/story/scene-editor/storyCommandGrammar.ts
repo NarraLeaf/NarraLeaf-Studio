@@ -206,6 +206,24 @@ export type StoryCommandParamType =
            * refused kind never files the command under its subject and is never offered.
            */
           refuses?: readonly StoryCommandTargetKind[];
+          /**
+           * Asset libraries this slot also answers from, for a verb that can bring its own subject
+           * into existence: `/show sunset` on a picture no row has created yet.
+           *
+           * Tried AFTER everything on stage, which is the whole of the precedence rule: a name that
+           * answers on stage means that object, always, so `/image sunset` followed by `/show sunset`
+           * goes on meaning "reveal the one I made". Only a name the stage cannot answer reaches the
+           * library.
+           *
+           * {@link namedBy} is the other half, and it is what lets a row of this shape be read back
+           * off the line it prints. Once the row exists, the object it created answers to its own
+           * name, so re-reading the line would resolve the subject to that object and quietly drop
+           * the source. Naming the element explicitly is what says "this line creates one": with that
+           * key filled, the library is tried FIRST.
+           */
+          assets?: readonly ("image" | "video")[];
+          /** The param whose presence flips {@link assets} ahead of the stage. See there. */
+          namedBy?: string;
       }
     /**
      * The new content of a `/swap` - typed by what the *target* resolved to: an image target takes an

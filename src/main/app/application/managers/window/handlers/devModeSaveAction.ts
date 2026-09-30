@@ -7,13 +7,13 @@ import {
     devModeSaveHeaderOf,
     type DevModeSaveHeader,
     type DevModeSaveMetadata,
-    type DevModeSaveProjectRef,
     type DevModeSaveRecord,
 } from "@shared/types/devModeSave";
 import { readSaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { requireWindowProjectStore, type ProjectStoreRef } from "../../../utils/windowProjectStore";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -23,7 +23,7 @@ type DevModeSaveFileRecord = DevModeSaveRecord & {
 
 const SAVE_FILE_EXTENSION = ".dat";
 
-function projectNamespaceSource(projectRef: DevModeSaveProjectRef): string {
+function projectNamespaceSource(projectRef: ProjectStoreRef): string {
     const identifier = projectRef.projectIdentifier?.trim();
     if (identifier) {
         return `id:${identifier}`;
@@ -35,7 +35,20 @@ function projectNamespaceSource(projectRef: DevModeSaveProjectRef): string {
     return `path:${path.resolve(projectPath)}`;
 }
 
-function projectDirectoryName(projectRef: DevModeSaveProjectRef): string {
+/**
+ * The per-project directory name every Dev Mode store uses, from the identity the window has.
+ *
+ * Exported because the screenshot store shares it: two directories named differently for the same
+ * project would mean "reset this project's player data" cleared one of them.
+ *
+ * Takes a {@link ProjectStoreRef} the main process derived with `requireWindowProjectStore`, never
+ * the reference a request carried - see that function for why the difference matters.
+ */
+export function devModeProjectDirectoryName(projectRef: ProjectStoreRef): string {
+    return projectDirectoryName(projectRef);
+}
+
+function projectDirectoryName(projectRef: ProjectStoreRef): string {
     const hash = crypto.createHash("sha256").update(projectNamespaceSource(projectRef)).digest("hex").slice(0, 32);
     return `project-${hash}`;
 }
@@ -59,15 +72,26 @@ export function normalizeDevModeSaveId(id: string): string {
     return safe;
 }
 
-function saveDirectory(window: AppWindow, projectRef: DevModeSaveProjectRef): string {
+function saveDirectory(window: AppWindow, projectRef: ProjectStoreRef): string {
     return path.join(
         window.app.storageManager.getNamespacePath(UserDataNamespace.DevModeSaves),
         projectDirectoryName(projectRef),
     );
 }
 
-function saveFilePath(window: AppWindow, projectRef: DevModeSaveProjectRef, id: string): string {
+function saveFilePath(window: AppWindow, projectRef: ProjectStoreRef, id: string): string {
     return path.join(saveDirectory(window, projectRef), saveFileName(id));
+}
+
+/**
+ * Remove every Dev Mode save slot for a project.
+ *
+ * The whole per-project directory rather than a walk of ids: the point is to leave nothing behind,
+ * and a slot whose record no longer parses would survive an id-by-id delete. Missing is success -
+ * there is nothing to clear.
+ */
+export async function clearDevModeSaves(window: AppWindow, projectRef: ProjectStoreRef): Promise<void> {
+    await fs.rm(saveDirectory(window, projectRef), { recursive: true, force: true });
 }
 
 function isSaveFile(name: string): boolean {
@@ -156,7 +180,7 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
     ): Promise<RequestStatus<void>> {
         return this.tryUse(async () => {
             const id = normalizeDevModeSaveId(data.id);
-            const filePath = saveFilePath(window, data.projectRef, id);
+            const filePath = saveFilePath(window, await requireWindowProjectStore(window, data.projectRef), id);
             const previous = await readSaveRecord(filePath);
             const now = new Date().toISOString();
             const compatibility = readSaveCompatibilityStamp(data.compatibility);
@@ -194,7 +218,8 @@ export class DevModeSaveReadHandler extends IPCHandler<IPCEventType.devModeSaveR
     ): Promise<RequestStatus<{ record: DevModeSaveRecord | null }>> {
         return this.tryUse(async () => {
             const id = normalizeDevModeSaveId(data.id);
-            const record = await readSaveRecord(saveFilePath(window, data.projectRef, id));
+            const projectRef = await requireWindowProjectStore(window, data.projectRef);
+            const record = await readSaveRecord(saveFilePath(window, projectRef, id));
             return { record };
         });
     }
@@ -209,7 +234,7 @@ export class DevModeSaveListIdsHandler extends IPCHandler<IPCEventType.devModeSa
         data: IPCEvents[IPCEventType.devModeSaveListIds]["data"],
     ): Promise<RequestStatus<{ ids: string[] }>> {
         return this.tryUse(async () => {
-            const dir = saveDirectory(window, data.projectRef);
+            const dir = saveDirectory(window, await requireWindowProjectStore(window, data.projectRef));
             let names: string[];
             try {
                 names = await fs.readdir(dir);
@@ -248,7 +273,7 @@ export class DevModeSaveListHeadersHandler extends IPCHandler<IPCEventType.devMo
         data: IPCEvents[IPCEventType.devModeSaveListHeaders]["data"],
     ): Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>> {
         return this.tryUse(async () => {
-            const dir = saveDirectory(window, data.projectRef);
+            const dir = saveDirectory(window, await requireWindowProjectStore(window, data.projectRef));
             let names: string[];
             try {
                 names = await fs.readdir(dir);
@@ -280,7 +305,8 @@ export class DevModeSaveReadPreviewHandler extends IPCHandler<IPCEventType.devMo
     ): Promise<RequestStatus<{ capture: string | null }>> {
         return this.tryUse(async () => {
             const id = normalizeDevModeSaveId(data.id);
-            const record = await readSaveRecord(saveFilePath(window, data.projectRef, id));
+            const projectRef = await requireWindowProjectStore(window, data.projectRef);
+            const record = await readSaveRecord(saveFilePath(window, projectRef, id));
             return { capture: record?.metadata.capture ?? null };
         });
     }
@@ -296,7 +322,7 @@ export class DevModeSaveDeleteHandler extends IPCHandler<IPCEventType.devModeSav
     ): Promise<RequestStatus<{ deleted: boolean }>> {
         return this.tryUse(async () => {
             const id = normalizeDevModeSaveId(data.id);
-            const filePath = saveFilePath(window, data.projectRef, id);
+            const filePath = saveFilePath(window, await requireWindowProjectStore(window, data.projectRef), id);
             try {
                 await fs.unlink(filePath);
                 return { deleted: true };

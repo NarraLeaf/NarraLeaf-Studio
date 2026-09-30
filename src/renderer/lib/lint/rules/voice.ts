@@ -138,6 +138,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             ruleId: "voice/orphan",
             messageKey: "lint.rule.voiceOrphan.message",
             messageParams: { count, locale },
+            messageParamCounts: { recordings: { key: "lint.rule.voiceOrphan.recordingCount", count } },
             location: { kind: "project" },
         });
     }

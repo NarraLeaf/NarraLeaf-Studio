@@ -6,12 +6,17 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
+import type {
     GameProgressExportRequest,
     GameProgressExportResult,
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
+import type { GameMenuModel } from "@shared/types/gameMenu";
 import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -19,6 +24,8 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
+import type { GameBootProgress } from "./bootTiming";
 import type { SaveLoadOutcome } from "./saveLoad";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
@@ -35,8 +42,11 @@ export type GameAppLogLevel = "info" | "warning" | "error";
  *  - `interface`: a Game UI blueprint threw. It has no story row at all — the author was not writing
  *    a story when they wrote it — so the place it names is a SURFACE (see
  *    {@link GameAppRuntimeIssue.surfaceId}) and the row fields stay empty.
+ *  - `plugin`: something about a plugin, rather than about anything the author wrote. The place it
+ *    names is the plugin (see {@link GameAppRuntimeIssue.pluginName}); there is no row and no
+ *    surface, because the fact is about the session rather than about a drawing in it.
  */
-export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface";
+export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface" | "plugin";
 
 /**
  * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
@@ -58,6 +68,15 @@ export type GameAppRuntimeIssue = {
      * which surface it was running and nothing about what the author named it.
      */
     surfaceId?: string;
+    /**
+     * The plugin this is about, by the name its manifest gives it — the third kind of place a
+     * failure can have, and the only one a `plugin` issue has.
+     *
+     * A name rather than an id, unlike the two fields above, and for the reason they are ids: what
+     * is reported is what the reporter knows. A row and a surface are named by a document the host
+     * has to look them up in; a plugin arrives already carrying the name its author gave it.
+     */
+    pluginName?: string;
     /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
     stack?: string;
 };
@@ -70,6 +89,13 @@ export type GameAppSaveRecord = {
         /** ISO timestamps written by the store; absent on records it could not stamp. */
         createdAt?: string;
         updatedAt?: string;
+        /**
+         * The slot's picture as a data URL, absent when the write asked for none or the capture
+         * failed. The same bytes {@link GameAppSaveStore.readPreview} hands back - declared here
+         * because a caller that already holds the record should not read it a second time to see
+         * whether there is one.
+         */
+        capture?: string;
         /** What produced the save; absent on records written before the stamp existed. */
         compatibility?: SaveCompatibilityStamp;
         /** Seconds of play behind the save; absent on records written before playtime was tracked. */
@@ -179,17 +205,69 @@ export type GameAppHost = {
      * warm, which is what makes Start Game instant and keeps a title screen from painting before
      * `gameReady` has run the graphs behind it.
      *
-     * Dev Mode turns it on. Half of what Dev Mode is for is looking at the interface, and
-     * compiling the story and warming its first scene is the longest part of its boot - MEASURED
-     * at 2.3s of 3.3s on a full-length project, all of it behind a dark loading page. With this
-     * on the surfaces are up in about a second and the story boots behind them. What it costs is
-     * the guarantee: press Start before the environment is ready and the press waits for it.
+     * Dev Mode turns it on when it opens on its interface. Half of what Dev Mode is for is looking
+     * at the interface, and compiling the story and warming its first scene is the longest part of
+     * its boot - MEASURED at 2.3s of 3.3s on a full-length project, all of it behind a dark loading
+     * page. With this on the surfaces are up as soon as their own screen is warm and the story boots
+     * behind them. What it costs is the guarantee: press Start before the environment is ready and
+     * the press waits for it. A Dev Mode launch into a story leaves it off - the window opens on the
+     * stage, and drawing the interface ahead of it would only show a title nobody asked for.
      */
     surfacesBeforeStoryBoot?: boolean;
+    /**
+     * How far the boot has got, phase by phase, for a shell that wants to say so.
+     *
+     * The same boundaries the game app writes to the page's performance timeline - see
+     * {@link GameBootProgress} - handed over as they happen. A packaged game draws its loading
+     * state from this: without it a player watches a black window for as long as the story takes to
+     * compile and warm, with nothing on screen to say the game is coming.
+     *
+     * Every host declares it, including the ones that draw nothing. A capability the Dev Mode window
+     * lacks is a capability an author cannot see working in the window they test in, and a boot is
+     * exactly the thing they would be testing; what Dev Mode does with the phases is put them in its
+     * Output panel, where "why does my game take four seconds to start" is asked.
+     *
+     * Called during the boot and once more when the first frame has painted (`firstFrame`), which is
+     * the signal to take a loading state away. Never called again after that - a hot reload restarts
+     * the story, not the boot.
+     */
+    onBootProgress?: (progress: GameBootProgress) => void;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
     bootAction: GameAppBootAction;
+    /**
+     * A story the host wants started NOW, replacing whatever is playing.
+     *
+     * Dev Mode's row play control, pressed while its window is already open: the window is kept and
+     * the run restarts in place rather than the whole window being rebuilt around a new
+     * {@link bootAction}. It arrives together with the recompiled bundle the launch was made from,
+     * so the app that acts on it is already holding the documents the author just edited.
+     *
+     * `token` rises with each request, and only a request whose token has not been acted on starts a
+     * run - so a re-render, a StrictMode double-invoke or a bundle that arrives twice cannot start
+     * the same story twice. Omitted by hosts that never relaunch in place (the packaged game, the
+     * story preview): for them, a launch is a boot.
+     */
+    launchRequest?: {
+        token: number;
+        storyId: string;
+        sceneId: string;
+        /** Row to enter at (row-precise "play from here"); omitted = the scene start. */
+        startBlockId?: string;
+        /** Scene Snapshot whose variable values seed the launch; omitted = declared defaults. */
+        snapshotId?: string;
+        /**
+         * The bundle revision the host was showing when this request reached it, or null/absent when
+         * it was showing none.
+         *
+         * The request and the bundle it was compiled from can arrive separately, and this is what
+         * says they have not both arrived yet: acting while {@link GameAppHost.bundle} still carries
+         * this revision would start the story against the documents the launch has already replaced,
+         * and the reload that then brought them would take the run straight back over it.
+         */
+        afterRevision?: number | null;
+    };
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;
     /**
@@ -213,6 +291,20 @@ export type GameAppHost = {
      * (the packaged game — it has no editor to point into) loses nothing it had before.
      */
     reportIssue?: (issue: GameAppRuntimeIssue) => void;
+    /**
+     * What became of each asset a widget on a surface asked for - drawn, not asked for, or failed
+     * and at which step - and when that drawing goes away.
+     *
+     * Without it a picture that could not be had was a blank space and nothing else: the reason
+     * stayed in the widget's own state, no console line, no issue. Facts rather than sentences,
+     * because the sentence depends on the project's asset table (is the asset gone, or only
+     * unreadable?), which the host has and the widget does not. Dev Mode keeps a ledger of the
+     * failures and puts them in the issue list; the packaged game writes one log line per failure.
+     *
+     * Widgets reach it through `AssetResolutionReporterContext`, which the app provides from this.
+     * Reports arrive when an outcome changes, never per render.
+     */
+    reportAssetResolution?: AssetResolutionReporter;
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,
@@ -293,8 +385,13 @@ export type GameAppHost = {
      * Measured by the shell against the display the window is on, because which multiples fit is a
      * fact about that screen and not about the project. Empty - or the whole capability absent -
      * where the shell has no window it can size, so a configuration screen built from it (see the
-     * `Get Window Scale Options` node) draws no size row on the web export, in Dev Mode or in the
-     * story preview, rather than drawing a control that does nothing.
+     * `Get Window Scale Options` node) draws no size row on the web export or in the story preview,
+     * rather than drawing a control that does nothing.
+     *
+     * The Dev Mode window answers all five, and answers them about the STAGE: the window is
+     * Studio's, so the size a graph asks for is the size the stage is drawn at and Studio's own
+     * chrome is added back around it. An author reading their own size row there reads the list a
+     * player would get on this machine, and the step they pick is the step they see.
      */
     getWindowScaleOptions?: () => Promise<number[]>;
     /**
@@ -312,6 +409,54 @@ export type GameAppHost = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
+    /**
+     * Whether this shell's window is the one the player is working in.
+     *
+     * Asked of the shell rather than read off the page, and on the desktop shells that means the
+     * process that owns the window: `document.hasFocus()` in a renderer and `BrowserWindow.
+     * isFocused()` in the main process are two different questions with two different answers about
+     * a window whose chrome is being dragged, and a game must not have both.
+     *
+     * Omitted by hosts with no window of their own (the story preview), where the node answers true.
+     */
+    isWindowFocused?: () => Promise<boolean>;
+    /**
+     * Subscribe to that changing; returns an unsubscribe function.
+     *
+     * Both or neither, and from the same place: a reader that says one thing and an event that says
+     * another is worse than having only one of them.
+     */
+    subscribeWindowFocusChanged?: (listener: (isFocused: boolean) => void) => () => void;
+    /**
+     * Write a picture of the frame the player is looking at, and say where it went.
+     *
+     * Every desktop shell hands this to the process that owns its window, because the capture and
+     * the file are both that process's to make. The web export declines: a page cannot picture the
+     * window it is inside, and a file it produced would be a download the player has to accept.
+     *
+     * Where the file goes is the shell's answer, never the caller's - see
+     * `@shared/types/blueprint/screenshot`. Omitted by hosts that can do neither, where the node
+     * reports the platform has no screenshots rather than throwing.
+     */
+    saveScreenshot?: () => Promise<BlueprintScreenshotResult>;
+    /** Open the folder those go in, for the same shells and omitted by the same ones. */
+    openScreenshotsFolder?: () => Promise<BlueprintOpenScreenshotsResult>;
+    /**
+     * Put a menu bar on this shell's window, and hear which item the player picked.
+     *
+     * Both or neither: a bar nobody hears from is a row of words that do nothing. Omitted by every
+     * host with no window chrome to hang one from - the web export (a page has no menu bar), the
+     * story preview (no window of its own), and Dev Mode, whose window is Studio's and already
+     * carries Studio's menu. The caller reads the absence as "this shell has no bar" and stops
+     * there, which is what keeps a game from resolving a menu nobody will draw.
+     *
+     * The model handed over is already resolved - labels, ticks and grey-outs decided - because the
+     * shell below is a process that must not learn what a save or a language is in order to draw a
+     * word. See `@shared/types/gameMenu`.
+     */
+    setApplicationMenu?: (model: GameMenuModel) => Promise<void>;
+    /** Subscribe to menu picks by item id; returns an unsubscribe function. */
+    subscribeMenuCommand?: (listener: (itemId: string) => void) => () => void;
     /**
      * Subscribe to window-close requests (the user asked to close the window). The main process
      * holds the close open until the listener resolves: `true` lets the window close, `false`

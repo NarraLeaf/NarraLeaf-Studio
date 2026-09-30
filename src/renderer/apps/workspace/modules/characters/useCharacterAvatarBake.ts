@@ -126,7 +126,9 @@ export function useCharacterAvatarBake(enabled: boolean): {
                 assetHash: assetId => assets.getAssets()[AssetType.Image]?.[assetId]?.hash ?? null,
                 readProjectFile: relativePath => project.readProjectIconFile(relativePath),
                 projectFileExists: relativePath => project.projectIconFileExists(relativePath),
-                writeProjectFile: (relativePath, bytes) => project.writeProjectDerivedFile(relativePath, bytes),
+                writeProjectFile: (relativePath, bytes) => project.writeProjectDerivedFile(relativePath, bytes, {
+                    store: "workspace.shell.save.stores.characters",
+                }),
                 deleteProjectFile: relativePath => project.deleteProjectIconFile(relativePath),
             };
             const render = createAvatarRenderer(async assetId => {

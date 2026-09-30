@@ -15,8 +15,13 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { getInterface } from "@/lib/app/bridge";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
@@ -55,21 +60,36 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    assetResolutionIssues,
     blueprintDebugEventIssue,
     locateRuntimeIssue,
+    reconcileRuntimeIssues,
     runtimeIssueKey,
+    runtimePluginFailureIssue,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
+import { AssetResolutionLedger, type AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
+import type { DevModeLaunchRequest } from "../hooks/useDevModePayload";
+import { devModeAssetPrewarmKey } from "@shared/devMode/assetRevision";
 import { resolveDevModeViewportSize } from "./devModeViewport";
+import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import { currentWindowScale, scaledDesign } from "@shared/utils/windowGeometry";
 import { createDevModePuppetHost, listDevModePuppetBackendModules } from "../devModePuppetHost";
 import { registerDevModePuppetHost } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
+import { clearDevModeAssetUrls, publishDevModeAssetUrls } from "@/lib/ui-editor/runtime/devModeAssetUrls";
+import { BootScreenView } from "@/lib/ui-editor/runtime/app/BootScreenView";
+import { useDevModeInterfaceWarmup } from "./useDevModeInterfaceWarmup";
+import { resolveSurfaceInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
+import { accentForeground } from "@shared/constants/accent";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
     entry: DevModeEntry | null;
+    /** A story this window has been asked to start in place; see {@link DevModeLaunchRequest}. */
+    launchRequest: DevModeLaunchRequest | null;
     projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
@@ -584,11 +604,11 @@ function DevModeDebugOverlay(props: {
                         aria-label={activePanelLabel}
                         className={
                             panelFloating
-                                // A plain border rather than a `ring`: the game window has
-                                // narraleaf-react's own Tailwind v4 sheet in it, which is already
-                                // known to neutralise v3 utilities that ride on CSS custom
-                                // properties, and the one line separating this panel from the stage
-                                // under it is not a good place to find out.
+                                // Floating, the panel is separated from the stage under it by a
+                                // plain `border` rather than a `ring`. A ring is drawn as another
+                                // `box-shadow` layer, which is the property the panel's own drop
+                                // shadow already uses; a border is a property of its own, and it is
+                                // part of the box `overflow-hidden` clips the body to.
                                 ? "pointer-events-auto absolute z-30 overflow-hidden rounded-lg border border-edge-strong shadow-2xl"
                                 : "pointer-events-auto relative z-30 h-full shrink-0 overflow-hidden"
                         }
@@ -829,6 +849,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const {
         bundle,
         entry,
+        launchRequest,
         projectPath,
         surface,
         surfaceId,
@@ -855,18 +876,12 @@ export function DevModeContent(props: DevModeContentProps) {
         return { kind: "surface" };
     }, [entry]);
 
-    const projectRef = useMemo<BlueprintPersistenceProjectRef & DevModeSaveProjectRef | null>(() => {
-        if (!projectPath) {
-            return null;
-        }
-        const rawIdentifier = bundle?.meta?.projectIdentifier;
-        const projectIdentifier =
-            typeof rawIdentifier === "string" && rawIdentifier.trim() ? rawIdentifier.trim() : undefined;
-        return {
-            projectIdentifier,
-            projectPath,
-        };
-    }, [bundle?.meta?.projectIdentifier, projectPath]);
+    // The path alone. The stores are named by the project's identifier when it has one, but the main
+    // process reads that out of this window's own project rather than taking it from here.
+    const projectRef = useMemo<BlueprintPersistenceProjectRef & DevModeSaveProjectRef | null>(
+        () => (projectPath ? { projectPath } : null),
+        [projectPath],
+    );
 
     const persistenceAdapter = useMemo(() => {
         if (!projectRef) {
@@ -911,6 +926,37 @@ export function DevModeContent(props: DevModeContentProps) {
             console.info(message);
         }
     }, []);
+
+    /** The last boot phase written out, so a phase that reports its progress writes only one line. */
+    const bootPhaseLoggedRef = useRef<string | null>(null);
+    /**
+     * The boot's latest report, for the loading state a story launch waits in.
+     *
+     * Kept only until the first frame: after that nothing reads it, and a phase reported by a later
+     * reload must not bring a loading state back over a game already on screen.
+     */
+    const [bootProgress, setBootProgress] = useState<{ firstFrame: boolean; loaded?: number; total?: number }>({
+        firstFrame: false,
+    });
+    /**
+     * Where the boot's phases go in the window an author watches their game start in.
+     *
+     * Two places. A launch into a story waits under the loading state until the boot's first frame,
+     * and the story's own warm-up is the phase that counts. A launch onto the interface does not
+     * wait for the story at all - the interface is up once its own screen is warm (see
+     * `useDevModeInterfaceWarmup`) - so there the phases are only written to Output, next to the rest
+     * of the run, where "why does my game take four seconds to start" is asked.
+     */
+    const reportBootProgress = useCallback<NonNullable<GameAppHost["onBootProgress"]>>(progress => {
+        setBootProgress(previous => (previous.firstFrame
+            ? previous
+            : { firstFrame: progress.phase === "firstFrame", loaded: progress.loaded, total: progress.total }));
+        if (bootPhaseLoggedRef.current === progress.phase) {
+            return;
+        }
+        bootPhaseLoggedRef.current = progress.phase;
+        log("info", `[DevMode] boot: ${progress.phase} at ${Math.round(progress.at)}ms`);
+    }, [log]);
 
     /**
      * Failures the running game reported, located against the story that is open.
@@ -961,7 +1007,9 @@ export function DevModeContent(props: DevModeContentProps) {
      * the Issues panel is where they are told something is wrong right now.
      */
     const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        const issue = blueprintDebugEventIssue(event);
+        const issue = blueprintDebugEventIssue(event, t, {
+            globalBlueprintId: bundleRef.current?.ui.localBlueprints.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId,
+        });
         if (issue) {
             reportIssue(issue);
         }
@@ -973,12 +1021,71 @@ export function DevModeContent(props: DevModeContentProps) {
         } catch (error) {
             console.warn("[DevMode] failed to forward blueprint debug event", error);
         }
-    }, [projectPath, reportIssue]);
+    }, [projectPath, reportIssue, t]);
     useEffect(() => {
         setRuntimeIssues([]);
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);
         setAcknowledgedSessionError(null);
     }, [bundle?.bundleId, bundle?.revision]);
+
+    /**
+     * Pictures the running game asked for and did not get, from every widget on every surface.
+     *
+     * Kept as a ledger of failing drawings rather than appended as they come, because unlike every
+     * other report here this kind can END: a picture that failed can be drawn after all - the value
+     * bound to it changed, the page was revisited after the file came back - and an issue left behind
+     * for a picture now on screen is a report of something that is not happening. So the ledger is
+     * read whole after each change, and what it no longer holds is retired from the list.
+     */
+    const [assetLedger] = useState(() => new AssetResolutionLedger());
+    /** The keys this window last put in the list for it, which is what a retirement is measured from. */
+    const assetIssueKeysRef = useRef<ReadonlySet<string>>(new Set());
+    const translateRef = useRef(t);
+    translateRef.current = t;
+    const publishAssetIssues = useCallback((listWasCleared: boolean) => {
+        const current = bundleRef.current;
+        if (!current) {
+            return;
+        }
+        const located = assetResolutionIssues(
+            assetLedger.failures(),
+            current.storyLibrary?.assetNames,
+            translateRef.current,
+        ).map(issue => locateRuntimeIssue(current, issue, ""));
+        const previous = listWasCleared ? new Set<string>() : assetIssueKeysRef.current;
+        const next = new Map(located.map(issue => [runtimeIssueKey(issue), issue]));
+        assetIssueKeysRef.current = new Set(next.keys());
+        const retired = new Set([...previous].filter(key => !next.has(key)));
+        const arrived: LocatedRuntimeIssue[] = [];
+        for (const [key, issue] of next) {
+            if (!previous.has(key)) {
+                issueSeqRef.current += 1;
+                arrived.push({ ...issue, id: `issue-${issueSeqRef.current}` });
+            }
+        }
+        if (retired.size === 0 && arrived.length === 0) {
+            return;
+        }
+        setRuntimeIssues(list => reconcileRuntimeIssues(list, retired, arrived));
+    }, [assetLedger]);
+    const reportAssetResolution = useCallback<AssetResolutionReporter>(report => {
+        if (assetLedger.apply(report)) {
+            publishAssetIssues(false);
+        }
+    }, [assetLedger, publishAssetIssues]);
+    /**
+     * After the reset above, on the same bundle change and so after it: put back what is still
+     * failing on screen. Declared after that effect on purpose - effects run in order, and the other
+     * way round the reset would wipe this.
+     *
+     * A drawing that is still failing does not report again (nothing about it changed), so without
+     * this a hot reload - every save in Studio - would silently drop a picture that is still blank.
+     * Failures whose drawings are gone are forgotten here, like every other issue on a reload.
+     */
+    useEffect(() => {
+        assetLedger.forgetReleased();
+        publishAssetIssues(true);
+    }, [assetLedger, bundle?.bundleId, bundle?.revision, publishAssetIssues]);
     const dismissIssue = useCallback((id: string) => {
         setRuntimeIssues(previous => previous.filter(issue => issue.id !== id));
     }, []);
@@ -1016,15 +1123,39 @@ export function DevModeContent(props: DevModeContentProps) {
      *
      * Keyed by asset id alone, which is what the resolver keys on: the type is a hint that picks a
      * bucket to look in first, and an id belongs to exactly one asset whichever way it is reached.
-     * Refilled rather than kept, because a grant token is derived from the file's size and
+     * Refilled when an asset file moves, because a grant token is derived from the file's size and
      * modification time - an asset the author replaced mints a different one, and the old URL 404s.
+     *
+     * Which is the ONLY thing that invalidates it, so the key is the bundle's asset revision rather
+     * than its bundle revision (see `DevModeBundle.assetRevision`). Every reload used to redo the
+     * pass, and the pass is seconds of work on a project with a thousand assets - paid on every save
+     * of a line of dialogue, which cannot change a single URL. An asset id this map has never heard
+     * of still resolves one at a time through `resolveStoryAssetUrl`, so a newly added asset needs no
+     * refill either. A bundle that states no asset revision (a host that does not watch files) falls
+     * back to the bundle revision, which is what this always did.
      */
     const assetUrlsRef = useRef<Map<string, string>>(new Map());
     const assetUrlPrewarmRef = useRef<{ revision: string; done: Promise<void> } | null>(null);
 
+    /**
+     * Take the published map away the moment the assets under it may have moved.
+     *
+     * A grant token is derived from the file's size and modification time, so an asset the author
+     * replaced mints a different one and the URL in the map 404s. The map is refilled by the next
+     * prewarm, which happens when the next compile asks for it - and between the reload and that
+     * moment, a widget reading a stale URL would draw nothing. Cleared here rather than left to
+     * expire, so the fallback for that window is the single-asset route, which is what every widget
+     * used before the map existed.
+     */
+    const assetPrewarmKey = bundle ? devModeAssetPrewarmKey(bundle) : "";
+    useEffect(() => {
+        clearDevModeAssetUrls();
+        assetUrlPrewarmRef.current = null;
+    }, [assetPrewarmKey]);
+
     const prewarmStoryAssetUrls = useCallback<NonNullable<GameAppHost["prewarmStoryAssetUrls"]>>(() => {
         const current = bundleRef.current;
-        const revision = current ? `${current.bundleId}:${current.revision}` : "";
+        const revision = current ? devModeAssetPrewarmKey(current) : "";
         const existing = assetUrlPrewarmRef.current;
         if (existing && existing.revision === revision) {
             return existing.done;
@@ -1035,9 +1166,16 @@ export function DevModeContent(props: DevModeContentProps) {
                 // Not an error the author can act on, and not one the run has to stop for: every
                 // asset is still reachable one at a time, which is how this worked before.
                 assetUrlsRef.current = new Map();
+                publishDevModeAssetUrls(assetUrlsRef.current);
                 return;
             }
             assetUrlsRef.current = new Map(Object.entries(result.data.urls));
+            const assetTypes = new Map(Object.entries(result.data.types ?? {}));
+            // Published to the window, not kept for the compile alone. Every widget that draws a
+            // picture used to ask the main process for a grant of its own, so the same file arrived
+            // under one URL here and a different one there - one round trip per widget, and nothing
+            // warmed in advance could be the thing the interface then drew. See `devModeAssetUrls`.
+            publishDevModeAssetUrls(assetUrlsRef.current, assetTypes);
         })();
         assetUrlPrewarmRef.current = { revision, done };
         return done;
@@ -1162,22 +1300,19 @@ export function DevModeContent(props: DevModeContentProps) {
     /**
      * The Open Link node's request, handed to the main process.
      *
-     * The project path travels with it because the handler reads the project's own declared
-     * addresses off disk and refuses anything else - the same refusal the shipped game makes, in
-     * the same kind of process. Nothing here consults Studio's own external-link path.
+     * Only the address travels: the handler decides on its scheme, exactly as the shipped game's
+     * main process does, and reads project trust off this window rather than off anything sent
+     * from here. Nothing here consults Studio's own external-link path.
      */
     const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
-        if (!projectPath) {
-            return { outcome: "failed", error: "Open Link: no project is open" };
-        }
-        const result = await getInterface().blueprintExternalLink.open(projectPath, request);
+        const result = await getInterface().blueprintExternalLink.open(request);
         if (!result.success) {
             // The channel itself failed, which is Studio malfunctioning rather than the link being
             // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
             return { outcome: "failed", error: result.error ?? "Open Link failed" };
         }
         return result.data.result;
-    }, [projectPath]);
+    }, []);
 
     /**
      * The two Progress nodes' requests, handed to the main process.
@@ -1310,6 +1445,81 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, [projectPath]);
 
+    /**
+     * The box the stage is fitted into, and what Studio draws around it.
+     *
+     * The window is Studio's: its content is a top bar, whatever the debug drawer is taking, and
+     * the stage in what is left. A game asking to be sized is asking about the stage, so every
+     * answer here is about this box - `Get Window Size` reports it, `Set Window Size` sets it, and
+     * the main process is told what to add back before it sizes the window.
+     *
+     * Read on demand rather than observed. Nothing here runs on a frame budget (these are blueprint
+     * calls), the drawer changes the box while the author works, and a measurement kept in state
+     * would be one render behind the thing it is describing.
+     */
+    const stageAreaRef = useRef<HTMLDivElement | null>(null);
+    const readStageArea = useCallback((): { width: number; height: number } | null => {
+        const rect = stageAreaRef.current?.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            return null;
+        }
+        return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    }, []);
+    const readStudioChrome = useCallback((): { width: number; height: number } => {
+        const area = readStageArea();
+        if (!area) {
+            return { width: 0, height: 0 };
+        }
+        return {
+            width: Math.max(0, Math.round(window.innerWidth - area.width)),
+            height: Math.max(0, Math.round(window.innerHeight - area.height)),
+        };
+    }, [readStageArea]);
+
+    /**
+     * The design size a scale step is a multiple of: the entry surface's, as the shipped shell
+     * takes it. A surface of some other size letterboxes inside the result, there as here.
+     */
+    const designSize = useMemo(
+        () => (surface ? { width: surface.designSize.width, height: surface.designSize.height } : null),
+        [surface],
+    );
+
+    const getWindowScaleOptions = useCallback(async (): Promise<number[]> => {
+        if (!designSize) {
+            return [];
+        }
+        const result = await getInterface().devMode.getWindowScaleOptions(designSize, readStudioChrome());
+        if (!result.success) {
+            throw new Error(result.error ?? "Get Window Scale Options failed");
+        }
+        return result.data.scales;
+    }, [designSize, readStudioChrome]);
+
+    const getWindowSize = useCallback(async (): Promise<{ width: number; height: number }> => {
+        return readStageArea() ?? designSize ?? { width: 0, height: 0 };
+    }, [designSize, readStageArea]);
+
+    const setWindowSize = useCallback(async (width: number, height: number): Promise<void> => {
+        const result = await getInterface().devMode.setStageSize(width, height, readStudioChrome());
+        if (!result.success) {
+            throw new Error(result.error ?? "Set Window Size failed");
+        }
+    }, [readStudioChrome]);
+
+    const getWindowScale = useCallback(async (): Promise<number> => {
+        const area = readStageArea();
+        return area && designSize ? currentWindowScale(designSize, area) : WINDOW_SCALE_DESIGN;
+    }, [designSize, readStageArea]);
+
+    const setWindowScale = useCallback(async (scale: number): Promise<void> => {
+        if (!designSize || !Number.isFinite(scale) || scale <= 0) {
+            return;
+        }
+        const size = scaledDesign(designSize, scale);
+        await setWindowSize(size.width, size.height);
+    }, [designSize, setWindowSize]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         const result = await getInterface().devMode.getFullscreen();
         if (!result.success) {
@@ -1390,6 +1600,49 @@ export function DevModeContent(props: DevModeContentProps) {
         });
     }, []);
 
+    /**
+     * Whether this window has the author's attention.
+     *
+     * Asked of the main process, which is what makes the answer here the answer a packaged game
+     * gives: `document.hasFocus()` is false while Studio's own developer tools hold the keyboard,
+     * and an author with the console open has not gone anywhere.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        const result = await getInterface().devMode.getWindowFocused();
+        if (!result.success) {
+            throw new Error(result.error ?? "Is Window Focused failed");
+        }
+        return result.data.isFocused;
+    }, []);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        const token = getInterface().devMode.onWindowFocusChanged(({ isFocused }) => listener(isFocused));
+        return () => token.cancel();
+    }, []);
+
+    /**
+     * The screenshot pair, against this window's own web contents.
+     *
+     * The project is what travels, never a path: the main process puts the file in this project's
+     * Dev Mode data, so an author testing a screenshot button gets a real file in a real folder and
+     * "reset this project's player data" takes it away again.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        const result = await getInterface().devMode.saveScreenshot(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Save Screenshot failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        const result = await getInterface().devMode.openScreenshotsFolder(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Open Screenshots Folder failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
     // Runtime plugin capability backends for the Dev Mode window. Built once and kept stable:
     // plugin setup captures these objects, and they have to outlive every bundle revision and
     // in-window relaunch.
@@ -1453,6 +1706,17 @@ export function DevModeContent(props: DevModeContentProps) {
         // No `assets` backend on purpose: Dev Mode resolves asset ids over IPC, and the capability
         // is a synchronous `url(assetId)`. A shell that cannot answer synchronously must leave the
         // namespace absent rather than hand out a URL it has to guess.
+        //
+        // Process memory narrowed to this window's own renderer: every other process around it -
+        // Studio's main process, its GPU process, its other windows - is Studio's, and a reading
+        // that counted them would describe Studio rather than the game.
+        processMemory: async () => {
+            const result = await getInterface().devMode.readProcessMemory();
+            if (!result.success) {
+                throw new Error(result.error ?? "Reading process memory failed");
+            }
+            return result.data.reading;
+        },
         subscribeFullscreenChanged: listener => {
             const token = getInterface().devMode.onFullscreenChanged(({ isFullscreen }) => listener(isFullscreen));
             return () => token.cancel();
@@ -1494,6 +1758,80 @@ export function DevModeContent(props: DevModeContentProps) {
     // plugin blueprint nodes and widget renderers resolve at execution time.
     // Failed plugins are logged and skipped; they never block the game.
     const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry, pluginHost);
+    /**
+     * Whether what this window lights up on is its interface, or a story.
+     *
+     * A story row's launch - or one the host asked for while the window was coming up - opens on the
+     * stage at that row. Drawing the interface ahead of it would light the window up on a title
+     * screen nobody asked for, cold, with buttons live on it, for as long as the story takes to
+     * compile and warm - seconds on a real project - and then cover it.
+     */
+    const opensOnInterface = bootAction.kind === "surface" && !launchRequest;
+    /**
+     * The screen this window opens on, warmed before it is shown - see `useDevModeInterfaceWarmup`.
+     *
+     * Only for a launch that opens on its interface. A story row's launch (or one the host asked for
+     * while the window was coming up) covers the interface with the stage from the first frame, and
+     * the story has a warm-up of its own.
+     */
+    const interfaceWarmup = useDevModeInterfaceWarmup({
+        bundle,
+        surface,
+        enabled: opensOnInterface,
+        prewarmAssetUrls: prewarmStoryAssetUrls,
+        log,
+    });
+
+    /**
+     * Say which plugins this project leaves out, and why.
+     *
+     * The session runs the set a build carries, which means a plugin the project does not depend on
+     * does not run here either - and the only thing an author would otherwise see is the node they
+     * placed drawn as an unknown-node stub. The report names the plugin and the panel this is fixed
+     * from, because the fix is a dependency rescan and not anything in the graph.
+     *
+     * Waits for the bundle: reports are located against it, and the plugin list is answered before
+     * the payload arrives about as often as after it.
+     */
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        for (const entry of runtimePlugins.excluded) {
+            reportIssue({
+                level: "warning",
+                origin: "plugin",
+                pluginName: entry.pluginName,
+                message: t(
+                    entry.reason === "unusable"
+                        ? "devMode.issues.pluginUnusable"
+                        : "devMode.issues.pluginNotDeclared",
+                    { plugin: entry.pluginName },
+                ),
+            });
+        }
+    }, [bundle, reportIssue, runtimePlugins.excluded, t]);
+
+    /**
+     * Say which of the plugins this project does run failed to load.
+     *
+     * The same silence the exclusions above were reported to end, arriving by a different route: a
+     * plugin the project depends on, selected for this session, whose entry threw on import or in
+     * `setup`. Its nodes and widgets are never registered, so they draw as unknown-node stubs - the
+     * author sees a graph that has stopped working and nothing saying the plugin is why.
+     *
+     * An error rather than a warning, unlike an exclusion: an excluded plugin is a project that has
+     * not declared it, which is a state the author can be in on purpose, while an entry that threw
+     * is broken code.
+     */
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        for (const failure of runtimePlugins.errors) {
+            reportIssue(runtimePluginFailureIssue(failure, t));
+        }
+    }, [bundle, reportIssue, runtimePlugins.errors, t]);
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
@@ -1504,6 +1842,10 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
+            // As the assembly resolved it for the variant this session runs as, which is the same
+            // read a pack makes. A session that ends where the build ends is the point: the page an
+            // author wrote for the end of their story is otherwise only reachable by packaging one.
+            endingSurfaceId: bundle.endingSurfaceId,
             // What the assembly says it carried, which for a Dev Mode run is exactly what the
             // author ticked in Run - none of them until they do. The fallback is for a bundle
             // assembled by a host that named no selection at all (a test, an older session): it
@@ -1513,27 +1855,44 @@ export function DevModeContent(props: DevModeContentProps) {
                     .map(story => story.dlcId?.trim())
                     .filter((id): id is string => Boolean(id)),
             )],
-            ready: runtimePlugins.ready,
+            // The same gate a packaged game's warm-up holds: nothing boots, listens for keys or runs
+            // `appBoot` under a loading state the player cannot see through.
+            ready: runtimePlugins.ready && interfaceWarmup.ready,
+            onBootProgress: reportBootProgress,
             bootAction,
+            // Only when there is one: a host field that is always present but usually null would put
+            // an empty object in every render's dependency comparison for the sake of the rare press.
+            ...(launchRequest ? { launchRequest } : {}),
             persistenceAdapter,
             onDebugEvent,
             debuggerEnabled: true,
             disposeMessage: "Dev Mode runtime disposed",
             log,
             reportIssue,
+            reportAssetResolution,
             resolveStoryAssetUrl,
-            // Dev Mode shows its interface without waiting for the story to compile and warm;
-            // see GameAppHost for what that trades away.
-            surfacesBeforeStoryBoot: true,
+            // Dev Mode shows its interface without waiting for the story to compile and warm, when
+            // the interface is what it opens on; see GameAppHost for what that trades away. A story
+            // launch waits for its stage instead, under the loading state.
+            surfacesBeforeStoryBoot: opensOnInterface,
             prewarmStoryAssetUrls,
             resolveWeatherClip,
             saveStore,
             listPuppetBackendModules,
             quitApplication,
             restartApplication,
+            getWindowScaleOptions,
+            getWindowScale,
+            setWindowScale,
+            getWindowSize,
+            setWindowSize,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
+            saveScreenshot,
+            openScreenshotsFolder,
             subscribeCloseRequested,
             networkFetch,
             movePointer,
@@ -1545,7 +1904,13 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [
         bootAction,
         bundle,
+        launchRequest,
         getFullscreen,
+        getWindowScaleOptions,
+        getWindowScale,
+        setWindowScale,
+        getWindowSize,
+        setWindowSize,
         log,
         networkFetch,
         movePointer,
@@ -1558,14 +1923,22 @@ export function DevModeContent(props: DevModeContentProps) {
         quitApplication,
         restartApplication,
         listPuppetBackendModules,
+        reportBootProgress,
         reportIssue,
+        reportAssetResolution,
         resolveStoryAssetUrl,
         prewarmStoryAssetUrls,
         resolveWeatherClip,
         runtimePlugins.ready,
+        interfaceWarmup.ready,
+        opensOnInterface,
         saveStore,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
         surface,
     ]);
@@ -1623,7 +1996,10 @@ export function DevModeContent(props: DevModeContentProps) {
         });
         return (
             <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                <div className="min-h-0 min-w-0 flex-1">
+                {/* The box the stage is fitted into, and the one the window-size capabilities
+                    answer for. Measured from here rather than from the frame inside it: this is the
+                    element whose size the drawer and the top bar actually decide. */}
+                <div className="min-h-0 min-w-0 flex-1" ref={stageAreaRef}>
                     <StageViewportFrame
                         designSize={viewportSize}
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
@@ -1741,6 +2117,14 @@ export function DevModeContent(props: DevModeContentProps) {
         safeAreaId,
     ]);
 
+    // The colour the screen it opens on arrives in, by the rule a packaged game's window uses - so the
+    // reveal is the interface appearing rather than the stage changing colour.
+    const bootBackground = resolveSurfaceInitialBackgroundColor(surface ?? undefined, bundle?.brand);
+    // Null once the window may light up. What it waits for depends on what it opens on.
+    const bootScreenProgress = opensOnInterface
+        ? (interfaceWarmup.ready ? null : { loaded: interfaceWarmup.loaded, total: interfaceWarmup.total })
+        : (bootProgress.firstFrame ? null : { loaded: bootProgress.loaded, total: bootProgress.total });
+
     if (!bundle || !host) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
@@ -1797,6 +2181,17 @@ export function DevModeContent(props: DevModeContentProps) {
                     renderOverlays={renderOverlays}
                     pluginHost={pluginHost}
                 />
+                {/* Over the stage and nothing else: the strip above stays readable, because a session
+                    that fails while it warms has to be able to say so. The interface mounts under it
+                    and warms with it, so what is revealed has already painted. */}
+                {bootScreenProgress ? (
+                    <BootScreenView
+                        background={bootBackground}
+                        accent={`rgb(${accentForeground(bootBackground)})`}
+                        progress={bootScreenProgress}
+                        placement="contained"
+                    />
+                ) : null}
             </div>
         </div>
     );

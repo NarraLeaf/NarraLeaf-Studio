@@ -87,7 +87,17 @@ function fakeWindow(): FakeWindow {
         isClosed: () => window.closed,
         isDestroyed: () => window.closed,
         show: () => undefined,
-        win: { focus: () => undefined, on: () => undefined },
+        // The window handle the manager reaches through to take a closing window off screen
+        // before its page has finished tearing down - see `DevModeManager.retireWindow`.
+        win: {
+            focus: () => undefined,
+            on: () => undefined,
+            isVisible: () => !window.closed,
+            isFullScreen: () => false,
+            hide: () => undefined,
+            isDestroyed: () => window.closed,
+            destroy: () => undefined,
+        },
         onClose: (handler: () => void) => closeHandlers.push(handler),
         onReady: () => undefined,
         setCloseGuard: () => undefined,
@@ -117,6 +127,10 @@ function fakeApp(): App {
         getVcsManager: () => vcs,
         // Every host resolves which edition it is running as; this profile picked none.
         getGlobalState: () => ({ get: () => undefined }),
+        // The project here is made by the test rather than imported, and a project nothing has
+        // recorded an arrival for is trusted - so this says what the real ledger would.
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         launchDevMode: async () => {
             const window = fakeWindow();
             launchedWindows.push(window);

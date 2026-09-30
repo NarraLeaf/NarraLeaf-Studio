@@ -142,18 +142,8 @@ export function frameStyle(box: PixelSize): CSSProperties {
     };
 }
 
-/**
- * The backdrop under an image with an alpha channel.
- *
- * Almost every sprite in a visual novel has one, and a flat colour behind it hides exactly what an
- * author is looking for: whether an edge is clean, whether a halo appeared, whether the cut-out
- * lost a limb. Built from the fill tokens, so it follows the theme like everything else.
- */
-export const TRANSPARENCY_BACKDROP: CSSProperties = {
-    backgroundColor: "rgb(var(--nl-surface-sunken))",
-    backgroundImage: "repeating-conic-gradient(var(--nl-fill) 0% 25%, transparent 0% 50%)",
-    backgroundSize: "16px 16px",
-};
+/** The backdrop under an image with an alpha channel; one definition for every place Studio draws it. */
+export { TRANSPARENCY_BACKDROP } from "@/styles/transparencyBackdrop";
 
 function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
     return bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);

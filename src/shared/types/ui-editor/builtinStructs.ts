@@ -60,6 +60,11 @@ const NVL_ITEM_STRUCT: UIStructDef = {
  * Not a slot shape but engine-owned all the same, and declared here for the same reason: a backlog
  * is a list of these in every project there will ever be, so binding one should not begin with an
  * author writing down what the engine already knows.
+ *
+ * `avatar` is the one field the engine does not hand over: the backlog records who spoke, and the
+ * picture that stands for them is the project's own answer, resolved from the character table the
+ * dialog avatar is resolved from. Null for narration, for a menu row and for a speaker this project
+ * has no character for.
  */
 const HISTORY_ENTRY_STRUCT: UIStructDef = {
     id: UI_STRUCT_ID_HISTORY_ENTRY,
@@ -68,6 +73,7 @@ const HISTORY_ENTRY_STRUCT: UIStructDef = {
         field("type", "string"),
         field("text", "string"),
         field("character", "string"),
+        field("avatar", "image"),
         field("voice", "string"),
         field("voiceId", "string"),
         field("selected", "string"),
@@ -80,6 +86,17 @@ const HISTORY_ENTRY_STRUCT: UIStructDef = {
  *
  * `metadata` stays `json`: what is in it is the project's own save schema, which differs per
  * project and is read through the save nodes that grow pins for it.
+ *
+ * `preview` is the slot's own picture - the same one `Get Save Preview` hands back for this id, and
+ * null for a slot written without one (an older save, or a write whose capture failed). It rides the
+ * row rather than only the node so that a save screen built as a list can show a thumbnail per row
+ * with no graph at all: a row is what a list draws, and a picture that differs per row has to be a
+ * field to be one.
+ *
+ * `line` and `speaker` are there for the same reason and answer the same as `Get Save Line`: the
+ * sentence a slot was left on is what tells two auto-saves apart, and the nodes that could read it
+ * are effectful, which a value blueprint on a row may not be. Empty strings for a slot taken before
+ * any line played.
  */
 const SAVE_ENTRY_STRUCT: UIStructDef = {
     id: UI_STRUCT_ID_SAVE_ENTRY,
@@ -88,6 +105,9 @@ const SAVE_ENTRY_STRUCT: UIStructDef = {
         field("slot", "number"),
         field("timestamp", "number"),
         field("createdAt", "number"),
+        field("preview", "image"),
+        field("line", "string"),
+        field("speaker", "string"),
         field("metadata", "json"),
     ],
 };
@@ -115,6 +135,44 @@ export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Obj
 /** True for a shape the engine owns: its fields are shown, never edited. */
 export function isBuiltinUIStructId(structId: string | null | undefined): boolean {
     return Boolean(structId) && Object.prototype.hasOwnProperty.call(BUILTIN_UI_STRUCTS, structId as string);
+}
+
+/**
+ * The image fields of these shapes whose picture the package already accounts for.
+ *
+ * A picture bound to a list row normally has to be traced back to a name written in the project,
+ * because a package carries only the library assets it can see named - that is what
+ * `blueprint/assembled-asset-name` refuses. These two are the exceptions, and each for its own
+ * reason rather than as a blanket exemption for engine-owned rows:
+ *
+ *  - `nl.saveEntry.preview` is a slot's own screenshot, addressed the way `Get Save Preview`
+ *    addresses it. It is not a library asset at all - the bytes live in the save file the player's
+ *    own machine wrote, and no package could have carried them.
+ *  - `nl.historyEntry.avatar` is a character's dialog avatar, which is either a file baked from the
+ *    character (a derived project file the packager ships from the character table) or the asset
+ *    the author picked in the character's own profile (written down there, and swept from there).
+ *
+ * So a binding on either names nothing the package would miss. Kept beside the structs rather than
+ * in the rule, because it is a fact about what these fields hold.
+ */
+const ENGINE_OWNED_IMAGE_FIELDS: Readonly<Record<UIStructId, readonly string[]>> = Object.freeze({
+    [UI_STRUCT_ID_SAVE_ENTRY]: ["preview"],
+    [UI_STRUCT_ID_HISTORY_ENTRY]: ["avatar"],
+});
+
+/**
+ * Whether a picture read from this field of this shape is one the package already carries.
+ *
+ * Asked by the asset-name sweep before it reports a row-bound picture as a name assembled at run
+ * time. Takes the field *id*, which for a built-in struct equals its key - see {@link field}.
+ */
+export function isSelfContainedStructImageField(
+    structId: string | null | undefined,
+    fieldId: string | null | undefined,
+): boolean {
+    const id = typeof structId === "string" ? structId.trim() : "";
+    const field = typeof fieldId === "string" ? fieldId.trim() : "";
+    return Boolean(id && field && ENGINE_OWNED_IMAGE_FIELDS[id]?.includes(field));
 }
 
 /**

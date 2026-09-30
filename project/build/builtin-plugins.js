@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
 const { rootDir, distRoot, isDev } = require('./utils');
+const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 const sourceRoot = path.join(rootDir, 'src', 'builtin-plugins');
 const distRootDir = path.join(distRoot, 'builtin-plugins');
@@ -95,6 +96,10 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
             jsx: 'automatic',
             target: ['chrome114'],
             external: pluginExternals,
+            // Each built-in plugin keeps its own notice document, and it travels with the package
+            // into the user's plugin folder: a game build reads the runtime entry's half of it
+            // there when the game ships this plugin.
+            plugins: [thirdPartyNoticesPlugin()],
             loader: {
                 '.ts': 'ts',
                 '.tsx': 'tsx',

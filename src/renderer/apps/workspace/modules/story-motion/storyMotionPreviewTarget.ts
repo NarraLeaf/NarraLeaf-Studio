@@ -106,8 +106,9 @@ function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | n
             kind: "character",
             label: identity?.label ?? "Character",
             assetId: payload.assetId,
-            // The compiler always shows characters with autoFit enabled.
-            autoFit: true,
+            // A sprite is drawn at its own pixels in design space: `autoFit` is the rule for a
+            // picture that covers the stage, and a character is not one.
+            autoFit: false,
         };
     }
     if (payload.action === "image") {

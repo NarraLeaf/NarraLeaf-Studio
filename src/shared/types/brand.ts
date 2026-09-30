@@ -253,11 +253,25 @@ export function normalizeProjectBrandColors(raw: unknown): BrandColor[] {
  * absence is the state the project was already in. `normalizeProjectFontStack` is what makes that
  * true of both font versions, reading a bare id, an untagged rung and a language-restricted one out
  * of the same array.
+ *
+ * **A version above this one is refused rather than stamped.** Migrating by normalising only works
+ * downhill: read a newer document and every field this build has not heard of is dropped, and the
+ * version stamped over the top says the result is current. The spec's `rejectNewerSchema` catches
+ * one on the way in, but the spec is not the only reader - the main process reads this file straight
+ * off disk for a preview and for a build - so the refusal belongs to the migration itself, where
+ * every reader meets it.
  */
 export function migrateProjectBrandDocument(raw: unknown): ProjectBrandDocument {
     const record = raw && typeof raw === "object" && !Array.isArray(raw)
         ? raw as Record<string, unknown>
         : {};
+    const version = record.schemaVersion;
+    if (typeof version === "number" && Number.isFinite(version) && version > BRAND_SCHEMA_VERSION) {
+        throw new Error(
+            `Brand document schema v${version} is newer than this Studio version can read`
+            + ` (v${BRAND_SCHEMA_VERSION} is the newest supported)`,
+        );
+    }
 
     return {
         schemaVersion: BRAND_SCHEMA_VERSION,

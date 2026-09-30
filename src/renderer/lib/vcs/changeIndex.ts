@@ -5,10 +5,17 @@ import {
     type DocumentDiffEntry,
     type DocumentDiffTier,
 } from "@shared/documents/diff";
-import { assetStorageIdFromContentPath } from "@shared/utils/assetStorageId";
+import { compileDocumentPathPattern, matchDocumentPath } from "@shared/documents/documentPath";
+import { ASSETS_METADATA_DOCUMENT_PATH } from "@shared/documents/specs/assetsMetadata";
 import { joinAssetEntries, type ChangeIndexUnit } from "./assetRows";
 import { CHANGE_CATEGORY_ORDER, changeCategoryOf, type ChangeCategory } from "./changeCategory";
-import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
+import {
+    documentNameOf,
+    numberRepeatedNames,
+    unnamedAsset,
+    type DocumentName,
+    type DocumentNameContext,
+} from "./documentName";
 import { isWholeDocumentChange } from "./documentChangeView";
 
 /**
@@ -49,7 +56,8 @@ export interface ChangeIndexRow {
      * **Demoted to the tooltip.** It used to be the row: the title was the path's last segment, so
      * every story in a project was a line reading `storydoc.json` under a dim uuid. A path is where
      * a thing is stored, which an author needs about once a month and never navigates by, so it is
-     * one hover away rather than in the column the eye scans. See {@link name}.
+     * one hover away rather than in the column the eye scans - and only when it carries no id
+     * (`identifierDisplay.ts`), since a story's folder and an asset's shard ARE ids. See {@link name}.
      */
     readonly path: string;
     /**
@@ -223,15 +231,18 @@ export function buildChangeIndex(
     // group heading counts the same things its rows are.
     const units = joinAssetEntries(entries, { complete: options.complete ?? false });
     const listed = units.slice(0, budget);
+    // Numbered over the rows that are LISTED, in arrival order, so "Story 2" is the second stand-in
+    // an author can see and not the second one the budget happened to read.
+    const listedNames = numberRepeatedNames(listed.map(unit => rowName(unit, options.names)));
 
     const byCategory = new Map<ChangeCategory, ChangeIndexRow[]>();
     const tiersByCategory = new Map<ChangeCategory, Set<DocumentDiffTier>>();
     const partialByCategory = new Map<ChangeCategory, number>();
 
-    for (const unit of listed) {
+    listed.forEach((unit, position) => {
         const category = changeCategoryOf(unit.entry);
         const rows = byCategory.get(category) ?? [];
-        rows.push(indexRow(unit, options.names));
+        rows.push(indexRow(unit, listedNames[position]));
         byCategory.set(category, rows);
 
         // The tier set is the evidence behind the count and is gated on the same answer, so a
@@ -249,7 +260,7 @@ export function buildChangeIndex(
         if (shortfall.length > 0) {
             partialByCategory.set(category, (partialByCategory.get(category) ?? 0) + 1);
         }
-    }
+    });
 
     const groups: ChangeIndexGroup[] = [];
     for (const category of CHANGE_CATEGORY_ORDER) {
@@ -315,7 +326,7 @@ function comparisonsBehind(unit: ChangeIndexUnit): readonly DocumentDiffEntry[] 
     return [unit.entry];
 }
 
-function indexRow(unit: ChangeIndexUnit, names: DocumentNameContext): ChangeIndexRow {
+function indexRow(unit: ChangeIndexUnit, name: DocumentName): ChangeIndexRow {
     const { entry, change, member } = unit;
     // The record's own kind, never the file's: an asset added to a shard that was merely changed is
     // an addition, and the shard's `changed` would draw it as an edit of something already there.
@@ -323,7 +334,7 @@ function indexRow(unit: ChangeIndexUnit, names: DocumentNameContext): ChangeInde
     return {
         key: unit.key,
         path: entry.path,
-        name: rowName(unit, names),
+        name,
         kind,
         changeCount: change ? countDocumentChanges([change]) : entry.diff.total,
         wholeDocument: isWholeDocumentChange(kind),
@@ -340,41 +351,29 @@ function indexRow(unit: ChangeIndexUnit, names: DocumentNameContext): ChangeInde
  * What one row is called.
  *
  * Three sources in one place, so the index cannot end up calling one thing two things. The asset
- * fold has already answered for the rows it owns - the name the author gave the asset, or the label
- * for a content file no record claims - and everything else is named from its path by the layer all
- * four version-control surfaces share.
+ * fold has already answered for the rows it owns - the name the author gave the asset - and
+ * everything else is named from its path by the layer every version-control surface shares.
  *
- * The orphan content file is qualified by its storage id here rather than left as a bare label. The
- * label alone is true and is not enough: a project can hold several of them at once, which is
- * exactly the state a bad merge leaves behind, and a column of identical rows is a list an author
- * cannot work through.
+ * An asset record the fold split out with no name on it is still an asset, and of the type its
+ * shard is filed under: it is "Image asset", not the name of the shard it happened to be read from.
  */
 function rowName(unit: ChangeIndexUnit, names: DocumentNameContext): DocumentName {
     if (unit.name) {
         return { source: "authored", text: unit.name };
     }
-    if (unit.nameKey) {
-        return {
-            source: "kind",
-            key: unit.nameKey,
-            qualifier: assetStorageIdFromContentPath(unit.entry.path),
-        };
+    if (unit.change) {
+        return unnamedAsset(assetShardType(unit.entry.path));
     }
     return documentNameOf(unit.entry.path, names);
 }
 
-/**
- * A path split the way the version rail splits it: the file name identifies a document in this
- * project, the directory merely locates it.
- *
- * Spelled here rather than imported from the rail's model, because this module has no React and no
- * workspace in it and importing a layout component's helper would give it both.
- */
-export function splitDocumentPath(path: string): { directory: string | null; name: string } {
-    const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
-    const cut = normalized.lastIndexOf("/");
-    if (cut < 0) {
-        return { directory: null, name: normalized };
+const ASSETS_METADATA_PATTERN = compileDocumentPathPattern(ASSETS_METADATA_DOCUMENT_PATH);
+
+/** The asset type a metadata shard's file name says it holds, or null. */
+function assetShardType(path: string): string | null {
+    try {
+        return matchDocumentPath(ASSETS_METADATA_PATTERN, path)?.type ?? null;
+    } catch {
+        return null;
     }
-    return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
 }

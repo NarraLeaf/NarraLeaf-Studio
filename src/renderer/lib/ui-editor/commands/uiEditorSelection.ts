@@ -1,4 +1,4 @@
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { canUngroupContainer, filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -14,6 +14,36 @@ export function getSelectionLeaderId(selection: UIElementSelection): string | un
 
 export function getSelectionPrimaryId(selection: UIElementSelection): string | undefined {
     return selection.primaryId ?? selection.elementIds[selection.elementIds.length - 1];
+}
+
+/**
+ * Whether an element stands for the surface itself rather than for something on it: a page's own
+ * root, or a component's root in the editor for that component - the frame the canvas is drawn at.
+ *
+ * Neither is copied, cut, duplicated, deleted, arranged, aligned or moved into anything, and nothing
+ * is pasted beside them. The frame, unlike a page's root, is still selected, sized, named and shown
+ * or hidden like any container.
+ */
+export function isSurfaceRootElement(element: UIElement | null | undefined): boolean {
+    return element != null && (element.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(element));
+}
+
+/**
+ * The top level of what a structural edit acts on, with the surface's own roots left out first.
+ *
+ * First rather than after: a component's frame is selectable, and selected together with something
+ * inside it, it would otherwise swallow that element as its descendant and leave nothing to act on -
+ * so Delete with the frame and a button selected would delete nothing. Dropping it first leaves the
+ * button, which is the part of the selection the edit can apply to.
+ */
+export function filterToEditableTopLevel(document: UIDocument, elementIds: readonly string[]): string[] {
+    return filterToTopLevelMovers(
+        document,
+        elementIds.filter(id => {
+            const element = document.elements[id];
+            return element != null && !isSurfaceRootElement(element);
+        }),
+    );
 }
 
 export function filterSelectionToTopLevelMovers(document: UIDocument, selection: UIElementSelection): string[] {
@@ -61,13 +91,15 @@ export function canAddRestToLeaderContainer(selection: UIElementSelection, docum
 
 /**
  * Ids to reparent into the leader container: top-level movers among the selection except the leader.
+ *
+ * A component's frame is never one of them - it is not put inside anything.
  */
 export function getMoversToGroupIntoLeaderContainer(document: UIDocument, selection: UIElementSelection): string[] {
     const leader = getSelectionLeaderId(selection);
     if (!leader || !canAddRestToLeaderContainer(selection, document)) {
         return [];
     }
-    const tops = filterToTopLevelMovers(document, selection.elementIds);
+    const tops = filterToEditableTopLevel(document, selection.elementIds);
     return tops.filter(id => id !== leader);
 }
 

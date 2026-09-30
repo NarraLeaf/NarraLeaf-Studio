@@ -200,6 +200,62 @@ describe("UIStore panel ordering", () => {
 
         expect(idsByPosition(store, PanelPosition.Left)).toEqual(["b", "a", "c"]);
     });
+
+    it("resets a position to the static order and forgets the override", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("a", PanelPosition.Left, 10));
+        store.registerPanel(panel("b", PanelPosition.Left, 20));
+        store.registerPanel(panel("right-b", PanelPosition.Right, 20));
+        store.registerPanel(panel("right-a", PanelPosition.Right, 10));
+        store.setPanelOrder(PanelPosition.Left, ["b", "a"]);
+        store.setPanelOrder(PanelPosition.Right, ["right-b", "right-a"]);
+
+        const orders: string[][] = [];
+        store.getEvents().on("panelOrderChanged", ({ position, order }) => {
+            if (position === PanelPosition.Left) orders.push(order);
+        });
+
+        store.resetPanelOrder(PanelPosition.Left);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["a", "b"]);
+        // The override is gone rather than emptied, so nothing is persisted for this dock.
+        expect(store.getPanelOrder()[PanelPosition.Left]).toBeUndefined();
+        // Subscribers hear it as an empty order, which is how the layout drops its stored copy.
+        expect(orders).toEqual([[]]);
+        // Other docks keep their override.
+        expect(idsByPosition(store, PanelPosition.Right)).toEqual(["right-b", "right-a"]);
+    });
+
+    it("reports the default order of a dock regardless of the override in force", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("b", PanelPosition.Left, 20));
+        store.registerPanel(panel("a", PanelPosition.Left, 10));
+        store.registerPanel(panel("right-a", PanelPosition.Right, 10));
+        store.setPanelOrder(PanelPosition.Left, ["b", "a"]);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["b", "a"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Left)).toEqual(["a", "b"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Right)).toEqual(["right-a"]);
+    });
+
+    it("breaks static-order ties by registration sequence, so a reset does not keep a drag", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("first", PanelPosition.Left, 10));
+        store.registerPanel(panel("second", PanelPosition.Left, 10));
+        store.registerPanel(panel("third", PanelPosition.Left, 10));
+        store.setPanelOrder(PanelPosition.Left, ["third", "first", "second"]);
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["third", "first", "second"]);
+
+        store.resetPanelOrder(PanelPosition.Left);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["first", "second", "third"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Left)).toEqual(["first", "second", "third"]);
+
+        // Re-registering (a plugin reload) keeps the original sequence number.
+        store.unregisterPanel("first");
+        store.registerPanel(panel("first", PanelPosition.Left, 10));
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["first", "second", "third"]);
+    });
 });
 
 describe("UIStore panel visibility", () => {
@@ -245,6 +301,49 @@ describe("UIStore panel visibility", () => {
         store.setPanelVisibility("p", false);
         expect(events).toEqual([false]);
         expect(store.getPanelVisibility().p).toBe(false);
+    });
+
+    it("puts a dock's panels back to their registered visibility, leaving other docks alone", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("seeded"));
+        store.registerPanel(hidablePanel("unseeded", false));
+        store.registerPanel({
+            id: "right", title: "right", icon: null, position: PanelPosition.Right, component: DummyTab,
+        });
+        store.setPanelVisibility("seeded", false);
+        store.setPanelVisibility("unseeded", false);
+        store.setPanelVisibility("right", false);
+
+        // No per-panel event: that one means "open this panel", and firing it here would take the
+        // author off whatever they had open.
+        const seededEvents = recordVisibilityEvents(store, "seeded");
+        const stateChanges: Array<Record<string, boolean>> = [];
+        store.getEvents().on("stateChanged", changes => {
+            if (changes.panelVisibility) stateChanges.push(changes.panelVisibility);
+        });
+        store.resetPanelVisibility(PanelPosition.Left);
+
+        expect(store.getPanelVisibility().seeded).toBe(true);
+        // Back to unseeded, exactly as registration left it — the rails read that as visible too.
+        expect(store.getPanelVisibility().unseeded).toBeUndefined();
+        expect(seededEvents).toEqual([]);
+        expect(stateChanges).toHaveLength(1);
+        // Another dock's panel is untouched.
+        expect(store.getPanelVisibility().right).toBe(false);
+    });
+
+    it("says nothing when a dock has nothing hidden", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("p"));
+        let announced = false;
+        store.getEvents().on("stateChanged", changes => {
+            if (changes.panelVisibility) announced = true;
+        });
+
+        store.resetPanelVisibility(PanelPosition.Left);
+
+        expect(announced).toBe(false);
+        expect(store.getPanelVisibility().p).toBe(true);
     });
 });
 

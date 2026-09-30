@@ -110,6 +110,13 @@ const launcherDefaultCapabilities = (): PrivilegedCapability[] => [
  * checked against the permissions it was installed with (`isPluginCapabilityAllowed`), never
  * against the window's defaults. Installing from the store still raises the permission prompt
  * window the author has to answer.
+ *
+ * That separation is only real if a plugin cannot get hold of a service object the *renderer* bound
+ * to the window's default facade. A plugin action's `onClick` and a rail button's `railAction` are
+ * handed the live `Workspace`, whose `services.get(FileSystem)` is exactly such an object; the
+ * renderer wraps both with a guard that refuses the service registry before plugin code sees them
+ * (`pluginWorkspaceGuard`), so the only file-system path left to a plugin is `app.privileged.*`,
+ * bound to the plugin's own actor and gated here.
  */
 const workspaceDefaultCapabilities = (): PrivilegedCapability[] => [
     PrivilegedCapability.PluginInstall,
@@ -133,6 +140,11 @@ export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermiss
     // which is open to any window and checks the certificate against Studio's own directory
     // rather than trusting whoever named it.
     [WindowAppType.ServerTrustPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
+    // One question about one project, answered by closing the window: no file, no elevated call.
+    [WindowAppType.ProjectTrustPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
+    // The same shape: one question about one project and one server, answered by closing the
+    // window. The host records the answer; the window calls nothing to make it count.
+    [WindowAppType.ServerSessionPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
     // A sample of the interface, drawn from preferences and nothing else. It reads global state
     // and the list of servers this installation is signed in to, both of which are open to any
     // window; it opens no project and touches no file.

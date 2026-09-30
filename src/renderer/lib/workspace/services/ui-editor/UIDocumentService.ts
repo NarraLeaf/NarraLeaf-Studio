@@ -19,6 +19,9 @@ import {
     UILayout,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
+    uiElementTypeAcceptsUserChildren,
+    getUIStructuralChildSlot,
+    getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
     type UIComponentParam,
@@ -27,8 +30,10 @@ import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-ed
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
+import { ProjectDocumentTooNewError } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { RendererError } from "@shared/utils/error";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
@@ -37,8 +42,12 @@ import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { storeWrite } from "../autosave/writeReport";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
+import type { TranslationKey } from "@shared/i18n";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -58,16 +67,17 @@ import {
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { isValidUIInsertParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     cloneWidgetMainBlueprintForPaste,
     cloneWidgetValueBlueprintForPaste,
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
-import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
+import { setPrivateOwnerBlueprint } from "./blueprint/ownerRecords";
 import {
     componentWidgetMainOwnerKey,
+    ownerRefToIndexKey,
     surfaceMainOwnerKey,
     widgetMainOwnerKey,
     widgetValueOwnerKey,
@@ -81,6 +91,7 @@ import type {
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
@@ -510,10 +521,7 @@ function sanitizeComponentName(name: string | undefined, fallback: string): stri
 
 /** Whether a blueprint holds anything an author wrote, as opposed to the empty shell selecting an element creates. */
 function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
-    if (blueprint.program.kind !== "graph") {
-        return true;
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     const collections = [graphs.events ?? {}, graphs.functions ?? {}];
     return collections.some(collection =>
         Object.values(collection).some(entry => Object.keys(entry?.graph?.nodes ?? {}).length > 0),
@@ -669,7 +677,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.save(this.getDocument()),
+        save: () => this.writeDocument(this.getDocument()),
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
@@ -694,6 +702,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError("UI document not initialized");
         }
         return this.document;
+    }
+
+    /**
+     * The project's document: every page with its elements, and every component definition.
+     *
+     * The same object as {@link getDocument} here. It is its own method for the component editor,
+     * whose document service answers `getDocument` with a view of one definition - the definition's
+     * elements and none of the pages' - and answers this with the project's. Whatever asks where a
+     * Page widget's page leads (what that page places, what its own Page widgets draw) asks this.
+     */
+    public getPageDocument(): UIDocument {
+        return this.getDocument();
     }
 
     public async load(): Promise<UIDocument> {
@@ -755,7 +775,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return migrated;
     }
 
+    /**
+     * Write `document` now instead of waiting for the auto-save.
+     *
+     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
+     * cancels the saver's pending write because it supersedes it, and without handing it back the
+     * change would wait for the author's next edit - while the save-failure notice, told this file
+     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
+     * written while the project opens has nothing for the saver to write, and its failure fails the
+     * open.
+     */
     public async save(document: UIDocument): Promise<void> {
+        try {
+            await this.writeDocument(document);
+        } catch (error) {
+            if (this.document) {
+                this.autoSaver.schedule();
+            }
+            throw error;
+        }
+    }
+
+    private async writeDocument(document: UIDocument): Promise<void> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
@@ -806,7 +847,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
      */
     private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
-        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
+        return fs.writeFileNoFollowOrCreate(
+            path,
+            data,
+            "utf-8",
+            storeWrite("workspace.shell.save.stores.uiDocument", "retried"),
+        );
     }
 
     /**
@@ -1709,7 +1755,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      */
     private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
-            throw new RendererError("UI document schema is newer than this Studio version");
+            // Both version numbers, in the one wording every reader of a too-new project document
+            // uses. Without them the failure screen said only that the file was newer, which cannot
+            // tell an author a damaged file from a project a newer Studio has already opened - and
+            // those two call for opposite actions.
+            const refusal = new ProjectDocumentTooNewError(
+                "uiDocument",
+                ProjectNameConvention.EditorUIDocument.join("/"),
+                document.schemaVersion,
+                UI_DOCUMENT_SCHEMA_VERSION,
+            );
+            throw new RendererError(
+                describeProjectDocumentTooNew(refusal, i18nStore.getLocale()),
+                { cause: refusal },
+            );
         }
         if (document.schemaVersion < UI_DOCUMENT_MIN_SUPPORTED_VERSION) {
             throw new RendererError(
@@ -2076,6 +2135,60 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Put the surfaces in the order given.
+     *
+     * The order is the document's own - `document.surfaces` is an array and every list of pages is
+     * drawn from it - so this takes the whole order rather than a hop from one position to another.
+     * The panel that drives it draws one kind at a time and has to say where the other kind's cards
+     * stayed; a "move this before that" call could not express that without this method guessing.
+     *
+     * Surfaces the order does not name keep their places at the end rather than being dropped: an
+     * order written against a document that has since gained a page is a stale statement about
+     * position, never a request to delete the page it says nothing about.
+     *
+     * The undo step goes on the **project** stack rather than into the interface editor's own
+     * history, which is per surface: this is not an edit to any one surface, and it is made from the
+     * panel rather than from an editor - which is the stack Ctrl+Z reaches from there
+     * (`resolveWorkspaceUndoScope`). Two id lists is the whole entry.
+     *
+     * `movedSurfaceId` only names the step for the Edit menu. Leaving it out costs the name, never
+     * the entry.
+     */
+    public reorderSurfaces(orderedSurfaceIds: readonly string[], movedSurfaceId?: string): void {
+        const before = this.getDocument().surfaces.map(surface => surface.id);
+        const name = movedSurfaceId
+            ? this.getDocument().surfaces.find(surface => surface.id === movedSurfaceId)?.name ?? ""
+            : "";
+        this.applySurfaceOrder(orderedSurfaceIds);
+        const after = this.getDocument().surfaces.map(surface => surface.id);
+        // Nothing moved, or an operation sink took the gesture and this copy of the document has not
+        // moved yet - either way there is no step for this machine to take back.
+        if (before.length === after.length && before.every((id, index) => id === after[index])) {
+            return;
+        }
+        this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label: { key: "uiEditor.history.moveSurface" as TranslationKey, params: { name } },
+            undo: () => this.applySurfaceOrder(before),
+            redo: () => this.applySurfaceOrder(after),
+        });
+    }
+
+    private applySurfaceOrder(orderedSurfaceIds: readonly string[]): void {
+        this.mutateDocument(document => {
+            const remaining = new Map(document.surfaces.map(surface => [surface.id, surface]));
+            const ordered: UISurface[] = [];
+            for (const id of orderedSurfaceIds) {
+                const surface = remaining.get(id);
+                if (surface) {
+                    ordered.push(surface);
+                    remaining.delete(id);
+                }
+            }
+            document.surfaces = [...ordered, ...remaining.values()];
+        });
+    }
+
     public renameSurface(surfaceId: string, name: string): void {
         const nextName = name.trim();
         if (!nextName) {
@@ -2165,10 +2278,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const sourceBlueprintDocument = localBp?.getBlueprintDocument();
         if (sourceBlueprintDocument) {
             for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
-                const firstBlueprint = ownerRecord.privateBlueprintIds
-                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
-                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
-                const owner = firstBlueprint?.owner;
+                const sourceBlueprint = sourceBlueprintDocument.blueprints[ownerRecord.blueprintId];
+                const owner = sourceBlueprint?.owner;
                 if (!owner || !remapDuplicatedBlueprintOwner(owner, {
                     oldSurfaceId: sourceSurface.id,
                     newSurfaceId,
@@ -2178,10 +2289,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     continue;
                 }
                 ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
-                for (const blueprintId of ownerRecord.privateBlueprintIds) {
-                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
-                        blueprintIdMap[blueprintId] = uuidService.generate();
-                    }
+                if (!blueprintIdMap[ownerRecord.blueprintId]) {
+                    blueprintIdMap[ownerRecord.blueprintId] = uuidService.generate();
                 }
             }
         }
@@ -2206,46 +2315,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
-                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
-                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
-                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
-                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
-                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                const newBlueprintId = blueprintIdMap[sourceOwnerRecord.blueprintId];
+                const sourceBlueprint = sourceBlueprintDocument?.blueprints[sourceOwnerRecord.blueprintId];
+                if (!newBlueprintId || !sourceBlueprint) {
                     continue;
                 }
-                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
-                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
-                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
-                const newOwner = firstSourceBlueprint ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext) : null;
+                const newOwner = remapDuplicatedBlueprintOwner(sourceBlueprint.owner, remapContext);
                 if (!newOwner) {
                     continue;
                 }
-                let newOwnerKey: string;
-                if (newOwner.kind === "surfaceMain") {
-                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
-                } else if (newOwner.kind === "widgetMain") {
-                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
-                } else if (newOwner.kind === "widgetValue") {
-                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
-                } else {
+                // The encoder, not a chain that reproduces it. Two of these had grown here, both
+                // handling exactly the three kinds `remapDuplicatedBlueprintOwner` can return - so
+                // the trailing branch was unreachable, and the format was written out in a third
+                // and fourth place that could drift from it.
+                const newOwnerKey = ownerRefToIndexKey(newOwner);
+                const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                if (!clonedBlueprint) {
                     continue;
                 }
-                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
-                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
-                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
-                    if (!sourceBlueprint || !newBlueprintId) {
-                        continue;
-                    }
-                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
-                    if (clonedBlueprint) {
-                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
-                    }
-                }
-                bpDoc.ownerRecords[newOwnerKey] = {
-                    ...cloneJson(sourceOwnerRecord),
-                    activeBlueprintId,
-                    privateBlueprintIds: clonedBlueprintIds,
-                };
+                bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                bpDoc.ownerRecords[newOwnerKey] = { blueprintId: newBlueprintId };
             }
         });
 
@@ -2448,8 +2537,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const blueprintIdMap: Record<string, string> = {};
             if (sourceBlueprintDocument) {
                 for (const [blueprintId, blueprint] of Object.entries(sourceBlueprintDocument.blueprints)) {
-                    const owner = blueprint.owner;
-                    if (owner.kind === "componentWidgetMain" && owner.componentId === source.id) {
+                    if (anchorComponentId(blueprint.owner) === source.id) {
                         blueprintIdMap[blueprintId] = uuidService.generate();
                     }
                 }
@@ -2505,11 +2593,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (sourceBlueprintDocument) {
                 for (const [oldBlueprintId, newBlueprintId] of Object.entries(blueprintIdMap)) {
                     const sourceBlueprint = sourceBlueprintDocument.blueprints[oldBlueprintId];
-                    const owner = sourceBlueprint?.owner;
-                    if (!sourceBlueprint || owner?.kind !== "componentWidgetMain") {
+                    if (!sourceBlueprint || anchorComponentId(sourceBlueprint.owner) === null) {
                         continue;
                     }
-                    const newElementId = elementIdMap[owner.elementId];
+                    // Naming a component and hanging off one of its elements are one anchor
+                    // position, so this is never null past the guard above - the type cannot say so.
+                    const oldElementId = anchorElementId(sourceBlueprint.owner);
+                    const newElementId = oldElementId ? elementIdMap[oldElementId] : undefined;
                     if (!newElementId) {
                         continue;
                     }
@@ -2540,7 +2630,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             localBp?.applyBlueprintMutation(bpDoc => {
                 for (const { ownerKey, blueprint } of blueprintClones) {
                     bpDoc.blueprints[blueprint.id] = blueprint;
-                    registerPrivateBlueprintAsActive(bpDoc, ownerKey, blueprint.id, blueprint.frontend);
+                    setPrivateOwnerBlueprint(bpDoc, ownerKey, blueprint.id);
                 }
             });
         }
@@ -2625,10 +2715,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const ownerRecordsToClone: Record<string, BlueprintPrivateOwnerRecord> = {};
         if (sourceBlueprintDocument) {
             for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
-                const firstBlueprint = ownerRecord.privateBlueprintIds
-                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
-                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
-                const owner = firstBlueprint?.owner;
+                const sourceBlueprint = sourceBlueprintDocument.blueprints[ownerRecord.blueprintId];
+                const owner = sourceBlueprint?.owner;
                 // Only clone blueprints owned by this surface / its widgets. Global
                 // blueprints (globalMain) remap to null and are left behind.
                 if (!owner || !remapDuplicatedBlueprintOwner(owner, {
@@ -2640,10 +2728,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     continue;
                 }
                 ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
-                for (const blueprintId of ownerRecord.privateBlueprintIds) {
-                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
-                        blueprintIdMap[blueprintId] = uuidService.generate();
-                    }
+                if (!blueprintIdMap[ownerRecord.blueprintId]) {
+                    blueprintIdMap[ownerRecord.blueprintId] = uuidService.generate();
                 }
             }
         }
@@ -2688,48 +2774,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
-                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
-                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
-                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
-                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
-                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                const newBlueprintId = blueprintIdMap[sourceOwnerRecord.blueprintId];
+                const sourceBlueprint = sourceBlueprintDocument?.blueprints[sourceOwnerRecord.blueprintId];
+                if (!newBlueprintId || !sourceBlueprint) {
                     continue;
                 }
-                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
-                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
-                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
-                const newOwner = firstSourceBlueprint
-                    ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext)
-                    : null;
+                const newOwner = remapDuplicatedBlueprintOwner(sourceBlueprint.owner, remapContext);
                 if (!newOwner) {
                     continue;
                 }
-                let newOwnerKey: string;
-                if (newOwner.kind === "surfaceMain") {
-                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
-                } else if (newOwner.kind === "widgetMain") {
-                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
-                } else if (newOwner.kind === "widgetValue") {
-                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
-                } else {
+                // The encoder, not a chain that reproduces it. Two of these had grown here, both
+                // handling exactly the three kinds `remapDuplicatedBlueprintOwner` can return - so
+                // the trailing branch was unreachable, and the format was written out in a third
+                // and fourth place that could drift from it.
+                const newOwnerKey = ownerRefToIndexKey(newOwner);
+                const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                if (!clonedBlueprint) {
                     continue;
                 }
-                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
-                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
-                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
-                    if (!sourceBlueprint || !newBlueprintId) {
-                        continue;
-                    }
-                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
-                    if (clonedBlueprint) {
-                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
-                    }
-                }
-                bpDoc.ownerRecords[newOwnerKey] = {
-                    ...cloneJson(sourceOwnerRecord),
-                    activeBlueprintId,
-                    privateBlueprintIds: clonedBlueprintIds,
-                };
+                bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                bpDoc.ownerRecords[newOwnerKey] = { blueprintId: newBlueprintId };
             }
         });
 
@@ -2968,7 +3032,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (blueprintDocument) {
             for (const oldElementId of Object.keys(elementIdMap)) {
                 const ownerKey = widgetMainOwnerKey(surfaceId, oldElementId);
-                const sourceBlueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+                const sourceBlueprintId = blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
                 const sourceBlueprint = sourceBlueprintId ? blueprintDocument.blueprints[sourceBlueprintId] : undefined;
                 // Selecting an element is enough to give it a blueprint, so most elements own an empty
                 // one. Cloning those would put a shell in the library for every box in the selection -
@@ -3022,7 +3086,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             localBp?.applyBlueprintMutation(bpDoc => {
                 for (const { ownerKey, blueprint } of carried) {
                     bpDoc.blueprints[blueprint.id] = blueprint;
-                    registerPrivateBlueprintAsActive(bpDoc, ownerKey, blueprint.id, blueprint.frontend);
+                    setPrivateOwnerBlueprint(bpDoc, ownerKey, blueprint.id);
                 }
             });
         }
@@ -3161,11 +3225,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                 const sourceBp = bpDoc.blueprints[oldBpId];
-                const owner = sourceBp?.owner;
-                if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== source.id) {
+                if (!sourceBp || anchorComponentId(sourceBp.owner) !== source.id) {
                     continue;
                 }
-                const newElementId = idMap[owner.elementId];
+                const oldElementId = anchorElementId(sourceBp.owner);
+                const newElementId = oldElementId ? idMap[oldElementId] : undefined;
                 if (!newElementId) {
                     continue;
                 }
@@ -3191,11 +3255,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     }
                 }
                 bpDoc.blueprints[newBpId] = cloned;
-                registerPrivateBlueprintAsActive(
+                setPrivateOwnerBlueprint(
                     bpDoc,
                     componentWidgetMainOwnerKey(newComponentId, newElementId),
                     newBpId,
-                    cloned.frontend,
                 );
             }
         });
@@ -3508,9 +3571,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
         const target = component?.elements[targetParentId];
-        if (!component || !target || !uiElementTypeAcceptsChildren(target.type)) {
+        // The same answer a page gives (`parentTakesAddedElements`), asked of the definition's own elements.
+        if (!component || !target || !parentTakesAddedElements(
+            { ...document, elements: component.elements },
+            target,
+            payload.topLevelElementIds.map(id => payload.elements[id]),
+        )) {
             return { ok: false, reason: "invalid_target" };
         }
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
         if (beforeChildId != null) {
             const before = component.elements[beforeChildId];
             if (!before || before.parentId !== targetParentId) {
@@ -3542,13 +3611,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
                 const copy = stripElementForComponentDefinition(source);
                 copy.id = newId;
-                copy.parentId = payload.topLevelElementIds.includes(oldId)
+                const isTop = payload.topLevelElementIds.includes(oldId);
+                copy.parentId = isTop
                     ? targetParentId
                     : source.parentId && elementIdMap[source.parentId]
                       ? elementIdMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
                 liveComponent.elements[newId] = copy;
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(liveParent.type, copy.extra) : null;
+                const pointer = partSlot ? getUIStructuralSlotPointerProp(liveParent.type, partSlot) : null;
+                if (pointer) {
+                    liveParent.props = { ...(liveParent.props ?? {}), [pointer]: newId };
+                }
             }
             const insertAt = beforeChildId ? liveParent.childrenIds.indexOf(beforeChildId) : -1;
             const withoutMoved = liveParent.childrenIds.filter(id => !newRootIds.includes(id));
@@ -3703,11 +3778,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             localBp.applyBlueprintMutation(bpDoc => {
                 for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                     const sourceBp = bpDoc.blueprints[oldBpId];
-                    const owner = sourceBp?.owner;
-                    if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== component.id) {
+                    if (!sourceBp || anchorComponentId(sourceBp.owner) !== component.id) {
                         continue;
                     }
-                    const newElementId = idMap[owner.elementId];
+                    const oldElementId = anchorElementId(sourceBp.owner);
+                    const newElementId = oldElementId ? idMap[oldElementId] : undefined;
                     if (!newElementId) {
                         continue;
                     }
@@ -3721,11 +3796,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         newBlueprintIdForSourceRemap: newBpId,
                     });
                     bpDoc.blueprints[newBpId] = cloned;
-                    registerPrivateBlueprintAsActive(
+                    setPrivateOwnerBlueprint(
                         bpDoc,
                         widgetMainOwnerKey(surfaceId, newElementId),
                         newBpId,
-                        cloned.frontend,
                     );
                 }
             });
@@ -3856,7 +3930,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const allowed = collectSubtreeElementIds(document, effectiveRootId);
         const target = document.elements[targetParentId];
-        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target) || isLinkedUIComponentElement(target)) {
+        const pastedTops = payload.topLevelElementIds.map(id => payload.elements[id]);
+        if (!target || !allowed.has(targetParentId) || !parentTakesAddedElements(document, target, pastedTops)) {
             return { ok: false, reason: "invalid_target" };
         }
         if (beforeChildId != null) {
@@ -3865,6 +3940,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return { ok: false, reason: "invalid_target" };
             }
         }
+        // Past the check above, a target that takes no author's children is a widget taking back its
+        // own parts - a copied handle into a Slider whose handle is gone.
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -3922,7 +4000,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     }
                 }
 
-                if (isTop) {
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(parentEl.type, copy.extra) : null;
+                if (partSlot) {
+                    // A part's layout is its place inside its widget, so it keeps it: a handle copied
+                    // from one Slider sits where a handle sits in the next. The widget is pointed at
+                    // it too, where it keeps its parts' ids - see `getUIStructuralSlotPointerProp`.
+                    copy.layout = roundUILayoutGeometryFields({ ...copy.layout });
+                    const pointer = getUIStructuralSlotPointerProp(parentEl.type, partSlot);
+                    if (pointer) {
+                        parentEl.props = { ...(parentEl.props ?? {}), [pointer]: newId };
+                    }
+                } else if (isTop) {
                     const mergeLookup = (id: string) => doc.elements[id] ?? payload.elements[id];
                     const patch = layoutPatchForReparent(doc, oldEl, targetParentId, mergeLookup);
                     let layout = { ...copy.layout, ...patch };
@@ -3986,11 +4074,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     newBlueprintIdForSourceRemap: newBpId,
                 });
                 bpDoc.blueprints[newBpId] = cloned;
-                registerPrivateBlueprintAsActive(
+                setPrivateOwnerBlueprint(
                     bpDoc,
                     widgetMainOwnerKey(surfaceId, newElementId),
                     newBpId,
-                    cloned.frontend,
                 );
             }
             for (const [oldBpId, sourceBp] of Object.entries(payload.widgetValueBlueprints ?? {})) {
@@ -4014,11 +4101,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     propPath: owner.propPath,
                 });
                 bpDoc.blueprints[newBpId] = cloned;
-                registerPrivateBlueprintAsActive(
+                setPrivateOwnerBlueprint(
                     bpDoc,
                     widgetValueOwnerKey(surfaceId, newElementId, owner.propPath),
                     newBpId,
-                    cloned.frontend,
                 );
             }
         });
@@ -4551,10 +4637,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const dialogNextEventId = "dialogNext";
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[contentBlueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            blueprint.program.graphs.events = {
+            blueprint.graphs.events = {
                 [dialogNextEventId]: {
                     id: dialogNextEventId,
                     name: translate("defaultDoc.dialog.nextEvent"),
@@ -4572,10 +4658,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const nametagBlueprintId = localBp.ensureWidgetMain(surfaceId, template.nametagId, translate("defaultDoc.dialog.nametag"), "nl.text");
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[nametagBlueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            blueprint.program.graphs.events = {
+            blueprint.graphs.events = {
                 nametagUpdate: {
                     id: "nametagUpdate",
                     name: translate("defaultDoc.dialog.updateNametagEvent"),
@@ -4587,10 +4673,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const avatarBlueprintId = localBp.ensureWidgetMain(surfaceId, template.avatarId, translate("defaultDoc.dialog.avatar"), "nl.image");
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[avatarBlueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            blueprint.program.graphs.events = {
+            blueprint.graphs.events = {
                 avatarUpdate: {
                     id: "avatarUpdate",
                     name: translate("defaultDoc.dialog.updateAvatarEvent"),
@@ -5115,10 +5201,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[blueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            const initEntry = blueprint.program.graphs.events?.init;
+            const initEntry = blueprint.graphs.events?.init;
             if (!initEntry) {
                 return;
             }
@@ -5265,10 +5351,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         );
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[listBlueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            blueprint.program.graphs.events = {
+            blueprint.graphs.events = {
                 choiceSelect: {
                     id: "choiceSelect",
                     name: translate("defaultDoc.choice.selectEvent"),
@@ -5296,10 +5382,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         );
         localBp.applyBlueprintMutation(doc => {
             const blueprint = doc.blueprints[panelBlueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 return;
             }
-            blueprint.program.graphs.events = {
+            blueprint.graphs.events = {
                 nvlNext: {
                     id: "nvlNext",
                     name: translate("defaultDoc.nvl.nextEvent"),

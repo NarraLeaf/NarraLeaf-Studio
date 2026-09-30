@@ -568,6 +568,22 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         });
     });
 
+    it("derives its own install permission for reading process memory", () => {
+        // Declared in `contributes`, like every capability, and turned into a permission the author
+        // approves by name - separately from `diagnostics`, which a plugin may already hold.
+        const result = validatePluginManifest(fullManifest({
+            contributes: { runtimeCapabilities: ["diagnostics", "process.memory"] },
+        }));
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.manifest.contributes.runtimeCapabilities).toEqual(["diagnostics", "process.memory"]);
+        expect(result.manifest.permissions).toEqual(expect.arrayContaining([
+            { kind: "runtime", capability: "diagnostics" },
+            { kind: "runtime", capability: "process.memory" },
+        ]));
+    });
+
     it("rejects capabilities declared without a runtime entry", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

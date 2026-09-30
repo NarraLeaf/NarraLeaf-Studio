@@ -79,8 +79,13 @@ export interface SplitComparisonViewProps {
     readonly entry: DocumentDiffEntry;
     /** What the document is called, drawn once at the top. */
     readonly name: string;
-    /** Where it sits, dimmed beside the name. Null at the project root. */
-    readonly directory: string | null;
+    /**
+     * Where it is stored, in the name's tooltip - or null, for a path with an id in it.
+     *
+     * Not drawn beside the name, where the directory used to be: for a story that directory was the
+     * story's uuid, and the interface never shows one (`identifierDisplay.ts`).
+     */
+    readonly path: string | null;
     /** What the older half shows - a version's number, or the word for the older side. */
     readonly baseLabel: string;
     readonly headLabel: string;
@@ -127,7 +132,7 @@ export interface SplitContent {
 export function SplitComparisonView({
     entry,
     name,
-    directory,
+    path,
     baseLabel,
     headLabel,
     actions,
@@ -219,12 +224,9 @@ export function SplitComparisonView({
     return (
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface">
             <PanelHeader size="sm">
-                <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
-                {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
-                        {directory}
-                    </span>
-                )}
+                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={path ?? undefined}>
+                    {name}
+                </span>
                 <span className="flex-1" />
                 {stops.length > 0 && (
                     <div className="flex shrink-0 items-center gap-1">

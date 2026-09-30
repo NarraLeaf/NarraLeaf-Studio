@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@shared/i18n/catalog";
+import type { PluralKey, TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 import type { LintContext } from "./context";
 
@@ -71,12 +71,34 @@ export const LINT_SEVERITY_ORDER: Record<LintSeverity, number> = {
 };
 
 /**
- * Every rule id, spelled out.
+ * The ids that name a finding no rule produces.
+ *
+ * A rule id is a promise: Project ▸ Project lists a row for it, the project can retune or silence
+ * it, and every surface prints the id so the author knows which row that is. `story/unreadable`
+ * can keep none of that, and borrowing an id that can would state two false things at once - that
+ * a rule looked at the document, and that the author may decide how much it matters.
+ *
+ * It is raised while the context is being assembled: a document the schema ladder refuses is never
+ * handed to a rule at all, and a project whose stories cannot be read has not been checked, so the
+ * severity is fixed at `error` rather than configured. Hence no registry entry, no settings row,
+ * and {@link RegisteredLintRuleId} to keep a rule from ever claiming one of these.
+ *
+ * A title and a description are still catalogued for each: the report groups by rule, and the
+ * heading over these findings is a name like any other. The messages are not - they are
+ * `lint.message.story*`, which say which end of the ladder the document fell off.
+ */
+export const LINT_RULELESS_IDS = ["story/unreadable"] as const;
+
+export type LintRulelessId = (typeof LINT_RULELESS_IDS)[number];
+
+/**
+ * Every rule id, spelled out, plus the handful of {@link LINT_RULELESS_IDS} that no rule owns.
  *
  * A closed union rather than `string`: the config maps ids to severities, and a typo in a stored
  * config or a UI call site should not silently address a rule that does not exist.
  */
 export type LintRuleId =
+    | LintRulelessId
     | "assets/unused"
     | "assets/missing"
     | "assets/unreadable"
@@ -109,21 +131,27 @@ export type LintRuleId =
     | "story/declared-never-shown"
     | "story/character-missing"
     | "story/transition-unavailable"
+    | "story/background-unchanged"
     | "blueprint/reference-missing"
     | "blueprint/element-ref-missing"
     | "blueprint/fn-target-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
     | "blueprint/dlc-entrance-unguarded"
+    | "blueprint/unknown-node"
+    | "blueprint/assembled-asset-name"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
+    | "ui/unknown-widget"
     | "ui/component-missing"
     | "ui/frame-target-missing"
+    | "ui/frame-loop"
     | "ui/list-item-field-missing"
     | "ui/gesture-answered-twice"
     | "blueprint/save-field-empty"
     | "blueprint/start-scene-foreign"
+    | "blueprint/required-input-unwired"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"
@@ -142,6 +170,19 @@ export type LintRuleId =
     | "brand/broken-link"
     | "typography/glyph-coverage"
     | "typography/locale-no-font";
+
+/**
+ * An id a rule may register under - every {@link LintRuleId} except the rule-less ones.
+ *
+ * `LintRuleMeta.id` is typed with this rather than with `LintRuleId`, so "no rule behind it" is a
+ * compile error rather than a convention the registry test has to catch after the fact.
+ */
+export type RegisteredLintRuleId = Exclude<LintRuleId, LintRulelessId>;
+
+/** Whether an id names one of the findings no rule produces. */
+export function isLintRulelessId(id: LintRuleId): id is LintRulelessId {
+    return (LINT_RULELESS_IDS as readonly string[]).includes(id);
+}
 
 /**
  * Where a finding lives.
@@ -195,6 +236,22 @@ export type LintLocation =
            */
           elementName?: string;
       }
+    /**
+     * A widget inside a component definition.
+     *
+     * Its own kind rather than a `surface` whose id is the definition's: a definition is edited in a
+     * tab of its own, placed on any number of pages, and on none of them is the widget the author
+     * wrote - so a finding about it is filed under the definition, once, and opens the definition.
+     */
+    | {
+          kind: "component";
+          componentId: string;
+          /** The definition's own name, as the component library shows it. */
+          componentName: string;
+          elementId?: string;
+          /** The widget's author-given name, when it has one; see the `surface` case. */
+          elementName?: string;
+      }
     | { kind: "character"; characterId: string; characterName: string };
 
 /** What a rule emits. Severity is resolved from config when the report is assembled. */
@@ -203,6 +260,28 @@ export type LintFinding = {
     /** `lint.rule.<slug>.message` (or a declared variant); never a rendered sentence. */
     messageKey: TranslationKey;
     messageParams?: Record<string, string | number>;
+    /**
+     * Params that are themselves catalogue entries, rendered in the reader's locale.
+     *
+     * For the words a rule cannot write down without choosing a language - a blueprint node's
+     * title is the case it exists for: the catalogue declares every node in English and localizes
+     * the title as it is drawn, so a rule that put the English title in {@link messageParams} would
+     * name a node the author's canvas calls something else. A name here wins over the same name in
+     * `messageParams`, which may carry the English as the fallback for a title with no entry.
+     *
+     * Every surface that renders a finding goes through {@link resolveLintMessageParams}.
+     */
+    messageParamKeys?: Record<string, TranslationKey>;
+    /**
+     * Params that are a count with its noun - "1 condition", "3 conditions" - spelled in the
+     * reader's locale and in that locale's plural for the number.
+     *
+     * A rule knows the number and not the language, so it names the plural group and the number and
+     * {@link resolveLintMessageParams} spells them, with {@link messageParams} available to the
+     * group's text. The bare number stays in `messageParams` under its own name, so a translation
+     * written against the number still reads it.
+     */
+    messageParamCounts?: Record<string, { key: PluralKey; count: number }>;
     location: LintLocation;
     /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
     target?: SearchJumpTarget;
@@ -232,7 +311,7 @@ export type LintRuleOptionSpec =
 export type LintRuleOptions = Record<string, string | number>;
 
 export type LintRuleMeta = {
-    id: LintRuleId;
+    id: RegisteredLintRuleId;
     category: LintCategory;
     defaultSeverity: LintRuleSeverity;
     /** i18n: lint.rule.<slug>.title / .description */
@@ -243,6 +322,29 @@ export type LintRuleMeta = {
 export type LintRule = LintRuleMeta & {
     run(ctx: LintContext, options: LintRuleOptions): LintFinding[] | Promise<LintFinding[]>;
 };
+
+/**
+ * The params a finding's message is rendered with, {@link LintFinding.messageParamKeys} resolved in
+ * the caller's locale. The one way every surface renders a finding, so none of them can print a
+ * catalogue key where a word belongs.
+ */
+export function resolveLintMessageParams(
+    finding: Pick<LintFinding, "messageParams" | "messageParamKeys" | "messageParamCounts">,
+    translate: (key: TranslationKey) => string,
+    translatePlural: (base: PluralKey, count: number, params?: Record<string, string | number>) => string,
+): Record<string, string | number> | undefined {
+    if (!finding.messageParamKeys && !finding.messageParamCounts) {
+        return finding.messageParams;
+    }
+    const params: Record<string, string | number> = { ...finding.messageParams };
+    for (const [name, key] of Object.entries(finding.messageParamKeys ?? {})) {
+        params[name] = translate(key);
+    }
+    for (const [name, { key, count }] of Object.entries(finding.messageParamCounts ?? {})) {
+        params[name] = translatePlural(key, count, finding.messageParams);
+    }
+    return params;
+}
 
 /**
  * `assets/unused` -> `assetsUnused`, `story/goto-missing` -> `storyGotoMissing`.

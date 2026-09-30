@@ -1,6 +1,7 @@
 import {
     freezeProjectWrites,
     getProjectWriteFreeze,
+    isTakenOver,
     observeProjectWriteFreeze,
     thawForeignProjectWrites,
     thawProjectWrites,
@@ -272,6 +273,14 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         if (!this.isFrozen()) {
             // Nothing was refused, so nothing is holding a value the disk has not got. Re-reading
             // anyway would drop the undo stacks and remount every editor tab for no reason.
+            return;
+        }
+        if (isTakenOver(getProjectWriteFreeze())) {
+            // Not a view this window can leave: the project is another Studio's now, and the latch
+            // would not come off anyway (see `thawProjectWrites`). Declined before the re-read,
+            // which would otherwise pull the other Studio's files into editors that cannot save
+            // them. Reaching this means a control offered an escape it should have hidden.
+            console.warn("[WorkspaceFreeze] refused to leave a freeze that another Studio's takeover armed");
             return;
         }
         if (this.isReleaseHeld()) {

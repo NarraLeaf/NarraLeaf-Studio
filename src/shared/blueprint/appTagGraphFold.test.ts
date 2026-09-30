@@ -458,20 +458,15 @@ function documentWith(ir: BlueprintGraphIr): BlueprintDocument {
         id: "bp1",
         name: "Main Menu",
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: { g1: { id: "g1", name: "On Init", graph: ir } },
-                functions: {},
-            },
+        graphs: {
+            events: { g1: { id: "g1", name: "On Init", graph: ir } },
+            functions: {},
         },
     };
     return {
         schemaVersion: 1 as BlueprintDocument["schemaVersion"],
         blueprints: { bp1: blueprint },
-        ownerRecords: { globalMain: { activeBlueprintId: "bp1", privateBlueprintIds: ["bp1"] } },
+        ownerRecords: { globalMain: { blueprintId: "bp1" } },
     };
 }
 
@@ -479,12 +474,7 @@ describe("applyAppTagToBlueprintDocument", () => {
     it("folds every graph the document holds", () => {
         const document = documentWith(ifGraph());
         const folded = applyAppTagToBlueprintDocument(document, DEMO);
-        const program = folded.blueprints.bp1.program;
-
-        expect(program.kind).toBe("graph");
-        if (program.kind === "graph") {
-            expect(nodeIds(program.graphs.events.g1.graph!)).toEqual(["demoOnly", "head"]);
-        }
+        expect(nodeIds(folded.blueprints.bp1.graphs.events.g1.graph!)).toEqual(["demoOnly", "head"]);
     });
 
     it("returns the same document when nothing in it names the variant", () => {

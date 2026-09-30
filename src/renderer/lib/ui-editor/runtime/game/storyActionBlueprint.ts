@@ -11,11 +11,15 @@
  */
 
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+// Diagnostics reach the Dev Mode Issues panel under the row that runs this blueprint, so they are
+// worded from the catalog in the window's language, like the story compiler's own.
+import { translate } from "@/lib/i18n";
 import { Script } from "narraleaf-react";
 import type { Scene, ScriptCtx } from "narraleaf-react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectStoryActionEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
+import { blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type {
     StoryDocument,
     StorySavedVariableDefinition,
@@ -30,6 +34,14 @@ import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { isScriptMounted, resolveScriptDefault } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
+import { scriptLayerKey, soleScriptLayer, type ScriptLayerEntry } from "@shared/blueprint/blueprintLayers";
+import { createBlueprintDevtoolsApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type {
+    StoryScriptContext,
+    StorySyncScriptContext,
+} from "@/lib/ui-editor/blueprint-runtime/script/scriptContext";
 
 const MAX_STORY_FN_CALL_DEPTH = 32;
 
@@ -44,6 +56,16 @@ export type StoryPersistenceBridgeLike = {
     set: (storageKey: string, value: unknown) => void | Promise<void>;
 };
 
+/**
+ * Where a story row's log lines go: the same debug stream a Surface blueprint writes to.
+ *
+ * Supplied by the host rather than built here, because what is on the other end is the host's
+ * business - Dev Mode's Output panel, and the log a packaged game keeps. A host that has no
+ * debugger passes none, and the fallback below still writes the console line: that half has always
+ * worked, and it is the half a `Log` node in a story row was reaching before this member existed.
+ */
+export type StoryDevtoolsBridge = BlueprintHostApiRuntime["devtools"];
+
 export type CompileStoryActionScriptInput = {
     blueprintDocument: BlueprintDocument;
     /** M-VAR: persistent variable definitions (baked from the registry), replacing the old blueprint-doc field. */
@@ -55,6 +77,7 @@ export type CompileStoryActionScriptInput = {
     savedVariables: Record<string, StorySavedVariableDefinition>;
     savedNamespace: string;
     persistence?: StoryPersistenceBridgeLike;
+    devtools?: StoryDevtoolsBridge;
     onDiagnostic?: (message: string) => void;
 };
 
@@ -79,7 +102,7 @@ export function collectSceneStoryActionFns(input: {
 
 function resolveActiveStoryActionBlueprint(document: BlueprintDocument, blueprintId: string) {
     const ownerKey = storyActionOwnerKey(blueprintId);
-    const activeId = document.ownerRecords?.[ownerKey]?.activeBlueprintId ?? blueprintId;
+    const activeId = document.ownerRecords?.[ownerKey]?.blueprintId ?? blueprintId;
     return document.blueprints?.[activeId] ?? document.blueprints?.[blueprintId];
 }
 
@@ -91,17 +114,20 @@ type StoryActionExecutionEnv = {
 
 /**
  * Compile a Story Action Blueprint into an NLR `Script` action, or `null` when it cannot be compiled
- * (missing blueprint, not a graph, or no "On Call" event). The action form ignores any Return Value.
+ * (missing blueprint, or no "On Call" layer). The action form ignores any Return Value.
+ *
+ * A story row has one event head, so it has one layer, and that layer is a graph or one of the
+ * author's files.
  */
 export function compileStoryActionBlueprintToScript(input: CompileStoryActionScriptInput): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
     if (!bp) {
-        input.onDiagnostic?.("Story Action Blueprint not found; the action was skipped.");
+        input.onDiagnostic?.(translate("story.compile.blueprint.missing"));
         return null;
     }
-    if (bp.program.kind !== "graph") {
-        input.onDiagnostic?.("Story Action Blueprint is not a graph blueprint; the action was skipped.");
-        return null;
+    const script = soleScriptLayer(bp);
+    if (script) {
+        return compileStoryActionScriptModule(input, bp.name, script);
     }
 
     return Script.execute((ctx: ScriptCtx) => {
@@ -120,6 +146,93 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
 }
 
 /**
+ * A story row whose logic is a script: its default export, run with the story context.
+ *
+ * The same `Script.execute` shape a graph compiles to, so the row behaves identically from NLR's
+ * side - the cleaner included, which aborts the signal the handler was given when the player undoes,
+ * loads or interrupts. The export is resolved when the row runs rather than when it is compiled,
+ * because Dev Mode remounts modules on every save and a handler captured here would be the one from
+ * before the author's edit.
+ */
+function compileStoryActionScriptModule(
+    input: CompileStoryActionScriptInput,
+    name: string,
+    layer: ScriptLayerEntry,
+): unknown {
+    return Script.execute((ctx: ScriptCtx) => {
+        const abort = new AbortController();
+        const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
+        if (!handler) {
+            reportMissingDefaultExport(input, name, layer, "skipped");
+            return () => undefined;
+        }
+        const storyCtx = buildStoryScriptContext(input, ctx, abort.signal);
+        void Promise.resolve(handler(storyCtx)).catch(error => {
+            if (!isBlueprintGraphExecutionCancelledError(error)) {
+                console.error("[storyActionBlueprint] script error", error);
+            }
+        });
+        return () => abort.abort();
+    });
+}
+
+/**
+ * The context a story script is handed: the story's own two variable stores, app persistence, and
+ * the signal that is aborted when the row is undone.
+ *
+ * Assembled from the same accessors the graph's `Get Scene Var` and `Get Persistent` nodes reach, so
+ * the two frontends can do the same things from a row and no more.
+ */
+function buildStoryScriptContext(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    signal: AbortSignal,
+): StoryScriptContext {
+    const access = buildStoryVariableAccess(input, ctx);
+    const persistence = input.persistence;
+    const unavailable = () => {
+        throw new Error(translate("game.run.persistenceUnavailable"));
+    };
+    return {
+        self: { kind: "storyRow" },
+        scene: access.sceneVar,
+        saved: access.savedVar,
+        devtools: storyDevtools(input),
+        persistent: {
+            get: async (storageKey: string) => (persistence ? persistence.get(storageKey) : unavailable()),
+            set: async (storageKey: string, value: unknown) => {
+                if (!persistence) {
+                    unavailable();
+                    return;
+                }
+                assertSerializable(value);
+                await persistence.set(storageKey, value);
+            },
+        },
+        signal,
+    };
+}
+
+/**
+ * The synchronous half of that context, for an inline value and for a condition.
+ *
+ * No `persistent` and no `signal`: both are evaluated where the story asks for the value and cannot
+ * wait, which is the same rule that keeps a latent node out of their graphs.
+ */
+function buildStorySyncScriptContext(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+): StorySyncScriptContext {
+    const access = buildStoryVariableAccess(input, ctx);
+    return {
+        self: { kind: "storyRow" },
+        scene: access.sceneVar,
+        saved: access.savedVar,
+        devtools: storyDevtools(input),
+    };
+}
+
+/**
  * Evaluate a Story Action Blueprint's "On Call" graph SYNCHRONOUSLY and return its captured Return
  * Value. Used for inline text interpolation, where a NarraLeaf-React dynamic `Word` must produce a
  * value in the same tick and cannot await. Inline blueprints are restricted to synchronous nodes at
@@ -129,13 +242,17 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
  */
 export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionScriptInput, ctx: ScriptCtx): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return undefined;
+    }
+    const scriptLayer = soleScriptLayer(bp);
+    if (scriptLayer) {
+        return evaluateStoryScriptValueSync(input, ctx, bp.name, scriptLayer);
     }
     // No async work runs synchronously, so a never-aborting signal suffices for the host adapter.
     const hostAdapter = buildStoryActionHostAdapter(input, ctx, new AbortController().signal);
     let lastReturn: unknown;
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
@@ -156,17 +273,114 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
     return lastReturn;
 }
 
+/**
+ * A value or a condition written as a script: its default export, called for what it returns.
+ *
+ * A returned promise is refused rather than rendered. Both callers put the answer somewhere that
+ * cannot wait - a word being drawn, a branch being tested - and `String(aPromise)` would put
+ * "[object Promise]" on screen and take the branch, which is the shape of bug that teaches an author
+ * the wrong thing about their own code.
+ */
+function evaluateStoryScriptValueSync(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    name: string,
+    layer: ScriptLayerEntry,
+): unknown {
+    const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
+    if (!handler) {
+        reportMissingDefaultExport(input, name, layer, "empty");
+        return undefined;
+    }
+    const value = handler(buildStorySyncScriptContext(input, ctx));
+    if (value instanceof Promise) {
+        input.onDiagnostic?.(translate("story.compile.blueprint.asyncValue", { name, file: layer.script.scriptRef }));
+        return undefined;
+    }
+    return value;
+}
+
+/**
+ * Why there was nothing to run, told apart.
+ *
+ * A module that never mounted failed to compile or threw while it was being evaluated, and that was
+ * already reported against the file where it happened - saying "no default export" as well would be
+ * a second, wrong diagnosis of one problem. A module that did mount and exports no default is the
+ * author's spelling, and only then is it worth a line.
+ */
+function reportMissingDefaultExport(
+    input: CompileStoryActionScriptInput,
+    name: string,
+    layer: ScriptLayerEntry,
+    /** What became of the row: skipped (an action) or evaluated to nothing (a value). */
+    outcome: "skipped" | "empty",
+): void {
+    if (!isScriptMounted(scriptLayerKey(input.blueprintId, layer.layerId))) {
+        return;
+    }
+    input.onDiagnostic?.(translate(
+        outcome === "skipped"
+            ? "story.compile.blueprint.noDefaultExportSkipped"
+            : "story.compile.blueprint.noDefaultExportEmpty",
+        { name, file: layer.script.scriptRef },
+    ));
+}
+
 type StorableNamespaceLike = {
     get: (key: string) => unknown;
     set: (key: string, value: unknown) => unknown;
     has: (key: string) => boolean;
 };
 
-function buildStoryActionHostAdapter(
+/**
+ * The host API a story row's nodes are given: the two families a row may reach, and no more.
+ *
+ * Always an object, where it used to be absent unless the host had a persistence bridge. `devtools`
+ * is a member every host can answer - the console half needs nothing - and a `Log` node placed in a
+ * story row reads exactly `hostApi?.devtools?.log`, so an absent object was the whole of why that
+ * node wrote nothing to the panel. The members stay individually optional, which is what lets a row
+ * carry these two and none of the forty a Surface blueprint's host carries.
+ */
+export function buildStoryActionHostApi(input: CompileStoryActionScriptInput): Partial<BlueprintHostApiRuntime> {
+    const persistence = input.persistence;
+    return {
+        devtools: storyDevtools(input),
+        ...(persistence
+            ? {
+                  persistence: {
+                      get: async (storageKey: string) => persistence.get(storageKey),
+                      set: async (storageKey: string, value: unknown) => {
+                          assertSerializable(value);
+                          await persistence.set(storageKey, value);
+                      },
+                  },
+              }
+            : {}),
+    };
+}
+
+/**
+ * The devtools this run writes to: the host's, or a console-only stand-in.
+ *
+ * The stand-in is the same implementation with nowhere to emit, rather than a second one: a host
+ * without a debugger should still put the line where a developer looks for it, and writing that
+ * line twice is how the two spellings of it drift.
+ */
+function storyDevtools(input: CompileStoryActionScriptInput): StoryDevtoolsBridge {
+    return input.devtools ?? createBlueprintDevtoolsApi(() => undefined);
+}
+
+/**
+ * The story's two variable stores, by variable id.
+ *
+ * Shared by the graph's host adapter and by a script's ctx so both frontends read and write the same
+ * values through the same defaulting and the same serialization check - a second copy of this would
+ * be a second answer to "what is this variable worth".
+ */
+function buildStoryVariableAccess(
     input: CompileStoryActionScriptInput,
     ctx: ScriptCtx,
-    signal: AbortSignal,
-): UIHostAdapter {
+): { sceneVar: StoryVariableRuntimeAccess; savedVar: StoryVariableRuntimeAccess } {
     const sceneNamespace = () => ctx.storable.getNamespace(sceneLocalNamespaceName(input.nlrScene));
     const savedNamespace = () => ctx.storable.getNamespace(input.savedNamespace);
 
@@ -198,18 +412,16 @@ function buildStoryActionHostAdapter(
         },
     };
 
-    const persistence = input.persistence;
-    const hostApi = persistence
-        ? {
-              persistence: {
-                  get: async (storageKey: string) => persistence.get(storageKey),
-                  set: async (storageKey: string, value: unknown) => {
-                      assertSerializable(value);
-                      await persistence.set(storageKey, value);
-                  },
-              },
-          }
-        : undefined;
+    return { sceneVar, savedVar };
+}
+
+function buildStoryActionHostAdapter(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    signal: AbortSignal,
+): UIHostAdapter {
+    const { sceneVar, savedVar } = buildStoryVariableAccess(input, ctx);
+    const hostApi = buildStoryActionHostApi(input);
 
     const adapter: Partial<UIHostAdapter> = {
         host: undefined as unknown as UIHostAdapter["host"],
@@ -232,11 +444,11 @@ function buildStoryActionHostAdapter(
 
 async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unknown> {
     const bp = resolveActiveStoryActionBlueprint(env.input.blueprintDocument, env.input.blueprintId);
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return undefined;
     }
     let lastReturn: unknown;
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
@@ -268,17 +480,21 @@ async function invokeStoryActionFn(options: {
 }): Promise<{ returns: Record<string, unknown> }> {
     const { fnRef, args, depth, input } = options;
     if (depth >= MAX_STORY_FN_CALL_DEPTH) {
-        throw new Error(`Fn call depth exceeded ${MAX_STORY_FN_CALL_DEPTH} (recursive call?)`);
+        throw new Error(translate("blueprint.runtimeError.fnDepth", { depth: String(MAX_STORY_FN_CALL_DEPTH) }));
     }
     const decl = findBlueprintFnByRef(input.blueprintDocument, fnRef);
     if (!decl) {
-        throw new Error(`Fn does not exist: ${fnRef}`);
+        throw new Error(translate("blueprint.runtimeError.fnMissing"));
     }
+    // Project-wide fns are callable from anywhere; a story fn only from a scene that reaches its
+    // row. Every other position - a surface, a widget, a component definition - is a UI pool a
+    // compiled story cannot see into.
+    const declAnchor = blueprintAnchor(decl.owner);
     const visible =
-        decl.owner.kind === "globalMain" ||
-        (decl.owner.kind === "storyAction" && input.sceneFnCatalog.blueprintIds.has(decl.owner.blueprintId));
+        declAnchor.kind === "project" ||
+        (declAnchor.kind === "storyRow" && input.sceneFnCatalog.blueprintIds.has(declAnchor.blueprintId));
     if (!visible) {
-        throw new Error(`Fn "${decl.name}" is not available in this scene`);
+        throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
     const blueprintLocals: Record<string, unknown> = {};
     const seededArgs: Record<string, unknown> = {};
@@ -312,6 +528,6 @@ function sceneLocalNamespaceName(scene: Scene): string {
 
 function assertSerializable(value: unknown): void {
     if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
-        throw new Error("Saved and Persistent variables must hold serializable values");
+        throw new Error(translate("game.run.variablesNotSerializable"));
     }
 }
