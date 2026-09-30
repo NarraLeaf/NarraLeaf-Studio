@@ -1,12 +1,10 @@
-import { getInterface } from "@/lib/app/bridge";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import type { LiveAssetBytePart, LiveAssetBytes } from "@shared/live/ops";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
-import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetType, isBundleAssetType } from "../assetTypes";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
-import { parseSharedBlueprintAssetJson } from "../blueprintAssetSchema";
 import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
 import { Asset, AssetCreateErrorCode, AssetSource } from "../types";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
@@ -14,9 +12,14 @@ import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
+import { describeFileWriteFailure } from "../../core/writeFailureReason";
+import { itemWrite } from "../../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 import { expandImportPaths, type ExpandImportPathsResult } from "../importPathExpansion";
+import type { AssetImportRefusal, AssetImportStatus, RefusableStatus } from "../assetImportRefusal";
+import type { FileFormatValidationResult } from "../FileFormatValidator";
 
 /**
  * What the bytes on disk now are, after {@link LocalAssetsManager.writeAssetContentFromPath}.
@@ -88,42 +91,6 @@ export class LocalAssetsManager {
         return this;
     }
 
-    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        // A bundle is authored as a folder, so it is picked as one. Going through `selectFile` with
-        // an extension filter is exactly the behaviour that would import a model as 18 loose assets.
-        if (isBundleAssetType(type)) {
-            const directories = await getInterface().fs.selectDirectory(true);
-            if (!directories.success || !directories.data.ok) {
-                return {
-                    success: false,
-                    error: `Failed to select folders: ${directories.error || (`[${(directories.data as FsRequestResult<string[], false>)?.error.code}] ${(directories.data as FsRequestResult<string[], false>)?.error.message}`)}`,
-                };
-            }
-            return this.importFromPaths(type, directories.data.data);
-        }
-
-        const assetExtensions = AssetExtensions[type];
-        const files = await getInterface().fs.selectFile(assetExtensions, true);
-        if (!files.success || !files.data.ok) {
-            return {
-                success: false,
-                error: `Failed to select files: ${files.error || (`[${(files.data as FsRequestResult<string[], false>)?.error.code}] ${(files.data as FsRequestResult<string[], false>)?.error.message}`)}`,
-            };
-        }
-
-        const results: RequestStatus<Asset<T, AssetSource.Local>>[] = [];
-        for (const file of files.data.data) {
-            results.push(await this.importLocalAsset(type, file));
-        }
-
-        this.assetsService.markDirty(type);
-
-        return {
-            success: true,
-            data: results,
-        };
-    }
-
     public async fetch<T extends AssetType>(asset: Asset<T, AssetSource.Local>): Promise<RequestStatus<AssetData<T>>> {
         if (!isValidAssetStorageId(asset.id)) {
             return { success: false, error: `Invalid asset id: ${asset.id}` };
@@ -151,11 +118,6 @@ export class LocalAssetsManager {
                     throw new RendererError("JSON service not initialized");
                 }
                 return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
-            case AssetType.Blueprint:
-                if (!this.assetsService.blueprintService) {
-                    throw new RendererError("Blueprint service not initialized");
-                }
-                return await this.assetsService.blueprintService.readLocalBlueprint(path) as RequestStatus<AssetData<T>>;
             case AssetType.Font:
                 if (!this.assetsService.fontService) {
                     throw new RendererError("Font service not initialized");
@@ -242,7 +204,7 @@ export class LocalAssetsManager {
     public async writeAssetContentFromPath<T extends AssetType>(
         asset: Asset<T, AssetSource.Local>,
         sourcePath: string,
-    ): Promise<RequestStatus<AssetContentDigest>> {
+    ): Promise<RefusableStatus<AssetContentDigest>> {
         if (!isValidAssetStorageId(asset.id)) {
             return { success: false, error: `Invalid asset id: ${asset.id}` };
         }
@@ -260,7 +222,11 @@ export class LocalAssetsManager {
         // contents of an image asset, where every consumer would then fail to decode it.
         const formatValidation = await this.validateFileFormat(asset.type, sourcePath);
         if (!formatValidation.success) {
-            return { success: false, error: formatValidation.error || "File format validation failed" };
+            return {
+                success: false,
+                error: formatValidation.error || "File format validation failed",
+                refusal: formatValidation.refusal,
+            };
         }
 
         const destPath = this.getLocalAssetPath(asset.id);
@@ -268,20 +234,32 @@ export class LocalAssetsManager {
         const destDir = dirname(destPath);
         const dirExistCheck = await fsService.isDirExists(destDir);
         if (!dirExistCheck.ok) {
-            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+            return {
+                success: false,
+                error: `Failed to check destination directory: ${dirExistCheck.error?.message}`,
+                refusal: { kind: "copyFailed", fsCode: dirExistCheck.error?.code },
+            };
         }
         if (!dirExistCheck.data) {
             const mkdirResult = await fsService.createDir(destDir);
             if (!mkdirResult.ok) {
-                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+                return {
+                    success: false,
+                    error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}`,
+                    refusal: { kind: "copyFailed", fsCode: mkdirResult.error?.code },
+                };
             }
         }
 
         const copyResult = await appPrivilegedFacade.fs.copyFile(sourcePath, destPath);
         if (!copyResult.success || !copyResult.data.ok) {
-            const message = copyResult.error
-                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
-            return { success: false, error: `Failed to replace asset contents: ${sourcePath} to ${destPath}. ${message}` };
+            const copyError = copyResult.success ? (copyResult.data as FsRequestResult<void, false>).error : undefined;
+            const message = copyResult.error || `[${copyError?.code}] ${copyError?.message}`;
+            return {
+                success: false,
+                error: `Failed to replace asset contents: ${sourcePath} to ${destPath}. ${message}`,
+                refusal: { kind: "copyFailed", fsCode: copyError?.code },
+            };
         }
 
         // Recomputed from the destination, not the source: this is the digest of what is actually
@@ -331,14 +309,22 @@ export class LocalAssetsManager {
 
         const destPath = this.getLocalAssetPath(asset.id);
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const prepared = await this.ensureAssetShardDir(destPath);
+        const prepared = await this.ensureAssetShardDir(destPath, asset.name);
         if (!prepared.success) {
             return prepared as RequestStatus<AssetContentDigest>;
         }
 
-        const written = await fsService.write(destPath, text, encoding);
+        // Reported by the caller - the text editor keeps the buffer unsaved and says why under it - so
+        // the save-status surface only logs it. The sentence names the asset, never `destPath`,
+        // which is its id split into folders.
+        const written = await fsService.write(
+            destPath,
+            text,
+            encoding,
+            itemWrite(asset.name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to write asset text: ${destPath}. ${written.error?.message}` };
+            return { success: false, error: describeFileWriteFailure(asset.name, written.error, translate) };
         }
 
         // Recomputed from the destination, exactly as the path-based replace does: the hash is the
@@ -402,14 +388,20 @@ export class LocalAssetsManager {
         const destPath = this.getLocalAssetPath(id);
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
-        const prepared = await this.ensureAssetShardDir(destPath);
+        const prepared = await this.ensureAssetShardDir(destPath, name);
         if (!prepared.success) {
             return prepared as RequestStatus<Asset<T, AssetSource.Local>>;
         }
 
-        const written = await fsService.writeRaw(destPath, bytes);
+        // Reported by the caller, which asked for this asset and shows the answer: the new-file
+        // action, a paste, a template. Named by what the author called it, never by `destPath`.
+        const written = await fsService.writeRaw(
+            destPath,
+            bytes,
+            itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to write asset contents: ${destPath}. ${written.error?.message}` };
+            return { success: false, error: describeFileWriteFailure(name, written.error, translate) };
         }
 
         const hashResult = await appPrivilegedFacade.fs.hash(destPath);
@@ -496,17 +488,26 @@ export class LocalAssetsManager {
     }
 
     /** The shard directory for an asset id, created if this is the first asset in that shard. */
-    private async ensureAssetShardDir(destPath: string): Promise<RequestStatus<void>> {
+    /**
+     * Make sure the folder an asset's content goes in exists.
+     *
+     * A failure is answered as the sentence both callers show - the text editor under its buffer, the
+     * new-file action in its alert - naming the asset by `name`, then what the disk said. Never the
+     * folder: it is the asset's id cut into segments.
+     */
+    private async ensureAssetShardDir(destPath: string, name: string): Promise<RequestStatus<void>> {
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const destDir = dirname(destPath);
         const dirExistCheck = await fsService.isDirExists(destDir);
         if (!dirExistCheck.ok) {
-            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+            console.warn(`[assets] could not check the content folder ${destDir}: ${dirExistCheck.error.message}`);
+            return { success: false, error: describeFileWriteFailure(name, dirExistCheck.error, translate) };
         }
         if (!dirExistCheck.data) {
             const mkdirResult = await fsService.createDir(destDir);
             if (!mkdirResult.ok) {
-                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+                console.warn(`[assets] could not create the content folder ${destDir}: ${mkdirResult.error.message}`);
+                return { success: false, error: describeFileWriteFailure(name, mkdirResult.error, translate) };
             }
         }
         return { success: true, data: undefined };
@@ -522,7 +523,7 @@ export class LocalAssetsManager {
     private async writeBundleContentFromPath<T extends AssetType>(
         asset: Asset<T, AssetSource.Local>,
         sourceDir: string,
-    ): Promise<RequestStatus<AssetContentDigest>> {
+    ): Promise<RefusableStatus<AssetContentDigest>> {
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const modelService = this.assetsService.modelService;
         if (!modelService) {
@@ -531,7 +532,11 @@ export class LocalAssetsManager {
 
         const isDirectory = await fsService.isDirExists(sourceDir);
         if (!isDirectory.ok || !isDirectory.data) {
-            return { success: false, error: `A model asset must be replaced with a folder: ${sourceDir}` };
+            return {
+                success: false,
+                error: `A model asset must be replaced with a folder: ${sourceDir}`,
+                refusal: { kind: "notAFolder" },
+            };
         }
 
         const destPath = this.getLocalAssetPath(asset.id);
@@ -539,20 +544,33 @@ export class LocalAssetsManager {
         if (existing.ok && existing.data) {
             const removed = await appPrivilegedFacade.fs.deleteDir(destPath);
             if (!removed.success || !removed.data.ok) {
-                return { success: false, error: `Failed to clear the existing bundle: ${destPath}` };
+                const removeError = removed.success ? (removed.data as FsRequestResult<void, false>).error : undefined;
+                return {
+                    success: false,
+                    error: `Failed to clear the existing bundle: ${destPath}`,
+                    refusal: { kind: "copyFailed", fsCode: removeError?.code },
+                };
             }
         }
 
         const copyResult = await appPrivilegedFacade.fs.copyDir(sourceDir, destPath);
         if (!copyResult.success || !copyResult.data.ok) {
-            const message = copyResult.error
-                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
-            return { success: false, error: `Failed to replace model bundle: ${sourceDir} to ${destPath}. ${message}` };
+            const copyError = copyResult.success ? (copyResult.data as FsRequestResult<void, false>).error : undefined;
+            const message = copyResult.error || `[${copyError?.code}] ${copyError?.message}`;
+            return {
+                success: false,
+                error: `Failed to replace model bundle: ${sourceDir} to ${destPath}. ${message}`,
+                refusal: { kind: "copyFailed", fsCode: copyError?.code },
+            };
         }
 
         const listing = await modelService.listBundle(destPath);
         if (!listing.success || !listing.data) {
-            return { success: false, error: listing.error ?? "Failed to read the replaced bundle" };
+            return {
+                success: false,
+                error: listing.error ?? "Failed to read the replaced bundle",
+                refusal: { kind: "copyIncomplete" },
+            };
         }
 
         return { success: true, data: { hash: bundleListingFingerprint(listing.data.files) } };
@@ -642,8 +660,8 @@ export class LocalAssetsManager {
         type: T,
         paths: string[],
         options?: ImportFromPathsOptions,
-    ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        const results: RequestStatus<Asset<T, AssetSource.Local>>[] = [];
+    ): Promise<RequestStatus<AssetImportStatus<T>[]>> {
+        const results: AssetImportStatus<T>[] = [];
 
         for (const path of paths) {
             options?.onProgress?.({ completed: results.length, total: paths.length, current: path });
@@ -719,10 +737,9 @@ export class LocalAssetsManager {
      * validator and the metadata shard need, so the decision has to be made per file and it has to
      * be made here, where the bytes can be read.
      *
-     * Extension settles it everywhere but one place: `.json` is claimed by both JSON and Blueprint.
-     * The rule there is to try the blueprint parser first and fall back to JSON — a shared blueprint
-     * is a *specific* JSON document, so a successful parse is positive evidence, while "it is valid
-     * JSON" says nothing either way. `.nlbp` is a blueprint by extension alone.
+     * Extension settles it, because no category holds two member types that accept one extension.
+     * A category that grows an overlapping pair needs a rule here again rather than the first match:
+     * this loop would otherwise file every ambiguous path under whichever member comes first.
      *
      * Paths matching no member type are dropped rather than forced into the first one; that is only
      * reachable by dropping files onto a category that does not accept them.
@@ -735,47 +752,16 @@ export class LocalAssetsManager {
         const buckets = new Map<AssetType, string[]>(memberTypes.map(type => [type, []]));
 
         for (const path of paths) {
-            const candidates = memberTypes.filter(type => assetTypeMatchesExtension(type, path));
-            if (candidates.length === 0) {
+            const type = memberTypes.find(member => assetTypeMatchesExtension(member, path));
+            if (!type) {
                 continue;
             }
-            const type = candidates.length === 1
-                ? candidates[0]
-                : await this.disambiguateImportType(candidates, path);
             buckets.get(type)!.push(path);
         }
 
         return memberTypes
             .map(type => ({ type, paths: buckets.get(type)! }))
             .filter(bucket => bucket.paths.length > 0);
-    }
-
-    /**
-     * Break a tie between member types that all accept this extension, by reading the file.
-     *
-     * Only `data`'s JSON/Blueprint pair is ambiguous today. A read failure falls through to the last
-     * candidate (the more permissive one), so an unreadable file is refused by the importer with its
-     * own error rather than here with a guess.
-     */
-    private async disambiguateImportType(candidates: AssetType[], path: string): Promise<AssetType> {
-        if (candidates.includes(AssetType.Blueprint)) {
-            const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-            const read = await fsService.read(path, "utf-8");
-            if (read.ok) {
-                try {
-                    parseSharedBlueprintAssetJson(read.data);
-                    return AssetType.Blueprint;
-                } catch {
-                    // Valid JSON that is not a shared blueprint, or not JSON at all. Either way the
-                    // JSON importer is the one that gets to say so.
-                }
-            }
-            const fallback = candidates.find(candidate => candidate !== AssetType.Blueprint);
-            if (fallback) {
-                return fallback;
-            }
-        }
-        return candidates[0];
     }
 
     /**
@@ -799,7 +785,7 @@ export class LocalAssetsManager {
         type: T,
         sourceDir: string,
         options?: CreateLocalBundleAssetOptions,
-    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+    ): Promise<AssetImportStatus<T>> {
         const requestedId = options?.id;
         if (requestedId !== undefined) {
             // The same gate `createLocalAssetFromBytes` puts a caller-chosen id through, and for the
@@ -825,7 +811,11 @@ export class LocalAssetsManager {
 
         const isDirectory = await fsService.isDirExists(sourceDir);
         if (!isDirectory.ok || !isDirectory.data) {
-            return { success: false, error: `A model asset must be imported from a folder: ${sourceDir}` };
+            return {
+                success: false,
+                error: `A model asset must be imported from a folder: ${sourceDir}`,
+                refusal: { kind: "notAFolder" },
+            };
         }
 
         const modelService = this.assetsService.modelService;
@@ -837,10 +827,14 @@ export class LocalAssetsManager {
         // refused rather than landing as an asset with no files.
         const sourceListing = await modelService.listBundle(sourceDir);
         if (!sourceListing.success || !sourceListing.data) {
-            return { success: false, error: sourceListing.error ?? `Failed to read folder: ${sourceDir}` };
+            return {
+                success: false,
+                error: sourceListing.error ?? `Failed to read folder: ${sourceDir}`,
+                refusal: { kind: "sourceUnreadable" },
+            };
         }
         if (sourceListing.data.files.length === 0) {
-            return { success: false, error: `Folder contains no files: ${sourceDir}` };
+            return { success: false, error: `Folder contains no files: ${sourceDir}`, refusal: { kind: "emptyFolder" } };
         }
 
         const id = requestedId ?? this.getUuidService().generate();
@@ -848,20 +842,32 @@ export class LocalAssetsManager {
         const destDir = dirname(destPath);
         const dirExistCheck = await fsService.isDirExists(destDir);
         if (!dirExistCheck.ok) {
-            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+            return {
+                success: false,
+                error: `Failed to check destination directory: ${dirExistCheck.error?.message}`,
+                refusal: { kind: "copyFailed", fsCode: dirExistCheck.error?.code },
+            };
         }
         if (!dirExistCheck.data) {
             const mkdirResult = await fsService.createDir(destDir);
             if (!mkdirResult.ok) {
-                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+                return {
+                    success: false,
+                    error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}`,
+                    refusal: { kind: "copyFailed", fsCode: mkdirResult.error?.code },
+                };
             }
         }
 
         const copyResult = await appPrivilegedFacade.fs.copyDir(sourceDir, destPath);
         if (!copyResult.success || !copyResult.data.ok) {
-            const message = copyResult.error
-                || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
-            return this.discardBundlePayload(destPath, `Failed to copy model bundle: ${sourceDir} to ${destPath}. ${message}`);
+            const copyError = copyResult.success ? (copyResult.data as FsRequestResult<void, false>).error : undefined;
+            const message = copyResult.error || `[${copyError?.code}] ${copyError?.message}`;
+            return this.discardBundlePayload(
+                destPath,
+                `Failed to copy model bundle: ${sourceDir} to ${destPath}. ${message}`,
+                { kind: "copyFailed", fsCode: copyError?.code },
+            );
         }
 
         // Re-list the copy rather than trusting the source listing: what is on disk under the asset
@@ -869,7 +875,11 @@ export class LocalAssetsManager {
         // and not at mount time.
         const listing = await modelService.listBundle(destPath);
         if (!listing.success || !listing.data) {
-            return this.discardBundlePayload(destPath, listing.error ?? "Failed to read the imported bundle");
+            return this.discardBundlePayload(
+                destPath,
+                listing.error ?? "Failed to read the imported bundle",
+                { kind: "copyIncomplete" },
+            );
         }
 
         const arrived = new Set(listing.data.files);
@@ -878,6 +888,7 @@ export class LocalAssetsManager {
             return this.discardBundlePayload(
                 destPath,
                 `The copied model bundle does not match its source${absent === undefined ? "" : `, starting at ${absent}`}: ${sourceDir}`,
+                { kind: "copyIncomplete" },
             );
         }
 
@@ -927,15 +938,23 @@ export class LocalAssetsManager {
     private async discardBundlePayload<T extends AssetType>(
         destPath: string,
         error: string,
-    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        refusal: AssetImportRefusal,
+    ): Promise<AssetImportStatus<T>> {
         const removed = await appPrivilegedFacade.fs.deleteDir(destPath);
         if (!removed.success || !removed.data.ok) {
             console.warn(`[assets] could not remove the incomplete model bundle at ${destPath}`);
         }
-        return { success: false, error };
+        return { success: false, error, refusal };
     }
 
-    private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+    /**
+     * Copy one picked file into the library.
+     *
+     * A failure answers twice: `error` for the log, which is English and names both paths, and
+     * `refusal` for the author, which the surface listing the file words (see
+     * `describeAssetImportRefusal`).
+     */
+    private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<AssetImportStatus<T>> {
         if (isBundleAssetType(type)) {
             return this.importModelBundle(type, path);
         }
@@ -946,6 +965,7 @@ export class LocalAssetsManager {
             return {
                 success: false,
                 error: formatValidation.error || "File format validation failed",
+                refusal: formatValidation.refusal,
             };
         }
 
@@ -982,7 +1002,8 @@ export class LocalAssetsManager {
             return {
                 success: false,
                 error: `Failed to check existing asset file: ${existCheck.error?.message}`,
-            } as RequestStatus<Asset<T, AssetSource.Local>>;
+                refusal: { kind: "copyFailed", fsCode: existCheck.error?.code },
+            };
         }
 
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
@@ -1002,7 +1023,8 @@ export class LocalAssetsManager {
                 return {
                     success: false,
                     error: `Failed to check destination directory: ${dirExistCheck.error?.message}`,
-                } as RequestStatus<Asset<T, AssetSource.Local>>;
+                    refusal: { kind: "copyFailed", fsCode: dirExistCheck.error?.code },
+                };
             }
 
             if (!dirExistCheck.data) {
@@ -1011,17 +1033,21 @@ export class LocalAssetsManager {
                     return {
                         success: false,
                         error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}`,
+                        refusal: { kind: "copyFailed", fsCode: mkdirResult.error?.code },
                     };
                 }
             }
 
             const copyResult = await appPrivilegedFacade.fs.copyFile(path, destPath);
             if (!copyResult.success || !copyResult.data.ok) {
-                const message = copyResult.error
-                    || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
+                const copyError = copyResult.success ? (copyResult.data as FsRequestResult<void, false>).error : undefined;
+                const message = copyResult.error || `[${copyError?.code}] ${copyError?.message}`;
                 return {
                     success: false,
                     error: `Failed to copy asset: ${path} to ${destPath}. ${message}`,
+                    // The source was read whole by the format check a moment ago, so what refused
+                    // here is the project side.
+                    refusal: { kind: "copyFailed", fsCode: copyError?.code },
                 };
             }
         }
@@ -1042,7 +1068,7 @@ export class LocalAssetsManager {
         };
     }
 
-    private async validateFileFormat<T extends AssetType>(type: T, path: string): Promise<RequestStatus<void>> {
+    private async validateFileFormat<T extends AssetType>(type: T, path: string): Promise<FileFormatValidationResult> {
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
         // Read first 12 bytes to detect format
@@ -1051,6 +1077,7 @@ export class LocalAssetsManager {
             return {
                 success: false,
                 error: `Failed to read file: ${fileResult.error?.message || 'Unknown error'}`,
+                refusal: { kind: "sourceUnreadable", fsCode: fileResult.error?.code },
             };
         }
 
@@ -1059,6 +1086,7 @@ export class LocalAssetsManager {
             return {
                 success: false,
                 error: 'File is empty',
+                refusal: { kind: "empty" },
             };
         }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
 import { zh } from "@shared/i18n/catalog/zh";
-import { LINT_CATEGORY_ORDER, deriveLintRuleSlug, type LintRuleId } from "../types";
+import { LINT_CATEGORY_ORDER, LINT_RULELESS_IDS, deriveLintRuleSlug, type LintRuleId } from "../types";
 import { LINT_RULES, LINT_RULES_BY_CATEGORY, getLintRule } from "./index";
 
 /**
@@ -52,21 +52,27 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/stage-object-duplicate",
     "story/character-missing",
     "story/transition-unavailable",
+    "story/background-unchanged",
     "blueprint/reference-missing",
     "blueprint/element-ref-missing",
     "blueprint/fn-target-missing",
     "blueprint/unreachable-node",
     "blueprint/empty-event",
     "blueprint/dlc-entrance-unguarded",
+    "blueprint/unknown-node",
+    "blueprint/assembled-asset-name",
     "ui/unlocalized-text",
     "ui/page-unreachable",
     "ui/empty-behavior",
+    "ui/unknown-widget",
     "ui/component-missing",
     "ui/frame-target-missing",
+    "ui/frame-loop",
     "ui/list-item-field-missing",
     "ui/gesture-answered-twice",
     "blueprint/save-field-empty",
     "blueprint/start-scene-foreign",
+    "blueprint/required-input-unwired",
     "variables/undeclared",
     "variables/unused",
     "variables/name-collision",
@@ -93,7 +99,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(65);
+        expect(LINT_RULES).toHaveLength(71);
     });
 
     it("gives every rule a unique id", () => {
@@ -148,6 +154,32 @@ describe("lint rule registry", () => {
             }
         }
     });
+
+    it("keeps the ids no rule owns out of the registry", () => {
+        // The whole of what `story/unreadable` promises: no rule ran, so there is nothing to
+        // resolve, nothing to partition into a category, and - the part an author sees - no row in
+        // Project -> Project offering to retune or silence a check that is not one.
+        for (const id of LINT_RULELESS_IDS) {
+            expect(EXPECTED_RULE_IDS, `${id} is registered`).not.toContain(id);
+            expect(getLintRule(id), `${id} resolves to a rule`).toBeUndefined();
+            for (const category of LINT_CATEGORY_ORDER) {
+                expect(LINT_RULES_BY_CATEGORY[category].map(rule => rule.id)).not.toContain(id);
+            }
+        }
+    });
+
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS]] as const) {
+        it(`names every id no rule owns in ${locale}`, () => {
+            for (const id of LINT_RULELESS_IDS) {
+                const slug = deriveLintRuleSlug(id);
+                // Title and description, because the report groups by rule and these findings need
+                // a heading like any other. No `message`: what one says is `lint.message.story*`,
+                // which names which end of the schema ladder the document fell off.
+                expect(keys.get(`lint.rule.${slug}.title`), `lint.rule.${slug}.title`).toBeTruthy();
+                expect(keys.get(`lint.rule.${slug}.description`), `lint.rule.${slug}.description`).toBeTruthy();
+            }
+        });
+    }
 
     it("declares option specs only where they are called for", () => {
         const withOptions = LINT_RULES.filter(rule => rule.options).map(rule => rule.id);

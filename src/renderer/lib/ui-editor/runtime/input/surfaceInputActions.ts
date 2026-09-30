@@ -171,6 +171,66 @@ export function pointerInputClaimedByControl(
     return false;
 }
 
+/**
+ * The controls a key reaches by focus that act on Enter and Space themselves: the widgets a game
+ * draws (a button, a switch, a list row) and the platform's own (a button in a plugin's overlay).
+ */
+const KEY_ACTIVATED_CONTROL_SELECTOR = [
+    "button",
+    "a[href]",
+    "summary",
+    "select",
+    "input:not([type=text]):not([type=password]):not([type=number]):not([type=search]):not([type=email]):not([type=tel]):not([type=url])",
+    "[role=button]",
+    "[role=switch]",
+    "[role=checkbox]",
+    "[role=radio]",
+    "[role=link]",
+    "[role=menuitem]",
+    "[role=option]",
+    "[role=tab]",
+    "[data-ui-list-item-index][tabindex]",
+].join(", ");
+
+/** The keys a focused control acts on without anyone asking it to: activation. */
+function isActivationKey(key: string): boolean {
+    return key === "Enter" || key === " " || key === "Spacebar";
+}
+
+/**
+ * Whether the control holding the keyboard focus has already spoken for this key.
+ *
+ * The key's half of {@link pointerInputClaimedByControl}. A pointer lands on a control; a key lands
+ * on whatever has the focus, which is where a player who moved to a button with Tab is aiming it.
+ * Enter on the focused Save button is the button's, and "Enter advances" firing as well would spend
+ * a line on a player who was saving. So a claimed key raises no action anywhere - not on the global
+ * blueprint, not on the page or the stage - while the key heads, which are subscriptions rather than
+ * claims, still hear it.
+ *
+ * Two ways a control speaks for a key, and both are the platform's own:
+ *
+ *  - it acted on it and said so, by preventing the default: every widget a game draws that answers a
+ *    key does, whatever the key - a button or a switch on Enter and Space, a list row on its arrows;
+ *  - it is a control that acts on Enter and Space by default, which a native button does only once
+ *    the event has finished - after this is asked - so it is recognised by what it is instead.
+ *
+ * Asked at the window, after every handler on the way up has run. Escape and every other key a
+ * control does not act on stays the game's, so a focused button does not stop Escape closing a page.
+ */
+export function keyInputClaimedByControl(event: Pick<KeyboardEvent, "key" | "defaultPrevented" | "target">): boolean {
+    if (event.defaultPrevented) {
+        return true;
+    }
+    if (!isActivationKey(event.key)) {
+        return false;
+    }
+    const target = event.target;
+    if (typeof Element === "undefined" || !(target instanceof Element)) {
+        return false;
+    }
+    return target.closest(KEY_ACTIVATED_CONTROL_SELECTOR) !== null;
+}
+
 function bindingMatchesSignal(binding: UIInputBinding, signal: UIInputSignal): boolean {
     if (binding.kind === "pointer") {
         return signal.kind === "pointer" && binding.gesture === signal.gesture;
@@ -226,6 +286,36 @@ export function resolveSurfaceInputActionHits(input: {
         });
     }
     return hits;
+}
+
+/**
+ * The actions the game's global blueprint fires for this input, in the order the project declares
+ * them.
+ *
+ * A surface answers the actions it switches on; the global blueprint answers the whole vocabulary.
+ * It belongs to the game rather than to anything on screen, and an `On Action` placed on it says
+ * "this gesture means this wherever the player is" - there is no list to switch it on in, and an
+ * action it did not answer would be a head that never fires. Everything else is the surface rule
+ * unchanged: a binding matches or it does not, and a control under the pointer has already spoken
+ * for a pointer input, here as on any panel. `consume` has no counterpart: the global is not a lane
+ * with anything behind it, so it never decides where the input goes next.
+ */
+export function resolveGlobalInputActionPayloads(input: {
+    vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined;
+    signal: UIInputSignal;
+    /** The elements under the pointer, innermost first. Empty for a key. */
+    hitChain?: readonly UIInputHitNode[];
+}): UIInputActionEventPayload[] {
+    const { vocabulary } = input;
+    if (!vocabulary) {
+        return [];
+    }
+    return resolveSurfaceInputActionHits({
+        vocabulary,
+        enablements: Object.keys(vocabulary).map(actionId => ({ actionId })),
+        signal: input.signal,
+        hitChain: input.hitChain,
+    }).map(hit => hit.payload);
 }
 
 /** Whether any of these hits takes the input off the lane walk. */

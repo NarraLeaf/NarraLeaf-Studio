@@ -414,7 +414,6 @@ function createStoryService(): { service: StoryService; history: HistoryService 
                     case Services.History: return history;
                     case Services.FileSystem: return fs;
                     case Services.Uuid: return { generate: uuid };
-                    case Services.Assets: return { lockAsset: vi.fn(), unlockAsset: vi.fn() };
                     case Services.Project: return {};
                     default: throw new Error(`Unexpected service ${id}`);
                 }
@@ -484,6 +483,11 @@ type Window = {
     hosted: { story: StoryId; at: number } | null;
     instance: string | null;
     hasRepository: boolean;
+    /** Whether the author said this project uses the sign-in for its server. */
+    signedIn: boolean;
+    /** What the author answers when asked, and how many times they were. */
+    signInAnswer: boolean;
+    signInAsked: number;
     /** The cast this window holds, and where its edits go while a session is running. */
     cast: LiveCastView & { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
     castSink: CharacterOpSink | null;
@@ -576,16 +580,11 @@ function makeUIGraphs(): UIGraphDocument {
                     id: "bp-1",
                     name: "Start",
                     owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            eventIds: ["ev-1"],
-                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
-                            functionIds: [],
-                            functions: {},
-                        },
+                    graphs: {
+                        eventIds: ["ev-1"],
+                        events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                        functionIds: [],
+                        functions: {},
                     },
                 },
             },
@@ -863,6 +862,9 @@ function createWindow(world: World, instance: string): Window {
         hosted: null,
         instance,
         hasRepository: true,
+        signedIn: true,
+        signInAnswer: true,
+        signInAsked: 0,
         cast: { characters: {}, order: [], groups: {} },
         castSink: null,
         translations: { ja: {} },
@@ -897,8 +899,14 @@ function createWindow(world: World, instance: string): Window {
     const deps: LiveSessionDeps = {
         instance: async () => window.instance,
         project: async () => (window.hasRepository
-            ? { repositoryId: PROJECT, projectPath: PROJECT_PATH, remoteOrigin: REMOTE }
+            ? { repositoryId: PROJECT, projectPath: PROJECT_PATH, remoteOrigin: REMOTE, signedIn: window.signedIn }
             : null),
+        askSignIn: async () => {
+            window.signInAsked += 1;
+            // The main process records the answer; what the next read of the project sees.
+            if (window.signInAnswer) window.signedIn = true;
+            return window.signInAnswer;
+        },
         rooms: () => createRooms(world, instance, calls),
         // Nothing here moves a file. What these drive is the vocabulary, and the transport a file
         // goes over is a different connection with a suite of its own - see
@@ -1306,6 +1314,46 @@ describe("a live session", () => {
             // Nothing was recorded and no room was opened: re-freezing with a session's reason
             // would have replaced the merge freeze rather than adding to it.
             expect(host.calls).toEqual([]);
+            expect(world.rooms.size).toBe(0);
+        });
+    });
+
+    /**
+     * A room is reached with the account's sign-in, and a project's window reaches a server that way
+     * only for a project the author said uses it. Opening or joining is the author asking, so that is
+     * where the question goes - once, before the server is asked anything.
+     */
+    describe("a project that does not use the sign-in", () => {
+        it("asks the author before joining, and joins once they say it does", async () => {
+            await openRoom();
+            guest.signedIn = false;
+
+            const failure = await guest.session.join({ session: "room-1" });
+
+            expect(failure).toBeNull();
+            expect(guest.signInAsked).toBe(1);
+        });
+
+        it("does not join when they say it does not, and asks the server nothing", async () => {
+            await openRoom();
+            guest.signedIn = false;
+            guest.signInAnswer = false;
+
+            const failure = await guest.session.join({ session: "room-1" });
+
+            expect(failure).toEqual({ kind: "sign-in-unused" });
+            expect(guest.calls).toEqual([]);
+            expect(world.rooms.get("room-1")?.members.map(member => member.instance)).not.toContain("instance-guest");
+        });
+
+        it("asks before opening one too", async () => {
+            host.signedIn = false;
+            host.signInAnswer = false;
+
+            const failure = await host.session.open({ storyId: host.storyId });
+
+            expect(failure).toEqual({ kind: "sign-in-unused" });
+            expect(host.signInAsked).toBe(1);
             expect(world.rooms.size).toBe(0);
         });
     });
@@ -2001,6 +2049,22 @@ describe("a live session", () => {
             local.hasRepository = false;
             expect(await local.session.resume()).toBe("settled");
         });
+
+        /**
+         * Every project with a server that has not said yes to its sign-in opens this way - which,
+         * the day the answers started being kept, was every project. Asking the server anything for
+         * one is refused by the main process, and a question raised from nowhere as a workspace opens
+         * is not one an author can answer, so it neither asks the server nor asks the author.
+         */
+        it("settles without asking anybody for a project that does not use the sign-in", async () => {
+            await openRoom();
+            const reloaded = createWindow(world, "instance-host");
+            reloaded.signedIn = false;
+
+            expect(await reloaded.session.resume()).toBe("settled");
+            expect(reloaded.signInAsked).toBe(0);
+            expect(reloaded.calls).toEqual([]);
+        });
     });
 
     describe("what an editing gesture does", () => {
@@ -2196,7 +2260,7 @@ describe("a live session", () => {
 
             for (const window of [host, guest]) {
                 const blueprint = window.uiGraphs.blueprintDocument.blueprints["bp-1"];
-                const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+                const graph = blueprint.graphs.events["ev-1"].graph;
                 expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
             }
         });

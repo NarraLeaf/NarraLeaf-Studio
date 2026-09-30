@@ -155,4 +155,30 @@ describe("BlueprintFlowNode", () => {
         expect(renderComment({ text: "group", frame: true, background: false })).toContain("lucide-shrink");
         expect(renderComment({ text: "note" })).not.toContain("lucide-shrink");
     });
+
+    /**
+     * A node whose type the editor does not have - a plugin that is not loaded. The card must not
+     * pass for an ordinary one: it names itself unknown, shows the raw type, and wears a dashed
+     * warning frame no real card has.
+     */
+    it("draws an unknown node as unmistakably unknown", () => {
+        registerCoreBlueprintNodes();
+        const catalog = resolveBlueprintNodeEditorCatalogEntry("com.example.plugin.doThing");
+        expect(catalog.unknown).toBe(true);
+        const markup = renderToStaticMarkup(
+            <BlueprintFlowNode
+                {...({
+                    selected: false,
+                    data: {
+                        catalog,
+                        nodeId: "mystery",
+                        params: {},
+                    },
+                } as any)}
+            />,
+        );
+        expect(markup).toContain("Unknown node");
+        expect(markup).toContain("com.example.plugin.doThing");
+        expect(markup).toContain("border-dashed");
+    });
 });

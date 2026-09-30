@@ -26,6 +26,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { AppEventToken } from "@shared/types/app";
 import { syncEditorTabTitle } from "../ui/editorTabTitle";
 import { NotificationType, type NotificationAction } from "../ui/types";
+import { isReportedToAuthor } from "../autosave/reportedFailure";
 
 /** The tone `showNotification` takes -> the notification type the store records. */
 const NOTIFICATION_TYPE_BY_TONE: Record<"info" | "success" | "warning" | "error", NotificationType> = {
@@ -327,9 +328,17 @@ export class UIService extends Service<UIService> implements IUIService {
     }
 
     /**
-     * Show an error message
+     * Show an error message.
+     *
+     * Except for one the save-status surface has already reported (see `markReportedToAuthor`): the
+     * author has that notice in front of them, worded from what they know the file as, and showing
+     * the error as well would say the same failure twice - the second time in its own English.
      */
     public showError(error: Error | string): void {
+        if (typeof error !== "string" && isReportedToAuthor(error)) {
+            console.warn(error);
+            return;
+        }
         const message = typeof error === "string" ? error : error.message;
         this._notifications.error(message);
         console.error(error);

@@ -1,10 +1,12 @@
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { collectBlueprintEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getWidgetLogicApi, getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 
 function widgetMainOwnerKey(surfaceId: string, elementId: string): string {
-    return `widgetMain:${surfaceId}:${elementId}`;
+    return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId, elementId });
 }
 
 function hasValueBindings(element: UIElement): boolean {
@@ -15,22 +17,22 @@ function blueprintHasFlushHead(blueprint: Blueprint | undefined, elementType: st
     if (!blueprint) {
         return false;
     }
-    if (blueprint.program.kind === "scriptModule") {
+    // A script layer is credited without being read: its handlers are functions rather than head
+    // nodes, so there is nothing here to scan, and missing a flush target is the worse mistake.
+    if (hasScriptLayer(blueprint)) {
         return true;
     }
-    if (blueprint.program.kind !== "graph") {
-        return false;
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
+    return Object.values(blueprint.graphs.events ?? {}).some(layer =>
         collectBlueprintEventHeadNodeIdsForDispatch(
-            eventGraph.graph?.nodes,
+            layer.graph?.nodes,
             "flush",
             elementType,
         ).length > 0
     );
 }
 
-function hasWidgetFlushBlueprint(
+/** Whether the element's own blueprint answers a flush - the part of a flush that runs in a drawing. */
+export function hasWidgetFlushBlueprint(
     blueprintDocument: BlueprintDocument,
     surfaceId: string,
     element: UIElement,
@@ -43,7 +45,7 @@ function hasWidgetFlushBlueprint(
         return false;
     }
     const ownerKey = widgetMainOwnerKey(surfaceId, element.id);
-    const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+    const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
     return blueprintHasFlushHead(
         blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined,
         element.type,

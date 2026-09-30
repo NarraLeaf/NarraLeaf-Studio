@@ -18,6 +18,7 @@ import {
     type PluginMessageBundle,
     type PluginTranslator,
     type PluginVoiceUnitEntry,
+    type PluginWidgetTypeInfo,
 } from "@/plugin";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
@@ -26,17 +27,25 @@ import type {
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
-import { translate } from "@/lib/i18n";
 import { workspacePluginSession } from "./workspacePluginSession";
-import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
+import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
+import { guardPluginWidgetModule } from "./pluginWidgetGuard";
+import type { PluginWidgetModule } from "./pluginWidgetApi";
+import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { collectDeclaredBlueprintFns } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { storeWrite } from "@/lib/workspace/services/autosave/writeReport";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
@@ -189,20 +198,11 @@ function suppressedPluginIds(ctx: WorkspaceContext): Set<string> {
 async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
     const descriptors = await fetchWorkspacePluginDescriptors();
     const suppressed = suppressedPluginIds(ctx);
+    // Withheld plugins are not announced from here. The workspace already warns about every
+    // dependency it cannot meet - absent, withheld, or switched off - from the resolution itself,
+    // and leads to the screen that can act on all three. A second toast for one of those three
+    // would say the same thing in different words, and offer less.
     const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
-
-    const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
-    if (skipped.length > 0) {
-        const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
-        ctx.services.get<UIService>(Services.UI).notifications.warning(
-            translate("plugins.workspace.suppressedNotice", { names }),
-            undefined,
-            [{
-                label: translate("plugins.workspace.openPanel"),
-                onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id }),
-            }],
-        );
-    }
 
     const loadResults = await Promise.all(
         eligible.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
@@ -352,6 +352,26 @@ function assertDeclaredBlueprintNode(descriptor: WorkspacePluginDescriptor, type
     }
 }
 
+/**
+ * What `app.services.widgets.get` / `.list` answer with.
+ *
+ * A registered module is a host object whose callbacks are handed the editor services, so it is not
+ * something to pass out by reference - the plugin's own modules are wrapped before they are stored
+ * (see `pluginWidgetGuard`) and Studio's built-ins never were. A name and a type id is what a plugin
+ * can act on: whether to contribute a variant of a type, or what to call one in its own interface.
+ */
+function describeWidgetType(module: UIWidgetModule | undefined): PluginWidgetTypeInfo | undefined {
+    if (!module) {
+        return undefined;
+    }
+    return {
+        type: module.type,
+        displayName: module.displayName,
+        extends: module.extends,
+        ownerPluginId: widgetModuleRegistry.getOwner(module.type),
+    };
+}
+
 function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: string): void {
     if (!descriptor.manifest.contributes.widgets.includes(type)) {
         throw new Error(
@@ -464,13 +484,23 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
  * quit - none of which the manifest declared or the user approved. Only the
  * fields of {@link RuntimeBlueprintNodeContext} cross over, plus the same
  * capability-gated `game` the plugin's runtime entry would see.
+ *
+ * `scope` and `requiresHostApi` are dropped for a related reason. Neither is on
+ * `PluginBlueprintNodeDef`, but a plugin ships compiled JavaScript, so the type
+ * only states the contract - it cannot enforce it. Both say where a node may
+ * appear, which is the host's answer: `requiresHostApi` claims a host API the
+ * narrowed context does not reach anyway, and a stray `scope` is worse than
+ * ignored, since `resolveEffectiveBlueprintNodePins` reads the mere presence of
+ * one as "widget-scoped variant" and strips the node's element pin.
  */
 function toEditorBlueprintNodeDef(
     def: PluginBlueprintNodeDef,
     game: RuntimePluginGame,
 ): BlueprintNodeDef {
+    const { scope: _scope, requiresHostApi: _requiresHostApi, ...declared } = def as PluginBlueprintNodeDef
+        & Partial<Pick<BlueprintNodeDef, "scope" | "requiresHostApi">>;
     return {
-        ...def,
+        ...declared,
         execute: hostCtx => def.execute({
             params: hostCtx.params,
             resolveInput: hostCtx.resolveInput,
@@ -524,11 +554,27 @@ export function createPluginApp(
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const story = ctx.services.get<StoryService>(Services.Story);
+    const uiDocument = ctx.services.get<UIDocumentService>(Services.UIDocument);
+    const localBlueprint = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    const localization = ctx.services.get<LocalizationService>(Services.Localization);
     const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+    const uiEditorState = ctx.services.get<UIEditorStateService>(Services.UIEditorState);
     // One per plugin, shared by every node it registers - the runtime loader
     // hands a node's execute the same `game` object `setup(app)` received.
     const nodeGame = createEditorRuntimePluginGame(descriptor);
+    // Recorded with every widget the plugin contributes: the insert palette says where a widget
+    // came from, and the plugin's own name is what the author knows it by everywhere else.
+    const widgetOwner = {
+        ownerPluginId: descriptor.plugin.id,
+        ownerPluginName: descriptor.manifest.name || descriptor.plugin.id,
+    };
+    const guardWidget = (module: PluginWidgetModule): UIWidgetModule => guardPluginWidgetModule(
+        descriptor.plugin.id,
+        module,
+        nodeGame,
+        { documentService: uiDocument, stateService: uiEditorState },
+    );
 
     // Every registration a plugin makes through this app object is recorded
     // so the host can reclaim it on unload, even if the plugin's own cleanup
@@ -579,7 +625,13 @@ export function createPluginApp(
                     throw new Error(result.error.message);
                 },
                 writeJson: async (namespace, data) => {
-                    const result = await storage.writeStore(pluginStoreNamespace(descriptor.plugin.id, namespace), data);
+                    // Thrown to the plugin, which may or may not say anything; the save-status
+                    // surface tells the author either way, without naming the store's file.
+                    const result = await storage.writeStore(
+                        pluginStoreNamespace(descriptor.plugin.id, namespace),
+                        data,
+                        storeWrite("workspace.shell.save.stores.pluginData", "notRetried"),
+                    );
                     if (!result.ok) {
                         throw new Error(result.error.message);
                     }
@@ -704,27 +756,30 @@ export function createPluginApp(
                 panels: {
                     register: panel => {
                         assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
+                        return trackReturn(ui.panels.register(guardPluginPanel(descriptor.plugin.id, panel) as any));
                     },
                     registerMany: panels => combine(panels.map(panel => {
                         assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
+                        return trackReturn(ui.panels.register(guardPluginPanel(descriptor.plugin.id, panel) as any));
                     })),
                 },
                 actions: {
+                    // The workspace hands `onClick` the live Workspace; the guard swaps in one whose
+                    // service registry refuses, so a plugin action cannot reach the default-facade
+                    // file system. See `pluginWorkspaceGuard`.
                     register: action => {
                         assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
+                        ui.getStore().registerAction(guardPluginAction(descriptor.plugin.id, action));
                         return trackReturn(() => ui.getStore().unregisterAction(action.id));
                     },
                     registerMany: actions => combine(actions.map(action => {
                         assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
+                        ui.getStore().registerAction(guardPluginAction(descriptor.plugin.id, action));
                         return trackReturn(() => ui.getStore().unregisterAction(action.id));
                     })),
                     registerGroup: group => {
                         assertOwnedId(descriptor.plugin.id, group.id, "action group");
-                        ui.getStore().registerActionGroup(confineToOwnMenu(group));
+                        ui.getStore().registerActionGroup(confineToOwnMenu(guardPluginActionGroup(descriptor.plugin.id, group)));
                         return trackReturn(() => ui.getStore().unregisterActionGroup(group.id));
                     },
                 },
@@ -754,11 +809,17 @@ export function createPluginApp(
                 },
             },
             widgets: {
+                // What the registry holds is never the plugin's own module: the host calls a widget
+                // back from the canvas, the properties panel, the docker bar and both context menus,
+                // and every one of those hands over a live workspace service whose `getContext()`
+                // reaches the service registry. `guardPluginWidgetModule` is the binding that stands
+                // in front of all of them - see `pluginWidgetGuard`.
                 register: module => {
                     assertDeclaredWidget(descriptor, module.type);
-                    widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+                    const guarded = guardWidget(module);
+                    widgetModuleRegistry.register(guarded, widgetOwner);
                     return trackReturn(() => {
-                        if (widgetModuleRegistry.get(module.type) === module) {
+                        if (widgetModuleRegistry.get(module.type) === guarded) {
                             widgetModuleRegistry.unregister(module.type);
                         }
                     });
@@ -768,17 +829,50 @@ export function createPluginApp(
                         assertDeclaredWidget(descriptor, module.type);
                     }
                     return combine(modules.map(module => {
-                        widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+                        const guarded = guardWidget(module);
+                        widgetModuleRegistry.register(guarded, widgetOwner);
                         return trackReturn(() => {
-                            if (widgetModuleRegistry.get(module.type) === module) {
+                            if (widgetModuleRegistry.get(module.type) === guarded) {
                                 widgetModuleRegistry.unregister(module.type);
                             }
                         });
                     }));
                 },
-                get: type => widgetModuleRegistry.get(type),
-                list: () => widgetModuleRegistry.list(),
+                get: type => describeWidgetType(widgetModuleRegistry.get(type)),
+                list: () => widgetModuleRegistry.list().flatMap(module => {
+                    const info = describeWidgetType(module);
+                    return info ? [info] : [];
+                }),
                 has: type => widgetModuleRegistry.has(type),
+            },
+            interface: {
+                listSurfaces: () => uiDocument.getDocument().surfaces
+                    // App surfaces only. A stage surface is a slot the engine fills - a dialogue
+                    // box, a choice menu - and "go to the dialogue box" is not a place.
+                    .filter(surface => surface.kind !== "stageSurface")
+                    .map(surface => ({ id: surface.id, name: surface.name })),
+                listGlobalFns: () => collectDeclaredBlueprintFns(localBlueprint.getBlueprintDocument())
+                    .filter(decl => decl.owner.kind === "globalMain")
+                    .map(decl => ({
+                        fnRef: decl.fnRef,
+                        name: decl.name,
+                        params: decl.params.map(param => ({
+                            pinId: param.pinId,
+                            name: param.name,
+                            valueType: param.valueType,
+                        })),
+                    })),
+            },
+            localization: {
+                listKeys: () => {
+                    // Undefined before the document has been read, which is a moment during
+                    // startup rather than a project without keys - an empty list is the right
+                    // answer to both, and a panel re-reads on reload like every other consumer.
+                    const document = localization.getKeysIfLoaded();
+                    return Object.entries(document?.keys ?? {})
+                        .map(([name, definition]) => ({ name, sourceText: definition.sourceText }))
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                },
             },
             story: {
                 listStories: () => story.listStories().map(entry => ({

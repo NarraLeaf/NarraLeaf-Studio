@@ -20,6 +20,7 @@ export const EXPERIMENTAL_CONDITION_FLAG_PREFIX = "--x-";
 export const EXPERIMENTAL_CONDITION_IDS = [
     "debuggable-build",
     "live-session-freeze",
+    "narralang",
     "scripted-file-dialog",
     "slow-live-transfer",
     "unscoped-file-access",
@@ -51,6 +52,13 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}live-session-freeze`,
         summary: "The command palette can freeze the workspace the way a live session does, leaving "
             + "the open story and the cast writable and everything else read-only.",
+    },
+    {
+        id: "narralang",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}narralang`,
+        summary: "The story editor offers NarraLang: a story or a scene can be exported as a script "
+            + "from the story panel and from the palette, and a scene tab can be read as one "
+            + "instead of as rows.",
     },
     {
         id: "scripted-file-dialog",

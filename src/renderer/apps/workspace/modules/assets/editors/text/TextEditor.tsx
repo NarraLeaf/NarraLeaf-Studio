@@ -8,6 +8,8 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope } from "../../assetLiveSession";
 import {
@@ -460,7 +462,15 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 return;
             }
             if (!text.ok) {
-                setError(text.error?.message ?? tRef.current("assets.textEditor.loadFailed"));
+                // Worded from the read's code, never its message: that is English and names the
+                // asset's storage path, which is its id split into folders.
+                console.warn(`[assets] could not read ${asset.id}: ${text.error?.message ?? ""}`);
+                setError(describeAssetReadFailure(
+                    asset.id,
+                    resolveAssetDisplayName(context.services, asset.id),
+                    text.error?.code,
+                    tRef.current,
+                ));
                 setLoading(false);
                 return;
             }
@@ -757,9 +767,9 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
     return (
         // `.nl-editor-surface`, not `bg-surface-sunken`: this is a reading surface like the story
-        // editor's prose column and the inspector, and it resolves its alpha from the same
-        // `editor.surfaceOpacity` setting they do. Pinned to the opaque token, the text editor was
-        // the one editor in Studio that stayed a solid black rectangle under a workspace wallpaper.
+        // editor's prose column and the inspector, and under a wallpaper it takes the same editor
+        // background they do. Pinned to the opaque token, the text editor was the one editor in
+        // Studio that stayed a solid black rectangle under a workspace wallpaper.
         // Monaco itself paints nothing - see `transparent` in `studioMonaco` for why the alpha
         // cannot live in `editor.background`.
         <div className="nl-editor-surface flex h-full min-h-0 flex-col" data-text-editor-tab-id={tabId}>

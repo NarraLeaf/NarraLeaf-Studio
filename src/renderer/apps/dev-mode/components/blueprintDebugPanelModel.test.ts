@@ -20,14 +20,9 @@ function visualBlueprint(
         id,
         name,
         owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {},
-                functions: {},
-            },
+        graphs: {
+            events: {},
+            functions: {},
         },
         members: {
             variables: {},
@@ -40,8 +35,8 @@ function visualBlueprint(
 
 function authoredBlueprint(id: string, name: string, owner: BlueprintOwnerRef): Blueprint {
     const bp = visualBlueprint(id, name, owner);
-    if (bp.program.kind === "graph") {
-        bp.program.graphs.events.mouseClick = {
+    {
+        bp.graphs.events.mouseClick = {
             id: "mouseClick",
             name: "Mouse Click",
             graph: { nodes: {}, edges: [] },
@@ -55,14 +50,10 @@ function scriptBlueprint(id: string, name: string): Blueprint {
         id,
         name,
         owner: { kind: "widgetMain", surfaceId: "surface-a", elementId: "element-a" },
-        frontend: "typescript",
-        programKind: "scriptModule",
-        program: {
-            kind: "scriptModule",
-            source: {
-                language: "typescript",
-                code: "",
-            },
+        graphs: {
+            eventIds: ["layer-script"],
+            events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/widget.ts" } } },
+            functions: {},
         },
         members: {
             variables: {},
@@ -146,8 +137,8 @@ describe("listDevModeBlueprints — workspace", () => {
 
     it("shows visual blueprints once they have authored graph content", () => {
         const authored = visualBlueprint("authored", "Authored");
-        if (authored.program.kind === "graph") {
-            authored.program.graphs.events.mouseClick = {
+        {
+            authored.graphs.events.mouseClick = {
                 id: "mouseClick",
                 name: "Mouse Click",
                 graph: { nodes: {}, edges: [] },
@@ -210,7 +201,6 @@ describe("listDevModeBlueprints — workspace", () => {
                 surfaceId: "other",
                 elementId: "other-button",
             }),
-            shared: authoredBlueprint("shared", "Shared", { kind: "sharedAsset", assetId: "asset" }),
         };
 
         expect(listForWorkspace(blueprints, { document, activeSurfaceId: "app" }).map(bp => bp.id)).toEqual([
@@ -279,10 +269,8 @@ describe("blueprintWidgetElementId", () => {
     it("answers nothing for the owners that are not a widget on the stage", () => {
         const surface = authoredBlueprint("surface", "Surface", { kind: "surfaceMain", surfaceId: "app" });
         const global = authoredBlueprint("global", "Global", { kind: "globalMain" });
-        const shared = authoredBlueprint("shared", "Shared", { kind: "sharedAsset", assetId: "asset" });
 
         expect(blueprintWidgetElementId(surface)).toBeNull();
         expect(blueprintWidgetElementId(global)).toBeNull();
-        expect(blueprintWidgetElementId(shared)).toBeNull();
     });
 });

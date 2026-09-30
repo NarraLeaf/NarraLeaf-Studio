@@ -1,4 +1,4 @@
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { legacyAsciiName, sanitizeProjectFileName } from "@shared/utils/nlproj";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 
 /**
@@ -248,8 +248,13 @@ export type BuildPreflightCode =
     | "build-dependency-unavailable"
     | "sidecar-target-missing"
     | "sidecar-crossbuild-exec-bit"
-    | "encryption-key-unavailable"
     | "web-unprotected"
+    /**
+     * Asset protection is on and the build has an Android or iOS target. The mobile packages carry
+     * the same site the web export does; their container is a packaging format whose key ships
+     * inside the package, so nothing about them is protected.
+     */
+    | "mobile-unprotected"
     /**
      * The project carries progress between editions, and this target's shell cannot: a page has no
      * shared file to write, and the mobile shells serve that same page.
@@ -327,8 +332,21 @@ export type BuildPreflightFinding = {
     detail?: Record<string, string>;
 };
 
+/**
+ * Where a run is.
+ *
+ * `checking` is the odd one out and deliberately so: it covers the pre-build checks, which run in
+ * the window that asked for the build and finish before the main process is told anything. The main
+ * process therefore never reports it - a poll of `getStatus` during it answers `idle`, because as
+ * far as the pipeline is concerned nothing has been asked for yet.
+ *
+ * It exists because those checks can take real time (they read every story, every graph and every
+ * asset the project has), and without a phase of their own the window had nothing to show for them:
+ * the run was under way and every control still said no build was running.
+ */
 export type GameBuildStatus =
     | "idle"
+    | "checking"
     | "preparing"
     | "compiling"
     | "packaging"
@@ -535,6 +553,17 @@ export type GameBuildStateSnapshot = {
     /** Absolute output directory of the finished build. */
     outputDir?: string;
     /**
+     * The variant this run was made as, by the name the author gave it.
+     *
+     * Stamped onto the terminal snapshot from the session, because the run resolves its variant long
+     * before it assembles one. The renderer only ever sees the snapshot, and the dashboard archives
+     * finished runs off this poll - so a variant left on the session is a variant no record can
+     * carry.
+     *
+     * Absent on the idle snapshot and on a run that failed before it resolved one.
+     */
+    variant?: string;
+    /**
      * What this build carried out of the asset library, and what it left behind.
      *
      * Absent until a build has narrowed one, which is every packaging build and no preview. Where a
@@ -588,13 +617,17 @@ const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A
  * Shared rather than mirrored: the build dialog shows the user which app id
  * their game will ship with, and a second implementation would quietly disagree
  * with the one that actually packages.
+ *
+ * Spelled through `legacyAsciiName`, whose output never changes: without an
+ * identifier this id is derived from the project's name, and the players' save
+ * folder, the mobile package ids and the installer's GUID all follow it.
  */
 export function deriveGameAppId(identifier: string | undefined, projectName: string): string {
     const trimmed = identifier?.trim();
     if (trimmed && APP_ID_PATTERN.test(trimmed)) {
         return trimmed;
     }
-    const sanitized = sanitizeProjectFileName(trimmed || projectName)
+    const sanitized = legacyAsciiName(trimmed || projectName)
         .toLowerCase()
         .replace(/[^a-z0-9-]+/g, "-")
         .replace(/^-+|-+$/g, "") || "game";
@@ -685,10 +718,34 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
  *
  * `null` is the release variant, whose artifacts are named from the project alone. Its names are
  * therefore exactly what they were before variants existed.
+ *
+ * Both names keep the script they were written in (`放課後-体験版`), made safe for a file system
+ * by `sanitizeProjectFileName`. The build dialog predicts every artifact from this and the
+ * packaging worker writes every artifact from it, so the two cannot disagree.
  */
 export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
     const base = sanitizeProjectFileName(projectName);
     return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+}
+
+/** Characters every tool that opens a package accepts in a path segment. */
+const PORTABLE_PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * The name of the `.app` directory inside an IPA.
+ *
+ * The one name in a package that no player and no author reads - the home screen shows the
+ * bundle's display name, and the IPA file itself carries the artifact name - so it is kept to ASCII
+ * rather than trusting every tool that unpacks, re-signs or uploads an IPA with a Unicode path: the
+ * artifact name where that is ASCII already (`My-Game`), otherwise the last segment of the app id,
+ * which comes from the identifier the author typed.
+ */
+export function iosAppDirectoryName(artifactBaseName: string, appId: string): string {
+    if (PORTABLE_PATH_SEGMENT.test(artifactBaseName)) {
+        return artifactBaseName;
+    }
+    const fromAppId = appId.split(".").pop() ?? "";
+    return PORTABLE_PATH_SEGMENT.test(fromAppId) ? fromAppId : "App";
 }
 
 /**
@@ -971,3 +1028,24 @@ export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPla
             return host !== "windows";
     }
 }
+
+/**
+ * Build failures the interface has its own words for.
+ *
+ * Set as `code` on the error and carried across by `IPCHandler.failed`, which is the only way the
+ * renderer can tell these apart from a refusal whose English sentence is the answer. Namespaced
+ * because `RequestStatus.code` is shared with everything else that throws, Node's `ENOENT` included.
+ */
+export const GameBuildErrorCode = {
+    /**
+     * A patch named a build folder this window has not been granted.
+     *
+     * Distinct from the folder holding no build, and the distinction is the whole point: a folder
+     * typed in by hand, or restored with the rest of a remembered selection, is refused before it is
+     * looked at. Told apart from an empty folder it would read as "no build here" about a folder the
+     * author can see their build sitting in.
+     */
+    BaselineNotGranted: "gameBuild/baseline-not-granted",
+} as const;
+
+export type GameBuildErrorCode = (typeof GameBuildErrorCode)[keyof typeof GameBuildErrorCode];

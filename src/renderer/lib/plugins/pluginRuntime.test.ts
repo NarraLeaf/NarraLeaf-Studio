@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { definePlugin, type PluginApp } from "@/plugin";
 import { createPluginApp, exposePluginModule, pluginEntryImportSpecifier, resolvePluginDefinition } from "./pluginRuntime";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { Workspace } from "@/lib/workspace/workspace";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type { PluginWidgetModule } from "./pluginWidgetApi";
+import type { ActionDefinition, PanelDefinition } from "@/apps/workspace/registry/types";
 
 describe("plugin runtime", () => {
     it("accepts default exported definePlugin definitions", () => {
@@ -152,11 +155,14 @@ describe("createPluginApp disposal", () => {
         app.services.ui.actions.register({ id: "test-plugin.a1" } as any);
         app.services.ui.actions.registerGroup({ id: "test-plugin.g1" } as any);
         app.services.ui.keybindings.register({ id: "test-plugin.k1" } as any);
-        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as PluginWidgetModule;
         app.services.widgets.register(widget);
         app.services.blueprintNodes.registerDynamicSelectOptionsSource("s1", () => []);
 
-        expect(widgetModuleRegistry.get("test-plugin.widget")).toBe(widget);
+        // The registry holds the guard's binding, never the plugin's own module - see
+        // `pluginWidgetGuard`.
+        expect(widgetModuleRegistry.get("test-plugin.widget")).not.toBe(widget);
+        expect(widgetModuleRegistry.get("test-plugin.widget")?.type).toBe("test-plugin.widget");
 
         dispose();
 
@@ -215,6 +221,27 @@ describe("createPluginApp disposal", () => {
 
         app.services.blueprintNodes.register({ type: "test-plugin.node" } as any);
         expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the host-only restrictions a plugin's compiled code may still carry", () => {
+        const { ctx, blueprintNodesService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        // Neither field is on PluginBlueprintNodeDef, but a plugin ships JavaScript and can put
+        // anything in the object. Where a node may appear is the host's answer, and a stray
+        // `scope` is read downstream as "widget-scoped variant" - which would strip the node's
+        // element pin.
+        app.services.blueprintNodes.register({
+            type: "test-plugin.node",
+            displayName: "Node",
+            scope: { ownerKinds: ["widgetMain"] },
+            requiresHostApi: true,
+        } as any);
+
+        const registered = blueprintNodesService.register.mock.calls[0][0];
+        expect(registered).not.toHaveProperty("scope");
+        expect(registered).not.toHaveProperty("requiresHostApi");
+        expect(registered.displayName).toBe("Node");
     });
 
     it("keeps hostAdapter out of the context a plugin node's execute receives", async () => {
@@ -312,9 +339,59 @@ describe("createPluginApp disposal", () => {
         const { ctx } = createFakeContext();
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as UIWidgetModule))
+        expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as PluginWidgetModule))
             .toThrow(/contributes\.widgets/);
         expect(widgetModuleRegistry.has("test-plugin.undeclared-widget")).toBe(false);
+    });
+
+    // A plugin action registers through the same store Studio's own actions use, and the workspace
+    // fires every action with the live Workspace - whose `services.get(FileSystem)` speaks to the
+    // main process as the window's default facade (recursive read/write over the whole project). A
+    // zero-permission plugin must not reach that. The wiring wraps the action so its onClick is
+    // handed a guarded workspace whose registry refuses. Guards the invariant in
+    // `window/permissions.ts`: a plugin calls through its own actor, never the window's defaults.
+    it("hands a plugin action's onClick a workspace whose service registry refuses", () => {
+        const { ctx, store } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        const onClick = vi.fn();
+        app.services.ui.actions.register({ id: "test-plugin.attack", onClick } as any);
+
+        // What actually landed in the store is the guarded wrapper, not the plugin's own action.
+        const registered = (store.registerAction.mock.calls[0] as any[])[0] as ActionDefinition;
+        expect(registered.onClick).not.toBe(onClick);
+
+        // The live workspace the app would pass at click time: its registry would hand back a real
+        // FileSystem bound to the default facade.
+        const liveWorkspace = Workspace.create({
+            project: { resolve: (...p: string[]) => p.join("/") } as any,
+            services: { get: () => "DEFAULT_FACADE_FS", getAll: () => [] } as any,
+            commandLineRun: false,
+        });
+        registered.onClick(liveWorkspace);
+
+        const handed = onClick.mock.calls[0][0] as Workspace;
+        expect(() => handed.getContext().services.get(Services.FileSystem)).toThrow(/workspace service registry/);
+        expect(() => handed.getContext().services.get(Services.FileSystem)).toThrow(/test-plugin/);
+    });
+
+    it("hands a plugin rail button's railAction a context whose service registry refuses", () => {
+        const { ctx, uiService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        const railAction = vi.fn();
+        app.services.ui.panels.register({ id: "test-plugin.rail", railAction } as any);
+
+        const registered = (uiService.panels.register.mock.calls[0] as any[])[0] as PanelDefinition;
+        expect(registered.railAction).not.toBe(railAction);
+
+        registered.railAction!({
+            project: {} as any,
+            services: { get: () => "DEFAULT_FACADE_FS", getAll: () => [] } as any,
+        } as WorkspaceContext);
+
+        const handed = railAction.mock.calls[0][0] as WorkspaceContext;
+        expect(() => handed.services.get(Services.FileSystem)).toThrow(/workspace service registry/);
     });
 
     it("keeps disposing after one disposer throws", () => {
@@ -336,7 +413,7 @@ describe("createPluginApp disposal", () => {
         const { ctx } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as PluginWidgetModule;
         const replacement = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
         app.services.widgets.register(widget);
         widgetModuleRegistry.register(replacement);

@@ -80,9 +80,10 @@ function maskValueAt(mask: NonNullable<Layer["mask"]>, docX: number, docY: numbe
 /**
  * Draw one PSD layer onto a transparent document-sized canvas and encode it.
  *
- * Full canvas size is the whole point: the engine scales each layer independently under `autoFit`,
- * so a cropped layer would be blown up to the stage on its own rather than sitting where the artist
- * put it. Photoshop stores a layer trimmed to its own bounds, and this is where that is undone.
+ * Full canvas size is the whole point: the engine draws each layer as its own picture, sized and
+ * placed independently, so a cropped layer would sit wherever its own bounds put it rather than
+ * where the artist drew it. Photoshop stores a layer trimmed to its own bounds, and this is where
+ * that is undone.
  *
  * Layer opacity and the layer mask are both multiplied into alpha here rather than carried as
  * metadata — the engine has neither, so the pixels are the only place they can survive.

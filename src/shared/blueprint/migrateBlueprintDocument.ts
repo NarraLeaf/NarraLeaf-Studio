@@ -1,7 +1,7 @@
 /**
  * BlueprintDocument disk migration (shared between Workspace UIGraphService and main-process Dev Mode reads).
  *
- * ## Why there is nothing left to convert
+ * ## Every conversion here is gated on a version
  *
  * This used to open v2 through v9 and, on every read including a current one, run four param-level
  * rewrites that were never gated on a version: declarations becoming fields, persistent variables
@@ -10,16 +10,21 @@
  * could carry any of those shapes was written at v8 or earlier - except the sound one, whose window
  * at v10 was four days wide in July and left nothing behind on any project this repository has.
  *
- * So the floor is {@link BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION} and the rest is a stamp. v9 needs
- * no conversion to become v10: v10 only added `eventIds` / `functionIds`, the arrays that carry the
- * graph-slot order key order used to imply, and `reconcileOrder` already reads a document with no
- * arrays by falling back to key order - which for a v9 document IS the authored order.
+ * So the floor is {@link BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION}, and what is left above it is a
+ * stamp plus two passes that each name the version they belong to: the owner-key escaping at v11 and
+ * the shared-asset removal at v12. v9 needs no conversion at all to become v10: v10 only added
+ * `eventIds` / `functionIds`, the arrays that carry the graph-slot order key order used to imply, and
+ * `reconcileOrder` already reads a document with no arrays by falling back to key order - which for a
+ * v9 document IS the authored order.
  *
  * A document below the floor is refused by name rather than half-read.
  */
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, LegacyInlineScriptSource } from "@shared/types/blueprint/document";
+import { LEGACY_INLINE_SCRIPT_META_KEY } from "@shared/types/blueprint/document";
+import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
+import { decodeLegacyBlueprintOwnerKey, encodeBlueprintOwnerKey } from "./ownerKey";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -57,10 +62,298 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         && sv < BLUEPRINT_DOCUMENT_SCHEMA_VERSION
         && isRecord(raw.blueprints)
     ) {
-        return { ...(raw as unknown as BlueprintDocument), schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
+        const doc = { ...(raw as unknown as BlueprintDocument), schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
+        if (sv < OWNER_KEY_ESCAPING_VERSION) {
+            doc.ownerRecords = rewriteOwnerKeys(doc.ownerRecords);
+        }
+        if (sv < SHARED_ASSET_REMOVED_VERSION) {
+            dropSharedAssetOwners(doc);
+        }
+        if (sv < SCRIPT_REF_VERSION) {
+            moveInlineScriptsToFiles(doc);
+        }
+        if (sv < SCRIPT_AS_LAYER_VERSION) {
+            keepOneBlueprintPerSlot(doc);
+            foldScriptBlueprintsIntoLayers(doc);
+        }
+        return doc;
     }
     throw new Error(
         `Unsupported BlueprintDocument schemaVersion: ${String(sv)}`
         + ` (v${BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest this Studio version reads)`,
     );
+}
+
+/**
+ * The version at which every part of an owner key became percent-encoded.
+ *
+ * Named rather than inlined because the guard is the whole safety of this conversion: it reads a key
+ * whose parts are raw and writes one whose parts are escaped, so running it on a key it has already
+ * written would escape the escapes. `narraleaf-studio%3Amain-surface` would become
+ * `narraleaf-studio%253Amain-surface`, the slot would look empty, a second blueprint would be minted
+ * for it, and the author's would be orphaned. The version is what makes that unrepeatable.
+ */
+const OWNER_KEY_ESCAPING_VERSION = 11;
+
+/**
+ * The version at which the `sharedAsset` owner kind stopped existing.
+ *
+ * Gated like the escaping above, and for the same reason rather than the same danger: this pass is
+ * idempotent, but a document already at the current version cannot contain what it removes, so
+ * paying for the scan on every read would be the shape the four ungated param rewrites had.
+ */
+const SHARED_ASSET_REMOVED_VERSION = 12;
+
+/**
+ * The version at which a script blueprint started holding a path instead of its text.
+ *
+ * Gated like the two above. This pass reads `program.source` and writes `program.scriptRef`, and a
+ * document already at v13 has no `source` to read - so on a current document it would find nothing
+ * and cost a scan, which is the shape the four ungated param rewrites had.
+ */
+const SCRIPT_REF_VERSION = 13;
+
+/**
+ * The version at which a script became a layer and a slot kept exactly one blueprint.
+ *
+ * Gated like the three above: it reads `activeBlueprintId` / `privateBlueprintIds` / `program`, and
+ * a document already at v14 has none of them, so on a current document this would find nothing and
+ * cost two scans.
+ */
+const SCRIPT_AS_LAYER_VERSION = 14;
+
+/**
+ * Keep the blueprint each slot was running, and drop the rest.
+ *
+ * A slot used to hold a list of "revisions" with one marked active, because a slot was a graph or a
+ * script as a whole and there was nowhere else to keep the other one. Only the active one ever ran,
+ * and nothing outside this list could reach the others - not version control, which records the
+ * whole document and can restore any point of it, and not the editor, which opened the active one.
+ *
+ * So the ones dropped here are the ones that were never running. A script among them keeps its
+ * FILE - the disk owns those, this document only ever held the path - and it appears in the scripts
+ * panel as a file nothing runs, which is where an author can point a layer back at it. A graph among
+ * them is genuinely gone from the document, and is in version control like every other edit.
+ */
+function keepOneBlueprintPerSlot(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints) || !isRecord(doc.ownerRecords)) {
+        return;
+    }
+    const kept = new Set<string>();
+    const records: BlueprintDocument["ownerRecords"] = {};
+    for (const [key, record] of Object.entries(doc.ownerRecords)) {
+        // Read off the old shape, which the current types no longer describe.
+        const legacy = record as unknown as { activeBlueprintId?: unknown; privateBlueprintIds?: unknown };
+        const active = typeof legacy.activeBlueprintId === "string" ? legacy.activeBlueprintId : undefined;
+        const listed = Array.isArray(legacy.privateBlueprintIds)
+            ? legacy.privateBlueprintIds.filter((id): id is string => typeof id === "string")
+            : [];
+        // The active id when it resolves, else the first listed one that does. A record naming
+        // nothing that exists is dropped with its slot rather than kept pointing at a hole - the
+        // validator refuses the whole document over one of those.
+        const blueprintId = [active, ...listed].find(id => id && doc.blueprints[id]);
+        if (!blueprintId) {
+            continue;
+        }
+        kept.add(blueprintId);
+        records[key] = { blueprintId };
+    }
+    doc.ownerRecords = records;
+    doc.blueprints = Object.fromEntries(Object.entries(doc.blueprints).filter(([id]) => kept.has(id)));
+}
+
+/**
+ * Turn each script blueprint into an ordinary blueprint holding one script layer.
+ *
+ * The path moves and nothing else does: the same file, under the same slot, reached through the
+ * same blueprint id. What changes is that the blueprint is now a container of layers like every
+ * other one, so the author can put a graph layer beside the script instead of having to displace it.
+ *
+ * `frontend`, `programKind` and `program` all go here. The first two were denormalised copies of
+ * the third, and the third has become a property of each layer.
+ */
+function foldScriptBlueprintsIntoLayers(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    for (const blueprint of Object.values(doc.blueprints) as Blueprint[]) {
+        const legacy = blueprint as unknown as {
+            program?: unknown;
+            frontend?: unknown;
+            programKind?: unknown;
+            graphs?: unknown;
+        };
+        const program = legacy.program;
+        if (isRecord(program) && program.kind === "scriptModule") {
+            const scriptRef = typeof program.scriptRef === "string" ? program.scriptRef : "";
+            const diagnostics = Array.isArray(program.diagnostics) ? program.diagnostics : undefined;
+            blueprint.graphs = {
+                eventIds: [SCRIPT_LAYER_ID],
+                events: {
+                    [SCRIPT_LAYER_ID]: {
+                        id: SCRIPT_LAYER_ID,
+                        script: diagnostics ? { scriptRef, diagnostics } : { scriptRef },
+                    },
+                },
+                functions: {},
+            };
+        } else if (isRecord(program) && isRecord(program.graphs)) {
+            blueprint.graphs = program.graphs as Blueprint["graphs"];
+        } else if (!isRecord(legacy.graphs)) {
+            blueprint.graphs = { events: {}, functions: {} };
+        }
+        delete legacy.program;
+        delete legacy.frontend;
+        delete legacy.programKind;
+    }
+}
+
+/**
+ * The layer id a folded script blueprint gets.
+ *
+ * Fixed rather than generated because a migration has no id source and must produce the same
+ * document twice: two Studio processes reading one project - the workspace and a Dev Mode main
+ * process do exactly this - would otherwise disagree about a layer's identity, and the editor
+ * addresses a layer by id.
+ */
+const SCRIPT_LAYER_ID = "script";
+
+/**
+ * Turn each inline script into a file reference, keeping the text for whoever can write a file.
+ *
+ * **Nothing here is lost, and nothing here ever ran.** The inline form was a prototype: no mounted
+ * module ever backed it, so every "New TypeScript" blueprint an author made did nothing at all when
+ * their game ran. But the button was shipped and its editor accepted typing, so the text may be
+ * real work even though it never executed - which is why this converts rather than dropping, the
+ * way the shared-asset pass above could.
+ *
+ * The text cannot be written from here: a migration is pure, and it runs in a main-process read as
+ * well as in the renderer. So it parks it on the blueprint's `meta` and the service that opens the
+ * project writes the file, which is how the variable registry seed at v9 was done for the same
+ * reason.
+ *
+ * The path is derived from the blueprint's NAME rather than its id. An author opens this file in
+ * their own editor, and a filename is as much interface as a title bar is - `scripts/quit.ts`, not
+ * a UUID. Collisions are resolved by counting, so two blueprints called "Quit" become `quit.ts` and
+ * `quit-2.ts`.
+ */
+function moveInlineScriptsToFiles(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    const taken = new Set<string>();
+    for (const blueprint of Object.values(doc.blueprints) as Blueprint[]) {
+        const program = (blueprint as unknown as { program?: unknown })?.program;
+        if (!isRecord(program) || program.kind !== "scriptModule") {
+            continue;
+        }
+        const source = isRecord(program.source) ? (program.source as unknown as LegacyInlineScriptSource) : undefined;
+        const scriptRef = uniqueScriptPath(blueprint?.name, taken);
+        // Writes the pre-v14 program shape on purpose: the pass that folds a script into a layer
+        // runs after this one and reads exactly this.
+        (blueprint as unknown as { program: unknown }).program = { kind: "scriptModule", scriptRef };
+        if (typeof source?.code === "string" && source.code.length > 0) {
+            blueprint.meta = { ...(blueprint.meta ?? {}), [LEGACY_INLINE_SCRIPT_META_KEY]: source.code };
+        }
+    }
+}
+
+/** `Quit Game` -> `scripts/quit-game.ts`, counting up rather than colliding. */
+function uniqueScriptPath(name: unknown, taken: Set<string>): string {
+    const slug = typeof name === "string"
+        ? name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)
+        : "";
+    const base = slug || "script";
+    let candidate = base;
+    for (let index = 2; taken.has(candidate); index += 1) {
+        candidate = `${base}-${index}`;
+    }
+    taken.add(candidate);
+    return `${SCRIPTS_DIR}/${candidate}.ts`;
+}
+
+/**
+ * Drop the blueprints and owner records left behind by the shared blueprint asset.
+ *
+ * **Dropped rather than left alone, because nothing downstream can hold one.** A shared blueprint
+ * lived in a `.nlbp` file under `assets/content/` - a second storage location with no schema
+ * version and no `ownerRecords` entry - and the owner kind naming it is gone. Every switch over
+ * `BlueprintOwnerRef` is exhaustive, so a blueprint still carrying that owner does not sit inertly
+ * in the map: `encodeBlueprintOwnerKey` falls past its last arm and hands back the owner object,
+ * which reaches `assertValidBlueprintDocument` as an `[object Object]` key with no record and
+ * refuses the whole document. Refusing a project over one record is the worse outcome of the two,
+ * and the record is not the author's graph either way - shared blueprints were never written into
+ * this document, and across twenty-eight authored projects plus the factory skeleton there were
+ * zero `.nlbp` files, zero blueprint-category assets and zero `sharedAsset` owner records.
+ *
+ * The records that named those blueprints go with them, found by id rather than by reading the key.
+ * `ownerRecords` described private slots only, so a record for a shared asset is a shape the format
+ * allowed and no writer produced - but a record left pointing at a blueprint this sweep removed is
+ * the one thing that would still refuse the document, and the validator already requires every id a
+ * record lists to resolve. A record cannot list a mixture: its key has to equal the owner key of
+ * every blueprint it lists, so one that names a dropped blueprint names nothing else.
+ */
+function dropSharedAssetOwners(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    const dropped = new Set<string>();
+    const blueprints: BlueprintDocument["blueprints"] = {};
+    for (const [id, blueprint] of Object.entries(doc.blueprints)) {
+        // `unknown` on purpose: the owner kind being removed is no longer part of `BlueprintOwnerRef`,
+        // so the typed field cannot be compared against it. What is on disk is not what compiles.
+        const owner: unknown = blueprint?.owner;
+        if (isRecord(owner) && owner.kind === "sharedAsset") {
+            dropped.add(id);
+            continue;
+        }
+        blueprints[id] = blueprint;
+    }
+    if (dropped.size === 0) {
+        return;
+    }
+    doc.blueprints = blueprints;
+    if (isRecord(doc.ownerRecords)) {
+        doc.ownerRecords = Object.fromEntries(
+            Object.entries(doc.ownerRecords)
+                .filter(([, record]) => {
+                    // The pre-v14 shape, which the current types no longer describe. This pass runs
+                    // before the one that collapses these records to a single id.
+                    const listed = (record as unknown as { privateBlueprintIds?: unknown }).privateBlueprintIds;
+                    return !(Array.isArray(listed) && listed.some(id => typeof id === "string" && dropped.has(id)));
+                }),
+        );
+    }
+}
+
+/**
+ * Rewrite the keys of `ownerRecords` into the escaped spelling, keeping every record's contents.
+ *
+ * **The records move; the blueprints do not.** A blueprint id is a hash of its owner key
+ * (`derivedBlueprintId`), and the `ensure*` helpers mint a new blueprint whenever a slot's key finds
+ * no record - so changing how keys are spelled without moving the records with them would present
+ * every slot in every project as empty and orphan every private blueprint an author has written.
+ * Ids are therefore carried across untouched: they stay the hashes of the old keys, which is
+ * harmless, because nothing derives a key back from an id. The factory skeleton settles that
+ * independently - none of its 220 blueprint ids equals its own key's hash, they are uuids from
+ * before ids were derived at all, and they have always been read by lookup rather than recomputed.
+ *
+ * A key that cannot be read is left exactly as it is. Dropping it would delete an author's blueprint
+ * over a spelling this code did not recognise; leaving it means one slot stays on the old key and is
+ * found again the moment something can read it.
+ */
+function rewriteOwnerKeys(records: BlueprintDocument["ownerRecords"]): BlueprintDocument["ownerRecords"] {
+    if (!isRecord(records)) {
+        return records;
+    }
+    const rewritten: BlueprintDocument["ownerRecords"] = {};
+    for (const [key, record] of Object.entries(records)) {
+        const owner = decodeLegacyBlueprintOwnerKey(key);
+        const next = owner ? encodeBlueprintOwnerKey(owner) : key;
+        // A collision would mean two slots claiming one record, and the second write would silently
+        // discard the first author's blueprint. Keeping the loser under its original key leaves both
+        // readable, which is the outcome that loses nothing.
+        rewritten[next in rewritten ? key : next] = record;
+    }
+    return rewritten;
 }

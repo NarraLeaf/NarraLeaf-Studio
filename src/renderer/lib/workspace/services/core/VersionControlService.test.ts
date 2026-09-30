@@ -29,6 +29,7 @@ const vcs = vi.hoisted(() => ({
     restoreRevision: vi.fn(),
     sync: vi.fn(),
     getMergeState: vi.fn(),
+    getServerSession: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -728,6 +729,52 @@ describe("VersionControlService revision announcements", () => {
         // And the snapshot is dropped rather than refreshed: null is "nobody has looked", which
         // is the honest answer until someone asks (docs/version-control.md §4.17).
         expect(service.getStatus()).toBeNull();
+    });
+});
+
+/**
+ * The sign-in question is answered in a window of Studio's own, in the middle of a send - so the
+ * surface that pressed Send learns the answer by reading it back, and the other surfaces on the
+ * window only learn it if the service says so.
+ */
+describe("VersionControlService sign-in announcements", () => {
+    const ACCOUNT = {
+        remoteOrigin: "lore://team.example.lan:41337",
+        authUrl: "https://team.example.lan:41402",
+        account: { userId: "u-ada", displayName: "Ada", username: "ada", email: "", identity: "Ada", expiresAt: 0 },
+        signedInAt: 0,
+    };
+
+    it("announces once when a read finds the project now uses a sign-in it did not", async () => {
+        const service = await createService();
+        let announced = 0;
+        service.onSessionChanged(() => { announced += 1; });
+
+        vcs.getServerSession.mockImplementation(() => ok({ session: null, available: ACCOUNT, declined: false }));
+        await service.getServerSessionState();
+        // The first read of a window only records what it found: nothing has changed yet.
+        expect(announced).toBe(0);
+
+        vcs.getServerSession.mockImplementation(() => ok({ session: ACCOUNT, available: null, declined: false }));
+        await service.getServerSessionState();
+        expect(announced).toBe(1);
+
+        // The surfaces that hear it read again and find the same answer, which must not announce
+        // again or they would read for ever.
+        await service.getServerSessionState();
+        expect(announced).toBe(1);
+    });
+
+    it("announces a no as a change too", async () => {
+        const service = await createService();
+        let announced = 0;
+        service.onSessionChanged(() => { announced += 1; });
+
+        vcs.getServerSession.mockImplementation(() => ok({ session: null, available: ACCOUNT, declined: false }));
+        await service.getServerSessionState();
+        vcs.getServerSession.mockImplementation(() => ok({ session: null, available: ACCOUNT, declined: true }));
+        await service.getServerSessionState();
+        expect(announced).toBe(1);
     });
 });
 

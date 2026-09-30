@@ -52,17 +52,19 @@ export const test = {
         rerun: "重新运行",
         severityFilter: "级别",
         filterAll: "全部",
-        findings: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        findingCounts: "{errors}，{warnings}，{infos}",
         durationSeconds: "{seconds} 秒",
         durationMinutes: "{minutes} 分 {seconds} 秒",
     },
     reason: {
+        distrusted: "在设置中信任该项目后才可用",
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
         parameterEmpty: "本项目中「{parameter}」没有可选值",
     },
     console: {
         channel: "测试",
+        channelDescription: "测试运行及其判定",
         started: "{title} 开始",
         finished: "{title} {status}，用时 {duration}",
         finding: "{severity} {message}",
@@ -73,6 +75,20 @@ export const test = {
         skipped: "{title} 已跳过",
         cancelled: "{title} 已取消",
         errored: "{title} 未能运行",
+    },
+    // 两项故事检查读不出起始位置时，每个「开始游戏」节点一条说明。{origin} 是节点卡片上的名称、
+    // 故事行、列表或蓝图名；{target} 取下面两个词之一。
+    entryPoint: {
+        target: {
+            story: "故事",
+            scene: "场景",
+        },
+        assembled: "「{blueprint}」中「开始游戏」的{target}在运行时拼出（来自「{origin}」）",
+        unreadNode: "「{blueprint}」中「开始游戏」的{target}取自「{origin}」，该测试不读取其数据",
+        unreadPluginData: "「{blueprint}」中「开始游戏」的{target}取自「{origin}」，无法读取本项目中 {plugin} 的数据",
+        engineRows: "「{blueprint}」中「开始游戏」的{target}取自「{list}」的行，这些行由故事在播放时填入",
+        undeclaredVariable: "「{blueprint}」中「开始游戏」的{target}取自项目未声明的变量",
+        unreadable: "「{blueprint}」中「开始游戏」的{target}取自该测试无法追踪的值",
     },
     builtin: {
         projectDiagnostics: {
@@ -124,7 +140,7 @@ export const test = {
             description: "在条件求值后，各场景、选项与结局是否可以到达",
             skipped: {
                 noEntryPoint: "没有故事标明起始位置",
-                undecidableEntry: "Start Story 节点在运行时才决定场景，无法读出起始位置",
+                undecidableEntry: "无法从「{blueprint}」中的「开始游戏」读出起始位置",
                 storiesUnread: "有故事无法读取",
             },
             finding: {
@@ -146,7 +162,7 @@ export const test = {
             skipped: {
                 noEndings: "有入口的故事均未写入 /ending",
                 noEntryPoint: "没有故事标明起始位置",
-                undecidableEntry: "Start Story 节点在运行时才决定场景，无法读出起始位置",
+                undecidableEntry: "无法从「{blueprint}」中的「开始游戏」读出起始位置",
                 storiesUnread: "有故事无法读取",
             },
             finding: {

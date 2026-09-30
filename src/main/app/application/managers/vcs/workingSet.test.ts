@@ -21,7 +21,7 @@ describe("working set walk", () => {
             "editor/story/stories/abc/storydoc.json",
             "resources/icons/derived/icon.png",
             "assets/content/dist/panel.png",
-            ".nlstudio/plugins/plugin.js",
+            ".nlstudio/services/panel_state.json",
             "editor/cache/thumbnail/thumb.png",
             "editor/assets/remote/blob.bin",
             "dist/out.js",

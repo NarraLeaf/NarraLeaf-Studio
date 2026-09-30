@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isContributedWidgetEventHeadType } from "@shared/types/ui-editor/contributedWidgets";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import {
     resolveGlobalLifecycleEventHeadTypes,
@@ -108,6 +109,17 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.
 /** Entry for application window fullscreen transitions (entered or left fullscreen). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
 /**
+ * Entry for the window gaining or losing focus - the player alt-tabbed away, or came back.
+ *
+ * One event with a boolean rather than a pair of heads, because every use of it is a pair: pause
+ * here, resume there. Two heads would be two graphs to keep in step, and the shape that goes wrong
+ * is one of them being wired and the other forgotten.
+ *
+ * Deliberately not the widget `Focus`/`Blur` heads next door: those are about which element on the
+ * page has the keyboard, and they fire while the window is perfectly focused.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED = "blueprint.event.head.windowFocusChanged" as const;
+/**
  * Entry for an application window close request (the user asked to close the window: native close
  * box, OS shortcut, etc.). The close is held open while the dispatch runs and then proceeds; the
  * dispatch shares one event control, and running `Keep Window Open`
@@ -180,6 +192,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
 ]);
@@ -496,8 +509,25 @@ export function listBlueprintEventDispatchHeadTypes(): readonly string[] {
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
 
-/** True if this node type can start an event-graph execution chain for UI dispatch. */
+/**
+ * True if this node type can start an event-graph execution chain for UI dispatch.
+ *
+ * The built-in heads, and the heads a loaded plugin's widget names for its own events - a node its
+ * plugin registered, which is how a plugin widget's event gets a head with pins of its own. Those are
+ * dispatch heads for the same reason the built-in ones are: the dispatcher starts graphs on them and
+ * their outputs are the event's payload.
+ */
 export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
+    return EVENT_DISPATCH_HEAD_TYPES.has(nodeType) || isContributedWidgetEventHeadType(nodeType);
+}
+
+/**
+ * The built-in half of {@link isBlueprintEventDispatchHeadType} alone.
+ *
+ * For code that answers *for the host's own node types*: a plugin names its heads, and a name it
+ * picked must not change how a node Studio defines resolves its outputs.
+ */
+export function isBuiltinBlueprintEventDispatchHeadType(nodeType: string): boolean {
     return EVENT_DISPATCH_HEAD_TYPES.has(nodeType);
 }
 
@@ -1048,6 +1078,19 @@ export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO = "blueprint.app.movePointerTo"
 export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT = "blueprint.app.movePointerToElement" as const;
 export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
 
+/**
+ * A picture of the frame the player is looking at, and the folder the pictures land in.
+ *
+ * Desktop only, and the pair is deliberate: "where did it go" is the question a screenshot button
+ * raises the moment it works, and a game that can take one but not show the player where it went
+ * has answered half of it.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT = "blueprint.app.saveScreenshot" as const;
+export const BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER = "blueprint.app.openScreenshotsFolder" as const;
+
+/** Whether the game's window is the one the player is working in right now. */
+export const BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED = "blueprint.app.isWindowFocused" as const;
+
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
 export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
 
@@ -1064,6 +1107,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.g
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE = "blueprint.game.save.getLine" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME = "blueprint.game.save.getPlaytime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY = "blueprint.game.save.getStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT = "blueprint.game.save.slot" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN = "blueprint.game.save.currentRun" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME = "blueprint.game.getPlaytime" as const;
@@ -1231,6 +1275,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.to
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN = "blueprint.game.isDialogShown" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_TEXT_REVEAL_DURATION = "blueprint.game.setTextRevealDuration" as const;
 
 /**
  * Sound transport for authored UI. Not story audio - a story line's `/bgm` is a
@@ -1251,6 +1296,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED = "blueprint.game.setSkip
 export const BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED = "blueprint.game.getGameSpeed" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED = "blueprint.game.setGameSpeed" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED = "blueprint.game.getCps" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION = "blueprint.game.getTextRevealDuration" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME = "blueprint.game.getVoiceVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME = "blueprint.game.setVoiceVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION = "blueprint.game.getVoiceFadeDuration" as const;
@@ -1273,6 +1319,15 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSki
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSkipReadText" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
+
+/**
+ * "Go quiet while the player is in another window." Another of Studio's own preferences, and the
+ * behaviour behind it is the host's output gate rather than anything the engine does - see
+ * `focusMute`. The pair is here so that a settings screen can draw the row the same way it draws
+ * every other one.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR = "blueprint.game.getMuteOnWindowBlur" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_MUTE_ON_WINDOW_BLUR = "blueprint.game.setMuteOnWindowBlur" as const;
 
 /**
  * "Skipping is running." The held skip key, as a value a graph can read and write.

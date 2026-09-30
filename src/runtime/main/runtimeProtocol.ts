@@ -1,5 +1,10 @@
 import path from "path";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import {
+    gameRuntimeBundleRuntimeEntry,
+    isSealedShellFile,
+    RUNTIME_HOST_FILE_PREFIXES,
+} from "@shared/utils/gameRuntimeBundle";
 
 export function resolveInsideRoot(root: string, relativePath: string): string {
     const normalizedRoot = path.resolve(root);
@@ -72,4 +77,35 @@ export async function resolveModelBundleKey(
 export function resolveRuntimeStaticPath(appDir: string, requestPath: string): string {
     const cleanPath = requestPath === "/" || requestPath === "" ? "index.html" : requestPath;
     return resolveInsideRoot(appDir, cleanPath);
+}
+
+/**
+ * The entry name a `<scheme>://runtime/<path>` request may be answered with, or null when the path
+ * names nothing the page is allowed to fetch.
+ *
+ * What the page may fetch is the shell's own files and the code the pack carries under
+ * {@link RUNTIME_HOST_FILE_PREFIXES}; the app directory holds a good deal more than that - the
+ * store, the file beside it, the codec, the loaders Electron opens itself - and none of it is a
+ * page resource. `resolveInsideRoot` keeps a loose read inside the directory; this keeps it to the
+ * files inside the directory that are the page's to ask for.
+ *
+ * Normalised first and judged after, so a prefix cannot be borrowed to climb out of it:
+ * `plugins/../assets.bin` is judged as `assets.bin`. A path that climbs above the root names
+ * nothing either.
+ */
+export function resolveRuntimeHostFile(pathname: string): string | null {
+    const raw = gameRuntimeBundleRuntimeEntry(pathname);
+    if (!raw || raw.includes("\0")) {
+        return null;
+    }
+    const name = path.posix.normalize(raw);
+    if (name === ".." || name.startsWith("../") || name.startsWith("/")) {
+        return null;
+    }
+    if (isSealedShellFile(name)) {
+        return name;
+    }
+    return RUNTIME_HOST_FILE_PREFIXES.some(prefix => name.startsWith(prefix) && name.length > prefix.length)
+        ? name
+        : null;
 }

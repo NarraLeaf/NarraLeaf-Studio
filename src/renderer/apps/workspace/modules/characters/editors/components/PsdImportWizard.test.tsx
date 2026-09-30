@@ -34,7 +34,7 @@ const importFromPaths = vi.fn(async () => ({
 // without this file having an opinion.
 vi.mock("@/lib/i18n", async importOriginal => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    useTranslation: () => ({ t: (key: string) => key, locale: "en" }),
+    useTranslation: () => ({ t: (key: string) => key, tn: (key: string) => key, locale: "en" }),
 }));
 
 // The real hook reads the workspace freeze service through a provider this test has no business

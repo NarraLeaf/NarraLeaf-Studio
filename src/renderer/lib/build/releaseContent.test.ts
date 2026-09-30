@@ -84,9 +84,7 @@ function graphBlueprint(nodes: Record<string, unknown>, edges: unknown[] = []): 
         id: "bp-1",
         name: "Title screen",
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: { kind: "graph", graphs: { events: { "ev-1": { id: "ev-1", graph: { nodes, edges } } }, functions: {} } },
+        graphs: { events: { "ev-1": { id: "ev-1", graph: { nodes, edges } } }, functions: {} },
     } as unknown as Blueprint;
 }
 
@@ -284,14 +282,12 @@ describe("release content blockers", () => {
         }]);
     });
 
-    it("stops a build carrying a TypeScript blueprint", () => {
+    it("stops a build carrying a script layer", () => {
         const script = {
             id: "bp-2",
             name: "Launcher",
             owner: { kind: "globalMain" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+            graphs: { events: { s: { id: "s", script: { scriptRef: "scripts/launcher.ts" } } }, functions: {} },
         } as unknown as Blueprint;
         const answer = solveReleaseContent(input({ blueprints: [script] }));
 

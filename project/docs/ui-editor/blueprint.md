@@ -149,7 +149,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 
 A blueprint is not just a node list. The main concepts are:
 
-- **Owner**: where the blueprint belongs. Supported owner kinds include `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`, and `sharedAsset`.
+- **Owner**: where the blueprint belongs. Supported owner kinds are `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`, and `storyAction`.
 - **Program kind**: currently graph-based visual programs and script modules are represented separately.
 - **Graph kind**: each graph declares semantic rules through `event`, `function`, or `macro`.
 - **Members**: blueprint-owned variables, fields, and function signatures.

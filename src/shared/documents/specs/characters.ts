@@ -46,6 +46,7 @@ export const charactersSpec = defineDocumentSpec<CharacterStoreDocument>({
             return context.corrupt(
                 `written by a newer version of Studio (store version ${String(record.version)}; `
                 + `this build reads ${CHARACTER_STORE_VERSION})`,
+                {defect: "newerVersion"},
             );
         }
 

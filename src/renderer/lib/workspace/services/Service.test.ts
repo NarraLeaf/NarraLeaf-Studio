@@ -40,6 +40,7 @@ function createContext(services: Service[]): WorkspaceContext {
                 throw new Error("Unexpected service lookup in test");
             },
         } as any,
+        commandLineRun: false,
     };
 }
 

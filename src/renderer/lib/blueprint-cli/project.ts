@@ -21,6 +21,10 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
+import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import { extractStoryVariableWrites, type StoryVariableWrite } from "@services/references/assetNameGaps";
+import { listStories, readStoryDocument, readUiDocument } from "@/lib/story-cli/project";
 
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
@@ -53,9 +57,19 @@ export function readUiGraphs(projectDir: string): UiGraphsFile {
     } catch (error) {
         throw new ProjectIoError(`Cannot read ${filePath}: ${(error as Error).message}`);
     }
-    const document = raw.blueprintDocument as BlueprintDocument | undefined;
-    if (!document || typeof document !== "object") {
+    const stored = raw.blueprintDocument as BlueprintDocument | undefined;
+    if (!stored || typeof stored !== "object") {
         throw new ProjectIoError(`${filePath} has no "blueprintDocument".`);
+    }
+    // Migrated on read, the same way the editor migrates it on read - so the tools and the editor
+    // are looking at one shape, and an older project is something this can work on rather than
+    // something it refuses. A document below the floor still throws, from the migration itself,
+    // which is the one case nothing here can convert.
+    let document: BlueprintDocument;
+    try {
+        document = migrateBlueprintDocumentToLatest(stored);
+    } catch (error) {
+        throw new ProjectIoError(`${filePath}: ${(error as Error).message}`);
     }
     return {
         filePath,
@@ -69,14 +83,25 @@ export function readUiGraphs(projectDir: string): UiGraphsFile {
     };
 }
 
+/**
+ * The document is at the version this build writes, or nothing may be written into it.
+ *
+ * A backstop rather than a gate the author can trip: `readUiGraphs` migrates on the way in, so the
+ * only way to reach this is a conversion that did not raise the version, which is a bug here rather
+ * than something the author can act on.
+ *
+ * It used to be the gate, and it told the author to open the project in Studio once so it migrates.
+ * That does not work: Studio migrates on read and writes the file only when something next saves
+ * it, so opening the project and running the command again produced the same refusal. Doing the
+ * conversion here is both shorter and the same code the editor runs.
+ */
 export function assertWritableSchema(file: UiGraphsFile): void {
     if (file.blueprintDocument.schemaVersion === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return;
     }
     throw new ProjectIoError(
-        `${file.filePath} carries blueprint schema v${file.blueprintDocument.schemaVersion}, and this `
-            + `Studio writes v${BLUEPRINT_DOCUMENT_SCHEMA_VERSION}. Open the project in Studio once so it `
-            + "migrates, then run this again.",
+        `${file.filePath} is at blueprint schema v${file.blueprintDocument.schemaVersion} after `
+            + `migration, and this build writes v${BLUEPRINT_DOCUMENT_SCHEMA_VERSION}.`,
     );
 }
 
@@ -102,15 +127,7 @@ export function applyBlueprints(
         document.blueprints[blueprint.id] = blueprint;
     }
     for (const [ownerKey, record] of Object.entries(ownerRecords)) {
-        const previous = document.ownerRecords[ownerKey];
-        const others = (previous?.privateBlueprintIds ?? []).filter(
-            id => id !== record.activeBlueprintId && document.blueprints[id],
-        );
-        document.ownerRecords[ownerKey] = {
-            ...previous,
-            activeBlueprintId: record.activeBlueprintId,
-            privateBlueprintIds: [record.activeBlueprintId, ...others],
-        };
+        document.ownerRecords[ownerKey] = { blueprintId: record.blueprintId };
     }
     return result;
 }
@@ -466,4 +483,27 @@ export function scratchFileNameFor(name: string): string {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
     return `${slug || "blueprint"}.bp`;
+}
+
+/**
+ * What the asset-name judgement needs from the project besides its graphs: the interface, and every
+ * variable a story row writes.
+ *
+ * Read the way the story tool reads them, so the two tools look at one shape of each. A story that
+ * will not read is left out rather than stopping the check - `story check` is the tool that says so,
+ * and a blueprint check that refused to run over it would say nothing about the graphs instead.
+ */
+export function readAssetNameContext(projectDir: string): {
+    uiDocument: UIDocument | null;
+    storyWrites: StoryVariableWrite[];
+} {
+    const storyWrites: StoryVariableWrite[] = [];
+    for (const story of listStories(projectDir)) {
+        try {
+            storyWrites.push(...extractStoryVariableWrites(readStoryDocument(projectDir, story.id).document, story.name));
+        } catch {
+            // See above: reported by the story tool, not here.
+        }
+    }
+    return { uiDocument: readUiDocument(projectDir), storyWrites };
 }

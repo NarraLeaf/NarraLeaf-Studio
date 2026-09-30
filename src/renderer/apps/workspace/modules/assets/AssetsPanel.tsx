@@ -16,10 +16,12 @@ import { ModelImportWizard } from "./components/ModelImportWizard";
 import { MediaImportDialog } from "./components/MediaImportDialog";
 import { MediaConvertAssetDialog } from "./components/MediaConvertAssetDialog";
 import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
+import { useUnreadableAssetCategories } from "./state/useUnreadableAssetCategories";
 
 import { useAssetData } from "./state/useAssetData";
 import { useAssetSets, type ResolvedAssetSet } from "./state/useAssetSets";
 import { useAssetSetNaming } from "./state/useAssetSetNaming";
+import { readAssetTag } from "@shared/types/assetSetLabels";
 import { useMultiSelection } from "./state/useMultiSelection";
 import { useAssetSearch } from "./state/useAssetSearch";
 import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
@@ -50,9 +52,11 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
+import { PROJECT_SCRIPTS_SECTION_ID, ProjectScriptsSection } from "./views/ProjectScriptsSection";
 
 export type AssetViewMode = "list" | "icons" | "overview";
 
@@ -107,7 +111,16 @@ interface AssetsPanelState {
 }
 
 const DEFAULT_ASSET_CATEGORY_OPEN_ITEMS = [AssetCategory.Image];
-const ASSET_CATEGORY_IDS = new Set<string>(ASSET_CATEGORY_ORDER);
+/**
+ * Which accordion ids may be remembered as open.
+ *
+ * The asset categories, plus the scripts section - which is not a category and never will be. A
+ * script is not in the asset library: it has no id, no metadata shard and no place in an asset set,
+ * because the disk owns `scripts/` and Studio only reads it. What it shares with a category is the
+ * place an author looks for the project's files, which is why it sits in this panel and nowhere in
+ * `AssetCategory`.
+ */
+const ASSET_CATEGORY_IDS = new Set<string>([...ASSET_CATEGORY_ORDER, PROJECT_SCRIPTS_SECTION_ID]);
 
 function filterKnownAssetCategoryIds(ids: string[] | undefined): string[] {
     if (!Array.isArray(ids)) {
@@ -167,6 +180,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * no verbs of its own, so their controls keep {@link freeze} and grey under any freeze at all.
      */
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
+    // Read here rather than in the two views: this is the component that has a workspace,
+    // and the views it renders are also mounted without one. Only the download is refused for
+    // a distrusted project - importing from disk starts nothing on the project's behalf.
+    const distrusted = useProjectDistrusted();
+    const distrustedReason = useProjectDistrustedReason();
+    const remoteImportBlockedReason = distrusted ? distrustedReason : undefined;
     /**
      * The asset sets' own guard.
      *
@@ -316,7 +335,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => cancelAnimationFrame(frame);
     }, [stateReady, panelId]);
 
-    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
+    const { assets, groups, loading, hasLoaded, loadFailed, loadAssets } = useAssetData({ context, isInitialized });
 
     const { focusedItemId, setFocusedItemId, handleAssetClick, handleAssetOpen, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
@@ -345,8 +364,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         usageUnknownAssetIds,
     } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
 
+    // What the library calls a set's values. Read before the filters: the Tags group offers the tags a
+    // set writes on its files in these words, and not the set's own bookkeeping at all.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
+
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
-        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds });
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds, readTag });
 
     /**
      * A search or a filter is narrowing the library. The views read this to stop hiding hits: the
@@ -423,7 +447,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         memberAssetIds,
         findSet,
     } = useAssetSets({ context, isInitialized, assets });
-    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
         showMenu: showSetMenu,
@@ -960,6 +983,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const mediaSupport = useMediaAssetSupport();
 
+    /**
+     * The sections whose metadata file could not be read. Both views draw a line in place of the
+     * rows for one of these, because otherwise it is indistinguishable from a category with
+     * nothing in it - and it is the opposite of that.
+     */
+    const unreadableCategories = useUnreadableAssetCategories();
+
     const canConvertMedia = useMemo(() => {
         const item = contextMenuTarget?.item;
         if (!item || contextMenuTarget?.isGroup) {
@@ -1099,8 +1129,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return <div className="p-4 flex items-center gap-2 text-fg-muted"><RefreshCw className="w-4 h-4 animate-spin" /> <span>{t("assets.loading")}</span></div>;
     }
 
-    if (error) {
-        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
+    if (loadFailed) {
+        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <p>{t("assets.loadError")}</p></div>;
     }
 
     // While narrowing, every category holding a survivor opens: a hit inside a category the reader
@@ -1123,6 +1153,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
         mediaSupport,
+        unreadableCategories,
         handleConvertMedia,
         assetClaims,
         assetTransfers,
@@ -1273,6 +1304,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleRootDrop={handleRootDrop}
                             handleImport={handleImport}
                             handleImportRemote={handleImportRemote}
+                            remoteImportBlockedReason={remoteImportBlockedReason}
                             handleCreateGroup={handleCreateGroup}
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
@@ -1280,6 +1312,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
                             scrollElement={listScrollElement}
+                            trailingSection={
+                                <ProjectScriptsSection open={effectiveOpenItems.includes(PROJECT_SCRIPTS_SECTION_ID)} />
+                            }
                         />
                     ) : (
                         <AssetsIconView
@@ -1289,6 +1324,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             setDropTargetId={setDropTargetId}
                             handleImport={handleImport}
                             handleImportRemote={handleImportRemote}
+                            remoteImportBlockedReason={remoteImportBlockedReason}
                             handleCreateGroup={handleCreateGroup}
                             iconSize={iconSize}
                             onIconSizeChange={setIconSize}

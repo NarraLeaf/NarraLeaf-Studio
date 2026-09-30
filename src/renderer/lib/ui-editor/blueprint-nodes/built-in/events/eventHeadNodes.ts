@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -59,7 +60,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
 import { inputActionParam } from "../inputActionNodes";
 
 const eventHeadExecute: BlueprintNodeDef["execute"] = () => ({ nextPort: "then" });
@@ -73,6 +74,13 @@ const PIN_BUTTON: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "integer",
     label: "Button",
+};
+const PIN_IS_WINDOW_FOCUSED: BlueprintNodePinDef = {
+    id: "isFocused",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Is Focused",
 };
 const PIN_KEY: BlueprintNodePinDef = {
     id: "key",
@@ -262,9 +270,11 @@ const GAME_PREFERENCE_HEAD_OPTIONS: { value: string; label: string }[] = [
     { value: "skip", label: "Skip" },
     { value: "skipping", label: "Skipping" },
     { value: "skipReadText", label: "Skip Read Text" },
+    { value: "muteOnWindowBlur", label: "Mute When Unfocused" },
     { value: "showDialog", label: "Show Dialog" },
     { value: "gameSpeed", label: "Game Speed" },
     { value: "cps", label: "Sentence Speed (CPS)" },
+    { value: "textRevealDuration", label: "Text Fade In" },
     { value: "voiceVolume", label: "Voice Volume" },
     { value: "voiceFadeDuration", label: "Voice Fade" },
     { value: "voiceEndMode", label: "Voice End Mode" },
@@ -289,9 +299,12 @@ function widgetEventHead(input: {
     pins?: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     scope?: BlueprintNodeDef["scope"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -311,9 +324,12 @@ function broadcastEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -333,9 +349,12 @@ function keyboardEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -357,9 +376,12 @@ function preferenceEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -472,12 +494,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     keyboardEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+        assetNames: "assembled",
         displayName: "Any Key Down",
         keywords: ["any", "key", "keyboard", "down", "press", "global", "input"],
         pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
     }),
     keyboardEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+        assetNames: "assembled",
         displayName: "Any Key Up",
         keywords: ["any", "key", "keyboard", "up", "release", "global", "input"],
         pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
@@ -700,12 +724,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+        assetNames: "assembled",
         displayName: "Value Changed",
         keywords: ["text", "input", "value", "change", "type"],
         pins: [THEN_PIN, PIN_TEXT_VALUE, PIN_PREVIOUS_TEXT_VALUE],
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+        assetNames: "assembled",
         displayName: "Submit",
         keywords: ["text", "input", "submit", "enter", "confirm"],
         pins: [THEN_PIN, PIN_TEXT_VALUE],
@@ -744,6 +770,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     preferenceEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+        assetNames: "assembled",
         displayName: "On Preference Changed",
         keywords: ["game", "preference", "setting", "changed", "bgm", "volume", "audio", "nlr"],
         pins: [THEN_PIN, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
@@ -758,6 +785,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     preferenceEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+        assetNames: "assembled",
         displayName: "On Any Preference Changed",
         keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
@@ -774,6 +802,34 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         // window), so the palette offers it wherever the widget logic API lists the slot.
         scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
         pins: [THEN_PIN, PIN_IS_FULLSCREEN],
+        execute: eventHeadExecute,
+    },
+    {
+        /**
+         * The player alt-tabbed away, or came back.
+         *
+         * One head with a boolean rather than an `On Blur` and an `On Focus`, because every use of
+         * it is a pair - stop this here, start it again there - and two heads is two graphs that
+         * can fall out of step. It is also not the widget `Focus`/`Blur` heads: those are about
+         * which control on the page has the keyboard and fire while the window is perfectly in
+         * front.
+         *
+         * One source per shell, so the three behave alike: the desktop shells hear it from their
+         * window, which means it also fires for a window sent behind by something the game never
+         * saw, and the web export hears the page's own visibility and focus.
+         */
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
+        displayName: "On Window Focus Changed",
+        category: "Events",
+        keywords: ["window", "focus", "blur", "unfocus", "background", "foreground", "alt", "tab", "app"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // Ambient window event, offered where `On Fullscreen Changed` is offered and for its
+        // reason: a widget listens too, because a control that pauses its own animation while the
+        // player is elsewhere is a widget's business rather than the page's.
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, PIN_IS_WINDOW_FOCUSED],
         execute: eventHeadExecute,
     },
     {
@@ -796,6 +852,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+        assetNames: "assembled",
         displayName: "On Action",
         category: "Events",
         keywords: ["input", "action", "advance", "gesture", "click", "key", "bind", "binding"],

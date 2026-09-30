@@ -1,4 +1,4 @@
-import type { PsdBakeJob, PsdBakedLayer, PsdDocument } from "@shared/types/psdImport";
+import type { PsdBakeJob, PsdBakedLayer, PsdDocument, PsdFailureCode } from "@shared/types/psdImport";
 
 /**
  * Message protocol between the PSD import manager (main process) and the PSD worker (utility
@@ -15,7 +15,8 @@ export type PsdWorkerBakeMessage = { type: "bake"; request: PsdBakeJob };
 
 export type PsdWorkerReadDoneMessage = { type: "read-done"; document: PsdDocument };
 export type PsdWorkerBakeDoneMessage = { type: "bake-done"; layers: PsdBakedLayer[] };
-export type PsdWorkerErrorMessage = { type: "error"; message: string };
+/** `code` when the failure is one the wizard can name - see `PsdFailureCode`. */
+export type PsdWorkerErrorMessage = { type: "error"; message: string; code?: PsdFailureCode };
 
 export type PsdWorkerInboundMessage = PsdWorkerReadMessage | PsdWorkerBakeMessage;
 

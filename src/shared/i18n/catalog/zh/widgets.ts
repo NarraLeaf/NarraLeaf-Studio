@@ -6,7 +6,7 @@ export const widgets = {
         interaction: "交互",
     },
     blueprint: {
-        controlLabel: "控制蓝图",
+        controlLabel: "控件逻辑",
     },
     appearance: {
         title: "外观",
@@ -18,6 +18,7 @@ export const widgets = {
     horizontal: "水平",
     vertical: "垂直",
     gap: "间距",
+    wrap: "换行",
     perSidePx: "各边（px）",
     sides: {
         top: "上",
@@ -185,6 +186,14 @@ export const widgets = {
         title: "文本",
         localizeText: "本地化文本",
     },
+    /**
+     * 标签文字上的标记，作用于上方文本框里选中的字。按钮本身沿用故事那边的键：
+     * 标签上的标记与对白行上的是同一件事，用两套说法会让它们看起来像两个功能。
+     */
+    textMarks: {
+        title: "标记",
+        selectHint: "先选择要标记的文字",
+    },
     frame: {
         title: "页面",
         page: "页面",
@@ -197,6 +206,7 @@ export const widgets = {
         missingPage: "缺少页面",
         targetNotPage: "目标不是页面",
         pageLoopBlocked: "已阻止页面循环",
+        leadsBackHere: "会绕回此处",
         previewUnavailable: "页面预览不可用",
         pageRootMissing: "缺少页面根元素",
     },
@@ -298,6 +308,7 @@ export const widgets = {
         describeNoModel: "选择模型包后才能列出名称",
         describeNoBackend: "选择运行时后才能列出模型的名称",
         describeBackendMissing: "本机未安装该运行时，名称需要手动输入",
+        describeDistrusted: "该项目未受信任，其运行时不会加载。可在状态栏信任该项目。",
         describeNotSupported: "该运行时不描述模型，名称需要手动输入",
         describeFailed: "读取模型失败，名称需要手动输入",
         redescribe: "重新读取",
@@ -308,6 +319,8 @@ export const widgets = {
         placeholderUnconfigured: "选择模型包与运行时",
         placeholderNoModel: "此处无法读取该模型包",
         placeholderBackendMissing: "本项目没有名为“{backend}”的运行时",
+        // 不是文件缺失，也不是故障：运行时就在那里，是 Studio 不去加载它。
+        placeholderDistrusted: "未绘制：该项目未受信任，其运行时不会加载",
         placeholderLoading: "正在加载模型…",
         placeholderError: "运行时出错：{error}",
         placeholderBudget: "未绘制：本窗口已经绘制了 {drawn} 个模型",

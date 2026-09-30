@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, ListFilter, Terminal, Trash2 } from "lucide-react";
-import type { TranslationKey } from "@shared/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
@@ -19,6 +18,7 @@ import {
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
 import { PanelComponentProps } from "../types";
+import { consoleChannelDescription, consoleChannelLabel, consoleSourceLabel } from "./consoleChannelText";
 
 type ConsolePanelState = {
     activeChannel?: ConsoleChannelId;
@@ -36,30 +36,6 @@ const LEVEL_TEXT_CLASS: Record<ConsoleLogLevel, string> = {
     info: "text-primary/75",
     verbose: "text-fg-subtle/80",
 };
-
-/** Translation keys for known console channels; unknown feature channels fall back to their own label. */
-const BUILTIN_CHANNEL_LABEL_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
-    blueprint: "console.channels.blueprint",
-    build: "console.channels.build",
-    story: "console.channels.story",
-    storage: "console.channels.storage",
-};
-const BUILTIN_CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>> = {
-    blueprint: "console.channels.blueprintDescription",
-    build: "console.channels.buildDescription",
-    story: "console.channels.storyDescription",
-    storage: "console.channels.storageDescription",
-};
-
-function channelLabel(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string {
-    const key = BUILTIN_CHANNEL_LABEL_KEYS[channel.id];
-    return key ? t(key) : channel.label;
-}
-
-function channelDescription(t: (key: TranslationKey) => string, channel: ConsoleChannelDefinition): string | undefined {
-    const key = BUILTIN_CHANNEL_DESCRIPTION_KEYS[channel.id];
-    return key ? t(key) : channel.description;
-}
 
 function isConsoleLogLevel(value: unknown): value is ConsoleLogLevel {
     return LOG_LEVELS.includes(value as ConsoleLogLevel);
@@ -301,7 +277,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     // are already absent from the buffer, so they are naturally excluded.
     const handleExport = () => {
         const entries = channelEntries;
-        const label = activeChannelDef ? channelLabel(t, activeChannelDef) : t("console.outputFallback");
+        const label = activeChannelDef ? consoleChannelLabel(t, activeChannelDef) : t("console.outputFallback");
         if (entries.length === 0) {
             uiService?.showNotification(t("console.exportEmpty", { label }), "info");
             return;
@@ -339,7 +315,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 type="button"
                                 role="tab"
                                 aria-selected={active}
-                                data-tip={channelDescription(t, channel)} aria-label={channelDescription(t, channel)}
+                                data-tip={consoleChannelDescription(t, channel)} aria-label={consoleChannelDescription(t, channel)}
                                 className={`relative flex min-w-28 cursor-default items-center justify-center gap-2 px-4 text-xs transition-colors ${
                                     active
                                         ? "bg-surface text-fg"
@@ -352,7 +328,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                     setActiveChannel(channel.id);
                                 }}
                             >
-                                <span>{channelLabel(t, channel)}</span>
+                                <span>{consoleChannelLabel(t, channel)}</span>
                                 <span
                                     className={`rounded-md border px-1.5 py-0.5 text-2xs leading-none ${
                                         active
@@ -532,7 +508,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
                     className="select-text whitespace-pre-wrap break-words px-3 py-0.5 text-fg-muted hover:bg-fill-subtle"
                     style={{ gridColumn: 3, gridRow: index + 1 }}
                 >
-                    {entry.source ? <span className="text-fg-subtle">[{entry.source}] </span> : null}
+                    {entry.source ? <span className="text-fg-subtle">[{consoleSourceLabel(t, entry.source)}] </span> : null}
                     <span
                         className={`${entry.bold ? "font-semibold" : ""} ${entry.italic ? "italic" : ""}`}
                         style={entry.color ? { color: entry.color } : undefined}

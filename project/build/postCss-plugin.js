@@ -3,6 +3,7 @@ const postcss = require('postcss')
 const tailwindcss = require('tailwindcss')
 const autoprefixer = require('autoprefixer')
 const postcssImport = require('postcss-import')
+const { packageRootOf, resolvePackageDir, setInputAttribution } = require('./third-party-notices')
 
 /**
  * Tailwind's JIT keeps its per-stylesheet context in module state and re-uses it
@@ -44,6 +45,16 @@ function postcssPlugin() {
                     tailwindcss,
                     autoprefixer,
                 ]).process(source, { from: args.path }))
+                // What this stylesheet now carries of other packages' code, for the third-party
+                // notice: Tailwind's base layer is its own preflight stylesheet copied in (the
+                // utilities it generates from our class names are output, not its code), and every
+                // file postcss-import inlined arrives under this file's name.
+                setInputAttribution(args.path, [
+                    ...(/@tailwind\s+base\b/.test(source) ? [resolvePackageDir('tailwindcss')] : []),
+                    ...result.messages
+                        .filter(message => message.type === 'dependency' && message.plugin === 'postcss-import')
+                        .map(message => packageRootOf(message.file)),
+                ])
                 return {
                     contents: result.css,
                     loader: 'css',

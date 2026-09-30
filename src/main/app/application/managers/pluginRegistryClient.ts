@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import {
     DEFAULT_PLUGIN_REGISTRY_URL,
@@ -7,6 +7,7 @@ import {
     PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES,
 } from "@shared/constants/pluginRegistry";
 import { PLUGIN_ICON_MAX_BYTES } from "@shared/constants/pluginIcon";
+import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
 import type {
     PluginRegistryEntry,
     PluginRegistryIndex,
@@ -96,6 +97,7 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
     const targets = asStringArray(record.targets).filter(
         (target): target is "studio" | "runtime" => target === "studio" || target === "runtime",
     );
+    const locales = normalizeLocalizedTextPack(record.locales);
     return {
         id,
         name: asString(record.name) || id,
@@ -109,6 +111,7 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
         icon: asHttpsUrl(record.icon),
         homepage: asString(record.homepage) || undefined,
         studioVersion: asString(record.studioVersion) || undefined,
+        ...(Object.keys(locales).length > 0 ? { locales } : {}),
         permissions: Array.isArray(record.permissions) ? (record.permissions as PluginRegistryEntry["permissions"]) : [],
         release: {
             tag: asString(release.tag),

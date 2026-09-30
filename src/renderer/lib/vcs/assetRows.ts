@@ -54,17 +54,20 @@ export interface ChangeIndexUnit {
     readonly change?: DocumentChange;
     /** The file holding this asset's bytes, when the comparison carries one. */
     readonly member?: DocumentDiffEntry;
-    /** The name the author gave this asset. Absent means the row is named by its file. */
+    /**
+     * The name the author gave this asset. Absent on a record with no name, which is named for its
+     * type, and on an ordinary document, which is named from its path (`documentName.ts`).
+     */
     readonly name?: string;
-    /** What to call a file whose own name says nothing. See {@link ORPHAN_CONTENT_NAME_KEY}. */
-    readonly nameKey?: TranslationKey;
 }
 
 /**
- * What a content file with no asset record is called.
+ * The label a content file with no asset record would wear, if the fold ever claimed one.
  *
- * Its file name is the shard of an id, so there is nothing to draw from the path, and the honest
- * answer is what the state is rather than what the comparison did to look for it.
+ * It does not (see the unpaired branch of {@link joinAssetEntries}): proving a record is gone needs
+ * the whole shard, and an unpaired file is named from its path like any other file - which, for an
+ * asset's bytes, is the asset's own name read from its library. Kept so the tests can hold the fold
+ * to never making that claim.
  */
 export const ORPHAN_CONTENT_NAME_KEY = "documentDiff.assets.orphanContent" as TranslationKey;
 
@@ -175,8 +178,9 @@ export function joinAssetEntries(
                 continue;
             }
             /**
-             * Named as what it is - an asset's file, and the id it is filed under - and never
-             * claimed to be an orphan.
+             * Named from its path like any other file - which for an asset's bytes is the asset's
+             * own name, read from its library by `documentName.ts` - and never claimed to be an
+             * orphan.
              *
              * The pool this pairs against is built from records that CHANGED, so an asset whose
              * bytes were replaced while its name, tags and folder stayed put has no record here

@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, DragEvent, useMemo, useRef, useState, useEffe
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
-import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
+import { AlertCircle, FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { iconViewRowOrder } from "../state/assetRowOrder";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
@@ -24,6 +24,14 @@ interface AssetsIconViewProps {
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
     handleImport: (category: AssetCategory) => void;
     handleImportRemote: (category: AssetCategory) => void;
+    /**
+     * Why downloading is off, or absent when it is on.
+     *
+     * Passed in rather than read here: a distrusted project is the workspace's answer and
+     * these views are also rendered outside one. Importing from disk beside it stays
+     * available - only the download is started on the project's behalf.
+     */
+    remoteImportBlockedReason?: string;
     handleCreateGroup: (category: AssetCategory) => void;
     iconSize: number;
     onIconSizeChange: (nextSize: number) => void;
@@ -85,6 +93,7 @@ export function AssetsIconView({
     setDropTargetId,
     handleImport,
     handleImportRemote,
+    remoteImportBlockedReason,
     handleCreateGroup,
     iconSize,
     onIconSizeChange,
@@ -111,6 +120,7 @@ export function AssetsIconView({
         draggedAssetSet,
         publishRowOrder,
         assetSetReveal,
+        unreadableCategories,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -402,7 +412,10 @@ export function AssetsIconView({
                                                     handleImportRemote(category);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
-                                                {...freeze.writes(false, t("assets.importRemote"))}
+                                                {...freeze.writes(
+                                                    Boolean(remoteImportBlockedReason),
+                                                    remoteImportBlockedReason ?? t("assets.importRemote"),
+                                                )}
                                             >
                                                 <Link className="w-4 h-4" />
                                             </button>
@@ -421,6 +434,16 @@ export function AssetsIconView({
                                 </div>
                             </header>
 
+                            {/* A section whose file could not be read draws this instead of a grid. It
+                                is the one section with nothing in it that has something to say: the
+                                grid is empty because the file was not readable, not because there is
+                                nothing in it, and the file itself is untouched. */}
+                            {unreadableCategories.has(category) && (
+                                <div className="mt-2 flex items-start gap-1.5 text-xs text-danger">
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t("assets.unreadable.category")}</span>
+                                </div>
+                            )}
                             {/* An empty category prints nothing under its header. The header's own import
                                 buttons are the way in; a sentence saying there is nothing here is the
                                 thing this deliberately omits. */}
@@ -450,6 +473,8 @@ export function AssetsIconView({
 type IconTile =
     | { key: string; kind: "set"; entry: ResolvedAssetSet; caption?: string; movable: boolean }
     | { key: string; kind: "asset"; asset: Asset; caption?: string; assetSetValue?: { setId: string; value: string } }
+    /** A value with no file of its own that the fallback answers, drawn as the fallback's file. */
+    | { key: string; kind: "inherited"; asset: Asset; caption: string; value: string }
     | { key: string; kind: "hole"; caption: string; value: string }
     | { key: string; kind: "group"; group: AssetGroup; childCount: number; preview: Asset[] };
 
@@ -526,18 +551,24 @@ function IconSectionGrid({
                 out.push({ key: "cell:" + cell.label, kind: "set", entry: child, caption, movable: false });
                 continue;
             }
-            const asset = cell.assetIds.length === 1
-                ? filteredAssets[category].find(entry => entry.id === cell.assetIds[0])
-                    ?? libraryAssets[category].find(entry => entry.id === cell.assetIds[0])
-                : undefined;
-            out.push(asset
-                ? {
+            const findAsset = (id: string) => filteredAssets[category].find(entry => entry.id === id)
+                ?? libraryAssets[category].find(entry => entry.id === id);
+            const asset = cell.assetIds.length === 1 ? findAsset(cell.assetIds[0]) : undefined;
+            if (asset) {
+                out.push({
                     key: "cell:" + cell.label,
                     kind: "asset",
                     asset,
                     caption,
                     assetSetValue: { setId: insideSet!.set.id, value: cell.value },
-                }
+                });
+                continue;
+            }
+            // No file of its own: the fallback's file when the fallback answers the value - it is
+            // what the game shows there - and the hole the value is when nothing does.
+            const inherited = cell.inherited && cell.assetId ? findAsset(cell.assetId) : undefined;
+            out.push(inherited
+                ? { key: "cell:" + cell.label, kind: "inherited", asset: inherited, caption, value: cell.value }
                 : { key: "cell:" + cell.label, kind: "hole", caption, value: cell.value });
         }
         for (const group of categoryGroups) {
@@ -684,6 +715,16 @@ function IconSectionGrid({
                                     category={category}
                                     {...(tile.caption ? { caption: tile.caption } : {})}
                                     {...(tile.assetSetValue ? { assetSetValue: tile.assetSetValue } : {})}
+                                />
+                            );
+                        }
+                        if (tile.kind === "inherited") {
+                            return (
+                                <AssetSetInheritedTile
+                                    key={tile.key}
+                                    asset={tile.asset}
+                                    caption={tile.caption}
+                                    onContextMenu={(event) => showAssetSetValueContextMenu(event, insideSet!, tile.value)}
                                 />
                             );
                         }
@@ -838,7 +879,46 @@ function GroupIconTile({
 }
 
 /**
- * A value of a set with no file for it.
+ * A value of a set that the fallback answers: the fallback's file, marked as the fallback's.
+ *
+ * Not that file's own tile. The file has its own tile already, at the fallback value, and a second
+ * one that selected, opened or dragged the same file would be one file drawn as two. The value's menu
+ * is the one a hole has, because what can be done here is give the value a file of its own.
+ */
+function AssetSetInheritedTile({ asset, caption, onContextMenu }: {
+    asset: Asset;
+    caption: string;
+    onContextMenu?: (event: React.MouseEvent) => void;
+}) {
+    const { t } = useTranslation();
+    const Icon = ASSET_TYPE_ICONS[asset.type];
+    return (
+        <div
+            className="flex flex-col gap-2 rounded-lg border border-transparent bg-fill-subtle p-2"
+            data-asset-set-inherited=""
+            onContextMenu={onContextMenu}
+        >
+            {asset.type === AssetType.Image ? (
+                <div className="aspect-square w-full overflow-hidden rounded-md bg-surface-sunken">
+                    <AssetThumbnail asset={asset} className="h-full w-full" />
+                </div>
+            ) : (
+                <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
+                    <Icon className="h-1/4 w-1/4 text-fg-muted" />
+                </div>
+            )}
+            <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-xs font-medium italic text-fg-muted" data-tip={asset.name}>{asset.name}</span>
+                <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{t("assets.sets.inspector.variantInherited")}</span>
+            </div>
+            <span className="-mt-1 truncate text-2xs text-fg-subtle" data-tip={caption}>{caption}</span>
+        </div>
+    );
+}
+
+/**
+ * A value of a set that nothing answers: no file of its own, and no fallback file to take, or more
+ * than one file claiming it.
  *
  * Drawn rather than skipped: the value is why there is a tile at all, and a set missing one of its
  * variants would otherwise look finished.

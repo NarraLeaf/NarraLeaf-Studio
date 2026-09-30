@@ -121,6 +121,36 @@ describe("UIDocumentContentRevisions", () => {
         expect(revisions.getSurfaceContentRevision(document, 2, "surface-b")).toBe(firstB);
     });
 
+    it("follows a Page component inside a placed component to the page it renders", () => {
+        const revisions = new UIDocumentContentRevisions();
+        const document = documentWithTwoSurfaces();
+        document.components = [
+            {
+                id: "component-a",
+                name: "Card",
+                rootElementId: "component-root",
+                elements: {
+                    "component-root": element("component-root", null, ["window"]),
+                    window: element("window", "component-root", [], {
+                        type: "nl.frame",
+                        props: { targetSurfaceId: "surface-b", params: {}, navigationMode: "static" },
+                    }),
+                },
+            },
+        ];
+        document.elements["child-a"] = element("child-a", "root-a", [], {
+            extra: { componentLink: { componentId: "component-a", linked: true } },
+        });
+
+        const page = revisions.getSurfaceContentRevision(document, 1, "surface-a");
+        const card = revisions.getComponentContentRevision(document, 1, "component-a");
+        document.elements["child-b"].layout.x = 40;
+
+        // The page places the card, the card draws surface B: both previews now show a different B.
+        expect(revisions.getSurfaceContentRevision(document, 2, "surface-a")).not.toBe(page);
+        expect(revisions.getComponentContentRevision(document, 2, "component-a")).not.toBe(card);
+    });
+
     it("tracks components one by one", () => {
         const revisions = new UIDocumentContentRevisions();
         const document = documentWithTwoSurfaces();

@@ -5,7 +5,11 @@ export const widgets = {
         interaction: "Interaction",
     },
     blueprint: {
-        controlLabel: "Control blueprint",
+        /**
+         * The section holding this control's logic, which may be a blueprint or a script. Worded
+         * like `uiEditor.ownerLabel.widgetMain`, because it is the same thing under another panel.
+         */
+        controlLabel: "Component logic",
     },
     appearance: {
         title: "Appearance",
@@ -17,6 +21,7 @@ export const widgets = {
     horizontal: "Horizontal",
     vertical: "Vertical",
     gap: "Gap",
+    wrap: "Wrap",
     perSidePx: "Per side (px)",
     sides: {
         top: "Top",
@@ -184,6 +189,15 @@ export const widgets = {
         title: "Text",
         localizeText: "Localize text",
     },
+    /**
+     * The marks a label's text carries, set over the characters selected in the box above them.
+     * The buttons themselves are named by the story's own keys: a mark on a label is the mark on a
+     * line of dialogue, and reading it by two names is how the two come to look like two features.
+     */
+    textMarks: {
+        title: "Marks",
+        selectHint: "Select the text to mark",
+    },
     frame: {
         title: "Page",
         page: "Page",
@@ -196,6 +210,8 @@ export const widgets = {
         missingPage: "Missing Page",
         targetNotPage: "Target is not a Page",
         pageLoopBlocked: "Page loop blocked",
+        // Beside a page in the page picker that shows this Page widget again, and so cannot be picked.
+        leadsBackHere: "leads back here",
         previewUnavailable: "Page preview unavailable",
         pageRootMissing: "Page root missing",
     },
@@ -301,6 +317,7 @@ export const widgets = {
         describeNoModel: "Pick a model bundle to list its names.",
         describeNoBackend: "Pick a runtime to list the model's names.",
         describeBackendMissing: "That runtime is not installed in this project, so names must be typed.",
+        describeDistrusted: "This project is not trusted, so its runtimes do not run. Trust it from the status bar.",
         describeNotSupported: "This runtime does not describe its models. Type the names.",
         describeFailed: "Could not read the model; type names by hand.",
         redescribe: "Re-read",
@@ -311,6 +328,8 @@ export const widgets = {
         placeholderUnconfigured: "Select a model bundle and a runtime.",
         placeholderNoModel: "The model bundle is not available here.",
         placeholderBackendMissing: "No runtime named “{backend}” is installed in this project.",
+        // Not a missing file and not a fault: the runtime is there and Studio declined to run it.
+        placeholderDistrusted: "Not drawn: this project is not trusted, so its runtime is not run.",
         placeholderLoading: "Loading the model…",
         placeholderError: "The runtime failed: {error}",
         placeholderBudget: "Not drawn: {drawn} models are already drawn in this window.",

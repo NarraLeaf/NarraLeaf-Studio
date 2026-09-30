@@ -56,6 +56,15 @@ export type ContainerWidgetProps = {
     stackPaddingLeft: number;
     stackAlignItems: ContainerStackAlignItems;
     stackJustifyContent: ContainerStackJustifyContent;
+    /**
+     * Whether children that do not fit along the stack direction continue on a further line.
+     *
+     * Off is the whole history of the widget, so it stays the default: a stack that started
+     * wrapping would rearrange documents that were laid out against a single line. On, the lines
+     * pack against the start of the cross axis with `stackGap` between them, and `stackAlignItems`
+     * reads per line rather than across the whole box.
+     */
+    stackWrap: boolean;
 
     scrollAxis: ContainerScrollAxis;
 
@@ -111,6 +120,7 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
     stackPaddingLeft: 0,
     stackAlignItems: "stretch",
     stackJustifyContent: "start",
+    stackWrap: false,
 
     scrollAxis: "y",
 
@@ -183,6 +193,26 @@ export function normalizeContainerClipContent(raw: unknown): boolean {
         return raw;
     }
     return defaultContainerWidgetProps.clipContent;
+}
+
+/** Normalize serialized `stackWrap`, on the same terms as {@link normalizeContainerClipContent}. */
+export function normalizeContainerStackWrap(raw: unknown): boolean {
+    if (typeof raw === "boolean") {
+        return raw;
+    }
+    return defaultContainerWidgetProps.stackWrap;
+}
+
+/**
+ * Whether a negative stack gap is drawn by overlapping siblings.
+ *
+ * CSS `gap` cannot be negative, so overlap is drawn with a margin on every child after the first.
+ * That trick cannot survive wrapping: the margin lands on the first child of each new line as well,
+ * pulling it back out of the box. A wrapping stack therefore has no overlap to draw, and its gap
+ * starts at zero.
+ */
+export function containerStackOverlapsSiblings(gap: number, wrap: boolean): boolean {
+    return gap < 0 && !wrap;
 }
 
 /**

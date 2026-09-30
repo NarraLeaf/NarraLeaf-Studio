@@ -10,6 +10,9 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+    BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
@@ -28,10 +31,11 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -41,14 +45,7 @@ const FULLSCREEN_MODES = ["enter", "exit", "toggle"] as const;
 type FullscreenMode = (typeof FULLSCREEN_MODES)[number];
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /** An unset dropdown reads as "toggle", the useful default for a fullscreen button. */
@@ -261,7 +258,10 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             // event instead of saving the window - a bug that would otherwise never report itself.
             if (ctx.eventName !== BLUEPRINT_EVENT_SLOT_WINDOW_CLOSE_REQUESTED || !ctx.eventControl) {
                 throw new BlueprintGraphExecutionError(
-                    "Keep Window Open: there is no close request to cancel. It only works below an On Window Close Requested head.",
+                    translate("blueprint.runtimeError.needsCloseRequest", {
+                        node: translate("blueprint.node.keepWindowOpen"),
+                        head: translate("blueprint.node.onWindowCloseRequested"),
+                    }),
                     ctx.node.id,
                 );
             }
@@ -334,6 +334,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * are ratios and not widths.
          */
         type: BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+        assetNames: "assembled",
         displayName: "Get Window Scale Options",
         category: "App",
         keywords: ["window", "size", "scale", "options", "resolution", "app", "display", "config"],
@@ -473,6 +474,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * that has to branch on a refusal it cannot fix is a branch that never runs in a build.
          */
         type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+        assetNames: "assembled",
         displayName: "Open Link",
         category: "App",
         keywords: ["link", "url", "browser", "external", "open", "web", "store", "page", "site"],
@@ -502,13 +504,116 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const url = String(readPin(ctx, BLUEPRINT_EXTERNAL_LINK_PARAM_URL) ?? "").trim();
             if (!url) {
-                throw new BlueprintGraphExecutionError("Open Link: pick or wire an address", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.openLink"),
+                        pin: translate("blueprint.port.url"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const result = await requireHostApi(ctx).navigation.openExternal({ url });
             return {
                 nextPort: result.outcome === "opened" ? "next" : "failed",
                 outputValues: { error: result.error },
             };
+        },
+    },
+    {
+        /**
+         * A picture of the frame the player is looking at, kept as a file.
+         *
+         * Nothing is passed in and a path comes back, which is the whole of the design: where a
+         * game may write is a fact about the installation rather than about the graph, so the shell
+         * answers it. The packaged desktop game writes beside the player's saves; Dev Mode writes
+         * into the author's Dev Mode data, so an author testing this sees a real file in a real
+         * folder rather than a node that quietly does nothing.
+         *
+         * `Failed` covers a platform with no screenshots at all and a disk that refused the write,
+         * with `Error` saying which - one branch because the author's answer to both is the same,
+         * and a branch nobody can act on differently is a branch that never runs.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+        assetNames: "assembled",
+        displayName: "Save Screenshot",
+        category: "App",
+        keywords: ["screenshot", "capture", "picture", "photo", "png", "save", "image", "snap", "window"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "path", kind: "output", semantic: "data", valueType: "string", label: "Path" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        async execute(ctx) {
+            const result = await requireHostApi(ctx).navigation.saveScreenshot();
+            return {
+                nextPort: result.outcome === "saved" ? "next" : "failed",
+                outputValues: { path: result.path ?? "", error: result.error },
+            };
+        },
+    },
+    {
+        /**
+         * The folder those pictures are in, opened in the player's file manager.
+         *
+         * Beside `Save Screenshot` because "where did it go" is the next question a screenshot
+         * button raises, and the path the node above returns is a string a player cannot click.
+         * Opens the folder even when it is empty - it is created on the way - so a settings screen
+         * can offer the row before the player has taken one.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+        assetNames: "assembled",
+        displayName: "Open Screenshots Folder",
+        category: "App",
+        keywords: ["screenshot", "folder", "directory", "open", "reveal", "explorer", "finder", "files"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "path", kind: "output", semantic: "data", valueType: "string", label: "Path" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        async execute(ctx) {
+            const result = await requireHostApi(ctx).navigation.openScreenshotsFolder();
+            return {
+                nextPort: result.outcome === "opened" ? "next" : "failed",
+                outputValues: { path: result.path ?? "", error: result.error },
+            };
+        },
+    },
+    {
+        /**
+         * Whether the game's window is the one the player is working in right now.
+         *
+         * The paired read for `On Window Focus Changed`: the head says when it changed, this says
+         * what it is - which is what a graph that runs for some other reason needs, and what a
+         * surface opened while the player was already away has to ask.
+         *
+         * True wherever the shell has no window to be behind, so a graph written against this never
+         * silences itself somewhere it cannot tell.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
+        displayName: "Is Window Focused",
+        category: "App",
+        keywords: ["window", "focus", "focused", "blur", "active", "background", "foreground", "app"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "isFocused", kind: "output", semantic: "data", valueType: "boolean", label: "Is Focused" },
+        ],
+        async execute(ctx) {
+            const isFocused = await requireHostApi(ctx).navigation.isWindowFocused();
+            return { nextPort: "next", outputValues: { isFocused } };
         },
     },
     {
@@ -559,7 +664,13 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const eventName = String(readPin(ctx, "event") ?? "").trim();
             if (!eventName) {
-                throw new BlueprintGraphExecutionError("Missing page event name", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.emitPageEvent"),
+                        pin: translate("blueprint.port.event"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const data = readPin(ctx, "data");
             await api.frame.emit(eventName, data);

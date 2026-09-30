@@ -2,10 +2,19 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
 import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
-import { DEFAULT_MOBILE_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
+import {
+    DEFAULT_MOBILE_CONFIGURATION,
+    DEFAULT_NETWORK_CONFIGURATION,
+    NEW_PROJECT_TEXT_REVEAL_DURATION,
+    normalizePlayerPreferences,
+} from "@/lib/workspace/project/configuration";
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
+import {
+    PROJECT_DEPENDENCY_SCHEMA_VERSION,
+    type ProjectPluginDependency,
+} from "@shared/types/pluginDependencies";
 
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -80,7 +89,6 @@ export class ProjectService {
 
             // Create directories
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Plugins)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Assets)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.AssetsContent)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Scripts)));
@@ -124,12 +132,21 @@ export class ProjectService {
             // first revision is the project the author received rather than an empty
             // one that grew its content in a second commit.
             if (projectData.contentTemplateId) {
-                const templateLocales = await this.applyProjectTemplate(
+                const scaffolded = await this.applyProjectTemplate(
                     basePath,
                     projectData.contentTemplateId,
                     projectData.sourceLocale.trim(),
                 );
-                await this.registerTemplateLocales(projectConfigPath, projectConfig, templateLocales);
+                const withLocales = await this.registerTemplateLocales(
+                    projectConfigPath,
+                    projectConfig,
+                    scaffolded.locales,
+                );
+                await this.registerTemplateDependencies(
+                    projectConfigPath,
+                    withLocales,
+                    scaffolded.dependencies,
+                );
             }
 
             // LAST, and only after every file above is on disk: the first revision is a snapshot of
@@ -137,6 +154,15 @@ export class ProjectService {
             // half-written. Nothing is committed twice - `initRepository` stages the whole root.
             if (projectData.versionControl === "lore") {
                 await this.enableVersionControl(basePath);
+            }
+
+            // Studio wrote this project, so it opens as Studio's own rather than waiting for the
+            // author to vouch for it under Settings. Before the hand-off, because the launcher
+            // opens the path the moment this window closes. A refusal is not a failed creation -
+            // the files are on disk - so it is logged and the project opens as one to be trusted.
+            const registered = await getInterface().registerCreatedProject(basePath);
+            if (!registered.success) {
+                console.warn("[Wizard] Project created, but not registered as Studio's own:", registered.error);
             }
 
             // Both go back with the path because the caller may still have work to do on this
@@ -179,12 +205,81 @@ export class ProjectService {
         projectPath: string,
         templateId: string,
         locale: string,
-    ): Promise<string[]> {
+    ): Promise<{ locales: string[]; dependencies: string[] }> {
         const result = await getInterface().projectTemplates.scaffold(templateId, projectPath, locale);
         if (!result.success) {
             throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }
-        return result.data?.locales ?? [];
+        return {
+            locales: result.data?.locales ?? [],
+            dependencies: result.data?.dependencies ?? [],
+        };
+    }
+
+    /**
+     * Record the plugins the template's content is built on into the project it just wrote.
+     *
+     * The dependency table is otherwise derived by scanning the documents, and nothing scans them
+     * until the author first runs, exports or rescans the project - while two of the bundled
+     * plugins ship switched off. So a project made from a template that uses one would open
+     * declaring nothing, and its screens would be a page of unknown nodes with nothing on screen
+     * saying why. Declared here, the plugin panel raises the warning on the first open and offers
+     * the one press that turns it on.
+     *
+     * A second write of a file written moments ago, like the languages above and for the same
+     * reason: the config has to exist before the template lands, and this is only knowable after.
+     *
+     * A failure does not fail the project. Everything the author asked for is on disk; what they
+     * lose is the prompt, and the first scan writes the table anyway - it recognises a plugin's
+     * types by their names, switched on or not. Refusing to finish here would cost them the
+     * project over a hint.
+     */
+    private static async registerTemplateDependencies(
+        configPath: string,
+        config: ProjectConfigData,
+        pluginIds: readonly string[],
+    ): Promise<void> {
+        if (pluginIds.length === 0) {
+            return;
+        }
+        try {
+            const listed = await getInterface().plugins.list();
+            if (!listed.success || !listed.data) {
+                throw new Error(listed.success ? "Plugin list response was empty" : (listed.error ?? "unknown"));
+            }
+            const installed = new Map(listed.data.plugins.map(plugin => [plugin.pluginId, plugin] as const));
+            const plugins: ProjectPluginDependency[] = [];
+            for (const id of [...pluginIds].sort()) {
+                const match = installed.get(id);
+                if (!match) {
+                    // Nothing to record a version against, and an entry without one is dropped by
+                    // the table's own reader. The scan will pick it up if the plugin ever arrives.
+                    continue;
+                }
+                plugins.push({
+                    id,
+                    name: match.manifest.name,
+                    publisher: match.manifest.publisher,
+                    builtIn: match.builtIn,
+                    authoredVersion: match.manifest.version,
+                    // The template's screens are built on types this plugin owns, so the documents
+                    // do not work without it.
+                    hard: true,
+                    // Left for the scan: which types are used is a fact about the documents, and
+                    // the scan reads them. What it cannot do is run before the first open.
+                    usedBy: {},
+                });
+            }
+            if (plugins.length === 0) {
+                return;
+            }
+            throwException(await BaseFileSystemService.writeRaw(configPath, encodeProjectConfig({
+                ...config,
+                dependencies: { schemaVersion: PROJECT_DEPENDENCY_SCHEMA_VERSION, plugins },
+            })));
+        } catch (error) {
+            console.warn("[Wizard] Project created, but its plugin dependencies were not recorded:", error);
+        }
     }
 
     /**
@@ -212,16 +307,16 @@ export class ProjectService {
         configPath: string,
         config: ProjectConfigData,
         codes: string[],
-    ): Promise<void> {
+    ): Promise<ProjectConfigData> {
         const app = config.app as ProjectAppConfiguration | undefined;
         const existing = app?.localization;
         if (!existing || !isValidLocaleCode(existing.sourceLocale)) {
-            return;
+            return config;
         }
         const known = new Set(existing.locales.map(entry => entry.code));
         const added = codes.filter(code => isValidLocaleCode(code) && !known.has(code));
         if (!added.length) {
-            return;
+            return config;
         }
         const next: ProjectConfigData = {
             ...config,
@@ -237,6 +332,7 @@ export class ProjectService {
             },
         };
         throwException(await BaseFileSystemService.writeRaw(configPath, encodeProjectConfig(next)));
+        return next;
     }
 
     /**
@@ -353,6 +449,16 @@ function buildAppConfiguration(
     const sourceLocale = projectData.sourceLocale.trim();
     return {
         network: { ...DEFAULT_NETWORK_CONFIGURATION },
+        // A new project types its dialogue in rather than snapping it on. Written as a starting
+        // value rather than taken as the table's default, so that a project created before this
+        // - and a player who has since turned it down - keeps the text they were reading.
+        //
+        // The whole table is written, which is the shape `app.preferences` has on disk
+        // everywhere else; the rest of it is the defaults it would have read anyway.
+        preferences: {
+            ...normalizePlayerPreferences(undefined),
+            textRevealDuration: NEW_PROJECT_TEXT_REVEAL_DURATION,
+        },
         // Derived rather than asked. A project laid out taller than it is wide plays upright, and
         // a second control that agrees with the stage size in every case but the one where somebody
         // set them apart by accident is not a choice, it is a way to be inconsistent. The project

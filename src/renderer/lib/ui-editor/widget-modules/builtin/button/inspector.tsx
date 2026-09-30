@@ -17,7 +17,6 @@ import type {
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
-import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -32,7 +31,8 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { i18nStore, translate } from "@/lib/i18n";
-import { getButtonProps } from "./helpers";
+import { TextRunMarksEditor } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
+import { BUTTON_MARKED_LABEL, getButtonProps } from "./helpers";
 import type { ButtonWidgetProps } from "./types";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
@@ -88,27 +88,16 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
             name: liveElement.name ?? translate("widgets.defaults.button.name"),
         }),
     getLiteralValue: ({ liveElement }) => getButtonProps(liveElement).label,
-    renderLiteralEditor: ({ data, liveElement }) => {
-        const buttonProps = getButtonProps(liveElement);
-        return (
-            <DraftTextInput
-                multiline
-                className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
-                value={buttonProps.label}
-                rows={4}
-                draftResetKey={liveElement.id}
-                readCommittedValue={() =>
-                    getButtonProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement).label
-                }
-                onCommit={next => {
-                    data.documentService.updateElementProps(liveElement.id, {
-                        ...liveElement.props,
-                        label: next,
-                    });
-                }}
-            />
-        );
-    },
+    // The same box and marks a text label's content is authored with: a button's label is the same
+    // kind of string, so a reading set over it is set the same way and stored the same way.
+    renderLiteralEditor: ({ data, liveElement, readOnly }) => (
+        <TextRunMarksEditor
+            documentService={data.documentService}
+            element={liveElement}
+            label={BUTTON_MARKED_LABEL}
+            readOnly={readOnly}
+        />
+    ),
 });
 
 const ButtonLocalizationKeyField = createLocalizationKeyField({

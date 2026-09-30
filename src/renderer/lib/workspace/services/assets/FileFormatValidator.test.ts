@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ASSET_CATEGORY_EXTENSIONS, AssetCategory, AssetExtensions, AssetType } from "./assetTypes";
-import { FORMAT_EXTENSIONS, FileFormatValidator, UNDECODABLE_EXTENSIONS } from "./FileFormatValidator";
+import { CONVERSION_TARGETS, FORMAT_EXTENSIONS, FileFormatValidator, UNDECODABLE_EXTENSIONS } from "./FileFormatValidator";
 import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 /**
@@ -272,5 +272,52 @@ describe("FileFormatValidator: the two extension tables agree", () => {
             }
         }
         expect(drift).toEqual([]);
+    });
+});
+
+/**
+ * The refusal beside each sentence. The sentence is the log's - English, whatever the interface
+ * speaks - and the refusal is what the import strip and the voice panel word for the author, so
+ * every way the gate says no has to come with one.
+ */
+describe("FileFormatValidator: every refusal says why as data", () => {
+    async function refusal(type: AssetType, name: string, buffer: Uint8Array) {
+        const result = await validate(type, name, buffer);
+        expect(result.success).toBe(false);
+        return result.success ? undefined : result.refusal;
+    }
+
+    it("names the extension a type does not take", async () => {
+        expect(await refusal(AssetType.Audio, "a.m3u", bytes(0x00))).toEqual({ kind: "wrongType", ext: "m3u" });
+    });
+
+    it("names what the file is for and the two formats to convert it to", async () => {
+        expect(await refusal(AssetType.Video, "a.avi", AVI))
+            .toEqual({ kind: "cannotUse", ext: "avi", use: "play", convertTo: [".mp4", ".webm"] });
+        expect(await refusal(AssetType.Image, "a.tiff", TIFF))
+            .toEqual({ kind: "cannotUse", ext: "tiff", use: "display", convertTo: [".png", ".webp"] });
+        expect(await refusal(AssetType.Font, "a.ttc", TTC))
+            .toEqual({ kind: "cannotUse", ext: "ttc", use: "use", convertTo: [".ttf", ".otf"] });
+    });
+
+    it("says what the bytes are when the name disagrees", async () => {
+        expect(await refusal(AssetType.Image, "a.png", JPEG)).toEqual({ kind: "mismatch", ext: "png", actual: "JPEG" });
+    });
+
+    it("calls JSON that does not parse undecodable", async () => {
+        const text = new TextEncoder().encode("{ nope");
+        expect(await refusal(AssetType.JSON, "a.json", text)).toEqual({ kind: "undecodable" });
+    });
+
+    it("has conversion targets for every type it refuses formats of, and the log sentence names them", () => {
+        for (const [type, table] of Object.entries(UNDECODABLE_EXTENSIONS)) {
+            const targets = CONVERSION_TARGETS[type as AssetType];
+            expect(targets, type).toBeDefined();
+            for (const suggestion of Object.values(table ?? {})) {
+                for (const target of targets ?? []) {
+                    expect(suggestion, `${type}: ${suggestion}`).toContain(target);
+                }
+            }
+        }
     });
 });

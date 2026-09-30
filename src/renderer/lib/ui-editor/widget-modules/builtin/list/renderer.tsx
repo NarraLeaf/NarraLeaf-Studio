@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type FocusEvent,
+    type KeyboardEvent,
+    type MouseEvent,
+    type PointerEvent,
+} from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type {
     UIListItemScope,
@@ -8,6 +19,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
     buildUIListItemInstanceKey,
     getUIListChildSlot,
+    isUIListItemTemplateChild,
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
@@ -18,6 +30,8 @@ import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import type { UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
@@ -25,15 +39,14 @@ import {
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import {
-    isPhysicallyHorizontalAxis,
-    verticalTypographyCss,
-} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import { verticalTypographyCss } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import {
     getListProps,
+    listRowKeyboardMove,
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
+    resolveListRepeatLayout,
 } from "./helpers";
 
 type ScrollMetrics = {
@@ -66,29 +79,45 @@ function listItemProps(item: unknown): Record<string, unknown> {
         : { value: item };
 }
 
+/**
+ * Item Render: the list's own event, raised once for each row as it is drawn.
+ *
+ * It carries the row the way Item Click does - its scope and its drawing's key - because a handler
+ * answering "this row is being drawn" is asking about that row. Without them `Get Item Field` read
+ * nothing, and a write to the row's own label went to the label's template, which no row draws: the
+ * one event built for per-row decoration could not decorate a row.
+ */
 function ListItemRenderEvent(props: {
     runtime: BlueprintRuntime | undefined;
-    elementId: string;
+    dispatchEvent: UIWidgetEventDispatch;
     scope: UIListItemScope;
+    instanceKey: string;
 }) {
-    const { runtime, elementId, scope } = props;
+    const { runtime, dispatchEvent, scope, instanceKey } = props;
     useEffect(() => {
         if (!runtime) {
             return;
         }
-        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope));
-    }, [elementId, runtime, scope.count, scope.index, scope.item, scope.key]);
+        void dispatchEvent("itemRender", listItemEventPayload(scope), { listItemScope: scope, instanceKey });
+    }, [dispatchEvent, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
 
+/**
+ * List Item Refresh: raised on each widget of the row template, in that row.
+ *
+ * On the row's widgets rather than on the list, so it goes through the list's dispatch pointed at
+ * each of them: that keeps the component the list is authored in, which a row of it is still inside.
+ */
 function ListItemRefreshEvent(props: {
     runtime: BlueprintRuntime | undefined;
+    dispatchEvent: UIWidgetEventDispatch;
     elementIds: readonly string[];
     scope: UIListItemScope;
     instanceKey: string;
 }) {
-    const { runtime, elementIds, scope, instanceKey } = props;
+    const { runtime, dispatchEvent, elementIds, scope, instanceKey } = props;
     const elementKey = elementIds.join("\0");
     useEffect(() => {
         if (!runtime) {
@@ -99,12 +128,9 @@ function ListItemRefreshEvent(props: {
             props: listItemProps(scope.item),
         };
         for (const elementId of elementIds) {
-            void runtime.dispatchElementBlueprintEvent(elementId, "listItemRefresh", payload, {
-                listItemScope: scope,
-                instanceKey,
-            });
+            void dispatchEvent("listItemRefresh", payload, { elementId, listItemScope: scope, instanceKey });
         }
-    }, [elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
+    }, [dispatchEvent, elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
@@ -305,6 +331,10 @@ function resolveAuthoredThumbLayout(
 
 export function ListRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren, runtimeData } = props;
+    // The drawing this list is itself part of - a row of an enclosing list, a component placement.
+    // Every row key extends it, so a row of this list names which of those it is in.
+    const outerInstanceKey = props.instanceKey;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     const p = getListProps(element);
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -351,18 +381,18 @@ export function ListRenderer(props: WidgetRendererProps) {
             const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
             const payload = resolveUIListScrollMetrics(viewportSize, contentSize, offset);
-            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+            void dispatchEvent("scroll", {
                 ...payload,
             });
             const isAtEnd = isUIListScrolledToEnd(payload);
             if (isAtEnd && !reachedScrollEndRef.current) {
-                void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
+                void dispatchEvent("scrollEnd", payload);
             }
             reachedScrollEndRef.current = isAtEnd;
         };
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
-    }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
+    }, [dispatchEvent, horizontalScrollbar, hostAdapter.blueprintRuntime]);
     const boundItems = resolveBoundItems(p, runtimeData);
     const itemStruct = resolveUIStruct(document, p.itemStructId);
     // Placeholder rows carry the declared shape at its empty values rather than `{index: n}`: a
@@ -377,11 +407,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? [...runtimeListItems]
         : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
-    const itemTemplateIds = element.childrenIds.filter(childId => {
-        const child = document.elements[childId];
-        const slot = getUIListChildSlot(child?.extra);
-        return slot == null || slot === "itemTemplate";
-    });
+    const itemTemplateIds = element.childrenIds.filter(childId => isUIListItemTemplateChild(document.elements[childId]));
     const itemTemplateDescendantIds = useMemo(
         () => collectElementDescendants(document, itemTemplateIds),
         [document, itemTemplateIds.join("\0")],
@@ -435,17 +461,19 @@ export function ListRenderer(props: WidgetRendererProps) {
         ...effectStyle,
     };
 
-    // Which way the items actually run on screen. `repeatDirection` names the flex axis, and flex
-    // axes turn with the writing mode, so everything physical below reads this instead.
-    const repeatIsHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
+    // Which way the items actually run on screen, and which way the box therefore scrolls.
+    // `repeatDirection` names a flex axis rather than a screen axis, and a wrap moves the growing
+    // axis across it, so everything physical below reads the resolved answer instead.
+    const repeatLayout = resolveListRepeatLayout(p);
+    const overflowIsHorizontal = repeatLayout.overflowIsHorizontal;
 
     const viewportStyle: CSSProperties = {
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
         ...verticalTypographyCss({ writingMode: p.writingMode, textOrientation: "mixed" }),
-        overflowX: repeatIsHorizontal ? "auto" : "hidden",
-        overflowY: repeatIsHorizontal ? "hidden" : "auto",
+        overflowX: overflowIsHorizontal ? "auto" : "hidden",
+        overflowY: overflowIsHorizontal ? "hidden" : "auto",
         scrollbarWidth: "none",
         paddingTop: p.contentPaddingTop + reserveTop,
         paddingRight: p.contentPaddingRight + reserveRight,
@@ -453,15 +481,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         paddingLeft: p.contentPaddingLeft + reserveLeft,
     };
 
-    const flexHost: CSSProperties = {
-        display: "flex",
-        flexDirection: p.repeatDirection === "vertical" ? "column" : "row",
-        gap: p.itemGap,
-        alignItems: "stretch",
-        // The cross axis is the one the items do not run along, so it is the one that fills.
-        minWidth: repeatIsHorizontal ? 0 : "100%",
-        minHeight: repeatIsHorizontal ? "100%" : 0,
-    };
+    const flexHost = repeatLayout.flexHostStyle;
 
     const innerDir = p.templateDirection === "horizontal" ? "row" : "column";
     const listItemContentAlignment = resolveListItemContentAlignmentStyle(
@@ -498,8 +518,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!blueprintRuntime) {
                 return;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
+            void dispatchEvent(
                 eventName,
                 {
                     ...listItemEventPayload(scope),
@@ -509,10 +528,10 @@ export function ListRenderer(props: WidgetRendererProps) {
                 // asking about that row, so Get Item Field resolves there exactly as it does while
                 // the row is being drawn. Without it the only way to read the row that was clicked
                 // was to pull the item off the payload and index into it by hand.
-                { listItemScope: scope, instanceKey: `list-${element.id}-${scope.key}` },
+                { listItemScope: scope, instanceKey: buildUIListItemInstanceKey(outerInstanceKey, element.id, scope.key) },
             );
         },
-        [blueprintRuntime, element.id],
+        [blueprintRuntime, dispatchEvent, element.id, outerInstanceKey],
     );
     const handleListItemClick = useCallback(
         (scope: UIListItemScope) => {
@@ -533,6 +552,44 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [dispatchListItemEvent],
     );
+    /**
+     * The row the keyboard enters this list on: the one it last left, else the selected one, else the
+     * first. The list is one stop on Tab however many rows it has - the rest are reached with the
+     * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
+     * to pass. See `listRowKeyboardMove` for the keys.
+     */
+    const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    const tabStopRowIndex = count > 0
+        ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
+        : -1;
+    const handleListRowKeyDown = useCallback(
+        (event: KeyboardEvent<HTMLDivElement>, scope: UIListItemScope) => {
+            // A control inside the row - a button, a text field - answers its own keys.
+            if (event.target !== event.currentTarget) {
+                return;
+            }
+            if (event.key === "Enter" || event.key === " ") {
+                // Prevented even when held, so the game does not read the repeats as its own: the key
+                // is this row's for as long as it is down (see `keyInputClaimedByControl`).
+                event.preventDefault();
+                if (!event.repeat) {
+                    handleListItemClick(scope);
+                }
+                return;
+            }
+            const next = listRowKeyboardMove(event.key, scope.index, scope.count);
+            if (next === null) {
+                return;
+            }
+            event.preventDefault();
+            const row = Array.from(event.currentTarget.parentElement?.children ?? [])
+                .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
+            if (row instanceof HTMLElement) {
+                row.focus();
+            }
+        },
+        [handleListItemClick],
+    );
     // Resolved once for the whole list rather than per row: every row gets the same motion, and only
     // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply
     // on screen from replaying its arrival every time an unrelated prop changes.
@@ -542,7 +599,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
-        const instanceKey = buildUIListItemInstanceKey(element.id, key);
+        const instanceKey = buildUIListItemInstanceKey(outerInstanceKey, element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.
         const selected = isRuntime && i === selectedIndex;
@@ -561,12 +618,24 @@ export function ListRenderer(props: WidgetRendererProps) {
             style: rowStyle,
             onClick: isRuntime ? () => handleListItemClick(scope) : undefined,
             onPointerEnter: isRuntime ? () => handleListItemHover(scope) : undefined,
+            // In a running game a row is a control the keyboard reaches, as a button is: Enter and
+            // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
+            tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            onFocus: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setKeyboardRowIndex(i);
+                      }
+                  }
+                : undefined,
+            onKeyDown: isRuntime ? (event: KeyboardEvent<HTMLDivElement>) => handleListRowKeyDown(event, scope) : undefined,
         };
         const rowChildren = (
             <>
-                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
+                <ListItemRenderEvent runtime={blueprintRuntime} dispatchEvent={dispatchEvent} scope={scope} instanceKey={instanceKey} />
                 <ListItemRefreshEvent
                     runtime={blueprintRuntime}
+                    dispatchEvent={dispatchEvent}
                     elementIds={itemTemplateDescendantIds}
                     scope={scope}
                     instanceKey={instanceKey}
@@ -759,7 +828,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 return;
             }
 
-            const useHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
+            const useHorizontal = overflowIsHorizontal;
             const scrollable = useHorizontal
                 ? viewport.scrollWidth > viewport.clientWidth + 1
                 : viewport.scrollHeight > viewport.clientHeight + 1;
@@ -812,8 +881,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [
             p.dragContentScroll,
-            p.repeatDirection,
-            p.writingMode,
+            overflowIsHorizontal,
             scrollbarThumbElement?.id,
             scrollbarTrackElement?.id,
         ],
@@ -882,17 +950,17 @@ export function ListRenderer(props: WidgetRendererProps) {
         );
     };
 
+    // Drawn once per list, in the list's own drawing - not per row, and not under a key of their own,
+    // which would name a drawing no graph addressing the scrollbar could name back.
     const hasAuthoredScrollbar = Boolean(scrollbarTrackElement && scrollbarThumbElement && renderChildren);
     const authoredScrollbar =
         showScrollbar && hasAuthoredScrollbar && scrollbarTrackElement && scrollbarThumbElement && renderChildren ? (
             <>
                 {renderChildren({
                     childrenIds: [scrollbarTrackElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                 })}
                 {renderChildren({
                     childrenIds: [scrollbarThumbElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                     elementOverrides: {
                         [scrollbarThumbElement.id]: {
                             ...scrollbarThumbElement,

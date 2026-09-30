@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -71,7 +72,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
     };
     const ownerKeyOf = (node: ChainNode) => {
         const componentId = componentIdOf(node);
-        return componentId ? `componentWidgetMain:${componentId}:${node.id}` : `widgetMain:surface:${node.id}`;
+        return componentId ? encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: componentId, elementId: node.id }) : encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: "surface", elementId: node.id });
     };
     const listeners = chain.filter(node => node.listensTo);
     for (const node of listeners) {
@@ -87,8 +88,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
                     id: blueprintIdOf(node.id),
                     name: `${node.id} logic`,
                     owner: ownerOf(node),
-                    frontend: "visual" as const,
-                    programKind: "graph" as const,
                     members: {
                         variables: {
                             fired: { id: "fired", name: "fired", valueType: "string" as const, defaultValue: "no" },
@@ -97,35 +96,32 @@ function createChainFixture(chain: readonly ChainNode[]) {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph" as const,
-                        graphs: {
-                            events: {
-                                [node.listensTo!]: {
-                                    id: node.listensTo!,
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: HEAD_TYPE_BY_EVENT[node.listensTo!] },
-                                            literal: {
-                                                id: "literal",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "yes" },
-                                            },
-                                            set: {
-                                                id: "set",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "fired" },
-                                            },
+                    graphs: {
+                        events: {
+                            [node.listensTo!]: {
+                                id: node.listensTo!,
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: HEAD_TYPE_BY_EVENT[node.listensTo!] },
+                                        literal: {
+                                            id: "literal",
+                                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                            params: { value: "yes" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
-                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
-                                        ],
+                                        set: {
+                                            id: "set",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "fired" },
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
+                                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             ]),
@@ -134,9 +130,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
             listeners.map(node => [
                 ownerKeyOf(node),
                 {
-                    activeBlueprintId: blueprintIdOf(node.id),
-                    privateBlueprintIds: [blueprintIdOf(node.id)],
-                    initializedFrontend: "visual" as const,
+                    blueprintId: blueprintIdOf(node.id),
                 },
             ]),
         ),
@@ -211,7 +205,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
                 blueprintDocument,
             },
             localBlueprints: blueprintDocument,
-            sharedBlueprints: [],
             persistentVariables: {},
             savedVariables: {},
             saveSchema: [],
@@ -341,7 +334,29 @@ describe("createDevModeBlueprintHostAdapter", () => {
         ]);
 
         await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
-            instanceKey: buildUIListItemInstanceKey("rows", "row-1"),
+            instanceKey: buildUIListItemInstanceKey(undefined, "rows", "row-1"),
+            listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
+        });
+
+        expect(fixture.heard("page")).toBe(true);
+        fixture.cleanup();
+    });
+
+    it("leaves a row inside a component still inside that placement", async () => {
+        // Leaving the row sheds the row and nothing else. Shedding the whole key took the placement
+        // with it, so the walk reached the definition's root not knowing which placement it was in,
+        // stopped there, and the page around the card never heard a press on one of its rows.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "card", type: "nl.container", placesComponent: "slot" },
+            { id: "card-root", type: "nl.container" },
+            { id: "rows", type: "nl.list" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            componentId: "slot",
+            instanceKey: buildUIListItemInstanceKey(buildUIComponentInstanceKey(undefined, "card"), "rows", "row-1"),
             listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
         });
 

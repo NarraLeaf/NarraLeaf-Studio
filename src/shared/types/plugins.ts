@@ -441,6 +441,29 @@ export type WorkspacePluginDescriptor = {
     entryUrl: string;
 };
 
+/**
+ * Why an enabled runtime plugin is not part of a project's runtime set.
+ *
+ * The selection is the same in a build and in a Dev Mode session, so the reason
+ * is stated once here and read by whichever host has to explain it.
+ */
+export type RuntimePluginExclusionReason =
+    /** The project's dependency table records no hard dependency on it. */
+    | "notDeclared"
+    /**
+     * The project depends on it and it still cannot run: an incompatible
+     * installed version, or a manifest that does not declare a type in use.
+     */
+    | "unusable";
+
+/** One enabled runtime plugin a project leaves out, and why. */
+export type RuntimePluginExclusion = {
+    pluginId: string;
+    /** The plugin's display name, for a host that has to name it to an author. */
+    pluginName: string;
+    reason: RuntimePluginExclusionReason;
+};
+
 /** Descriptor handed to game execution environments: plugins with a runtime entry. */
 export type RuntimePluginDescriptor = {
     plugin: PluginIdentity;

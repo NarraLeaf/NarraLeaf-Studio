@@ -12,12 +12,14 @@ import {
     decodeProjectPackage,
     decodeProjectPackageIndex,
     encodeProjectPackageIndex,
+    isNewerProjectPackage,
     locateProjectPackageFiles,
     normalizeProjectPackagePath,
     projectPackageMagic,
     readProjectPackageVersion,
     shouldExcludeProjectPackagePath,
 } from "@shared/utils/projectPackage";
+import { ProjectPackageExportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import { unpatchedFs as nodeFs, unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 
 /**
@@ -64,9 +66,19 @@ interface WalkedProject {
  * Write the project at `projectRoot` to `packagePath`, which must not exist.
  *
  * A failure part-way through leaves nothing behind: the half-written package is removed, because a
- * truncated `.nlspkg` is indistinguishable from a whole one until somebody tries to import it.
+ * truncated `.nlspkg` is indistinguishable from a whole one until somebody tries to import it. What
+ * it throws carries the code the workspace words it from, where the disk gave a reason an author can
+ * act on (see {@link classifyPackFailure}).
  */
 export async function writeProjectPackage(source: ProjectPackageSource): Promise<ProjectPackageWriteResult> {
+    try {
+        return await packProject(source);
+    } catch (error) {
+        throw classifyPackFailure(error, source.projectRoot, source.packagePath);
+    }
+}
+
+async function packProject(source: ProjectPackageSource): Promise<ProjectPackageWriteResult> {
     const walked = await walkProject(source.projectRoot);
 
     // `wx`, so an export never overwrites a package that is already there - and the wait for `open`
@@ -191,48 +203,322 @@ async function walkProject(projectRoot: string): Promise<WalkedProject> {
 }
 
 /**
- * Unpack `packagePath` into `targetDir`, which must be empty.
+ * Unpack `packagePath` into `targetDir`, which must be empty or absent.
  *
  * Version 2 is read by seeking: the index at the end says where every file is, so each one is
  * copied stream to stream. Version 1 has no index and its bytes are values inside a single msgpack
  * object, so it is read whole - the format Studio no longer writes is also the format that cannot
  * be read any other way.
+ *
+ * A failure takes back what this unpack wrote (see {@link UnpackFootprint}), so the folder is left
+ * as it was found and the next attempt can use it. When some of it will not go, the thrown error
+ * says so in its message for the log, and the folder itself says so to the wizard, which looks.
  */
 export async function readProjectPackageInto(
     packagePath: string,
     targetDir: string,
 ): Promise<ProjectPackageReadResult> {
-    await fs.mkdir(targetDir, { recursive: true });
+    const footprint = new UnpackFootprint();
+    try {
+        return await unpackProjectPackage(packagePath, targetDir, footprint);
+    } catch (error) {
+        const classified = classifyUnpackFailure(error, packagePath);
+        const unremoved = await footprint.remove();
+        if (unremoved.length > 0) {
+            const first = unremoved[0] instanceof Error ? unremoved[0].message : String(unremoved[0]);
+            classified.message += ` (${unremoved.length} of the paths this import wrote could not be removed: ${first})`;
+        }
+        throw classified;
+    }
+}
+
+/**
+ * Everything an unpack has brought into existence, so that a failed one can take exactly that away.
+ *
+ * The folder an import is pointed at is either new - the wizard suggests a subfolder that does not
+ * exist yet - or one the author picked, which had to be empty. A failure part-way used to leave what
+ * had been written, and the next attempt then met a folder that was not empty and could only say
+ * that, with nothing on the page to say what filled it was the last attempt.
+ *
+ * So each directory this creates and each file it opens is recorded as it comes into existence, and
+ * a failure removes those and nothing else. A folder that was there before the import stays where it
+ * is, emptied of what the import put in it; a folder the import created goes, parents included when
+ * it had to create them too. Files are opened `wx`, so a file is only ever recorded once this unpack
+ * is the one that made it.
+ */
+class UnpackFootprint {
+    private readonly created: { path: string; directory: boolean }[] = [];
+
+    /** `mkdir -p`, recording the topmost directory it had to create: everything under that is ours. */
+    async makeDirectory(directory: string): Promise<void> {
+        const first = await fs.mkdir(directory, { recursive: true });
+        if (first) {
+            this.created.push({ path: withoutNamespacePrefix(first), directory: true });
+        }
+    }
+
+    /** Write a file that must not exist yet, recorded the moment it does. */
+    async writeNewFile(filePath: string, data: Uint8Array | string): Promise<void> {
+        const handle = await fs.open(filePath, "wx");
+        this.created.push({ path: filePath, directory: false });
+        try {
+            await handle.writeFile(data);
+        } finally {
+            await handle.close();
+        }
+    }
+
+    /** Stream `size` bytes at `offset` of the package into a file that must not exist yet. */
+    async copyNewFile(packagePath: string, offset: number, size: number, filePath: string): Promise<void> {
+        const out = nodeFs.createWriteStream(filePath, { flags: "wx" });
+        try {
+            await once(out, "open");
+            this.created.push({ path: filePath, directory: false });
+            await pipeline(nodeFs.createReadStream(packagePath, { start: offset, end: offset + size - 1 }), out);
+        } catch (error) {
+            // The handle has to be shut before the file can be removed on Windows, and `pipeline`
+            // rejects as soon as it has asked for that rather than once it has happened.
+            if (!out.closed) {
+                await once(out, "close").catch(() => undefined);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Remove what was recorded, newest first, and return what would not go. A path inside a recorded
+     * directory goes with that directory.
+     */
+    async remove(): Promise<unknown[]> {
+        const directories = this.created.filter(entry => entry.directory);
+        const roots = this.created.filter(entry =>
+            !directories.some(directory => directory !== entry && isInside(directory.path, entry.path)));
+        const failures: unknown[] = [];
+        for (const entry of roots.reverse()) {
+            const failure = await removeTree(entry.path);
+            if (failure !== null) {
+                failures.push(failure);
+            }
+        }
+        return failures;
+    }
+}
+
+/**
+ * A Windows path without the `\\?\` prefix. `mkdir` with `recursive` answers in that form on Windows
+ * while every other path here is plain, and the two do not compare as one inside the other.
+ */
+function withoutNamespacePrefix(target: string): string {
+    if (target.startsWith("\\\\?\\UNC\\")) {
+        return `\\\\${target.slice(8)}`;
+    }
+    return target.startsWith("\\\\?\\") ? target.slice(4) : target;
+}
+
+/**
+ * The pauses before each attempt at removing one tree. Tried again at all because on Windows a file
+ * just written is often held for a moment by a scanner or an indexer.
+ *
+ * Not `rm`'s own `maxRetries`, which retries at every level of the tree: a folder whose contents
+ * cannot be removed at all - one that denies deleting, say - then multiplies its attempts at each
+ * depth, and an unpack of an ordinary project took minutes to give up. Retrying the whole tree is
+ * bounded by the number of attempts here.
+ */
+const REMOVAL_ATTEMPT_DELAYS_MS: readonly number[] = [0, 200, 800];
+
+/** Remove a tree, or return why it would not go after the last attempt. */
+async function removeTree(target: string): Promise<unknown | null> {
+    let failure: unknown = null;
+    for (const delay of REMOVAL_ATTEMPT_DELAYS_MS) {
+        if (delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        try {
+            await fs.rm(target, { recursive: true, force: true });
+            return null;
+        } catch (error) {
+            failure = error;
+        }
+    }
+    return failure;
+}
+
+/**
+ * A refusal from the unpacker: the log's sentence, which names paths, and the code the wizard words.
+ */
+export class ProjectPackageImportError extends Error {
+    constructor(
+        public readonly code: ProjectPackageImportErrorCode,
+        message: string,
+        options?: { cause?: unknown },
+    ) {
+        super(message, options);
+        this.name = "ProjectPackageImportError";
+    }
+}
+
+/** What the disk says when it will not let a path be read or written. */
+const ACCESS_DENIED_CODES: ReadonlySet<string> = new Set(["EACCES", "EPERM", "EROFS"]);
+
+/**
+ * A refusal from the packer: the log's sentence, which names paths, and the code the workspace words.
+ */
+export class ProjectPackageExportError extends Error {
+    constructor(
+        public readonly code: ProjectPackageExportErrorCode,
+        message: string,
+        options?: { cause?: unknown },
+    ) {
+        super(message, options);
+        this.name = "ProjectPackageExportError";
+    }
+}
+
+/**
+ * Give an export failure the code the workspace words it from.
+ *
+ * An export reads one tree and writes one file, and the path the disk named says which of the two
+ * refused: a path inside the project is the project's (a file the walk found and the copy could not
+ * open, a folder it could not list), and anything else - the package itself, or a write that names
+ * no path - is the export folder's. The package is compared first, because the folder an author
+ * exports into may well be inside the project.
+ *
+ * A failure with no errno is not the disk's (the project's configuration would not parse, no free
+ * name was left in the folder) and one with an errno nobody can act on (`EIO`) keeps it: neither has
+ * a sentence of its own, and the workspace says the export failed.
+ */
+export function classifyPackFailure(error: unknown, projectRoot: string, packagePath?: string): Error {
+    if (error instanceof ProjectPackageExportError) {
+        return error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const errno = (error as NodeJS.ErrnoException | null)?.code;
+    if (typeof errno !== "string") {
+        return error instanceof Error ? error : new Error(message);
+    }
+    const coded = (code: ProjectPackageExportErrorCode) => new ProjectPackageExportError(code, message, { cause: error });
+    if (errno === "ENOSPC") {
+        return coded(ProjectPackageExportErrorCode.DiskFull);
+    }
+
+    const failedPath = (error as NodeJS.ErrnoException).path;
+    const onPackage = typeof failedPath !== "string"
+        || (packagePath !== undefined && path.resolve(failedPath) === path.resolve(packagePath));
+    const onProject = !onPackage && isInside(projectRoot, failedPath as string);
+    if (onProject) {
+        if (ACCESS_DENIED_CODES.has(errno)) {
+            return coded(ProjectPackageExportErrorCode.ProjectUnreadable);
+        }
+        if (errno === "EBUSY") {
+            return coded(ProjectPackageExportErrorCode.ProjectFileBusy);
+        }
+        if (errno === "ENOENT") {
+            return coded(ProjectPackageExportErrorCode.ProjectChanged);
+        }
+    } else {
+        if (ACCESS_DENIED_CODES.has(errno)) {
+            return coded(ProjectPackageExportErrorCode.FolderReadOnly);
+        }
+        if (errno === "ENOENT") {
+            return coded(ProjectPackageExportErrorCode.FolderMissing);
+        }
+    }
+    return error instanceof Error ? error : new Error(message);
+}
+
+function isInside(root: string, candidate: string): boolean {
+    const relative = path.relative(path.resolve(root), path.resolve(candidate));
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * Give an unpack failure the code the wizard words it from.
+ *
+ * Two kinds of thing fail here. A failure the disk reported carries an errno, and the path it was
+ * about says which side it was on: the package being read, or the folder being written. Anything
+ * else was thrown by the format's own checks - an index that does not add up, an entry that points
+ * outside the folder, msgpack that will not decode - and every one of those is a package that does
+ * not hold together. A disk failure with no code the author can act on (`EIO`, `EBUSY`) keeps its
+ * errno and gets no sentence of its own; the wizard then says the file could not be unpacked.
+ */
+export function classifyUnpackFailure(error: unknown, packagePath: string): Error {
+    if (error instanceof ProjectPackageImportError) {
+        return error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const errno = (error as NodeJS.ErrnoException | null)?.code;
+    if (typeof errno !== "string") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.Damaged, message, { cause: error });
+    }
+    if (errno === "ENOSPC") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.DiskFull, message, { cause: error });
+    }
+    const failedPath = (error as NodeJS.ErrnoException).path;
+    const onPackage = typeof failedPath === "string" && path.resolve(failedPath) === path.resolve(packagePath);
+    if (onPackage && errno === "ENOENT") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.PackageMissing, message, { cause: error });
+    }
+    if (ACCESS_DENIED_CODES.has(errno)) {
+        return new ProjectPackageImportError(
+            onPackage ? ProjectPackageImportErrorCode.PackageUnreadable : ProjectPackageImportErrorCode.FolderReadOnly,
+            message,
+            { cause: error },
+        );
+    }
+    // The folder was empty when the unpack began and the unpack is the only thing writing it, so a
+    // path in it that is already taken - one entry twice, a file where the index put a folder - is
+    // the package contradicting itself.
+    if (!onPackage && COLLISION_CODES.has(errno)) {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.Damaged, message, { cause: error });
+    }
+    return error instanceof Error ? error : new Error(message);
+}
+
+/** What the disk says when a path an unpack writes is already something else. */
+const COLLISION_CODES: ReadonlySet<string> = new Set(["EEXIST", "ENOTDIR", "EISDIR"]);
+
+async function unpackProjectPackage(
+    packagePath: string,
+    targetDir: string,
+    footprint: UnpackFootprint,
+): Promise<ProjectPackageReadResult> {
+    await footprint.makeDirectory(targetDir);
     if ((await fs.readdir(targetDir)).length > 0) {
-        throw new Error("Import folder must be empty. Choose an empty folder for the imported project.");
+        throw new ProjectPackageImportError(
+            ProjectPackageImportErrorCode.FolderNotEmpty,
+            "Import folder must be empty. Choose an empty folder for the imported project.",
+        );
     }
 
     const byteLength = (await fs.stat(packagePath)).size;
-    const version = readProjectPackageVersion(await readSpan(packagePath, 0, PROJECT_PACKAGE_BODY_OFFSET));
+    const head = await readSpan(packagePath, 0, PROJECT_PACKAGE_BODY_OFFSET);
+    const version = readProjectPackageVersion(head);
     if (version === null) {
-        throw new Error("Selected file is not a NarraLeaf Studio project package.");
+        // A package's magic with a version after this Studio's is a package, from a newer Studio -
+        // which is a different thing to tell the author than "this is not a package".
+        throw new ProjectPackageImportError(
+            isNewerProjectPackage(head) ? ProjectPackageImportErrorCode.NewerVersion : ProjectPackageImportErrorCode.NotAPackage,
+            "Selected file is not a NarraLeaf Studio project package this version can read.",
+        );
     }
     if (version === PROJECT_PACKAGE_LEGACY_VERSION) {
-        return { ...await readLegacyPackageInto(packagePath, targetDir), byteLength };
+        return { ...await readLegacyPackageInto(packagePath, targetDir, footprint), byteLength };
     }
 
     const index = await readPackageIndex(packagePath, byteLength);
     for (const directory of index.directories) {
-        await fs.mkdir(resolveInsideTarget(targetDir, directory), { recursive: true });
+        await footprint.makeDirectory(resolveInsideTarget(targetDir, directory));
     }
 
     for (const file of locateProjectPackageFiles(index)) {
         const filePath = resolveInsideTarget(targetDir, file.path);
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        if (file.size === 0) {
-            await fs.writeFile(filePath, "", { flag: "wx" });
-            continue;
-        }
         try {
-            await pipeline(
-                nodeFs.createReadStream(packagePath, { start: file.offset, end: file.offset + file.size - 1 }),
-                nodeFs.createWriteStream(filePath, { flags: "wx" }),
-            );
+            await footprint.makeDirectory(path.dirname(filePath));
+            if (file.size === 0) {
+                await footprint.writeNewFile(filePath, "");
+            } else {
+                await footprint.copyNewFile(packagePath, file.offset, file.size, filePath);
+            }
         } catch (error) {
             throw describeFileFailure(file.path, error);
         }
@@ -273,16 +559,17 @@ async function readPackageIndex(packagePath: string, byteLength: number): Promis
 async function readLegacyPackageInto(
     packagePath: string,
     targetDir: string,
+    footprint: UnpackFootprint,
 ): Promise<{ projectName: string; fileCount: number }> {
     const payload = decodeProjectPackage(await fs.readFile(packagePath));
 
     for (const directory of payload.directories) {
-        await fs.mkdir(resolveInsideTarget(targetDir, directory), { recursive: true });
+        await footprint.makeDirectory(resolveInsideTarget(targetDir, directory));
     }
     for (const file of payload.files) {
         const filePath = resolveInsideTarget(targetDir, file.path);
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        await fs.writeFile(filePath, file.data, { flag: "wx" });
+        await footprint.makeDirectory(path.dirname(filePath));
+        await footprint.writeNewFile(filePath, file.data);
     }
 
     return { projectName: payload.projectName, fileCount: payload.files.length };
@@ -303,10 +590,19 @@ async function readSpan(filePath: string, offset: number, length: number): Promi
  * Names the file. A copy that fails part-way through a project reports whatever the filesystem
  * said, and on its own that is a path-shaped sentence about a file the author never mentioned -
  * which is all an export failure used to put in front of them.
+ *
+ * The disk's errno and the path it was about survive the rewording: the unpacker reads them to tell
+ * a package it cannot read from a folder it cannot write.
  */
 function describeFileFailure(relativePath: string, error: unknown): Error {
     const reason = error instanceof Error ? error.message : String(error);
-    return new Error(`Could not copy "${relativePath}": ${reason}`);
+    const described = new Error(`Could not copy "${relativePath}": ${reason}`, { cause: error });
+    const errno = error as NodeJS.ErrnoException | null;
+    return Object.assign(
+        described,
+        typeof errno?.code === "string" ? { code: errno.code } : {},
+        typeof errno?.path === "string" ? { path: errno.path } : {},
+    );
 }
 
 function toProjectPackagePath(projectRoot: string, absolutePath: string): string {

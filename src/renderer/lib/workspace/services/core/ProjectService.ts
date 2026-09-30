@@ -53,9 +53,15 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
+import { storeWrite, type SavedFileName } from "../autosave/writeReport";
 import { FileSystemService } from "./FileSystem";
+import { describeFileWriteFailure, describeWriteFailureReason } from "./writeFailureReason";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { FsRejectErrorCode, type FsRejectError, type FsRequestResult } from "@shared/types/os";
+import { withReadFailureReason } from "@/lib/workspace/assets/assetReadFailure";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -96,6 +102,67 @@ export class BaseProjectService {
     }
 }
 
+/**
+ * The project file could not be written.
+ *
+ * Its message is the sentence the author reads: every surface that changes a project setting shows a
+ * failure as `error.message`, and before this it read `Failed to write file to app://fs/<grant>:
+ * Internal Server Error` - a one-use grant URL and an HTTP status, where the author needed to hear
+ * that the project file is read-only. The filesystem's own error is kept as `cause`, for the log.
+ */
+export class ProjectFileWriteError extends RendererError {
+    public constructor(public readonly fsError: FsRejectError) {
+        super(describeProjectFileWriteFailure(fsError, translate), { cause: fsError });
+        this.name = "ProjectFileWriteError";
+    }
+}
+
+/**
+ * How a manifest write is reported when it fails: by whoever asked for the change, with a
+ * {@link ProjectFileWriteError}, and never tried again - the cached manifest stays at what was last
+ * written, and every surface showing a setting goes back to it. The save-status surface would say
+ * the opposite of that, so it only logs it.
+ */
+const PROJECT_FILE_WRITE = storeWrite("workspace.shell.save.stores.project", "handledByWriter");
+
+/** What the icon files are to the author, for the sentence a failed write of one throws. */
+const PROJECT_ICON = { store: "workspace.shell.save.stores.projectIcon" } as const satisfies SavedFileName;
+
+/**
+ * A failure on one of the project's own files - an icon picked in, an icon or avatar baked from it -
+ * whose message is the sentence the author reads.
+ *
+ * Its own class so a surface that runs several steps (the icon section: pick, copy, bake, record) can
+ * show these as they are and word anything else itself: the filesystem's message names the path, and
+ * an error that is not one of these was never written for an author.
+ */
+export class ProjectFileAccessError extends RendererError {
+    public constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
+        this.name = "ProjectFileAccessError";
+    }
+}
+
+/**
+ * Throw a write failure as the sentence the surface that asked will show, naming the thing written
+ * by what the author knows it as. The filesystem's own message names the path, and for a derived
+ * file that is a directory the author never chose.
+ */
+function throwWriteFailure(name: SavedFileName, result: FsRequestResult<void>): void {
+    if (!result.ok) {
+        throw new ProjectFileAccessError(describeFileWriteFailure(name, result.error, translate), { cause: result.error });
+    }
+}
+
+/** The sentence a {@link ProjectFileWriteError} carries, in the language `t` speaks. */
+export function describeProjectFileWriteFailure(
+    fsError: Pick<FsRejectError, "code">,
+    t: (key: TranslationKey, params?: InterpolationParams) => string,
+): string {
+    const reason = describeWriteFailureReason(fsError, t);
+    return reason ? t("project.writeFailed.withReason", { reason }) : t("project.writeFailed.plain");
+}
+
 type ProjectServiceEvents = {
     configChanged: ProjectConfig;
 };
@@ -105,6 +172,22 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     private projectConfigPath: string | null = null;
     private projectConfigFormat: "nlproj" | "json" | null = null;
     private readonly events = new EventEmitter<ProjectServiceEvents>();
+    /**
+     * The manifest operation the next one waits for.
+     *
+     * Every setter here is a read-modify-write of the whole file, and the write is a grant and a `PUT`
+     * that take a few milliseconds each. Two of them started together would both read the manifest
+     * before either had written, so the one that landed second put back everything the first had
+     * changed - and the two `PUT`s are not even ordered, so which one that was varied from run to run.
+     * Two switches clicked back to back on the project panel lost one of them that way, and so did
+     * any other pair of surfaces writing the manifest at once.
+     *
+     * So they run one at a time, each against the manifest the one before it left: that is what
+     * makes every change land, and land in the order it was asked for, without a caller having to
+     * refuse or grey out the second one while the first is on its way. A failed operation does not
+     * stop the ones queued behind it; they build on the last manifest that was actually written.
+     */
+    private manifestQueue: Promise<unknown> = Promise.resolve();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -143,13 +226,17 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * reports what the next build will do has to read what the build reads (see
      * the build dialog, which re-reads before describing the package).
      */
-    public async reloadProjectConfig(): Promise<ProjectConfig> {
-        const config = await this.readProjectConfigFile();
-        this.projectConfig = config;
-        // A re-read is a change as far as anything watching is concerned: the values it was showing
-        // came from the copy this just replaced.
-        this.events.emit("configChanged", config);
-        return config;
+    public reloadProjectConfig(): Promise<ProjectConfig> {
+        // Queued with the writes: a read that overtook one in flight would put back the manifest from
+        // before it, and the next write would then build on that.
+        return this.enqueueManifestOperation(async () => {
+            const config = await this.readProjectConfigFile();
+            this.projectConfig = config;
+            // A re-read is a change as far as anything watching is concerned: the values it was
+            // showing came from the copy this just replaced.
+            this.events.emit("configChanged", config);
+            return config;
+        });
     }
 
     /**
@@ -169,16 +256,33 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         return this.events.on("configChanged", handler);
     }
 
-    public async updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
-        const current = this.cloneProjectConfig(this.getProjectConfig());
-        const next = updater(current);
-        this.assertValidProjectConfig(next);
-        await this.writeProjectConfig(next);
-        this.projectConfig = next;
-        // After the write, so a subscriber that reads back through this service sees what is on disk
-        // rather than a value a failed write would have rolled back.
-        this.events.emit("configChanged", next);
-        return next;
+    /**
+     * Change the manifest and write it.
+     *
+     * The updater runs when this change's turn comes rather than when it is asked for, so it sees
+     * every change queued before it (see {@link manifestQueue}). It has to be synchronous and must not
+     * call back into this method - a nested call would wait on the queue it is holding.
+     */
+    public updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
+        return this.enqueueManifestOperation(async () => {
+            const current = this.cloneProjectConfig(this.getProjectConfig());
+            const next = updater(current);
+            this.assertValidProjectConfig(next);
+            await this.writeProjectConfig(next);
+            this.projectConfig = next;
+            // After the write, so a subscriber that reads back through this service sees what is on
+            // disk rather than a value a failed write would have rolled back.
+            this.events.emit("configChanged", next);
+            return next;
+        });
+    }
+
+    private enqueueManifestOperation<T>(operation: () => Promise<T>): Promise<T> {
+        // Run whether the previous one resolved or threw: a refused write is the caller's to report,
+        // and it must not strand every change queued behind it.
+        const run = this.manifestQueue.then(operation, operation);
+        this.manifestQueue = run.catch(() => undefined);
+        return run;
     }
 
     public async updateProjectName(name: string): Promise<ProjectConfig> {
@@ -885,41 +989,60 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * null when the picker was dismissed.
      */
     public async importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null> {
+        // Every failure below is thrown as the sentence the icon section shows: the file by the name
+        // it has on the author's disk, never the path, and the filesystem's reason only where the
+        // author can act on it.
         const selection = await appPrivilegedFacade.fs.selectFile(PROJECT_ICON_PICKER_EXTENSIONS, false);
-        if (!selection.success) {
-            throw new RendererError(selection.error ?? "Failed to open icon file picker");
+        if (!selection.success || !selection.data.ok) {
+            throw new ProjectFileAccessError(translate("project.assets.pickFailed"), {
+                cause: selection.success ? selection.data : selection.error,
+            });
         }
-        const sourcePath = throwException(selection.data)[0];
+        const sourcePath = selection.data.data[0];
         if (!sourcePath) {
             return null;
         }
+        const sourceName = basename(sourcePath);
 
         const extension = normalizeIconExtension(sourcePath);
         if (!PROJECT_ICON_PICKER_EXTENSIONS.includes(extension)) {
-            throw new RendererError(`Unsupported icon file: .${extension || "unknown"}`);
+            throw new ProjectFileAccessError(translate("project.assets.unsupported", { name: sourceName }));
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const bytes = throwException(await filesystemService.readRaw(sourcePath));
-        throwException(await filesystemService.createDir(
+        const read = await filesystemService.readRaw(sourcePath);
+        if (!read.ok) {
+            // "Missing from the project folder" is not offered: the file was picked from anywhere.
+            throw new ProjectFileAccessError(withReadFailureReason(
+                translate("project.assets.readFailed", { name: sourceName }),
+                read.error.code === FsRejectErrorCode.PERMISSION_DENIED ? read.error.code : undefined,
+                translate,
+            ), { cause: read.error });
+        }
+        const bytes = read.data;
+        const sourcesDir = await filesystemService.createDir(
             this.getContext().project.resolve(ProjectNameConvention.ProjectIconSources),
-        ));
+        );
+        if (!sourcesDir.ok) {
+            throwWriteFailure(PROJECT_ICON, sourcesDir);
+        }
 
         // A slot holds one file. Importing a .svg over a .png would otherwise
         // leave the old one behind, tracked and dead.
         await this.removeIconSourceSiblings(slot, extension);
 
         const relativeSegments = ProjectNameConvention.ProjectIconSource(slot, extension);
-        throwException(await filesystemService.writeRaw(
+        throwWriteFailure(PROJECT_ICON, await filesystemService.writeRaw(
             this.getContext().project.resolve(relativeSegments),
             bytes,
+            storeWrite(PROJECT_ICON.store, "handledByWriter"),
         ));
 
         return {
             bytes,
             source: {
                 path: relativeSegments.join("/"),
-                sourceName: basename(sourcePath),
+                sourceName,
                 mediaType: ICON_MEDIA_TYPES[extension] ?? "application/octet-stream",
                 updatedAt: new Date().toISOString(),
             },
@@ -944,7 +1067,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * Returns whether anything was written.
      */
     public async writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean> {
-        return this.writeProjectDerivedFile(relativePath, bytes);
+        return this.writeProjectDerivedFile(relativePath, bytes, PROJECT_ICON);
     }
 
     /**
@@ -957,7 +1080,11 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * one derived tree does not have to know about another's layout. Returns whether anything was
      * written.
      */
-    public async writeProjectDerivedFile(relativePath: string, bytes: Uint8Array): Promise<boolean> {
+    public async writeProjectDerivedFile(
+        relativePath: string,
+        bytes: Uint8Array,
+        name: SavedFileName & { store: TranslationKey },
+    ): Promise<boolean> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const absolutePath = this.getContext().project.resolve(relativePath);
         const existing = await filesystemService.readRaw(absolutePath);
@@ -966,9 +1093,14 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
         const parent = relativePath.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
         if (parent) {
-            throwException(await filesystemService.createDir(this.getContext().project.resolve(parent)));
+            const created = await filesystemService.createDir(this.getContext().project.resolve(parent));
+            if (!created.ok) {
+                throwWriteFailure(name, created);
+            }
         }
-        throwException(await filesystemService.writeRaw(absolutePath, bytes));
+        // Derived, so baked again the next time it is asked for: the caller that asked is the one to
+        // say it did not happen, and the error it throws already says it in the author's words.
+        throwWriteFailure(name, await filesystemService.writeRaw(absolutePath, bytes, storeWrite(name.store, "handledByWriter")));
         return true;
     }
 
@@ -1060,13 +1192,12 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        if (this.projectConfigFormat === "nlproj") {
-            const encoded = encodeProjectConfig(config as any);
-            throwException(await filesystemService.writeRaw(this.projectConfigPath, encoded));
-            return;
+        const result = this.projectConfigFormat === "nlproj"
+            ? await filesystemService.writeRaw(this.projectConfigPath, encodeProjectConfig(config as any), PROJECT_FILE_WRITE)
+            : await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8", PROJECT_FILE_WRITE);
+        if (!result.ok) {
+            throw new ProjectFileWriteError(result.error);
         }
-
-        throwException(await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8"));
     }
 
     private cloneProjectConfig(config: ProjectConfig): ProjectConfig {

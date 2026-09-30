@@ -178,6 +178,7 @@ export const build = {
                 output: "Choose where to write the file.",
                 reading: "Reading the build folder.",
                 artifact: "That folder holds no build of this game.",
+                artifactAccess: "Choose that folder with Browse to read it.",
                 dlcBaseline: "Select the build this DLC adds to.",
                 dlcVariant: "That build is not the variant this DLC attaches to.",
             },
@@ -334,8 +335,8 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin}'s {sidecar} program ships into the {platform} artifact unable to run. Build the "
             + "{targetPlatform} target on a {targetPlatform} machine.",
-        "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
+        "mobile-unprotected": "Asset protection does not apply to Android or iOS packages.",
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",
@@ -436,6 +437,8 @@ export const build = {
         showAll: "Show all {count}",
         failure: "Reason",
     },
+    /** A run the author stopped while its pre-build checks were still running. */
+    cancelled: "Build stopped",
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: {
         one: "Build stopped: {count} invalid command. See the console.",
@@ -483,7 +486,7 @@ export const build = {
      * which is why every line names the variant.
      */
     contentBlockedStartStory: "A Start Game node in {location} picks its scene while the game runs. Pick the scene in the inspector, or list the scenes it can start in the {variant} variant.",
-    contentBlockedScript: "The blueprint {location} is written in TypeScript and can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedScript: "The script {location} can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedPlugin: "The {location} plugin can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedSummary: {
         one: "Build stopped: {count} place can start a scene the {variant} build cannot read. See the console.",
@@ -505,12 +508,47 @@ export const build = {
      */
     contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
     // The one construct the asset sweep cannot read, refused for every build rather than only for
-    // the ones that also drop scenes: every package carries the assets its bytes name, and a pin fed
-    // by a computed value names none.
-    contentComputedPinGap: "{location} receives its asset from a computed value, so this build cannot tell which asset it needs.",
+    // the ones that also drop scenes: every package carries the assets whose names its bytes hold,
+    // and a name assembled at run time is in none of them. Each one is printed above this in the
+    // project check's own sentence (`lint.rule.blueprintAssembledAssetName`), which says what to do.
     contentComputedPinSummary: {
-        one: "Build stopped: {count} pin receives its asset from a computed value. Select the asset on the pin. See the console.",
-        other: "Build stopped: {count} pins receive their asset from a computed value. Select the asset on each pin. See the console.",
+        one: "Build stopped: {count} asset name is assembled at run time. See the console.",
+        other: "Build stopped: {count} asset names are assembled at run time. See the console.",
+    },
+    // The same refusal where every one of them comes out of a node type nothing here can load: the
+    // plugin that defines it is not installed or is switched off, and there is nothing in the
+    // project to change.
+    contentUnloadedNodeSummary: {
+        one: "Build stopped: {count} asset name comes from a node type that is not loaded. See the console.",
+        other: "Build stopped: {count} asset names come from node types that are not loaded. See the console.",
+    },
+    /**
+     * A package build whose scripts did not all compile. Written in the main process, first line of
+     * the failure the build reports; the compiler's own line for each file follows it, naming the
+     * file, line and column.
+     */
+    scriptsNotCompiled: {
+        one: "{count} script could not be compiled.",
+        other: "{count} scripts could not be compiled.",
+    },
+    /**
+     * A package build refused over an asset set; Dev Mode prints the same sentence and keeps running.
+     * Written in the main process. `{location}` is the name of the scene a story row names the set
+     * in, or one of the three `in*` words. `{value}` is `language` or `variant`, carrying the project's
+     * name for the value - never the id it is stored as.
+     */
+    assetSet: {
+        inCharacters: "a character",
+        inInterface: "the interface",
+        inBlueprint: "a blueprint",
+        language: "the language {name}",
+        variant: "the variant {name}",
+        unfilled: "Asset set {set}, used in {location}, has no file for {value}.",
+        noLanguage: "Asset set {set}, used in {location}, has no file for the project's language.",
+        ambiguous: "Asset set {set}, used in {location}, has more than one file for {value}.",
+        nested: "Asset set {set}, used in {location}, has a set under one of its values. A build does not resolve nested sets.",
+        noValues: "Asset set {set}, used in {location}, declares no variants.",
+        variantUnset: "Asset set {set}, used in {location}, varies by variant, and {variant} does not say which art it uses. Choose it under Project ▸ App ▸ Build variants.",
     },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",
@@ -541,6 +579,7 @@ export const build = {
      */
     networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
     pointerNodeUnsupported: "{blueprint} moves the mouse cursor, which does not work on {platforms}.",
+    screenshotNodeUnsupported: "{blueprint} saves screenshots, which does not work on {platforms}.",
     networkSummary: {
         one: "Build stopped: {count} network node cannot run. Change the network policy in project settings, or remove the node.",
         other: "Build stopped: {count} network nodes cannot run. Change the network policy in project settings, or remove the nodes.",

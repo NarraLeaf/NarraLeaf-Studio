@@ -22,6 +22,13 @@ import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js";
+// The author's own scripts, for the read-only preview of a script blueprint. The *basic* language
+// is the whole point: it is a Monarch grammar that colours tokens on the main thread, not the
+// TypeScript language service, which is a worker this window cannot spawn. So the preview highlights
+// and never type-checks - and it must not, because the type check belongs to the editor the author
+// has the folder open in, where it can see their `node_modules`.
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import { getInterface } from "@/lib/app/bridge";
 import {
     normalizeTextEditorExtension,
@@ -215,6 +222,9 @@ export function defineStudioMonacoTheme(): void {
     const subtle = readChannels(styles, "--nl-fg-subtle", "#6b7480");
     const muted = readChannels(styles, "--nl-fg-muted", "#9aa3ae");
     const accent = readChannels(styles, "--nl-primary", "#40a8c4");
+    // Syntax tokens are text on the editor surface, so they take the accent's ink rather than the
+    // accent itself - the same split `text-primary` makes. `focusBorder` below keeps the accent.
+    const accentInk = readChannels(styles, "--nl-primary-ink", accent);
     const success = readChannels(styles, "--nl-success", "#6db094");
     const warning = readChannels(styles, "--nl-warning", "#ccaa5c");
     const dark = isDark(background);
@@ -227,11 +237,11 @@ export function defineStudioMonacoTheme(): void {
         inherit: true,
         rules: [
             { token: "comment", foreground: subtle.slice(1) },
-            { token: "keyword", foreground: accent.slice(1) },
+            { token: "keyword", foreground: accentInk.slice(1) },
             { token: "string", foreground: success.slice(1) },
             { token: "number", foreground: warning.slice(1) },
-            { token: "attribute.name", foreground: accent.slice(1) },
-            { token: "tag", foreground: accent.slice(1) },
+            { token: "attribute.name", foreground: accentInk.slice(1) },
+            { token: "tag", foreground: accentInk.slice(1) },
             // The two the story editor's NarraLang view adds. A Monaco theme is global - there is one
             // of them for the whole window - so a second surface's tokens have to be named here
             // rather than in a theme of its own, which would repaint every open text tab when it

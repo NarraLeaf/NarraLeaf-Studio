@@ -1,5 +1,6 @@
 import { FsRequestResult } from "@shared/types/os";
 import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
+import type { FsWriteReport } from "./autosave/writeReport";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -53,6 +54,7 @@ import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import type { HistoryLabel } from "./history/historyModel";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
+import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
@@ -79,7 +81,6 @@ import type {
     BlueprintDocument,
     BlueprintField,
     BlueprintFieldValueSource,
-    BlueprintFrontendKind,
     BlueprintGraphIr,
     BlueprintPrivateOwnerRecord,
     Blueprint,
@@ -178,6 +179,16 @@ import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 interface WorkspaceContext {
     project: Porject;
     services: ServiceRegistry;
+    /**
+     * Whether this window was opened to answer a command line - `--build`, `--test` or `--lint` -
+     * rather than for somebody to work in.
+     *
+     * Read from the window's props when the context is built, so a service knows it before its own
+     * `init` runs. Everything a workspace does *because an author is here* has to ask: a run is a
+     * machine passing through, and what it records about the person whose profile it borrowed is a
+     * fiction nobody can correct afterwards.
+     */
+    commandLineRun: boolean;
 }
 
 interface IService {
@@ -317,15 +328,20 @@ interface IFileSystemService extends IService {
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
     read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
-    writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** `report` says what the file is and what a failure leads to. See `BaseFileSystemService.write`. */
+    write(path: string, data: string, encoding: FsTextEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeRaw(path: string, data: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
     writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
-    ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    ensureRegularFile(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
-    writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    writeFileNoFollowOrCreate(
+        path: string,
+        data: string,
+        encoding: BufferEncoding,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
     deleteDir(path: string): Promise<FsRequestResult<void>>;
@@ -415,6 +431,7 @@ interface IUIDocumentService extends IService {
     }): UISurface;
     deleteSurface(surfaceId: string): void;
     renameSurface(surfaceId: string, name: string): void;
+    reorderSurfaces(orderedSurfaceIds: readonly string[], movedSurfaceId?: string): void;
     updateSurface(
         surfaceId: string,
         updater: (surface: UISurface) => void,
@@ -913,22 +930,23 @@ interface ILocalBlueprintService extends IService {
         updater: (ir: BlueprintGraphIr) => void,
         options?: { mergeKey?: string; mergeWindowMs?: number },
     ): void;
-    updateScriptModuleSource(
-        blueprintId: string,
-        code: string,
-        options?: { mergeKey?: string; mergeWindowMs?: number },
-    ): void;
+    /** Where a script blueprint's file is. There is no setter for its text; the file is the author's. */
+    getScriptRef(blueprintId: string, layerId: string): string | null;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;
         oldElementIds: string[];
         generateId: () => string;
     }): SubtreeDuplicateRemapPlan;
-    /** Private owner slot keys: globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId>. */
-    listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[];
-    setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
-    /** Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record. */
-    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string;
+    /**
+     * Declares a layer that runs one of the author's script files, and answers its id.
+     *
+     * Asynchronous because a new script writes a file first and the layer is only declared if that
+     * succeeded - a layer pointing at a file that was never written would be indistinguishable from
+     * one whose file the author deleted.
+     */
+    addScriptLayer(blueprintId: string, options?: { existingScriptRef?: string }): Promise<string>;
+    setLayerScriptRef(blueprintId: string, layerId: string, scriptRef: string): void;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {
@@ -1083,7 +1101,7 @@ interface IUIEditorStateService extends IService {
 interface IDevModeService extends IService {
     getStatus(): DevModeStatus;
     refreshStatus(): Promise<DevModeStatus>;
-    launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus>;
+    launch(entry: DevModeEntry): Promise<DevModeStatus>;
     stop(): Promise<DevModeStatus>;
     reload(): Promise<DevModeStatus>;
     onStatusChanged(handler: (status: DevModeStatus) => void): () => void;
@@ -1161,7 +1179,6 @@ interface IStoryService extends IService {
     deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void;
-    getContributingPluginIds(): string[];
     unregisterPluginAction(actionId: string): boolean;
     getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
     listPluginActions(): StoryPluginActionRegistration[];
@@ -1255,7 +1272,8 @@ interface ICharacterService extends IService {
         kind?: CharacterAppearanceKind,
         initial?: { color?: string; groupId?: string },
     ): Character;
-    renameCharacter(id: string, name: string): boolean;
+    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean>;
+    countRowsSpeakingAs(speakerName: string): Promise<number>;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;
     listGroups(): CharacterGroup[];
@@ -1318,16 +1336,15 @@ interface IAssetService extends IService {
     list<T extends AssetType>(type: T): string[];
     fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
-    importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
-    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>>;
-    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
+    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>>;
+    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RefusableStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
     hasRemoteSnapshot(assetId: string): Promise<boolean>;
 }
 
 interface IServiceAssetsService extends IService {
-    writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
+    writeStore<T extends Record<string, any>>(namespace: string, data: T, report?: FsWriteReport): Promise<FsRequestResult<{ path: string }>>;
     readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
-    writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>>;
+    writeFile(data: string | Buffer | Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<string>>;
     readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
     readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
     deleteFile(fileId: string): Promise<FsRequestResult<void>>;
@@ -1381,7 +1398,8 @@ interface ILintService extends IService {
  * contends with Dev Mode and Preview for the same compiled artifacts and the same Stop affordance.
  * `getAvailability` is the definition's own answer with the host's gates on top - notably that a
  * `windowed` test is unavailable while the workspace is frozen, while a `headless` one stays
- * available exactly as `lint:project` does (ruling R9).
+ * available exactly as `lint:project` does (ruling R9), and that a project nobody has vouched for
+ * runs nothing at all.
  */
 interface ITestRunService extends IService {
     listTests(): RegisteredTest[];
@@ -1390,6 +1408,8 @@ interface ITestRunService extends IService {
     listParameters(id: TestId): ResolvedTestParameter[];
     /** Load what those lists read, before asking for them. Never rejects. */
     prepareParameterSources(): Promise<void>;
+    /** Settle the host's gates - trust crosses IPC to reach - before asking about them. Never rejects. */
+    prepareAvailability(): Promise<void>;
     /** The values each test was last run with, off the project cache. Never rejects. */
     readRememberedParameters(): Promise<TestParameterMemory>;
     /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */
@@ -1637,8 +1657,10 @@ interface IProjectDependencyService extends IService {
     onResolutionChanged(handler: () => void): () => void;
     resolve(): Promise<ProjectDependencyResolution>;
     previewResolve(): Promise<ProjectDependencyResolution>;
-    rescan(): Promise<ProjectDependencyTable>;
-    rescanAndPersist(): Promise<ProjectDependencyResolution>;
+    rescan(trigger: import("./core/ProjectDependencyService").DependencyScanTrigger): Promise<ProjectDependencyTable>;
+    rescanAndPersist(
+        trigger: import("./core/ProjectDependencyService").DependencyScanTrigger,
+    ): Promise<ProjectDependencyResolution>;
 }
 
 export {

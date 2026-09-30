@@ -14,12 +14,35 @@
  * the arrays, so every slot it adds or deletes leaves one stale, and canonical serialization would
  * then be free to reorder the records underneath them. Refusing to open is the honest outcome;
  * silently degrading the author's order is not.
+ * v11: every part of an owner key is percent-encoded, so the separator can no longer occur inside
+ * one. The migration rewrites `ownerRecords` keys into the escaped spelling. See
+ * `@shared/blueprint/ownerKey`.
+ * v12: the `sharedAsset` owner kind is gone, and with it the second place a blueprint could be
+ * stored - a `.nlbp` asset file under `assets/content/`, outside this document and so outside its
+ * version, its `ownerRecords` and this ladder. The migration drops any blueprint left carrying that
+ * owner. It is a version rather than a silent read because a leftover is not inert: every owner
+ * switch in the codebase is exhaustive over `BlueprintOwnerRef`, so one that no longer has an arm
+ * falls off the end of the key encoder and reaches the document validator as `[object Object]`.
+ * v13: a script blueprint holds the PATH of the author's file under `scripts/` rather than its
+ * text. The text was never Studio's to hold - a document service that keeps a copy writes it back
+ * over an edit made in the author's own editor - and the inline form never ran: nothing mounted
+ * those modules, so the shipped "New TypeScript" button produced a blueprint that did nothing. The
+ * migration writes each one's text out to a file and points the blueprint at it, so no typing is
+ * lost even though none of it ever executed.
+ *
+ * v14: a script is a LAYER rather than a whole blueprint, and a slot runs exactly one blueprint.
+ * The two went together: a slot could only be a graph or a script as a whole, so keeping both meant
+ * keeping two blueprints per slot with one marked active - a private revision history no other part
+ * of the product could see, which duplicated what version control already records. Layers were
+ * never exclusive (the dispatcher runs every layer whose head matches a dispatch), so the migration
+ * folds each script blueprint into a one-layer container, keeps the blueprint each `ownerRecords`
+ * entry had active, and drops the rest along with `frontend` / `programKind` / `program`.
  *
  * The ladder that reads these stops at `BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION`. The versions
  * named above it are kept as the record of what each one changed; the ones below are history only,
  * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 10 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 14 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 

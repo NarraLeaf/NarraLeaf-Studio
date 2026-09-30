@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import pathModule from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -217,10 +217,6 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.writeFileNoFollowOrCreate(data.path, data.data, data.encoding));
             }
-            case "recoverCorruptedJsonFile": {
-                const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
-                return this.success(denied ?? await Fs.recoverCorruptedJsonFile(data.path, data.replacement, data.encoding));
-            }
             case "createDir": {
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.createDir(data.path) as FsRequestResult<void>);
@@ -325,7 +321,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                     // one the caller cannot use - an asset it cannot read is a missing asset
                     // either way. The single-path route keeps the stricter pair: it answers one
                     // caller about one file and can afford to.
-                    const hash = window.app.storageManager.allocateHash(fsPath, true, "read");
+                    const hash = window.app.storageManager.allocateHash(fsPath, true, "read", window.getWebContents().id);
                     const isFile = await Fs.isFile(fsPath);
                     if (isFile.ok && isFile.data) {
                         window.app.storageManager.updateStatus(hash, "ready");
@@ -344,7 +340,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         raw: boolean,
         encoding?: FsTextEncoding,
     ): Promise<FsRequestResult<string>> {
-        const hash = window.app.storageManager.allocateHash(fsPath, raw, "read", encoding);
+        const hash = window.app.storageManager.allocateHash(fsPath, raw, "read", window.getWebContents().id, encoding);
         try {
             const exists = await Fs.isFileExists(fsPath);
             if (!exists.ok || !exists.data) {
@@ -429,6 +425,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 raw: entry.encoding === undefined,
                 encoding: entry.encoding,
             })),
+            window.getWebContents().id,
         );
         window.app.storageManager.updateStatus(hash, "ready");
         return { ok: true, data: hash };
@@ -440,7 +437,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         raw: boolean,
         encoding?: FsTextEncoding,
     ): Promise<FsRequestResult<string>> {
-        const hash = window.app.storageManager.allocateHash(fsPath, raw, "write", encoding);
+        const hash = window.app.storageManager.allocateHash(fsPath, raw, "write", window.getWebContents().id, encoding);
         try {
             const dirPath = pathModule.dirname(fsPath);
             const dirExists = await Fs.isDirExists(dirPath);

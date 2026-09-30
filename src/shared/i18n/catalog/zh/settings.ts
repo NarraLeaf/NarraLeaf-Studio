@@ -112,11 +112,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "窗口图标",
-            description: "Studio 窗口与任务栏按钮所用的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            label: "应用图标",
+            description: "Studio 在任务栏与通知区域显示的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            descriptionMac: "Studio 运行时在程序坞中显示的图标。访达与启动台仍使用安装时的图标",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "白底叶子",
+                leaf: "叶子",
             },
             unsupportedPlatform: "此选项不适用于此操作系统",
         },
@@ -160,10 +162,6 @@ export const settings = {
                 serif: "衬线",
                 monospace: "等宽",
             },
-        },
-        editorSurfaceOpacity: {
-            label: "编辑面不透明度",
-            description: "故事正文与检查器字段背后阅读面的不透明度",
         },
         maxActiveEditors: {
             label: "最大活动编辑器数",
@@ -332,6 +330,10 @@ export const settings = {
             label: "本机名称",
             description: "会与账号一同显示给协作者。为空时使用主机名",
         },
+        projectTrust: {
+            label: "受信任的项目",
+            description: "非 Studio 创建的项目，以及它们是否可以运行。",
+        },
         cacheInventory: {
             label: "缓存文件",
         },
@@ -387,6 +389,8 @@ export const settings = {
         checking: "正在检查…",
         done: "完成",
         signOut: "退出登录",
+        usedBy: "使用此登录的项目：{projects}",
+        unused: "尚无项目使用此登录",
         signIn: "登录",
         signingIn: "正在登录…",
         addressLabel: "服务器地址",
@@ -426,6 +430,23 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "读取中…",
+            empty: "目前打开过的项目均由 Studio 创建。",
+            waiting: "等待处理",
+            granted: "已信任",
+            trust: "信任",
+            remove: "移除",
+            reloadNote: "已打开的项目在信任状态变更时重新载入。",
+            origin: {
+                package: "来自项目包",
+                remote: "来自远程源",
+                opened: "从文件夹打开",
+                created: "由 Studio 创建",
+                recent: "此前打开过",
+                commandLine: "来自命令行",
+            },
+        },
         cache: {
             measuring: "正在统计…",
             unavailable: "无法读取",
@@ -491,7 +512,9 @@ export const settings = {
         apply: "应用",
         exportHint: "将设置写入一个纯 JSON 文件；工作区背景图、提交版本的署名、最近项目、统计数据与窗口布局仅保留在本机",
         exported: "已保存到 {path}",
-        imported: "已应用 {count} 项设置",
+        imported: {
+            other: "已应用 {count} 项设置",
+        },
         exportFailed: "设置保存失败",
         importFailed: "无法读取该文件",
         planSummary: "{change} 项将变更，{same} 项已相同，{skipped} 项跳过",

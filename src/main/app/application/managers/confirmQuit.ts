@@ -353,7 +353,16 @@ export class ConfirmQuitManager {
         // "screen-saver" and `visibleOnFullScreen` together are what put it over a Studio window in
         // full screen, which is exactly where an author is most likely to hit ⌘Q by accident.
         overlay.setAlwaysOnTop(true, "screen-saver");
-        overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+        // skipTransformProcessType, or the app leaves the Dock the moment this window is built.
+        // Electron's default path for `visibleOnFullScreen` on macOS transforms the process to a
+        // UI-element application - the same thing `app.dock.hide()` does - so that a window can
+        // float over *another* app's full-screen space, and it only transforms back when the flag
+        // is turned off again. Studio never turns it off, so the first ⌘Q took the Dock icon away
+        // for the rest of the session while every window stayed exactly where it was. The two
+        // collection behaviours below are set either way, and they are the ones that matter here:
+        // the overlay only ever has to appear over a Studio window in full screen, because the
+        // keystroke reaching `before-input-event` at all means Studio is the active app.
+        overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
         overlay.on("closed", () => {
             this.overlay = null;
             this.overlayReady = null;

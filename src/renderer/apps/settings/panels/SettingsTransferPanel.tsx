@@ -21,7 +21,7 @@ import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
  * is doing at that moment, and a dialog over a settings window is a layer nothing here needs.
  */
 export function SettingsTransferPanel() {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
     const [plan, setPlan] = useState<SettingsImportPlan | null>(null);
@@ -65,7 +65,7 @@ export function SettingsTransferPanel() {
         try {
             const applied = await applyImport(plan);
             setPlan(null);
-            setMessage({ tone: "ok", text: t("settings.transfer.imported", { count: String(applied) }) });
+            setMessage({ tone: "ok", text: tn("settings.transfer.imported", applied) });
         } catch (error) {
             setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
         } finally {

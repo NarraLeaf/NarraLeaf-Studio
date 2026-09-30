@@ -17,6 +17,7 @@ import type {
     VcsLocalRepository,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsProjectServerSession,
     VcsPublishOutcome,
     VcsServerSession,
     VcsSignInOutcome,
@@ -30,6 +31,11 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
+import {
+    requireWindowProject,
+    requireWindowProjectOrWriteGrant,
+    windowProjectPath,
+} from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -55,6 +61,62 @@ import { IPCHandler } from "./IPCHandler";
  * path leaves the merge open, which is what lets an author decide one file and look at the result
  * before deciding the next. {@link VcsCompleteMergeHandler} is the one that closes it, and it does
  * both halves at once precisely so that nothing else can commit in between.
+ *
+ * # Which project a request may be about
+ *
+ * The window's, not the payload's. Every handler here that names a project takes it through
+ * {@link requireWindowProject}, which holds the payload against the project the main process opened
+ * the window on and answers with the window's own spelling. The renderer only has the string because
+ * it read it back out of those props: `VersionControlService` sends every one of these calls with the
+ * workspace's own project, and the only other senders - the workspace's startup preflight asking for
+ * the merge state, and its recovery shell - are the same window asking about the same project.
+ *
+ * What a foreign path would have bought differs a great deal, and is worth knowing when reading any
+ * one handler. {@link VcsRestoreRevisionHandler}, {@link VcsSyncHandler} and the four merge handlers
+ * that put bytes on disk replace the author's files with content out of history, and the bytes they
+ * replace were never committed, so nothing holds them - a request about another project destroys work
+ * in it. {@link VcsCommitHandler} and {@link VcsCheckpointHandler} add a revision to it, after settling
+ * the pending saves of whichever window has it open. Everything else reads: any file at any revision,
+ * the history with its authors, the merge in progress, which server the project reports to and who is
+ * signed in there. A scan for status is not even a pure read - it records new directories into staged
+ * state. None of that is anything a window may learn or do about a project it was not opened on.
+ *
+ * Two handlers are exceptions, each for its own reason:
+ *
+ *  - {@link VcsInitRepositoryHandler} is also asked by the project wizard, about the folder it has just
+ *    written a project into, from a window that has no project. It is bounded instead by
+ *    `requireWindowProjectOrWriteGrant`: the window's own project if it has one, and otherwise only a
+ *    folder the window was granted to write.
+ *  - {@link VcsPublishProjectHandler} is also asked by the launcher's server tab, about a project the
+ *    wizard has just made for it, again from a window with no project. It is bounded the same way,
+ *    and the launcher holds its write grant because the wizard's launch handler hands it one on the
+ *    folder the wizard reported creating - see its own note. The manager further holds a publish from
+ *    such a window to a project with no server yet.
+ *
+ * # Whose credential a request to a server spends
+ *
+ * `sync`, `push`, `signIn`, `getSyncState`, connecting with `setRemote` and
+ * {@link VcsPublishProjectHandler} send a project, or an account's credentials, somewhere else.
+ * Which project is one of the things a caller picks there; the others are bounded in the manager,
+ * not here:
+ *
+ *  - **A sign-in serves a project only once the author has said it does**, per (server origin,
+ *    project directory) pair. The first request that needs it puts the question in a window of
+ *    Studio's own and the manager records the answer - see `serverSessionScope.ts`. A project the
+ *    author has not answered for goes out anonymously, and the stored token is not replayed for it.
+ *  - **Where a project is recorded as the one a sign-in serves, the project is the window's.** The
+ *    handlers that do that - {@link VcsAddServerHandler}, {@link VcsCloneHandler},
+ *    {@link VcsPublishProjectHandler} - take it from `windowProjectPath`, never from the payload.
+ *  - `remoteOrigin` on {@link VcsPublishProjectHandler} still names where the project goes, and
+ *    publishing still rewrites the project's `.lore/config.toml` - but it has to be a server this
+ *    installation holds a sign-in for, and the project has to use that sign-in: from a project's
+ *    window that is the sign-in question, asked again even after a no; from a window with none, it
+ *    is the launcher's act and only good for a project with no server yet.
+ *  - A token is presented only at the address it names for itself (`signInAddressFor`); `authUrl`
+ *    is honoured only for a token that names none.
+ *  - The whole family is refused for a project that is not trusted (`server connection` in
+ *    `DISTRUSTED_OPERATIONS`). The manager asks the ledger about the path it is handed, which is
+ *    one more reason each of these handlers has to take its project from the window.
  */
 
 /**
@@ -80,7 +142,7 @@ export class VcsIsRepositoryHandler extends IPCHandler<IPCEventType.vcsIsReposit
         { projectPath }: IPCEvents[IPCEventType.vcsIsRepository]["data"],
     ): Promise<RequestStatus<{ isRepository: boolean }>> {
         return this.tryUse(async () => ({
-            isRepository: await window.app.getVcsManager().isRepository(projectPath),
+            isRepository: await window.app.getVcsManager().isRepository(requireWindowProject(window, projectPath)),
         }));
     }
 }
@@ -93,7 +155,7 @@ export class VcsGetInfoHandler extends IPCHandler<IPCEventType.vcsGetInfo> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetInfo]["data"],
     ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().getInfo(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getInfo(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -113,7 +175,10 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
         window: AppWindow,
         { projectPath, options }: IPCEvents[IPCEventType.vcsInitRepository]["data"],
     ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().initRepository(projectPath, options ?? {}));
+        // Not bounded to the window's project alone: the project wizard asks this about the folder it
+        // has just written a project into, from a window that has no project. See the helper.
+        return this.tryUse(async () => window.app.getVcsManager()
+            .initRepository(await requireWindowProjectOrWriteGrant(window, projectPath), options ?? {}));
     }
 }
 
@@ -134,7 +199,7 @@ export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
         window: AppWindow,
         { projectPath, options }: IPCEvents[IPCEventType.vcsCommit]["data"],
     ): Promise<RequestStatus<VcsCommitResult>> {
-        return this.tryUse(() => window.app.getVcsManager().commit(projectPath, options ?? {}));
+        return this.tryUse(() => window.app.getVcsManager().commit(requireWindowProject(window, projectPath), options ?? {}));
     }
 }
 
@@ -155,7 +220,7 @@ export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint>
         { projectPath, reason }: IPCEvents[IPCEventType.vcsCheckpoint]["data"],
     ): Promise<RequestStatus<{ revision: VcsCommitResult | null }>> {
         return this.tryUse(async () => ({
-            revision: await window.app.getVcsManager().checkpoint(projectPath, reason),
+            revision: await window.app.getVcsManager().checkpoint(requireWindowProject(window, projectPath), reason),
         }));
     }
 }
@@ -186,7 +251,12 @@ export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestor
         window: AppWindow,
         { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
     ): Promise<RequestStatus<VcsRestoreResult>> {
-        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
+        // The window's project, not the payload's. This is the sharpest of the writers: a whole
+        // versioned tree is rewritten from a revision the caller picks, and the checkpoint taken
+        // first only protects what was committed - anything the author had not committed in the
+        // named project is gone, in a window that never showed them any of it happening.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restoreRevision(requireWindowProject(window, projectPath), revision, options ?? {}));
     }
 }
 
@@ -208,7 +278,7 @@ export class VcsGetStatusHandler extends IPCHandler<IPCEventType.vcsGetStatus> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetStatus]["data"],
     ): Promise<RequestStatus<VcsStatus>> {
-        return this.tryUse(() => window.app.getVcsManager().getStatus(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getStatus(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -221,7 +291,8 @@ export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory>
         { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
     ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
         return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeDetails }),
+            entries: await window.app.getVcsManager()
+                .getHistory(requireWindowProject(window, projectPath), limit ?? 0, { includeDetails }),
         }));
     }
 }
@@ -235,7 +306,10 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
         request: IPCEvents[IPCEventType.vcsReadBlob]["data"],
     ): Promise<RequestStatus<{ contentBase64: string }>> {
         return this.tryUse(async () => {
-            const bytes = await window.app.getVcsManager().readBlob(request);
+            const bytes = await window.app.getVcsManager().readBlob({
+                ...request,
+                projectPath: requireWindowProject(window, request.projectPath),
+            });
             return { contentBase64: bytes.toString("base64") };
         });
     }
@@ -249,6 +323,14 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
  * has a sentence for it. A path that escapes the project or sits outside version control comes
  * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
  * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ *
+ * The project is the window's, not the payload's, and that is what keeps the reader narrow. The
+ * guards in `workingFile.ts` all judge the *relative* half - no `..`, nothing absolute, nothing
+ * outside version control, nothing over the ceiling - and they are all relative to a root the
+ * caller used to supply. A renderer naming any root therefore had a general file reader: no
+ * session was opened, the root was never required to be a repository, and the window's own
+ * filesystem grant was never consulted. Bounding the root to this window's project turns it back
+ * into what it is documented as - one file of this project's working tree.
  */
 export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
     readonly name = IPCEventType.vcsReadWorkingFile;
@@ -260,7 +342,10 @@ export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWo
     ): Promise<RequestStatus<VcsWorkingFileRead>> {
         return this.tryUse(async () => {
             try {
-                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                const bytes = await window.app.getVcsManager().readWorkingFile({
+                    ...request,
+                    projectPath: requireWindowProject(window, request.projectPath),
+                });
                 return { contentBase64: bytes.toString("base64") };
             } catch (error) {
                 if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
@@ -281,7 +366,8 @@ export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcs
         { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"],
     ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
         return this.tryUse(async () => {
-            const read = await window.app.getVcsManager().readRevisionDocuments(projectPath, revision, { paths });
+            const read = await window.app.getVcsManager()
+                .readRevisionDocuments(requireWindowProject(window, projectPath), revision, { paths });
             // An array rather than a record: a repository-relative path is arbitrary text
             // and `__proto__` as an object key is not something to find out about later.
             return {
@@ -303,7 +389,7 @@ export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetCha
         { projectPath, from, to }: IPCEvents[IPCEventType.vcsGetChangedPaths]["data"],
     ): Promise<RequestStatus<{ paths: string[] }>> {
         return this.tryUse(async () => ({
-            paths: await window.app.getVcsManager().getChangedPaths(projectPath, from, to),
+            paths: await window.app.getVcsManager().getChangedPaths(requireWindowProject(window, projectPath), from, to),
         }));
     }
 }
@@ -327,7 +413,7 @@ export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevi
         window: AppWindow,
         { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"],
     ): Promise<RequestStatus<VcsRevisionDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
+        return this.tryUse(() => window.app.getVcsManager().diffRevisions(requireWindowProject(window, projectPath), from, to));
     }
 }
 
@@ -348,7 +434,7 @@ export class VcsDiffWorkingTreeHandler extends IPCHandler<IPCEventType.vcsDiffWo
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"],
     ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -360,7 +446,8 @@ export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWa
         window: AppWindow,
         { projectPath, mine, theirs, path }: IPCEvents[IPCEventType.vcsGetThreeWay]["data"],
     ): Promise<RequestStatus<VcsThreeWayResult>> {
-        return this.tryUse(() => window.app.getVcsManager().getThreeWay(projectPath, mine, theirs, path));
+        return this.tryUse(() => window.app.getVcsManager()
+            .getThreeWay(requireWindowProject(window, projectPath), mine, theirs, path));
     }
 }
 
@@ -380,7 +467,7 @@ export class VcsGetRemoteHandler extends IPCHandler<IPCEventType.vcsGetRemote> {
         { projectPath }: IPCEvents[IPCEventType.vcsGetRemote]["data"],
     ): Promise<RequestStatus<{ url: string | null }>> {
         return this.tryUse(async () => ({
-            url: await window.app.getVcsManager().getRemote(projectPath),
+            url: await window.app.getVcsManager().getRemote(requireWindowProject(window, projectPath)),
         }));
     }
 }
@@ -401,8 +488,9 @@ export class VcsSetRemoteHandler extends IPCHandler<IPCEventType.vcsSetRemote> {
         { projectPath, url }: IPCEvents[IPCEventType.vcsSetRemote]["data"],
     ): Promise<RequestStatus<{ url: string | null }>> {
         return this.tryUse(async () => {
-            await window.app.getVcsManager().setRemote(projectPath, url);
-            return { url: await window.app.getVcsManager().getRemote(projectPath) };
+            const own = requireWindowProject(window, projectPath);
+            await window.app.getVcsManager().setRemote(own, url);
+            return { url: await window.app.getVcsManager().getRemote(own) };
         });
     }
 }
@@ -423,17 +511,18 @@ export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncSt
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
     ): Promise<RequestStatus<VcsSyncState>> {
-        return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getSyncState(requireWindowProject(window, projectPath)));
     }
 }
 
 /**
- * Who this installation is signed in to this project's server as.
+ * Which sign-in this project uses at its server, and which one it could.
  *
  * A LOCAL read, and one that asks two stores rather than one: Studio's record of the
  * account, and the backend's own store of the token behind it. A record with nothing
  * behind it answers null, because "signed in as Ada" over a connection that will be
- * refused is worse than saying nobody is.
+ * refused is worse than saying nobody is. A sign-in held for the server that this project
+ * does not use comes back as `available`, never as `session`.
  */
 export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetServerSession> {
     readonly name = IPCEventType.vcsGetServerSession;
@@ -442,10 +531,9 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
     public async handle(
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
-    ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
-        return this.tryUse(async () => ({
-            session: await window.app.getVcsManager().getServerSession(projectPath),
-        }));
+    ): Promise<RequestStatus<VcsProjectServerSession>> {
+        return this.tryUse(() =>
+            window.app.getVcsManager().getServerSession(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -460,6 +548,11 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
  * certificate, a silent port, an unresolvable name and an endpoint speaking plain HTTP
  * with one identical sentence, and the interface has to tell an author which of those
  * four they are looking at.
+ *
+ * The project is the window's rather than the payload's: it is whose `.lore/config.toml` names the
+ * server to sign in to, and it is the project the new sign-in is recorded as serving. Where the
+ * token is sent is the token's own business - an `authUrl` it does not name is refused - and see
+ * the note at the top of this file for the rest.
  */
 export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
     readonly name = IPCEventType.vcsSignIn;
@@ -470,8 +563,12 @@ export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
         { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"],
     ): Promise<RequestStatus<VcsSignInOutcome>> {
         return this.tryUse(async () => {
+            // Outside the try, so that a refusal stays a failed call. Inside it, a mismatch would
+            // be one more thing the catch below has to tell from a transport problem, and the
+            // panel would be asked to draw a sentence for something no author can act on.
+            const own = requireWindowProject(window, projectPath);
             try {
-                const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
+                const result = await window.app.getVcsManager().signIn(own, { authUrl, token });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // A refused sign-in travels as a successful call carrying a refusal, not as a
@@ -507,7 +604,12 @@ export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAu
     }
 }
 
-/** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
+/**
+ * Stop this project using the sign-in held for its server. Local; contacts nothing.
+ *
+ * Per project: the sign-in stays on the machine for the projects that use it, and
+ * {@link VcsForgetServerHandler} is what takes it off.
+ */
 export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
     readonly name = IPCEventType.vcsSignOut;
     readonly type = IPCMessageType.request;
@@ -517,7 +619,7 @@ export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
         { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"],
     ): Promise<RequestStatus<{ session: null }>> {
         return this.tryUse(async () => {
-            await window.app.getVcsManager().signOut(projectPath);
+            await window.app.getVcsManager().signOut(requireWindowProject(window, projectPath));
             return { session: null };
         });
     }
@@ -608,7 +710,28 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
     }
 }
 
-/** Put the project that is open on to a server, in the three steps that make it reachable. */
+/**
+ * Put a project on to a server, in the three steps that make it reachable.
+ *
+ * **Bounded the way `vcs.initRepository` is, not the way the rest of this file is.** Making a
+ * project on a server starts in the launcher: its server tab has the wizard write the project on
+ * this disk and then sends it, from a window that has no project of its own. An assertion that
+ * applied to every window would refuse that, which is the whole of one of the two ways a project
+ * reaches a server.
+ *
+ * So a window with a project may name only its own, and a window with none may name only a
+ * directory it holds a write grant over (`requireWindowProjectOrWriteGrant`). The launcher never
+ * wrote the project - the wizard did, through its own grant, and that grant dies with the wizard -
+ * so the wizard's launch handler hands the launcher a grant on exactly the folder it created, and
+ * only when the wizard was opened to put a project on a server. Without that, any window with no
+ * project could name any repository on this disk that is not on a server yet, and the manager would
+ * register it, point it at the author's server and send its whole history.
+ *
+ * The two are told apart to the manager as well: the launcher's publish is its own act - the author
+ * picked that server and asked for a project on it - and is held to a project with no server yet,
+ * while a project's window has the sign-in question put, even after a no. See the note at the top
+ * of this file.
+ */
 export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
     readonly name = IPCEventType.vcsPublishProject;
     readonly type = IPCMessageType.request;
@@ -617,12 +740,29 @@ export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublish
         window: AppWindow,
         { projectPath, remoteOrigin, name }: IPCEvents[IPCEventType.vcsPublishProject]["data"],
     ): Promise<RequestStatus<VcsPublishOutcome>> {
-        return this.tryUse(() =>
-            window.app.getVcsManager().publishProject(projectPath, remoteOrigin, name));
+        return this.tryUse(async () => {
+            // A project's own window publishes that project and nothing else. A window with none -
+            // the launcher's server tab - publishes the project the wizard has just made for the
+            // server the author picked there, which it was handed a grant on, and which the manager
+            // holds to having no server yet.
+            const own = windowProjectPath(window);
+            const named = await requireWindowProjectOrWriteGrant(window, projectPath);
+            return window.app.getVcsManager().publishProject(
+                named,
+                remoteOrigin,
+                name,
+                { newProject: own === null },
+            );
+        });
     }
 }
 
-/** Sign in to the server a token names. */
+/**
+ * Sign in to the server a token names.
+ *
+ * From a project's window, the sign-in is also that project's answer to the sign-in question, so
+ * the window's own project - never a payload field - is recorded as using it.
+ */
 export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
     readonly name = IPCEventType.vcsAddServer;
     readonly type = IPCMessageType.request;
@@ -633,8 +773,16 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
     ): Promise<RequestStatus<VcsAddServerOutcome>> {
         return this.tryUse(async () => {
             try {
-                const result = await window.app.getVcsManager()
-                    .addServer({ authUrl, remoteUrl, token, ...(description ? { description } : {}) });
+                // Signing in from inside a project is that project's answer to the sign-in question,
+                // so the window's own project - never one the payload names - uses it from now on.
+                const forProject = windowProjectPath(window) ?? undefined;
+                const result = await window.app.getVcsManager().addServer({
+                    authUrl,
+                    remoteUrl,
+                    token,
+                    ...(description ? { description } : {}),
+                    ...(forProject ? { forProject } : {}),
+                });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // Same bargain as signing in from a project: a refusal is an answer the
@@ -696,6 +844,11 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
  * Writes nothing locally, so a failure leaves the project untouched. A diverged branch
  * comes back as a failure carrying the backend's own sentence - which names the remedy
  * (sync first) and is more useful than anything this layer could substitute.
+ *
+ * The project is the window's rather than the payload's, which bounds whose revisions are
+ * uploaded. Where they go is read off that project's own `.lore/config.toml`, and they go as the
+ * account only where the author said this project uses its sign-in - see the note at the top of
+ * this file.
  */
 export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
     readonly name = IPCEventType.vcsPush;
@@ -705,7 +858,8 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsPush]["data"],
     ): Promise<RequestStatus<VcsPushResult>> {
-        return this.tryUse(() => window.app.getVcsManager().push(projectPath));
+        return this.tryUse(() =>
+            window.app.getVcsManager().push(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -720,6 +874,15 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
  * and a merge must not land on top of uncommitted work. Conflicts come back as a
  * SUCCESS carrying `conflicts`, because by then most of the tree is already written;
  * a caller that read that as a failure would leave the author believing nothing changed.
+ *
+ * The project is the window's rather than the payload's, and it belongs with the restore and the
+ * merge writers for their reason: files on disk are replaced with content out of history and
+ * nothing holds what was there. It reaches further than they do first, because the flush of
+ * pending saves that opens it settles the auto-save debt of whatever window has that project open.
+ *
+ * That bounds which project is written. The server the revisions come from is the one the
+ * project's `.lore/config.toml` names, reached as the account only where the author said this
+ * project uses its sign-in. See the note at the top of this file.
  */
 export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
     readonly name = IPCEventType.vcsSync;
@@ -729,7 +892,8 @@ export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsSync]["data"],
     ): Promise<RequestStatus<VcsSyncResult>> {
-        return this.tryUse(() => window.app.getVcsManager().sync(projectPath));
+        return this.tryUse(() =>
+            window.app.getVcsManager().sync(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -748,7 +912,11 @@ export class VcsCloneHandler extends IPCHandler<IPCEventType.vcsClone> {
         window: AppWindow,
         { url, destination }: IPCEvents[IPCEventType.vcsClone]["data"],
     ): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>> {
-        return this.tryUse(() => window.app.getVcsManager().cloneRepository(url, destination));
+        // Made with the sign-in held for that server only where fetching a project is the whole of
+        // the author's choice - the wizard, which has no project of its own. A request from a
+        // project's window makes an anonymous copy.
+        return this.tryUse(() => window.app.getVcsManager()
+            .cloneRepository(url, destination, { useSignIn: windowProjectPath(window) === null }));
     }
 }
 
@@ -761,7 +929,7 @@ export class VcsGetMergeBaseHandler extends IPCHandler<IPCEventType.vcsGetMergeB
         { projectPath, a, b }: IPCEvents[IPCEventType.vcsGetMergeBase]["data"],
     ): Promise<RequestStatus<{ base?: RevisionId }>> {
         return this.tryUse(async () => ({
-            base: await window.app.getVcsManager().getMergeBase(projectPath, a, b),
+            base: await window.app.getVcsManager().getMergeBase(requireWindowProject(window, projectPath), a, b),
         }));
     }
 }
@@ -785,7 +953,7 @@ export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMerge
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getMergeState(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -809,7 +977,7 @@ export class VcsGetMergeDocumentHandler extends IPCHandler<IPCEventType.vcsGetMe
         window: AppWindow,
         { projectPath, path }: IPCEvents[IPCEventType.vcsGetMergeDocument]["data"],
     ): Promise<RequestStatus<VcsMergeDocument>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(projectPath, path));
+        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(requireWindowProject(window, projectPath), path));
     }
 }
 
@@ -833,7 +1001,9 @@ export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResol
         window: AppWindow,
         { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
+        // The window's project, not the payload's: `mine` and `theirs` overwrite the named paths.
+        return this.tryUse(() => window.app.getVcsManager()
+            .resolveConflicts(requireWindowProject(window, projectPath), paths, choice));
     }
 }
 
@@ -860,7 +1030,10 @@ export class VcsCompleteMergeHandler extends IPCHandler<IPCEventType.vcsComplete
         window: AppWindow,
         { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"],
     ): Promise<RequestStatus<VcsMergeCompletion>> {
-        return this.tryUse(() => window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {}));
+        // The window's project, not the payload's: this writes each decided side over its path and
+        // then commits, so a request about another project both changes it and records the change.
+        return this.tryUse(() => window.app.getVcsManager()
+            .completeMerge(requireWindowProject(window, projectPath), decisions, options ?? {}));
     }
 }
 
@@ -873,7 +1046,7 @@ export class VcsUnresolveConflictsHandler extends IPCHandler<IPCEventType.vcsUnr
         window: AppWindow,
         { projectPath, paths }: IPCEvents[IPCEventType.vcsUnresolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(projectPath, paths));
+        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(requireWindowProject(window, projectPath), paths));
     }
 }
 
@@ -891,7 +1064,10 @@ export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsResta
         window: AppWindow,
         { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
+        // The window's project, not the payload's. This is the one that throws bytes away on
+        // purpose, which is exactly why it may not be aimed at a project nobody is looking at.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restartConflicts(requireWindowProject(window, projectPath), paths));
     }
 }
 
@@ -911,6 +1087,9 @@ export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge>
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
+        // The window's project, not the payload's: a complete rollback of every file the merge
+        // touched, in whichever project is named.
+        return this.tryUse(() => window.app.getVcsManager()
+            .abortMerge(requireWindowProject(window, projectPath)));
     }
 }

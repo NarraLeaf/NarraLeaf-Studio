@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils/cn";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { getInterface } from "@/lib/app/bridge";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
-import { countRuntimeIssues, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import { countRuntimeIssues, surfacePlaceHeading, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { RUNTIME_ISSUE_TONE, type RuntimeIssueTone } from "./runtimeIssueTone";
 
 export type RuntimeIssuesPanelProps = {
@@ -47,7 +47,7 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
         className,
         chrome,
     } = props;
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     const { errors, warnings } = countRuntimeIssues(issues);
     const empty = !sessionError && issues.length === 0;
@@ -80,7 +80,12 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
                 <div className="flex min-w-0 items-baseline gap-2">
                     <span className="text-xs font-medium text-fg">{t("devMode.issues.title")}</span>
                     {issues.length > 0 ? (
-                        <span className="truncate">{t("devMode.issues.summary", { errors, warnings })}</span>
+                        <span className="truncate">
+                            {t("devMode.issues.counts", {
+                                errors: tn("common.count.errors", errors),
+                                warnings: tn("common.count.warnings", warnings),
+                            })}
+                        </span>
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -203,7 +208,14 @@ function RuntimeIssueEntry(props: {
                         // than on a line - so it gets the same headline treatment and not the
                         // apologetic "could not be traced" one.
                         <span className="font-medium">
-                            {t("devMode.issues.onSurface", { surface: issue.surface.surfaceName })}
+                            {surfacePlaceHeading(issue.surface, t)}
+                        </span>
+                    ) : issue.pluginName ? (
+                        // The third kind of place: the plugin itself. Located for the same reason a
+                        // surface is - the author can act on the name - so it reads as a heading and
+                        // not as a failure to find one.
+                        <span className="font-medium">
+                            {t("devMode.issues.onPlugin", { plugin: issue.pluginName })}
                         </span>
                     ) : (
                         <span className="font-medium opacity-80">{t("devMode.issues.noLocation")}</span>

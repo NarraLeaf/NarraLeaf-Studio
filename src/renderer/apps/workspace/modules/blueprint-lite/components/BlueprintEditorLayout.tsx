@@ -19,6 +19,23 @@ type Props = {
     onMemberPanelCollapsedChange?: (collapsed: boolean) => void;
     /** True while focus is inside the left member panel (disables graph delete-key shortcuts). */
     onMemberPanelFocusContainedChange?: (contained: boolean) => void;
+    /**
+     * Which help topic F1 answers with, which follows the layer on screen rather than the editor.
+     *
+     * One editor holds both kinds of layer now, so "what is this" has no single answer for the
+     * whole window: a script layer's canvas is a file, and answering it with the topic about wiring
+     * nodes together is answering a question the author did not ask.
+     */
+    helpTopic?: "blueprints" | "scripts";
+    /**
+     * Whether the canvas extends beneath the layer panel, which floats over it.
+     *
+     * True for a graph: the panel sits on top of a canvas that pans and zooms, so the part behind
+     * it is reachable by dragging and the overlap costs nothing. False for anything the author
+     * reads in place - a script's source does not pan, so its first forty columns would simply be
+     * behind the panel, which is what they were until this was a choice.
+     */
+    canvasUnderPanel?: boolean;
 };
 
 export function BlueprintEditorLayout({
@@ -31,6 +48,8 @@ export function BlueprintEditorLayout({
     memberPanelCollapsed,
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
+    helpTopic = "blueprints",
+    canvasUnderPanel = true,
 }: Props) {
     const { t } = useTranslation();
     const detachedTitleBar = useDetachedTitleBar();
@@ -75,7 +94,7 @@ export function BlueprintEditorLayout({
     return (
         // The whole editor answers with one topic: `F1` anywhere in it - the canvas, the member
         // tree, the diagnostics list - is the same question about the same thing.
-        <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic="blueprints">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic={helpTopic}>
             {/* Detached, this row IS the window's title bar: the window is frameless like every
                 other Studio window, so the row carries the drag region, the gap the macOS traffic
                 lights are drawn into, and (off macOS) the window buttons. Everything in it that
@@ -93,14 +112,16 @@ export function BlueprintEditorLayout({
                 {/* No help in a detached window: F1 opens the help panel, which is a dock panel of
                     the workspace window, so the answer would appear in the window the author is not
                     looking at. The editor is one F1 away in the workspace either way. */}
-                {detachedTitleBar.isDetached ? null : <HelpTrigger topic="blueprints" />}
+                {detachedTitleBar.isDetached ? null : <HelpTrigger topic={helpTopic} />}
                 {headerActions ? <div className="no-drag flex items-center">{headerActions}</div> : null}
                 <DetachedTitleBarControls />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
                     <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
-                        <span className="text-2xs font-medium text-fg-subtle">{t("blueprint.panelLabel")}</span>
+                        <span className="text-2xs font-medium text-fg-subtle">
+                            {t("blueprint.panelLabel")}
+                        </span>
                         <button
                             type="button"
                             className="text-fg-muted transition-colors hover:text-fg"
@@ -124,7 +145,17 @@ export function BlueprintEditorLayout({
                         <ChevronDown className="h-4 w-4" />
                     </button>
                 ) : null}
-                <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">{canvas}</main>
+                <main
+                    className={cn(
+                        "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface",
+                        // Matches the panel's own slide, so the two move together rather than the
+                        // canvas jumping to its new width a beat before or after.
+                        "transition-[margin] duration-200 ease-out",
+                        !canvasUnderPanel && !isLeftCollapsed && "ml-56",
+                    )}
+                >
+                    {canvas}
+                </main>
             </div>
             {diagnostics}
         </div>

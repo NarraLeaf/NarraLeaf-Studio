@@ -24,6 +24,23 @@ export type BuildActivityRecord = {
      */
     platforms?: string[];
     /**
+     * The variant the run was made as, by the name the author gave it - "Release", "Demo".
+     *
+     * The name rather than the app tag id: this record is read back onto a dashboard, and an id is
+     * not something anybody recognises their own edition by.
+     *
+     * Absent on records written before the variant was kept, and on a run that failed before it
+     * resolved one.
+     */
+    variant?: string;
+    /**
+     * Absolute path of the directory the run wrote its artifacts into.
+     *
+     * The one fact that turns a row in this list into something an author can open. Absent on
+     * records written before it was kept, and on any run that produced nothing.
+     */
+    outputDir?: string;
+    /**
      * The build's console output, one already-rendered plain-text line per entry. Stored
      * formatted rather than structured because this is an archived artifact, not live console
      * state: nothing re-styles or re-filters it, and the dashboard only ever prints it back.
@@ -179,6 +196,12 @@ function parseBuildRecord(value: unknown): BuildActivityRecord | null {
         if (platforms.length > 0) {
             parsed.platforms = platforms;
         }
+    }
+    if (typeof record.variant === "string" && record.variant.trim()) {
+        parsed.variant = record.variant;
+    }
+    if (typeof record.outputDir === "string" && record.outputDir.trim()) {
+        parsed.outputDir = record.outputDir;
     }
     if (Array.isArray(record.log)) {
         const log = record.log.filter((line): line is string => typeof line === "string");

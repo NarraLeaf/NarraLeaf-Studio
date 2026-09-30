@@ -26,7 +26,6 @@ export function referenceAssetKindOf(assetType: AssetType): ReferenceAssetKind |
             return "audio";
         case AssetType.Video:
         case AssetType.JSON:
-        case AssetType.Blueprint:
         case AssetType.Model:
         case AssetType.Other:
             return null;

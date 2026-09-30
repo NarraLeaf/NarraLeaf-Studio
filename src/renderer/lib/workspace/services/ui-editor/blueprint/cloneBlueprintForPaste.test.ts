@@ -15,39 +15,33 @@ function blueprintNamingElement(elementId: string): Blueprint {
         id: "bp-old",
         name: "Main",
         owner: { kind: "widgetMain", surfaceId: "surface-old", elementId: "el-old" },
-        frontend: "graph",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        graph: {
-                            nodes: {
-                                head: {
-                                    id: "head",
-                                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
-                                    params: { surfaceId: "surface-old", elementId, elementType: "nl.button" },
-                                },
-                                literal: {
-                                    id: "literal",
-                                    type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
-                                    params: { surfaceId: "surface-old", elementId: "el-outside", elementType: "nl.text" },
-                                },
+        graphs: {
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    graph: {
+                        nodes: {
+                            head: {
+                                id: "head",
+                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                                params: { surfaceId: "surface-old", elementId, elementType: "nl.button" },
+                            },
+                            literal: {
+                                id: "literal",
+                                type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                params: { surfaceId: "surface-old", elementId: "el-outside", elementType: "nl.text" },
                             },
                         },
                     },
                 },
-                functions: {},
             },
+            functions: {},
         },
     } as unknown as Blueprint;
 }
 
 function paramsOf(blueprint: Blueprint, nodeId: string): Record<string, unknown> {
-    const program = blueprint.program as Extract<Blueprint["program"], { kind: "graph" }>;
-    return program.graphs.events["ev-1"].graph!.nodes![nodeId].params as Record<string, unknown>;
+    return blueprint.graphs.events["ev-1"].graph!.nodes![nodeId].params as Record<string, unknown>;
 }
 
 describe("cloning a widget's blueprint for a paste", () => {

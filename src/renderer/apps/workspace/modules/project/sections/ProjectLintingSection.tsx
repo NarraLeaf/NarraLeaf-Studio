@@ -26,7 +26,7 @@
  * left alone rather than given a variant, because the sibling pages are right to keep their cards.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { HintPopover, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { useTranslation } from "@/lib/i18n";
@@ -46,6 +46,7 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SettingsGroup } from "../components/SettingsGroup";
 import { NumberField } from "./NumberField";
+import { useConfigSlice } from "./useConfigSlice";
 import type { ProjectSectionProps } from "./types";
 
 /**
@@ -126,29 +127,15 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
     // `LintRow` is a plain frame with no freeze awareness of its own, so every control on this page
     // is guarded from here.
     const freeze = useFreezeGuard();
-    const [linting, setLinting] = useState<LintingConfiguration>(
-        () => normalizeLintingConfiguration(config.app?.linting),
-    );
-    const [saving, setSaving] = useState<string | null>(null);
-
-    const commit = useCallback(async (field: string, patch: Partial<LintingConfiguration>) => {
-        if (saving) {
-            return;
-        }
-        const previous = linting;
-        setSaving(field);
-        setLinting(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateLintingConfiguration(patch);
-            setLinting(normalizeLintingConfiguration(updated.app?.linting));
-            onConfigChange(updated);
-        } catch (error) {
-            setLinting(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [linting, onConfigChange, projectService, saving, uiService]);
+    const stored = useMemo(() => normalizeLintingConfiguration(config.app?.linting), [config.app?.linting]);
+    // The severity and option maps are sent whole, built from what the rows show - which includes
+    // a change still on its way - so two rules changed back to back both stay in the map.
+    const { value: linting, commit } = useConfigSlice<LintingConfiguration>({
+        stored,
+        write: patch => projectService.updateLintingConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     /**
      * A rule (or an option) whose string is missing still has to be configurable, so fall back to
@@ -184,7 +171,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         } else {
             severities[rule.id] = next;
         }
-        void commit(rule.id, { severities });
+        void commit({ severities });
     }, [commit, linting.severities]);
 
     /**
@@ -209,12 +196,12 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         } else {
             options[rule.id] = entry;
         }
-        void commit(`${rule.id}:${key}`, { options });
+        void commit({ options });
     }, [commit, linting.options]);
 
     const renderOption = (rule: LintRule, key: string, spec: LintRuleOptionSpec, value: string | number) => {
         const label = text(`lint.settings.option${capitalize(key)}`, key);
-        const frozen = freeze.writes(saving === `${rule.id}:${key}`);
+        const frozen = freeze.writes();
         return (
             <LintRow key={key} title={label} tooltip={frozen["data-tip"]}>
                 {spec.kind === "number" ? (
@@ -250,7 +237,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         const severity = linting.severities[rule.id] ?? rule.defaultSeverity;
         const optionSpecs = Object.entries(rule.options ?? {});
         const optionValues = optionSpecs.length > 0 ? resolveRuleOptions(rule, linting.options[rule.id]) : {};
-        const frozen = freeze.writes(saving === rule.id);
+        const frozen = freeze.writes();
         const title = text(`lint.rule.${rule.slug}.title`, rule.id);
         return (
             // `min-w-0` on every nesting level down to the option rows: a grid item is minimum-sized
@@ -287,8 +274,8 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
         );
     };
 
-    const runOnBuildFrozen = freeze.writes(saving === "runOnBuild");
-    const failBuildOnFrozen = freeze.writes(!linting.runOnBuild || saving === "failBuildOn");
+    const runOnBuildFrozen = freeze.writes();
+    const failBuildOnFrozen = freeze.writes(!linting.runOnBuild);
     return (
         <SettingsGroup title={t("project.group.linting")}>
             <div className="grid min-w-0">
@@ -300,9 +287,8 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                 <Switch
                     size="sm"
                     checked={linting.runOnBuild}
-                    loading={saving === "runOnBuild"}
                     disabled={runOnBuildFrozen.disabled}
-                    onCheckedChange={value => void commit("runOnBuild", { runOnBuild: value })}
+                    onCheckedChange={value => void commit({ runOnBuild: value })}
                     aria-label={t("lint.settings.runOnBuild")}
                 />
             </LintRow>
@@ -317,7 +303,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                     options={failBuildOnOptions}
                     value={linting.failBuildOn}
                     disabled={failBuildOnFrozen.disabled}
-                    onChange={value => void commit("failBuildOn", { failBuildOn: value as FailBuildOn })}
+                    onChange={value => void commit({ failBuildOn: value as FailBuildOn })}
                     size="sm"
                     portalMenu
                     className={THRESHOLD_SELECT_CLASS}

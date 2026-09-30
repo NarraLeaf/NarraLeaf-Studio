@@ -21,19 +21,21 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
+import { contributedWidgetNamesHead } from "@shared/types/ui-editor/contributedWidgets";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
+    readBlueprintNodePinSnapshot,
     type BlueprintMagicElementRefPaletteEntry,
     type BlueprintNodeDef,
     type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
-    HOST_API_OWNER_KINDS,
 } from "./types";
 import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
+import { blueprintContract, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 
 type BlueprintNodeGraphContextDef = Pick<
     BlueprintNodeDef,
@@ -46,6 +48,7 @@ type BlueprintNodeGraphContextDef = Pick<
     | "role"
     | "scope"
     | "requiresHostApi"
+    | "requiresListItemContext"
     | "magicElementTarget"
     | "inspectorParams"
 >;
@@ -166,9 +169,10 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
 function matchesBlueprintNodeScopeValue(
     scope: NonNullable<BlueprintNodeDef["scope"]>,
     ctx: BlueprintPaletteContext,
+    def: BlueprintNodeGraphContextDef,
 ): boolean {
     if (scope.anyOf && scope.anyOf.length > 0) {
-        return scope.anyOf.some(item => matchesBlueprintNodeScopeValue(item, ctx));
+        return scope.anyOf.some(item => matchesBlueprintNodeScopeValue(item, ctx, def));
     }
     if (scope.ownerKinds && scope.ownerKinds.length > 0) {
         if (!scope.ownerKinds.includes(ctx.owner.kind)) {
@@ -176,25 +180,59 @@ function matchesBlueprintNodeScopeValue(
         }
     }
     if (scope.widgetElementTypes && scope.widgetElementTypes.length > 0) {
-        if (ctx.owner.kind !== "widgetMain" && ctx.owner.kind !== "componentWidgetMain") {
+        if (!isWidgetEventGraph(ctx.owner)) {
             return false;
         }
         const t = ctx.widgetElementType;
         // A scope naming `nl.text` also covers the types that specialise it: a Dialog Sentence has
         // a text widget's props, so the text nodes are the right ones for its private blueprint.
-        if (!t || !scope.widgetElementTypes.some(scopeType => isWidgetTypeOf(t, scopeType))) {
+        if (!t) {
+            return false;
+        }
+        if (!scope.widgetElementTypes.some(scopeType => isWidgetTypeOf(t, scopeType)) && !pluginWidgetNamesHead(def, t)) {
             return false;
         }
     }
     return true;
 }
 
+/**
+ * Whether a plugin's widget has put this head in its own scope by naming it.
+ *
+ * An event head's widget scope is not a list anybody wrote: the catalogue derives it from which
+ * widget types name the head in their logic API (`widgetTypesForHead`). That derivation runs when the
+ * catalogue is built, before any plugin is loaded, so a plugin widget that declares a Mouse Click or
+ * an Init event is asked the same question here, when the palette is.
+ */
+function pluginWidgetNamesHead(def: BlueprintNodeGraphContextDef, widgetType: string): boolean {
+    return def.role === "eventHead" && contributedWidgetNamesHead(widgetType, def.type);
+}
+
+/**
+ * Where an event head a plugin registered belongs: the blueprints of the plugin widgets that name it.
+ *
+ * Only those, because only those can start it - a plugin head fires when a widget raises an event
+ * whose `headNodeTypes` include it, and nothing else in the host ever raises one. The declaration
+ * cannot say so itself (a plugin's `scope` is not taken, see `toEditorBlueprintNodeDef`), and left
+ * unscoped the head was offered on every page and in the global blueprint, where it would sit and
+ * never run.
+ */
+function matchesPluginEventHeadPlacement(def: BlueprintNodeGraphContextDef, ctx: BlueprintPaletteContext): boolean {
+    if (def.role !== "eventHead" || blueprintNodeRegistry.isBuiltIn(def.type)) {
+        return true;
+    }
+    return isWidgetEventGraph(ctx.owner) && contributedWidgetNamesHead(ctx.widgetElementType, def.type);
+}
+
 function matchesBlueprintNodeScope(def: BlueprintNodeGraphContextDef, ctx: BlueprintPaletteContext): boolean {
+    if (!matchesPluginEventHeadPlacement(def, ctx)) {
+        return false;
+    }
     const scope = def.scope;
     if (!scope) {
         return true;
     }
-    return matchesBlueprintNodeScopeValue(scope, ctx);
+    return matchesBlueprintNodeScopeValue(scope, ctx, def);
 }
 
 function listCompatibleMagicElementRefs(
@@ -227,10 +265,7 @@ function listMagicElementPaletteTargets(
 }
 
 function canUseImageAssetLiteral(ctx: BlueprintPaletteContext): boolean {
-    if (
-        (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain") &&
-        ctx.widgetElementType === "nl.image"
-    ) {
+    if (isWidgetEventGraph(ctx.owner) && ctx.widgetElementType === "nl.image") {
         return true;
     }
     return (ctx.magicElementRefs ?? []).some(ref => ref.elementType === "nl.image");
@@ -245,10 +280,23 @@ export function isBlueprintNodeAllowedInGraphContext(
     }
     // Ahead of the scope, and independent of it: a node that needs the host API needs it in every
     // owner, including the magic-element path below, which clears `scope` on purpose.
-    if (def.requiresHostApi && !HOST_API_OWNER_KINDS.includes(ctx.owner.kind)) {
+    //
+    // Asked as a contract question rather than against a list of owner kinds, because that is what
+    // it is: a story call runs inside a compiled NLR `Script` with a narrow adapter, and everything
+    // else gets the whole host API. The list said the same thing by naming the five kinds that are
+    // not story calls, which meant a new owner position had to be remembered here.
+    if (def.requiresHostApi && blueprintContract(ctx.owner).invocation === "storyCall") {
         return false;
     }
     if (!matchesBlueprintNodeScope(def, ctx)) {
+        return false;
+    }
+    // Here rather than in `listPaletteEntries`, so that the graph validator answers this the same
+    // way the palette does. While it was a palette-only filter the two could only agree by luck:
+    // the palette hid these nodes and the validator said nothing about them, so a graph that lost
+    // its row scope - an element dragged out of the list it was drawn by - kept reading a row that
+    // is no longer there, and nothing said so.
+    if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
         return false;
     }
     if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
@@ -272,7 +320,7 @@ export function isBlueprintNodeAllowedInGraphContext(
     if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
         return false;
     }
-    if (def.role === "eventHead" && (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain")) {
+    if (def.role === "eventHead" && isWidgetEventGraph(ctx.owner)) {
         const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
         if (!allowed.has(def.type)) {
             return false;
@@ -345,11 +393,16 @@ class BlueprintNodeDefinitionsRegistry {
             return this.toCatalogEntry(def);
         }
         const runtime = behaviorNodeRegistry.get(type);
+        // No definition for this type: the plugin that contributed it is uninstalled, disabled, or
+        // failed to load. The pins here are a placeholder exec pair, NOT the node's real shape, so
+        // `unknown` is flagged for the card to draw it unmistakably and for the graph to leave its
+        // wiring alone rather than treat a stub pin set as the truth.
         return {
             type,
             category: "Other",
             displayName: runtime?.displayName ?? type,
             isPure: false,
+            unknown: true,
             graphKinds: ["event", "function", "macro"],
             pins: [
                 { id: "in", kind: "input", semantic: "exec", label: "In" },
@@ -366,7 +419,12 @@ class BlueprintNodeDefinitionsRegistry {
         if (def) {
             return resolveEffectiveBlueprintCatalogEntry(def, params);
         }
-        return this.resolveCatalogEntry(type);
+        // Unknown type. If the node kept a snapshot of its pins from when its plugin was loaded, show
+        // those instead of the bare exec pair, so its connections stay attached and visible. The
+        // entry is still `unknown` - the card, the diagnostic, and the build gate all still fire.
+        const stub = this.resolveCatalogEntry(type);
+        const snapshot = readBlueprintNodePinSnapshot(params);
+        return snapshot ? { ...stub, pins: snapshot } : stub;
     }
 
     /**
@@ -379,9 +437,6 @@ class BlueprintNodeDefinitionsRegistry {
                 continue;
             }
             if (def.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL && !canUseImageAssetLiteral(ctx)) {
-                continue;
-            }
-            if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
                 continue;
             }
             if (def.magicElementTarget) {

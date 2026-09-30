@@ -21,33 +21,30 @@ const RULE = NETWORK_LINT_RULES[0]!;
 function documentWithNetworkNodes(): BlueprintDocument {
     return {
         ownerRecords: {
-            "surface:main": { activeBlueprintId: "bp1", privateBlueprintIds: [] },
+            "surface:main": { blueprintId: "bp1" },
         },
         blueprints: {
             bp1: {
                 id: "bp1",
                 name: "Title Screen",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            ev1: {
-                                graph: {
-                                    nodes: {
-                                        n1: { id: "n1", type: BLUEPRINT_NODE_TYPE_NETWORK_FETCH },
-                                        n2: { id: "n2", type: "blueprint.flow.branch" },
-                                    },
+                graphs: {
+                    events: {
+                        ev1: {
+                            graph: {
+                                nodes: {
+                                    n1: { id: "n1", type: BLUEPRINT_NODE_TYPE_NETWORK_FETCH },
+                                    n2: { id: "n2", type: "blueprint.flow.branch" },
                                 },
                             },
                         },
-                        functions: {},
-                        // A node buried in a macro ships exactly like one on an event.
-                        macros: {
-                            mc1: {
-                                graph: {
-                                    nodes: {
-                                        n3: { id: "n3", type: BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON },
-                                    },
+                    },
+                    functions: {},
+                    // A node buried in a macro ships exactly like one on an event.
+                    macros: {
+                        mc1: {
+                            graph: {
+                                nodes: {
+                                    n3: { id: "n3", type: BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON },
                                 },
                             },
                         },

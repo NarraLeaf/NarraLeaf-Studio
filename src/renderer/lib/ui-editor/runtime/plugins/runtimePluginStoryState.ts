@@ -181,8 +181,8 @@ export function readRuntimePluginVariable(
         if (!def || !persistence) {
             return undefined;
         }
-        const stored = persistence.persistenceGet(def.storageKey);
-        return stored === undefined ? def.defaultValue : stored;
+        // The scope answers a variable nothing has stored with its declared default.
+        return persistence.persistenceGet(def.storageKey);
     }
     if (!session) {
         return undefined;
@@ -268,8 +268,7 @@ export function snapshotPersistentScope(
         return snapshot;
     }
     for (const def of new Set(session.tables.persistent.values())) {
-        const stored = persistence.persistenceGet(def.storageKey);
-        snapshot.set(def.name || def.id, stored === undefined ? def.defaultValue : stored);
+        snapshot.set(def.name || def.id, persistence.persistenceGet(def.storageKey));
     }
     return snapshot;
 }

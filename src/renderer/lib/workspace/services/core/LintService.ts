@@ -1,6 +1,7 @@
 import { isLocalizationEnabled, type LocalizationDocument } from "@shared/types/localization";
 import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
 import { getInterface } from "@/lib/app/bridge";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
@@ -19,6 +20,8 @@ import { isUnrenderableFontFormat } from "@shared/typography/fontFormats";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
+import { storyUnreadableFinding } from "@/lib/lint/storyLoadFailure";
+import { formatLintFinishedLine } from "@/lib/lint/finishedLine";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -34,6 +37,7 @@ import { CharacterService } from "./CharacterService";
 import { ConsoleService } from "./ConsoleService";
 import { FileSystemService } from "./FileSystem";
 import { ProjectService } from "./ProjectService";
+import type { ServiceAssetsService } from "./ServiceAssetsService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { ReferenceService } from "../references/ReferenceService";
 import { StoryService } from "../story/StoryService";
@@ -194,6 +198,7 @@ export class LintService extends Service<LintService> implements ILintService {
             storiesComplete,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
+            pluginStores: await this.readPluginStores(),
             assets,
             // Read off the service rather than derived from the library: a set is a declaration
             // about the library, and deriving one from the other is what the rule is checking.
@@ -226,8 +231,18 @@ export class LintService extends Service<LintService> implements ILintService {
             }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
-            io: this.createIo(assetsService),
+            io: this.createIo(assetsService, await this.mayProbeMedia()),
         };
+    }
+
+    /** The plugins' stores, or null - "not read" rather than "none" - when they cannot be had. */
+    private async readPluginStores(): Promise<LintContext["pluginStores"]> {
+        try {
+            return await this.getContext().services.get<ServiceAssetsService>(Services.ServiceAssets).readPluginStores();
+        } catch (error) {
+            console.warn("[LintService] plugin stores could not be read", error);
+            return null;
+        }
     }
 
     /**
@@ -266,11 +281,7 @@ export class LintService extends Service<LintService> implements ILintService {
             consoleService.append(LINT_CONSOLE_CHANNEL, {
                 level: merged.counts.error > 0 ? "error" : merged.counts.warning > 0 ? "warning" : "success",
                 source: LINT_CONSOLE_SOURCE,
-                message: translate("lint.console.finished", {
-                    errors: merged.counts.error,
-                    warnings: merged.counts.warning,
-                    duration: `${((merged.finishedAt - merged.startedAt) / 1000).toFixed(1)}s`,
-                }),
+                message: formatLintFinishedLine(merged),
             });
             return merged;
         } finally {
@@ -330,13 +341,7 @@ export class LintService extends Service<LintService> implements ILintService {
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
-                this.contextFindings.push({
-                    ruleId: "story/invalid-command",
-                    messageKey: "lint.message.storyLoadFailed",
-                    messageParams: { story: entry.name },
-                    location: { kind: "story", storyId: entry.id, storyName: entry.name },
-                    severity: "error",
-                });
+                this.contextFindings.push(storyUnreadableFinding(entry, error));
             }
         }
         return { stories, complete };
@@ -469,12 +474,40 @@ export class LintService extends Service<LintService> implements ILintService {
     }
 
     /**
+     * Whether an ffprobe spawn sent from a rule would be attempted at all.
+     *
+     * Trust, asked once, before the sweep - and the only thing about the probe worth asking in
+     * advance. A host that has no ffprobe declines cheaply and quietly, so learning that from the
+     * first request costs nothing. A distrusted project is not like that: main refuses every spawn
+     * *and writes an error line to the workspace console* for each one, deliberately, so that a
+     * refusal nobody asked for is still visible. `portability/vfx-alpha` asks about every distinct
+     * clip a `/vfx create` row uses, so one sweep of a project that arrived from elsewhere would
+     * fill the console with refusals the author did not ask for and cannot act on from there.
+     *
+     * What the sweep reports is unchanged. An unanswered probe is never spent as a verdict (see
+     * `LintAlphaProbe`), so the rule falls silent here in exactly the way it already does on a host
+     * without ffprobe, and no finding can be invented or lost by this.
+     *
+     * Asked here rather than borrowed from `MediaSupportService`, which asks the same question for
+     * its own scan: the two probe paths are separate on purpose (the reasoning is on
+     * `probeVideoAlpha` below), and `isProjectTrusted` memoizes per path, so both of them asking
+     * costs one IPC call in total.
+     */
+    private mayProbeMedia(): Promise<boolean> {
+        return isProjectTrusted(this.getContext().project.resolve());
+    }
+
+    /**
      * The rules' only door to the filesystem. `probeImage` reuses ImageService's decoder rather
      * than opening a second one - there is exactly one answer to "what are this image's
      * dimensions", and a rule that disagreed with the asset browser would be reporting a bug in
      * itself.
+     *
+     * `mayProbeMedia` is the answer to "would main run ffprobe for this project at all", settled
+     * once before the sweep instead of being learned from a refusal per clip - see
+     * {@link mayProbeMedia}.
      */
-    private createIo(assetsService: AssetsService): LintIo {
+    private createIo(assetsService: AssetsService, mayProbeMedia: boolean): LintIo {
         const probeQueue = createConcurrencyLimiter(IMAGE_PROBE_CONCURRENCY);
         const shardPath = (assetId: string): string =>
             this.getContext().project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
@@ -529,8 +562,18 @@ export class LintService extends Service<LintService> implements ILintService {
              * Every way the probe can decline is `ok: false` with the reason carried through. None
              * of them may be spent as a verdict - no ffprobe on this host is the common one, and it
              * says nothing whatever about the file.
+             *
+             * Being separate is also why the trust question has to be asked here: the service's own
+             * pre-check does not cover this path, and without one this would send a spawn per clip
+             * to a main process that refuses each one on the console. See {@link mayProbeMedia}.
              */
             probeVideoAlpha: (assetId: string) => videoProbeQueue(async (): Promise<LintAlphaProbe> => {
+                if (!mayProbeMedia) {
+                    // Not a verdict, and read as one nowhere: the rule treats every `ok: false`
+                    // the same way it treats a host with no ffprobe, which is to conclude nothing
+                    // about the clip.
+                    return { ok: false, reason: "probing is not permitted for this project" };
+                }
                 const asset = assetsService.getAssets()[AssetType.Video]?.[assetId];
                 if (!asset) {
                     return { ok: false, reason: "not a video asset" };
@@ -645,3 +688,4 @@ function safely<T>(read: () => T, fallback: T): T {
         return fallback;
     }
 }
+

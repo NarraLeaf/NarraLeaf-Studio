@@ -44,7 +44,7 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "未完成的资产集",
             description: "声明的变体中存在未恰好对应一个文件的变体",
-            // 变体按组成它的标签写出来，因为把这些标签写到文件上就是解决办法。
+            // 变体写成语言代码或变体名称，不写存储用的标签：变体的 id 是 uuid。
             // 不写会解析到的文件名：那个文件还不存在。
             message: "{set} 的 {variant} 没有对应文件",
             messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",
@@ -81,6 +81,16 @@ export const lint = {
             title: "无网络许可的网络节点",
             description: "网络策略为不允许联网的项目中存在网络节点",
             message: "{blueprint} 发起网络请求，本项目的网络策略不允许",
+        },
+        /**
+         * 这里唯一一条背后没有规则的条目。低于 schema 阶梯下限的故事文档根本不会交给任何规则，
+         * 所以它在「项目 ▸ 项目」里没有对应的行，也没有可调的严重级别；只有名字，因为报告页
+         * 按规则分组，这些问题需要一个标题。具体说什么见下面的 `message.storyTooOld` /
+         * `.storyTooNew` / `.storyLoadFailed`。
+         */
+        storyUnreadable: {
+            title: "无法读取的故事",
+            description: "当前版本的 Studio 无法打开的故事文档",
         },
         storyInvalidCommand: {
             title: "无效指令",
@@ -200,6 +210,11 @@ export const lint = {
             // 仍然打印存下来的那个词：菜单里已经找不到它，作者手上只剩这一个抓手。
             message: "转场 {transition} 不可用，该行的画面将直接切换",
         },
+        storyBackgroundUnchanged: {
+            title: "没有变化的背景",
+            description: "该行转场的目标是当前已显示的背景",
+            message: "该背景已显示在屏幕上，该行的转场不会改变画面",
+        },
         blueprintReferenceMissing: {
             title: "目标缺失",
             description: "节点指向项目中已不存在的对象",
@@ -243,6 +258,19 @@ export const lint = {
             description: "事件层中没有连接任何可执行内容",
             message: "该事件不会执行任何内容",
         },
+        blueprintUnknownNode: {
+            title: "未知的节点类型",
+            description: "项目无法加载其类型的节点",
+            message: "{type} 未加载，因此该节点不会在游戏中运行",
+        },
+        blueprintAssembledAssetName: {
+            title: "运行时拼出的资产名称",
+            description: "资产由游戏运行时拼出的名称选定，游戏包不会带上该资产",
+            message: "“{node}”的“{pin}”收到的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageBinding: "“{element}”的“{prop}”绑定的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageUnloadedNode: "“{node}”的“{pin}”收到的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
+            messageUnloadedNodeBinding: "“{element}”的“{prop}”绑定的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
+        },
         uiUnlocalizedText: {
             title: "未本地化的文本",
             description: "项目已有第二种语言，文本仍直接写在控件上",
@@ -258,6 +286,11 @@ export const lint = {
             description: "可点击的控件没有任何事件监听",
             message: "点击后不会执行任何内容",
         },
+        uiUnknownWidget: {
+            title: "未知的控件类型",
+            description: "项目无法加载其类型的控件",
+            message: "{type} 未加载，因此该控件不会在游戏中绘制",
+        },
         uiComponentMissing: {
             title: "缺失的组件",
             description: "引用了项目中不存在的组件的实例",
@@ -267,6 +300,11 @@ export const lint = {
             title: "缺失的嵌入页面",
             description: "页面控件嵌入了项目中不存在的页面",
             message: "该页面控件嵌入的页面在此项目中不存在",
+        },
+        uiFrameLoop: {
+            title: "循环的嵌入页面",
+            description: "页面控件嵌入的页面会绕回该控件",
+            message: "该页面控件嵌入的页面会绕回该控件",
         },
         uiListItemFieldMissing: {
             title: "条目字段不存在",
@@ -282,6 +320,11 @@ export const lint = {
             title: "未填写的存档字段",
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",
             message: "{field} 未填写，本次存档将写入其默认值",
+        },
+        blueprintRequiredInputUnwired: {
+            title: "未连接的输入",
+            description: "会执行的节点上，必填的输入引脚没有连接",
+            message: "{node} 的 {pin} 没有连接任何东西",
         },
         blueprintStartSceneForeign: {
             title: "来自另一个故事的场景",
@@ -311,7 +354,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "永远不会变的条件",
             description: "条件判断读取了某个变量，而整个项目从来没有给它赋过值",
-            message: "{count} 处条件判断读取了 {variable}，但没有任何地方给它赋值",
+            message: "{conditions}读取了 {variable}，但没有任何地方给它赋值",
+            conditionCount: {
+                other: "{count} 处条件判断",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
@@ -348,7 +394,10 @@ export const lint = {
         localizationOrphan: {
             title: "孤立的译文",
             description: "对应的原文已不存在",
-            message: "{count} 条 {locale} 译文没有对应的行",
+            message: "{translations}没有对应的行",
+            translationCount: {
+                other: "{count} 条 {locale} 译文",
+            },
         },
         voiceMissing: {
             title: "缺少语音",
@@ -363,7 +412,10 @@ export const lint = {
         voiceOrphan: {
             title: "孤立的语音",
             description: "对应的对白已不存在",
-            message: "{count} 条 {locale} 录音没有对应的行",
+            message: "{recordings}没有对应的行",
+            recordingCount: {
+                other: "{count} 条 {locale} 录音",
+            },
         },
         brandBrokenLink: {
             title: "断开的颜色链接",
@@ -377,10 +429,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "缺少字形",
             description: "文本用到了项目里任何字体都画不出的字符",
-            message: "项目字体画不出“{character}”（{count} 处）",
-            messageInLanguage: "{language}中项目字体画不出“{character}”（{count} 处）",
-            messageMore: "另有 {count} 个字符项目字体画不出",
-            messageMoreInLanguage: "{language}中另有 {count} 个字符项目字体画不出",
+            message: "项目字体画不出“{character}”（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 处",
+            },
+            messageInLanguage: "{language}中项目字体画不出“{character}”（{occurrences}）",
+            messageMore: "另有 {characters}项目字体画不出",
+            moreCharacterCount: {
+                other: "{count} 个字符",
+            },
+            messageMoreInLanguage: "{language}中另有 {characters}项目字体画不出",
             messageUnreadable: "{font} 读不出来，未检查字形覆盖",
             messageUnloadable: "{font} 是 .{format} 字体，游戏无法用它绘制文字",
         },
@@ -393,6 +451,8 @@ export const lint = {
     message: {
         ruleFailed: "{rule} 未能运行",
         storyLoadFailed: "{story} 无法打开",
+        storyTooOld: "{story} 使用 v{version} 版故事格式，当前版本的 Studio 可打开 v{minimum} 及以后",
+        storyTooNew: "{story} 由更新版本的 NarraLeaf Studio 写入（v{version} 版故事格式），当前版本的 Studio 最高读到 v{supported}",
     },
     category: {
         assets: "资产",
@@ -420,7 +480,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        summary: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        counts: "{errors}，{warnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -430,6 +490,9 @@ export const lint = {
         expand: "展开",
         collapseAll: "全部折叠",
         expandAll: "全部展开",
+        // 某条规则的问题数远多于报告一开始列出的那些时，它那一组的最后一行。写的是该规则的总数，
+        // 也就是上面那行标题里的那个数。
+        showAll: "显示全部 {count} 条",
         // 行号那一列念出来的样子。列里只写数字——故事编辑器的行号槽就是这么写的，
         // 读者是拿这一列去对那一列。
         lineAria: "第 {line} 行",
@@ -440,14 +503,23 @@ export const lint = {
         category: "检查",
     },
     console: {
+        channel: "检查",
+        channelDescription: "项目检查及其发现的问题",
         started: "开始检查",
-        finished: "{errors} 个错误，{warnings} 个警告，用时 {duration}",
+        finishedCounts: "{errors}，{warnings}，用时 {duration}",
         // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。
         // 不再留严重级别的位：控制台每一行左边本来就有一列级别，写在句子里是重复。
         finding: "{location} {message}（{rule}）",
+        // 见英文目录：整轮检查的构成，打在所有问题之后、总结那一行旁边。控制台没法像报告页那样折叠，
+        // 而一轮检查常常是同一条规则重复上千次。
+        byRule: "按规则统计",
+        ruleCount: "{rule}：{count}",
     },
     build: {
-        blocked: "{count} 个问题中止了构建",
+        started: "正在检查项目…",
+        blocked: {
+            other: "{count} 个问题中止了构建",
+        },
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
         blockedHint: "可在「项目 ▸ 项目 ▸ 构建前检查」中调整",

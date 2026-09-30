@@ -22,9 +22,11 @@ import {isJsonObject, requireDocumentObject, requireOptionalMap} from "./parseHe
  * writing the real thing, normalizes fourteen configuration groups on the way in through
  * normalizers that live in the renderer, and writes msgpack. `serialize` refuses for that reason.
  *
- * A rename is not a modification of this document, it is a different file: the old name is removed
- * and the new one is added. That reads as two rows rather than one, and both of them are honest -
- * whole-document add and remove are exempt from every caveat the comparison surface applies.
+ * The file keeps the name it was created with. Renaming the project changes the `name` inside it and
+ * leaves the file where it is - every reader finds it by its extension - so a rename reads as a
+ * change to this document. Only a file renamed by hand is a different path, and that reads as one
+ * removed and one added: two rows rather than one, both honest, since whole-document add and remove
+ * are exempt from every caveat the comparison surface applies.
  */
 export const PROJECT_CONFIG_DOCUMENT_PATH = `<projectName>${NLPROJ_EXT}`;
 
@@ -184,6 +186,7 @@ const LABEL = {
 
     dialogue: "documentDiff.project.dialogue",
     dialogueAutoForwardPause: "documentDiff.project.dialogueAutoForwardPause",
+    prefTextReveal: "documentDiff.project.prefTextReveal",
 
     distribution: "documentDiff.project.distribution",
     signing: "documentDiff.project.signing",
@@ -268,6 +271,7 @@ const APP_GROUPS: ReadonlyMap<string, ConfigGroup> = new Map<string, ConfigGroup
         label: LABEL.preferences,
         fields: {
             cps: LABEL.prefTextSpeed,
+            textRevealDuration: LABEL.prefTextReveal,
             gameSpeed: LABEL.prefGameSpeed,
             autoForward: LABEL.prefAutoForward,
             autoForwardDelay: LABEL.prefAutoForwardDelay,

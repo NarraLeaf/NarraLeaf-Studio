@@ -9,13 +9,12 @@ export const uiEditor = {
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
     },
     // ブループリントの持ち主。ブループリントパネル、タブ名、コントロール脇の読み取り専用欄は
-    // 同じ 6 つを指すので、名前はここで 1 度だけ決める。
+    // 同じ 5 つを指すので、名前はここで 1 度だけ決める。
     ownerLabel: {
         globalMain: "アプリロジック",
         surfaceMain: "ページロジック",
         widgetMain: "コンポーネントロジック",
         widgetValue: "コンポーネントの値",
-        sharedAsset: "共有ブループリント",
         storyAction: "ストーリーアクション",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
@@ -61,6 +60,10 @@ export const uiEditor = {
         gameUi: "{slot} UI",
         component: "コンポーネント {index}",
         inputAction: "アクション {index}",
+    },
+    // このパネルが履歴に残す名前（「インターフェース タイトル の移動を元に戻す」）。
+    history: {
+        moveSurface: "インターフェース {name} の移動",
     },
     inputActions: {
         title: "入力アクション",
@@ -149,7 +152,13 @@ export const uiEditor = {
         deleteReferencedDetail: {
             other: "リンクされた {count} 個のインスタンスは、リンクを外すか差し替えるまで「見つからない」と表示される",
         },
-        refs: "参照 {count}",
+        refs: {
+            other: "参照 {count}",
+        },
+    },
+    canvas: {
+        unknownWidget: "不明なウィジェット",
+        widgetRenderFailed: "ウィジェットの描画に失敗",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",

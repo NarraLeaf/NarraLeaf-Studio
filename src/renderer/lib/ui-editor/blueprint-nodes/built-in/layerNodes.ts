@@ -29,7 +29,7 @@ import {
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -44,14 +44,7 @@ const layerHandleIn: BlueprintNodePinDef = {
 };
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function readHandle(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): string {
@@ -119,6 +112,7 @@ function readConfirmIndex(result: unknown): number {
 export const layerBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_LAYER_SHOW,
+        assetNames: "assembled",
         displayName: "Show Layer",
         category: "App",
         keywords: ["layer", "show", "page", "over", "overlay", "modal", "dialog", "popup", "stack"],
@@ -286,6 +280,7 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+        assetNames: "forward",
         displayName: "Show Confirm",
         category: "App",
         keywords: ["confirm", "ask", "question", "prompt", "dialog", "choice", "yes", "no", "modal", "layer"],

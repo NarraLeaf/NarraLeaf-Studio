@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 import { assetLibraryFreezeScope } from "../assetLiveSession";
 
@@ -124,6 +125,10 @@ export function useAssetsContextMenu({
      // row in this menu writes the library and nothing else: a session that carries it carries all
      // of them, and one that does not carries none.
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
+    // Reaches one row: converting a clip spawns a converter, and main refuses every spawn for a
+    // project that arrived from elsewhere. Nothing else in this menu leaves the renderer.
+    const distrusted = useProjectDistrusted();
+    const distrustedReason = useProjectDistrustedReason();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const showContextMenu = useCallback((
@@ -325,6 +330,11 @@ export function useAssetsContextMenu({
                     items.push({
                         id: "convert-media",
                         label: t("assets.support.menuConvert"),
+                        // Greyed rather than dropped for a distrusted project, the same way the
+                        // mark on the row is: the file still needs converting, and saying so with
+                        // the reason it cannot happen yet beats a row that quietly is not there.
+                        disabled: distrusted,
+                        tooltip: distrusted ? distrustedReason : undefined,
                         onClick: async () => {
                             await handleConvertMedia();
                             closeContextMenu();
@@ -434,7 +444,7 @@ export function useAssetsContextMenu({
         );
 
         return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [assetTransfers, handleCancelTransfer, canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+    }, [assetTransfers, handleCancelTransfer, canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, distrusted, distrustedReason, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

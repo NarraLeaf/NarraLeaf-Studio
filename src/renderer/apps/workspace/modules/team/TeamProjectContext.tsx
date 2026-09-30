@@ -18,6 +18,12 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  *
  * Nulls where there is nothing to follow - a project with no repository, or one on no server - so
  * that no session is opened for a window that has no project on a server to be present on.
+ *
+ * **And where the project does not use the sign-in held for its server.** Announcing this window,
+ * reading who else is here and joining rooms are the account acting on this project's behalf,
+ * which is exactly what the author is asked about before a send or a get. A project that has not
+ * been answered for, or was answered no, opens nothing; the moment it is answered yes the version
+ * surface reads the sign-in back and this follows the server from then on.
  */
 
 const NOTHING: TeamProjectSurface = {
@@ -39,7 +45,9 @@ export function TeamProjectProvider({ surface, children }: {
     surface: VersionSurface;
     children: React.ReactNode;
 }) {
-    const followed = isVersionSurfaceVisible(surface.state) && surface.state.kind !== "not-a-repository";
+    const followed = isVersionSurfaceVisible(surface.state)
+        && surface.state.kind !== "not-a-repository"
+        && surface.serverSession !== null;
     const team = useTeamProject(
         followed ? surface.remote : null,
         followed ? surface.repositoryId : null,

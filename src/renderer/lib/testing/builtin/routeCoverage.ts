@@ -1,4 +1,4 @@
-import { scanProjectStoryEntryPoints } from "@shared/story/storyReachability";
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder, listStoryEndings, storyVariableRefKey } from "@shared/types/story";
@@ -14,6 +14,7 @@ import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphS
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type { TestDefinition, TestVerdict } from "../types";
+import { readEntryPointProject, scanEntryPointsAndReport } from "./entryPoints";
 import type { BuiltInTestHost } from "./index";
 
 /**
@@ -74,12 +75,16 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                 console.warn("[route-coverage] blueprint document unavailable", error);
             }
 
-            const { byStory, undecidable } = scanProjectStoryEntryPoints(stories, blueprintDocument);
-            if (undecidable.length > 0) {
+            // Where play begins, read the way the project check reads it. An entry a recollection list
+            // replays starts a new game, so it is walked from the declared defaults like any other.
+            const project = await readEntryPointProject(services, stories, blueprintDocument);
+            const { scan: { byStory }, blocked } = scanEntryPointsAndReport(ctx, project);
+            if (blocked) {
                 // The same guard `story/unreachable-scene` and `reachable-endings` take: a check that
                 // reports the whole project because it could not find where play begins is a check
-                // an author switches off in the first five minutes.
-                return skip("undecidableEntry");
+                // an author switches off in the first five minutes. The node that stopped it has
+                // already been named, one finding each.
+                return skip("undecidableEntry", blocked);
             }
             if (byStory.size === 0) {
                 return skip("noEntryPoint");
@@ -90,7 +95,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             // A program that is not a graph has no nodes to scan, so what it assigns is unknowable.
             // Whole-project, because a `saved` counter it moves is a counter every story shares.
             const opaqueWriters = Object.values(blueprintDocument?.blueprints ?? {})
-                .some(blueprint => blueprint && blueprint.program?.kind !== "graph");
+                .some(blueprint => hasScriptLayer(blueprint));
 
             const writtenByStory = new Map(stories.map(story => [story.id, storyWrittenKeys(story.document)]));
             const analysed = stories.filter(story => (byStory.get(story.id)?.size ?? 0) > 0);
@@ -207,8 +212,11 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
     };
 }
 
-function skip(reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint"): TestVerdict {
-    return { status: "skipped", summary: { key: `test.builtin.routeCoverage.skipped.${reason}` } };
+function skip(reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint", params?: Record<string, string>): TestVerdict {
+    return {
+        status: "skipped",
+        summary: { key: `test.builtin.routeCoverage.skipped.${reason}`, ...(params ? { params } : {}) },
+    };
 }
 
 /**

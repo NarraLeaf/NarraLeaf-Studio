@@ -1,5 +1,4 @@
 import path from "path";
-import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import {
     defaultGameBuildArch,
     GAME_BUILD_ARCHS_BY_PLATFORM,
@@ -38,12 +37,36 @@ export type CommandLineBuildPlan = {
     format: GameBuildFormat;
     /** Absent for the web and mobile platforms, which have no CPU architecture. */
     arch?: GameBuildArch;
+    /** The variant's stored id, which is what the pipeline addresses it by. Never printed. */
     variantId: string;
+    /** The variant's name, as the project spells it: what the log and the report say was built. */
+    variantName: string;
     outputDir: string;
     allowUnsigned: boolean;
     /** Absolute, or null when the launch asked for no report file. */
     reportPath: string | null;
+    /** Absolute, or null when the launch named no signing file. */
+    signingPath: string | null;
+    /**
+     * Build settings this run reads instead of the profile's, by key. Empty unless the launch gave
+     * `--build-setting`.
+     */
+    settings: Record<string, string>;
 };
+
+/**
+ * The only settings `--build-setting` may name.
+ *
+ * A build reads a handful of machine-level settings - which Electron mirror to download from, where
+ * to get the packager's own binaries - and a run in a scratch profile (`--build-user-data-dir`) has
+ * none of them. This is how they come back.
+ *
+ * Confined to the one namespace on purpose. The flag exists to make a throwaway profile usable for
+ * a build, not to be a general way of writing over whatever a person configured: nothing outside
+ * `build.` has any bearing on what comes out of a build, and a flag that could reach the rest would
+ * be a launch argument that changes the editor.
+ */
+export const COMMAND_LINE_SETTING_PREFIX = "build.";
 
 export type CommandLineBuildPlanResult =
     | { ok: true; plan: CommandLineBuildPlan }
@@ -59,20 +82,24 @@ function isPlatform(candidate: string): candidate is GameBuildPlatform {
 /**
  * Turn a parsed command line into one build request, or say why it cannot be one.
  *
- * `projectPath` is already resolved against the disk by the caller - this decides everything else:
- * which platform, which format, which architecture, and where the artifacts land.
+ * `projectPath` is already resolved against the disk by the caller, and so is `variant` - finding a
+ * name in the project's list takes the project's variants document, which this does not read. This
+ * decides everything else: which platform, which format, which architecture, and where the artifacts
+ * land.
  *
  * `workingDirectory` is what a relative `--build-output` or `--build-report` is resolved against.
  * The process's own, always: a launch names paths the way the shell that wrote it does.
  */
 export function planCommandLineBuild(input: {
     options: BuildCommandLineOptions;
+    /** The variant `--build-variant` named, already found by name; the release variant when it named none. */
+    variant: { id: string; name: string };
     projectPath: string;
     hostPlatform: GameBuildDesktopPlatform;
     hostArch: string;
     workingDirectory: string;
 }): CommandLineBuildPlanResult {
-    const { options, projectPath, hostPlatform, hostArch, workingDirectory } = input;
+    const { options, variant, projectPath, hostPlatform, hostArch, workingDirectory } = input;
 
     const platformName = options.platform ?? hostPlatform;
     if (!isPlatform(platformName)) {
@@ -110,7 +137,11 @@ export function planCommandLineBuild(input: {
         return { ok: false, reason: `--build-arch does not apply to the ${platform} platform, which has no CPU architecture.` };
     }
 
-    const variantId = options.variantId ?? APP_TAG_ID_RELEASE;
+    const settings = readCommandLineSettings(options.settings);
+    if (!settings.ok) {
+        return { ok: false, reason: settings.reason };
+    }
+
     const outputDir = options.outputDir
         ? path.resolve(workingDirectory, options.outputDir)
         : path.join(projectPath, "dist");
@@ -120,7 +151,7 @@ export function planCommandLineBuild(input: {
         plan: {
             request: {
                 targets: [{ platform, formats: [format], ...(arch ? { arch } : {}) }],
-                appTagId: variantId,
+                appTagId: variant.id,
                 outputDir,
                 // Never. `openWhenDone` reveals the output folder in the file manager, which on a
                 // machine somebody is using is a window appearing out of nowhere - and on a build
@@ -130,12 +161,44 @@ export function planCommandLineBuild(input: {
             platform,
             format,
             ...(arch ? { arch } : {}),
-            variantId,
+            variantId: variant.id,
+            variantName: variant.name,
             outputDir,
             allowUnsigned: options.allowUnsigned,
             reportPath: options.reportPath ? path.resolve(workingDirectory, options.reportPath) : null,
+            signingPath: options.signingPath ? path.resolve(workingDirectory, options.signingPath) : null,
+            settings: settings.settings,
         },
     };
+}
+
+/**
+ * Read the `--build-setting` flags into one map, or say which of them is not a setting.
+ *
+ * An empty value is kept rather than rejected: it is how a run says "the official source" for a
+ * mirror the profile has set, and dropping it would leave no way to say that at all. A key given
+ * twice takes its last value, which is what every other repeated flag on a command line does.
+ */
+function readCommandLineSettings(
+    raw: readonly string[],
+): { ok: true; settings: Record<string, string> } | { ok: false; reason: string } {
+    const settings: Record<string, string> = {};
+    for (const entry of raw) {
+        const separator = entry.indexOf("=");
+        const key = (separator === -1 ? entry : entry.slice(0, separator)).trim();
+        if (separator === -1 || key === "") {
+            return { ok: false, reason: `--build-setting "${entry}" is not a setting. Expected key=value.` };
+        }
+        if (!key.startsWith(COMMAND_LINE_SETTING_PREFIX)) {
+            return {
+                ok: false,
+                reason: `--build-setting cannot change "${key}".`
+                    + ` Only ${COMMAND_LINE_SETTING_PREFIX}* settings can be given on the command line.`,
+            };
+        }
+        settings[key] = entry.slice(separator + 1).trim();
+    }
+    return { ok: true, settings };
 }
 
 /** What experimental mode came to for this run: what the report says, and whether to build at all. */

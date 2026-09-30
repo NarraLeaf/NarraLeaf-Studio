@@ -6,17 +6,14 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { rescanProjectDependencies } from "@/lib/plugins/rescanDependencies";
 import type { PluralKey, Translator } from "@shared/i18n";
 import type {
     DependencyKind,
     DependencyResolutionEntry,
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
-import {
-    DEPENDENCY_STATUS_LABEL_KEYS,
-    DEPENDENCY_STATUS_TEXT_STYLES,
-    dependencyNeedsAttention,
-} from "@/lib/workspace/project/dependencyStatusDisplay";
+import { describeDependencyBanner, describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -31,7 +28,8 @@ const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
  * Read-only view of the plugins this project depends on, with each plugin's
  * compatibility status against what is installed. Plugins flagged incompatible
  * are disabled for the project; this panel explains why. "Rescan" re-derives the
- * table from current usage and persists it.
+ * table from current usage and persists it - and is the one place, with the build
+ * dialog's, where a plugin held back for its version is released.
  */
 export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     const { t } = useTranslation();
@@ -67,17 +65,18 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
         return () => { active = false; off(); };
     }, [service]);
 
+    // The author's Rescan, which alone releases a plugin held back for its version.
     const rescan = useCallback(async () => {
-        if (!service || busy) {
+        if (!service || !context || busy) {
             return;
         }
         setBusy(true);
         try {
-            setResolution(await service.rescanAndPersist());
+            setResolution(await rescanProjectDependencies(context));
         } finally {
             setBusy(false);
         }
-    }, [service, busy]);
+    }, [service, context, busy]);
 
     const entries = resolution?.entries ?? [];
 
@@ -101,9 +100,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                 </Button>
             )}
         >
-            {resolution && resolution.overall !== "ok" ? (
-                <OverallBanner overall={resolution.overall} />
-            ) : null}
+            <DependencyBannerStrip entries={entries} />
 
             {entries.length === 0 ? (
                 <div className="rounded-md border border-edge bg-fill-subtle p-4 text-center text-2xs text-fg-subtle">
@@ -120,33 +117,41 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     );
 }
 
-function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
-    const { t } = useTranslation();
-    const blocked = overall === "blocked";
+/** One sentence per state the rows are in, each naming where it is put right - see `describeDependencyBanner`. */
+function DependencyBannerStrip({ entries }: { entries: readonly DependencyResolutionEntry[] }) {
+    const { tn } = useTranslation();
+    const banner = describeDependencyBanner(entries);
+    if (!banner) {
+        return null;
+    }
     return (
         <div
-            className={`rounded-md border p-2.5 text-2xs leading-relaxed ${
-                blocked
+            className={`grid gap-1 rounded-md border p-2.5 text-2xs leading-relaxed ${
+                banner.tone === "danger"
                     ? "border-danger/30 bg-danger/10 text-danger"
                     : "border-warning/30 bg-warning/10 text-warning"
             }`}
+            data-dependency-table-banner={banner.tone}
         >
-            {blocked
-                ? t("project.dependencies.banner.blocked")
-                : t("project.dependencies.banner.warnings")}
+            {banner.lines.map(line => (
+                <p key={line.key}>{tn(line.key, line.count, { count: line.count })}</p>
+            ))}
         </div>
     );
 }
 
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     const { t, tn } = useTranslation();
-    const { dependency, installedVersion, status, suppressed } = entry;
+    const { dependency, installedVersion } = entry;
     const usage = summarizeUsage(dependency.usedBy, tn);
-    const needsAttention = dependencyNeedsAttention(status, suppressed);
+    const state = describeDependencyState(entry);
 
+    // What is installed is stated only when something is, as on the Plugins panel's dependency
+    // screen: the state word beside the name already says a plugin is missing, and "Installed not
+    // installed" read as two facts that contradict each other.
     const meta = [
         t("project.dependencies.meta.requires", { version: dependency.authoredVersion }),
-        t("project.dependencies.meta.installed", { version: installedVersion ?? t("project.dependencies.meta.notInstalled") }),
+        installedVersion ? t("project.dependencies.meta.installed", { version: installedVersion }) : null,
         dependency.builtIn ? t("project.dependencies.meta.builtIn") : null,
         usage,
         !dependency.hard ? t("project.dependencies.meta.dataOnly") : null,
@@ -158,9 +163,9 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
                 <span className="min-w-0 truncate text-sm font-medium text-fg">
                     {dependency.name?.trim() || dependency.id}
                 </span>
-                {needsAttention ? (
-                    <span className={`shrink-0 text-2xs font-medium ${DEPENDENCY_STATUS_TEXT_STYLES[status]}`}>
-                        {suppressed ? t("project.dependencies.status.disabled") : t(DEPENDENCY_STATUS_LABEL_KEYS[status])}
+                {state ? (
+                    <span className={`shrink-0 text-2xs font-medium ${state.className}`}>
+                        {t(state.labelKey)}
                     </span>
                 ) : null}
             </div>

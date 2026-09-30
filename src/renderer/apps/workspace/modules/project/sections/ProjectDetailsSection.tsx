@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Lock } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -116,6 +116,10 @@ export function ProjectDetailsSection({ projectService, uiService, config, onCon
  * Labeled text field that commits its draft on blur (and Enter, for single-line
  * fields) when the value has changed. On a failed commit the draft reverts to
  * the last persisted value.
+ *
+ * A blur while this field's previous write is still on its way is sent too, rather than dropped:
+ * the project service lands the two in order, so the last text the author left in the field is the
+ * text that stays.
  */
 function DetailField({
     label,
@@ -146,43 +150,92 @@ function DetailField({
     const freeze = useFreezeGuard();
     const frozen = freeze.writes();
     const [draft, setDraft] = useState(initialValue);
-    const [saving, setSaving] = useState(false);
+    // This field's writes still on their way. Drives the spinner, and holds the field off the stored
+    // value until the last of them has answered: one landing ahead of a newer one would otherwise
+    // put its older text back for a moment.
+    const [inFlight, setInFlight] = useState(0);
+    // The text the latest of those writes carries, which is what a blur with nothing new compares to.
+    const sending = useRef<string | null>(null);
+    const generation = useRef(0);
+    // Typed since the field last took the stored value, and not yet sent. The stored value moving
+    // underneath (this field's own earlier write landing, or a reload) must not take that away.
+    const edited = useRef(false);
+    // Set by Escape for the blur it causes: that blur runs the handler this render created, which
+    // still holds the typed draft, so without it the edit Escape abandons is the one that is sent.
+    const abandoning = useRef(false);
 
     useEffect(() => {
-        setDraft(initialValue);
-    }, [initialValue]);
+        if (!edited.current && inFlight === 0) {
+            setDraft(initialValue);
+        }
+    }, [initialValue, inFlight]);
+
+    const edit = useCallback((value: string) => {
+        edited.current = true;
+        setDraft(value);
+    }, []);
 
     const commit = useCallback(async () => {
-        if (saving || draft === initialValue) {
+        edited.current = false;
+        if (abandoning.current) {
+            abandoning.current = false;
             return;
         }
-        setSaving(true);
+        if (draft === (sending.current ?? initialValue)) {
+            return;
+        }
+        const token = ++generation.current;
+        sending.current = draft;
+        setInFlight(count => count + 1);
         try {
             await onCommit(multiline ? draft : draft.trim());
         } catch (error) {
-            setDraft(initialValue);
+            // The draft goes back to the stored value by itself once nothing is in flight (the effect
+            // above) - unless the author has started typing again, which is theirs to keep.
             if (error instanceof Error && error.message !== "empty-name") {
                 onError?.(error.message);
             } else if (!(error instanceof Error)) {
                 onError?.(String(error));
             }
         } finally {
-            setSaving(false);
+            if (generation.current === token) {
+                sending.current = null;
+            }
+            setInFlight(count => count - 1);
         }
-    }, [draft, initialValue, multiline, onCommit, onError, saving]);
+    }, [draft, initialValue, multiline, onCommit, onError]);
+
+    // Back to what the field last stood for: the text still being written, if there is one, rather
+    // than the stored value it is about to replace. The blur is what ends the edit; `abandoning` is
+    // what stops that blur from sending the draft this render still holds.
+    const abandon = useCallback((field: HTMLInputElement | HTMLTextAreaElement) => {
+        abandoning.current = true;
+        edited.current = false;
+        setDraft(sending.current ?? initialValue);
+        field.blur();
+    }, [initialValue]);
 
     return (
         <label className="grid gap-1.5" data-tip={frozen["data-tip"]}>
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-fg-subtle">{label}</span>
                 {required ? <span className="text-2xs text-fg-subtle">{t("project.details.required")}</span> : null}
-                {saving ? <Loader2 className="h-3 w-3 animate-spin text-fg-subtle" /> : null}
+                {inFlight > 0 ? <Loader2 className="h-3 w-3 animate-spin text-fg-subtle" /> : null}
             </div>
             {multiline ? (
                 <TextArea
                     value={draft}
-                    onChange={event => setDraft(event.target.value)}
+                    onChange={event => edit(event.target.value)}
+                    onFocus={() => {
+                        abandoning.current = false;
+                    }}
                     onBlur={() => void commit()}
+                    onKeyDown={event => {
+                        // Enter is a line break here, so only Escape ends the edit early.
+                        if (event.key === "Escape") {
+                            abandon(event.currentTarget);
+                        }
+                    }}
                     placeholder={placeholder}
                     rows={rows}
                     fullWidth
@@ -191,16 +244,18 @@ function DetailField({
             ) : (
                 <EnhancedInput
                     value={draft}
-                    onChange={setDraft}
+                    onChange={edit}
                     disabled={frozen.disabled}
+                    onFocus={() => {
+                        abandoning.current = false;
+                    }}
                     onBlur={() => void commit()}
                     onKeyDown={event => {
                         if (event.key === "Enter") {
                             event.currentTarget.blur();
                         }
                         if (event.key === "Escape") {
-                            setDraft(initialValue);
-                            event.currentTarget.blur();
+                            abandon(event.currentTarget);
                         }
                     }}
                     placeholder={placeholder}

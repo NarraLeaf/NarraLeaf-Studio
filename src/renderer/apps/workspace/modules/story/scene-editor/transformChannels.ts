@@ -6,6 +6,7 @@ import type {
     StoryTransformRef,
 } from "@shared/types/story";
 import type { TranslationKey, Translator } from "@shared/i18n";
+import { CHARACTER_ENTRANCE_PROP_KEYS } from "@shared/story/characterEntrance";
 import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
@@ -442,9 +443,27 @@ export function statedTransformChannels(ref: StoryTransformRef | undefined): rea
  * out); a non-sharing one is blocked by anything in its slot. So a row holding `blur` and
  * `grayscale` still offers `sepia`, and offers neither a raw chain nor a grade.
  */
+/**
+ * Whether a channel may be offered as one of a character's entrance defaults.
+ *
+ * Asked of the channel's own seed rather than from a second list of ids: a channel qualifies when
+ * adding it writes only props the entrance record can hold and nothing on the ref itself. That rules
+ * out the timing channels and the reveal generator (they live beside the bag, and an entrance
+ * default is a bag) and the mask (which `sanitizeCharacterEntranceProps` refuses), and it keeps
+ * doing so for channels added later without anyone having to remember this surface exists.
+ */
+function isCharacterDefaultChannel(channel: TransformChannelSpec): boolean {
+    const seeded = channel.add({});
+    const outside = Object.keys(seeded).filter(key => key !== "to" && key !== "mode");
+    const props = Object.keys(seeded.to ?? {});
+    return outside.length === 0
+        && props.length > 0
+        && props.every(key => (CHARACTER_ENTRANCE_PROP_KEYS as readonly string[]).includes(key));
+}
+
 export function addableTransformChannels(
     ref: StoryTransformRef | undefined,
-    options: { isText: boolean; isCamera?: boolean },
+    options: { isText: boolean; isCamera?: boolean; isCharacterDefaults?: boolean },
 ): readonly TransformChannelSpec[] {
     const current = ref ?? {};
     const occupied = new Map<ChannelSlot, boolean>();
@@ -460,6 +479,9 @@ export function addableTransformChannels(
             return false;
         }
         if (channel.cameraOnly && !options.isCamera) {
+            return false;
+        }
+        if (options.isCharacterDefaults && !isCharacterDefaultChannel(channel)) {
             return false;
         }
         if (channel.stated(current)) {

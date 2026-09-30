@@ -14,6 +14,7 @@ describe("decideWindowClosedTeardown", () => {
         expect(decideWindowClosedTeardown(BASE)).toEqual({
             stopRuntimes: true,
             releaseVersionControl: true,
+            releaseSessionLock: true,
         });
     });
 
@@ -27,6 +28,7 @@ describe("decideWindowClosedTeardown", () => {
         })).toEqual({
             stopRuntimes: false,
             releaseVersionControl: false,
+            releaseSessionLock: false,
         });
     });
 
@@ -35,11 +37,19 @@ describe("decideWindowClosedTeardown", () => {
             .toBe(false);
     });
 
+    it("keeps the session lock while any window still holds the project", () => {
+        // Letting go here would let a second Studio open the project beside the window that still
+        // has it - which is the whole thing the lock exists to prevent.
+        expect(decideWindowClosedTeardown({ ...BASE, projectStillOpen: true }).releaseSessionLock)
+            .toBe(false);
+    });
+
     it("does nothing on the way out of the app", () => {
         // The quit teardown does all of it, once, and is the thing the quit actually waits for.
         expect(decideWindowClosedTeardown({ ...BASE, quitting: true })).toEqual({
             stopRuntimes: false,
             releaseVersionControl: false,
+            releaseSessionLock: false,
         });
     });
 
@@ -48,11 +58,13 @@ describe("decideWindowClosedTeardown", () => {
             expect(decideWindowClosedTeardown({ ...BASE, windowType, projectPath: null })).toEqual({
                 stopRuntimes: false,
                 releaseVersionControl: false,
+                releaseSessionLock: false,
             });
         }
         expect(decideWindowClosedTeardown({ ...BASE, projectPath: "" })).toEqual({
             stopRuntimes: false,
             releaseVersionControl: false,
+            releaseSessionLock: false,
         });
     });
 });

@@ -146,8 +146,25 @@ export const PluginRuntimeCapability = {
     UiOverlay: "ui.overlay",
     /** `app.game.assets` — resolve packaged asset URLs. */
     Assets: "assets",
-    /** `app.game.locale` — read and observe the game language. */
+    /**
+     * `app.game.locale` — read and observe the game language, and read the project's own
+     * localized text through the same table and fallback chain the `Get Text` node uses.
+     */
     Locale: "locale",
+    /**
+     * `app.game.menu` — own the menu bar above the game.
+     *
+     * Its own capability rather than part of anything else, because what it grants is *the chrome
+     * the player reads the game through*: every row on that bar, and what each one does, is this
+     * plugin's to decide. The rows still act through the game's own vocabulary (see
+     * `@shared/types/gameMenu`) - nothing here reaches past what a blueprint could already do - but
+     * an author approving this is handing over a surface their players will read as the game's own,
+     * which is worth a name at install rather than arriving with something else.
+     *
+     * Absent on shells with no bar to give (the web export, Dev Mode), which is reported the way
+     * every environment difference is: the member is not there.
+     */
+    Menu: "menu",
     /**
      * `app.game.story` — register a compile pass that observes each scene and injects engine
      * actions around its rows.
@@ -164,6 +181,43 @@ export const PluginRuntimeCapability = {
      * declared.
      */
     StoryCompile: "story.compile",
+    /**
+     * `app.game.diagnostics` — read what the player's caches are holding.
+     *
+     * The lightest of the list to grant and the easiest to misread as heavier than it is. Nothing
+     * here is authored data: it reports how many images the engine is holding, how many bytes those
+     * cost, and what budgets they are being held against. It reads no story, no save and no
+     * variable, and every member is a read - there is nothing to set.
+     *
+     * It is its own capability rather than free like `data` and `config` because a plugin that
+     * watches memory is a plugin that runs continuously and reports numbers about the player's
+     * machine, and an author should see that named at install. The performance inspector is the
+     * plugin this exists for.
+     *
+     * Absent until a game session is live, which is the same rule every other engine-backed member
+     * follows: a plugin's `setup()` runs during boot, and asking then answers null rather than
+     * throwing.
+     */
+    Diagnostics: "diagnostics",
+    /**
+     * `app.game.process.memory()` — read how much memory the game's processes hold, as the
+     * operating system counts it.
+     *
+     * Its own capability rather than a member of `diagnostics`, because what it reports is not the
+     * game's: `diagnostics` describes the engine's caches, which are the game's own bookkeeping,
+     * while this is the player's machine - how much of its memory every process of the game is
+     * holding, the main process and the GPU process included. An author who approved the first did
+     * not approve the second, and a plugin that already holds `diagnostics` must not gain this by
+     * an update without being asked again - which is what a capability of its own guarantees.
+     *
+     * Read-only, and numbers only: sizes and what each process is for, never a path, an id or a
+     * command line. Nothing is sent anywhere by the host; what a plugin does with a reading is
+     * visible in the code the author installed.
+     *
+     * Absent where there are no processes to count - the web export - and narrowed in Dev Mode to
+     * the window's own renderer, since everything around it is Studio's.
+     */
+    ProcessMemory: "process.memory",
 } as const;
 
 export type PluginRuntimeCapability = typeof PluginRuntimeCapability[keyof typeof PluginRuntimeCapability];
@@ -174,11 +228,12 @@ export const PLUGIN_RUNTIME_CAPABILITIES: readonly PluginRuntimeCapability[] =
 /**
  * The capabilities that can name a story scene, and so decide what a variant's package must keep.
  *
- * **Empty, and that is a reading of the nine above rather than an omission.** Go through them: a
+ * **Empty, and that is a reading of the list above rather than an omission.** Go through them: a
  * store holds the plugin's own keys, events observe what the game already did, state reads and
  * writes story variables, saves list and load slots the game itself compiled, an overlay draws on
- * top, assets resolve packaged URLs, and locale reads the language. None of them takes a scene, and
- * none of them starts one.
+ * top, assets resolve packaged URLs, locale reads the language, diagnostics reports what the
+ * caches weigh, and process memory what the processes weigh. None of them takes a scene, and none
+ * of them starts one.
  *
  * This replaced "does the package carry any plugin at all", which was the whole feature's undoing:
  * the built-in Gallery ships in every package and declares `store` + `events`, so every project had

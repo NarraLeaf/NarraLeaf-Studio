@@ -187,6 +187,21 @@
       "status": "translated",
       "target": "主音量"
     },
+    "key:config.muteOnBlur": {
+      "sourceHash": "fnv1a:cbde85a0",
+      "status": "translated",
+      "target": "失去焦点时静音"
+    },
+    "key:config.muteOnBlurOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "关闭"
+    },
+    "key:config.muteOnBlurOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "开启"
+    },
     "key:config.secondsSuffix": {
       "sourceHash": "fnv1a:f60c4582",
       "status": "translated",
@@ -302,6 +317,56 @@
       "status": "translated",
       "target": "返回标题"
     },
+    "key:extra.categoryCg": {
+      "sourceHash": "fnv1a:79da17ef",
+      "status": "translated",
+      "target": "CG"
+    },
+    "key:extra.categoryMusic": {
+      "sourceHash": "fnv1a:584a1d74",
+      "status": "translated",
+      "target": "音乐"
+    },
+    "key:extra.categoryScene": {
+      "sourceHash": "fnv1a:f700652c",
+      "status": "translated",
+      "target": "回想"
+    },
+    "key:extra.categoryVoice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "语音"
+    },
+    "key:extra.emptyCg": {
+      "sourceHash": "fnv1a:680b06f2",
+      "status": "translated",
+      "target": "还没有解锁任何图片。"
+    },
+    "key:extra.emptyMusic": {
+      "sourceHash": "fnv1a:ac517245",
+      "status": "translated",
+      "target": "还没有解锁任何曲目。"
+    },
+    "key:extra.emptyScene": {
+      "sourceHash": "fnv1a:3448c160",
+      "status": "translated",
+      "target": "还没有可以回想的场景。"
+    },
+    "key:extra.emptyVoice": {
+      "sourceHash": "fnv1a:4b2305c4",
+      "status": "translated",
+      "target": "还没有解锁任何语音。"
+    },
+    "key:extra.progress": {
+      "sourceHash": "fnv1a:ca6c0303",
+      "status": "translated",
+      "target": "{unlocked} / {total}"
+    },
+    "key:extra.title": {
+      "sourceHash": "fnv1a:7d069c89",
+      "status": "translated",
+      "target": "鉴赏"
+    },
     "key:load.autoSaves": {
       "sourceHash": "fnv1a:c13c80d4",
       "status": "translated",
@@ -322,6 +387,11 @@
       "status": "reviewed",
       "target": "继续"
     },
+    "key:menu.extra": {
+      "sourceHash": "fnv1a:7d069c89",
+      "status": "translated",
+      "target": "鉴赏"
+    },
     "key:menu.load": {
       "sourceHash": "fnv1a:68afa209",
       "status": "reviewed",
@@ -336,11 +406,6 @@
       "sourceHash": "fnv1a:4d2d5d68",
       "status": "reviewed",
       "target": "保存"
-    },
-    "key:menu.scenes": {
-      "sourceHash": "fnv1a:8c5a5640",
-      "status": "translated",
-      "target": "场景"
     },
     "key:menu.settings": {
       "sourceHash": "fnv1a:4b058728",
@@ -377,6 +442,41 @@
       "status": "translated",
       "target": "标题"
     },
+    "key:quickMenu.auto": {
+      "sourceHash": "fnv1a:126befb6",
+      "status": "translated",
+      "target": "自动"
+    },
+    "key:quickMenu.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:quickMenu.hide": {
+      "sourceHash": "fnv1a:e10c7bcd",
+      "status": "translated",
+      "target": "隐藏"
+    },
+    "key:quickMenu.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:quickMenu.log": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "记录"
+    },
+    "key:quickMenu.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:quickMenu.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "跳过"
+    },
     "key:save.title": {
       "sourceHash": "fnv1a:4d2d5d68",
       "status": "translated",
@@ -397,11 +497,6 @@
       "status": "translated",
       "target": "最后的光"
     },
-    "key:scenes.title": {
-      "sourceHash": "fnv1a:8c5a5640",
-      "status": "translated",
-      "target": "场景"
-    },
     "key:slot.empty": {
       "sourceHash": "fnv1a:fd6263ee",
       "status": "translated",
@@ -421,6 +516,11 @@
       "sourceHash": "fnv1a:a2523866",
       "status": "translated",
       "target": "走廊"
+    },
+    "ui:c6d9dc8d-9524-4102-985e-5612b971a776.text": {
+      "sourceHash": "fnv1a:4f4dbf34",
+      "status": "translated",
+      "target": "你的游戏"
     }
   }
 }

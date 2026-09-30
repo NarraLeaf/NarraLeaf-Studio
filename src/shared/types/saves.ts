@@ -13,6 +13,8 @@
  * bundle, and the game app runs the scheduler off it.
  */
 
+import type { BlueprintImageAsset } from "./blueprint/valueTypes";
+
 export type AutoSaveConfiguration = {
     /** Write an autosave on a timer while a game is running. */
     enabled: boolean;
@@ -196,6 +198,31 @@ export type SaveRecordLine = {
     speaker: string;
 };
 
+/**
+ * Which of the project's stories one save slot was written in, as `Get Save Story` publishes it.
+ *
+ * Two fields because they are not interchangeable, and a screen needs both for different reasons:
+ *
+ *  - `name` is the only one that may be shown. It is resolved against the story library this build
+ *    ships, so it is the name the author typed and the name the reader recognises.
+ *  - `id` is an opaque reference, never for display. It is what survives a rename, so grouping and
+ *    comparing are done on it, and it is what `Start Game` takes on its `Story Id` pin.
+ *
+ * Either can be blank on its own, and the two absences mean different things. A record written
+ * before saves carried a story stamp, or taken with no story mounted, has no `id` - see
+ * `SaveCompatibilityStamp.storyId`. A record naming a story this build does not ship (a route since
+ * deleted, or one behind a DLC this package leaves out) has an `id` and no `name`: the slot's story
+ * is known, but this build has nothing to call it.
+ *
+ * `null` from a reader means no such slot.
+ */
+export type SaveRecordStory = {
+    /** The story the save was written in, as an opaque reference; "" when the record carries none. */
+    id: string;
+    /** That story's author-facing name; "" when this build ships no story under that reference. */
+    name: string;
+};
+
 export type AutoSaveEntry = {
     id: string;
     /** Slot index within the ring. */
@@ -204,6 +231,30 @@ export type AutoSaveEntry = {
     timestamp: number;
     /** When this slot was first written, epoch milliseconds. */
     createdAt: number;
+    /**
+     * The picture stored with this slot, addressed the way `Get Save Preview` addresses it; null
+     * when the record holds none.
+     *
+     * The same answer as that node's, from the same bytes, rather than a second one: the entry is
+     * read out of the record anyway, so carrying the picture along costs nothing and spares a list
+     * of slots a per-row graph call whose only job would be to ask again.
+     */
+    preview: BlueprintImageAsset | null;
+    /**
+     * The last sentence the slot was left on, and who spoke it - the same two strings
+     * {@link SaveRecordLine} publishes, read from the same engine metadata.
+     *
+     * They ride the row for the reason `preview` does. A row is what a list draws, and a value
+     * blueprint on that row may only read the row's own fields: `Get Save Line` is effectful, so a
+     * list-built save screen could not reach it at all and had nothing per-row to say beyond the
+     * time. What is in a scheduled auto-save is decided by the scheduler, not by an author, so
+     * `metadata` is empty for every one of them and the line is the only thing that tells two of
+     * them apart.
+     *
+     * Empty strings for a slot whose record carries none - a save taken before any line played.
+     */
+    line: string;
+    speaker: string;
     /** Whatever the writer attached as user metadata (null when none). */
     metadata: unknown;
 };

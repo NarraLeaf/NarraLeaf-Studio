@@ -24,7 +24,7 @@ describe("history entry disposal", () => {
 
     beforeEach(() => {
         history = new HistoryService();
-        history.setContext({ project: {} as never, services: {} as never });
+        history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
         disposed = [];
     });
 

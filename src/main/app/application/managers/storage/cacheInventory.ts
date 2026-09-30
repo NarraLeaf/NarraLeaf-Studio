@@ -1,5 +1,5 @@
 import type { Dirent } from "fs";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
 import { session } from "electron";

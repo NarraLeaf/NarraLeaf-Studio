@@ -1,7 +1,9 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
+import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
 import chokidar, { FSWatcher } from "chokidar";
-import type { Stats } from "fs";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
@@ -11,14 +13,18 @@ import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } 
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
-import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { isProjectAssetPath } from "@shared/devMode/assetRevision";
+import type { LocaleCode } from "@shared/i18n";
+import { getMainLocale } from "../../i18n";
 
 type DevModeSession = {
     id: string;
@@ -35,35 +41,48 @@ type DevModeSession = {
     /** Set when {@link sourcePath} is a snapshot. Also what stops the file watcher being installed. */
     sourceRevision?: RevisionId;
     entry: DevModeEntry;
+    /**
+     * When the author asked for this run, wall-clock milliseconds - the zero the window's
+     * performance timeline is placed against (see `gameLaunchTiming`). Taken as the request arrives,
+     * before it waits behind anything else this project had queued, because that wait is part of
+     * what the author sat through.
+     */
+    requestedAt: number;
     status: DevModeStatus;
     window: AppWindow<WindowAppType.DevMode> | null;
     windowReady: boolean;
     revision: number;
     watcher: FSWatcher | null;
+    /** The asset library's own watch; see {@link watchSubtree}. Null when chokidar covers it. */
+    assetWatcher: SubtreeWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this session accepted. See
      * {@link DevModeManager.fileContentChanged}.
      */
     fileIdentities: Map<string, string>;
+    /**
+     * How many times a file under the project's `assets/` directory has changed since this session
+     * started.
+     *
+     * Travels on the bundle so the Dev Mode window can tell a reload that touched assets from one
+     * that only touched documents. Resolving the whole asset library to URLs is the most expensive
+     * step of a reload, and its answers stay valid for exactly as long as no asset file moves - a
+     * grant token is derived from the file's path, size and modification time. See
+     * {@link DevModeBundle.assetRevision}.
+     */
+    assetRevision: number;
     pendingBundle: DevModeBundle | null;
     pendingError: string | null;
+    /**
+     * A story this session has been asked to start in the window it already has, waiting for the
+     * window to be ready. Sent before the bundle it belongs to, so the window is holding the
+     * instruction by the time the recompiled documents arrive.
+     */
+    pendingStartStory: { token: number; storyId: string; sceneId: string; startBlockId?: string; snapshotId?: string } | null;
+    /** Rises with each in-place launch, so the window can tell one request from the next. */
+    startToken: number;
     reloadTimer: ReturnType<typeof setTimeout> | null;
 };
-
-/**
- * What a watched file looks like right now, or null when the watcher reported no stats.
- *
- * The pair an author can change. A directory watch also reports a last-access-time update as a
- * change, and NTFS updates access times by default, so *reading* a file looks exactly like editing
- * one. The running game reads the assets it preloads and a preview build copies every asset it
- * ships, so a session that was doing nothing but running kept scheduling reloads of itself -
- * measured at around nine seconds each on a medium project.
- */
-export function watchedFileIdentity(stats?: Pick<Stats, "mtimeMs" | "size">): string | null {
-    return stats && typeof stats.mtimeMs === "number" && typeof stats.size === "number"
-        ? `${stats.mtimeMs}:${stats.size}`
-        : null;
-}
 
 export class DevModeManager {
     /**
@@ -73,6 +92,17 @@ export class DevModeManager {
      * (the documented default is that the window closes unless a blueprint cancels it).
      */
     private static readonly CloseDecisionTimeoutMs = 60 * 1000;
+
+    /**
+     * Upper bound on how long a Dev Mode window that has been told to close is given to actually go
+     * away before it is destroyed outright.
+     *
+     * Closing is not the instant operation it looks like: Chromium dispatches `beforeunload` and
+     * `unload` into the page and waits for the answer, and the page is a running game - the busiest
+     * renderer Studio has. A page that never answers would otherwise leave a window hidden but
+     * never destroyed, which is a leak nobody can see.
+     */
+    private static readonly CloseTeardownDeadlineMs = 3000;
 
     /**
      * Live sessions, one per project.
@@ -108,7 +138,16 @@ export class DevModeManager {
     }
 
     public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry));
+        // Before anything is built. A Dev Mode window resolves every asset through this project's
+        // workspace, and a workspace turned away by another Studio never started - so the window
+        // it would open is black, and says nothing about why.
+        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode")
+            ?? refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
+        if (refusal) {
+            return Promise.reject(new Error(refusal));
+        }
+        const requestedAt = Date.now();
+        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt));
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
@@ -148,6 +187,16 @@ export class DevModeManager {
             if (!session) {
                 return "idle";
             }
+            // A session that outlived its workspace's claim - the workspace reloaded onto the
+            // error screen while this window stayed up. The compile would resolve its assets through
+            // a workspace that is not running any more, and put up a stage with none of them; the
+            // window says why instead, and keeps what it was showing.
+            const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
+            if (heldElsewhere) {
+                session.status = "error";
+                this.queueSessionError(session, heldElsewhere);
+                return "error";
+            }
             try {
                 this.emitVerbose(session, "reload requested");
                 await this.compileAndSendBundle(session, "reloading");
@@ -167,15 +216,18 @@ export class DevModeManager {
         });
     }
 
-    private async launchNow(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
+    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number): Promise<DevModeStatus> {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
+        if (previous && entry.kind === "story" && previous.window && !previous.window.isClosed()) {
+            return this.relaunchInPlace(previous, entry);
+        }
         if (previous) {
             await this.terminateSession(previous);
         }
 
-        const session = this.createSession(projectPath, entry);
+        const session = this.createSession(projectPath, entry, requestedAt);
         this.sessions.set(key, session);
 
         try {
@@ -190,6 +242,67 @@ export class DevModeManager {
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             this.app.logger.error("[DevMode] launch failed", err);
+            session.status = "error";
+            this.emitWorkspaceConsoleLog(session, {
+                level: "error",
+                source: "Dev Mode",
+                message: `launch failed: ${message}`,
+            });
+            this.queueSessionError(session, message);
+            return "error";
+        }
+    }
+
+    /**
+     * Start a story in the Dev Mode window this project already has, instead of building another one.
+     *
+     * A story row's play control is pressed dozens of times in an editing session, and every press
+     * used to close the window and open a replacement: a window teardown, a renderer boot and a full
+     * compile before anything appeared. Nothing about that was necessary - the window is the same
+     * window, showing the same project, and the app inside it can start a different story on request.
+     *
+     * The bundle is still rebuilt. The launch flushes the author's unsaved documents on its way here,
+     * so what the window is holding is one edit out of date by definition; sending the instruction and
+     * leaving the documents behind would play the row as it was before they pressed play. The
+     * instruction goes out first so the window has it when the bundle lands, and the app treats that
+     * revision as spoken for rather than resuming the play head on top of it.
+     */
+    private async relaunchInPlace(
+        session: DevModeSession,
+        entry: Extract<DevModeEntry, { kind: "story" }>,
+    ): Promise<DevModeStatus> {
+        try {
+            this.emitVerbose(session, `launch requested in place: ${this.describeEntry(entry)}`);
+            session.entry = entry;
+            // The flush that preceded this launch may have already scheduled a reload of the very
+            // documents this compile is about to read. Dropping it here is what keeps one press from
+            // costing two compiles.
+            this.clearReloadTimer(session);
+            // Re-resolved like any other launch: the workspace may have moved onto a revision - or off
+            // one - since this session started, and a launch is the explicit act that follows it.
+            await this.resolveLaunchSource(session);
+            if (session.sourceRevision) {
+                // Nothing to watch on a snapshot; see `watchProjectFiles`.
+                this.disposeWatcher(session);
+            }
+            session.startToken += 1;
+            session.pendingStartStory = {
+                token: session.startToken,
+                storyId: entry.storyId,
+                sceneId: entry.sceneId,
+                ...(entry.blockId ? { startBlockId: entry.blockId } : {}),
+                ...(entry.snapshotId ? { snapshotId: entry.snapshotId } : {}),
+            };
+            await this.startOrFocusWindow(session);
+            await this.compileAndSendBundle(session, "starting");
+            if (!session.sourceRevision) {
+                this.watchProjectFiles(session);
+            }
+            return session.status;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.app.logger.error("[DevMode] in-place launch failed", err);
+            session.pendingStartStory = null;
             session.status = "error";
             this.emitWorkspaceConsoleLog(session, {
                 level: "error",
@@ -241,7 +354,7 @@ export class DevModeManager {
         });
     }
 
-    private createSession(projectPath: string, entry: DevModeEntry): DevModeSession {
+    private createSession(projectPath: string, entry: DevModeEntry, requestedAt: number): DevModeSession {
         return {
             id: crypto.randomUUID(),
             projectPath,
@@ -249,14 +362,19 @@ export class DevModeManager {
             // left undefined so a session is never in a state where "what do I compile" has no answer.
             sourcePath: projectPath,
             entry,
+            requestedAt,
             status: "starting",
             window: null,
             windowReady: false,
             revision: 0,
             watcher: null,
+            assetWatcher: null,
             fileIdentities: new Map(),
+            assetRevision: 0,
             pendingBundle: null,
             pendingError: null,
+            pendingStartStory: null,
+            startToken: 0,
             reloadTimer: null,
         };
     }
@@ -278,6 +396,13 @@ export class DevModeManager {
         const window = await this.app.launchDevMode({
             projectPath: session.projectPath,
             entry: session.entry,
+            // The window is made right after this, so the moment is taken here: the props are the
+            // one thing the page can read about its own launch.
+            launch: {
+                origin: "devMode",
+                zero: session.requestedAt,
+                milestones: [{ name: "windowCreated", at: Math.max(session.requestedAt, Date.now()) }],
+            },
         });
         session.window = window;
         session.windowReady = false;
@@ -307,6 +432,17 @@ export class DevModeManager {
         };
         window.win.on("enter-full-screen", forwardFullscreen(true));
         window.win.on("leave-full-screen", forwardFullscreen(false));
+        // The same, for the window gaining and losing the author's attention: it feeds the
+        // `On Window Focus Changed` head and the "mute when unfocused" preference. From the window
+        // rather than from the page, so what a Dev Mode session hears is what the packaged game
+        // hears - Studio's own developer tools taking the keyboard is not the author going away.
+        const forwardWindowFocus = (isFocused: boolean) => () => {
+            if (!window.isClosed() && !window.isDestroyed()) {
+                window.sendIpcEvent(IPCEventType.devModeWindowFocusChanged, { isFocused });
+            }
+        };
+        window.win.on("focus", forwardWindowFocus(true));
+        window.win.on("blur", forwardWindowFocus(false));
 
         // Give the game's blueprints a chance to intercept a user-initiated window close (native
         // close box, OS shortcut) via the `On Window Close Requested` head. Swallow the close, ask
@@ -349,7 +485,36 @@ export class DevModeManager {
         if (window.isClosed() || this.app.isQuitting()) {
             return;
         }
+        this.retireWindow(window);
+    }
+
+    /**
+     * Close the Dev Mode window, and take it off screen before the close has finished.
+     *
+     * The hide is the point. Closing still has to run the page's `beforeunload` and `unload`
+     * handlers and tear the page process down, and until that finishes the window is on screen and
+     * answering nothing - which on macOS is a spinning cursor over a window that will not go away.
+     * Ordered out first, the same teardown happens with nothing to look at.
+     *
+     * A fullscreen window on macOS is left where it is: hiding it orders it out of a Space the
+     * system then has to collapse on its own, which looks worse than the wait it saves.
+     */
+    private retireWindow(window: AppWindow<WindowAppType.DevMode>): void {
+        if (window.isClosed()) {
+            return;
+        }
+        const win = window.win;
+        if (win.isVisible() && !(process.platform === "darwin" && win.isFullScreen())) {
+            win.hide();
+        }
         window.forceClose();
+        // Unreferenced so a quit that is otherwise finished is not held open by this timer.
+        setTimeout(() => {
+            if (!win.isDestroyed()) {
+                this.app.logger.warn("[DevMode] the window did not finish closing in time; destroying it");
+                win.destroy();
+            }
+        }, DevModeManager.CloseTeardownDeadlineMs).unref();
     }
 
     private async requestBlueprintCloseDecision(window: AppWindow<WindowAppType.DevMode>): Promise<boolean> {
@@ -394,40 +559,24 @@ export class DevModeManager {
                     source: "Dev Mode",
                     message: `nlang compile failed:\n${detail}`,
                 });
-                this.queueSessionError(session, `nlang compile failed:\n${detail}`);
+                // The window heads this with its own "session failed to start", in the author's
+                // language; an English label in front of the detail would only say it again.
+                this.queueSessionError(session, detail);
                 return;
             }
             this.emitVerbose(session, `nlang compile finished in ${Date.now() - started} ms`);
-
-            started = Date.now();
-            this.emitVerbose(session, "Blueprint script compile started");
-            const blueprintScripts = await compileAllBlueprintScriptsForProject(session.sourcePath);
-            if (!blueprintScripts.ok) {
-                const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
-                session.status = "error";
-                this.app.logger.error("[DevMode] TypeScript blueprint compile failed", blueprintScripts.errors);
-                this.emitWorkspaceConsoleLog(session, {
-                    level: "error",
-                    source: "Dev Mode",
-                    message: `Blueprint script compile failed:\n${detail}`,
-                });
-                this.queueSessionError(session, `Blueprint script compile failed:\n${detail}`);
-                return;
-            }
-            this.emitVerbose(
-                session,
-                `Blueprint script compile finished in ${Date.now() - started} ms (${Object.keys(blueprintScripts.scripts).length} script(s))`,
-            );
 
             session.revision += 1;
             started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
+            const locale = this.interfaceLocale();
             const bundle = await this.bundleSource.load({
                 projectPath: session.sourcePath,
                 bundleId: session.id,
                 revision: session.revision,
+                assetRevision: session.assetRevision,
                 // Read per rebuild rather than captured on the session: an author switching edition
                 // expects the next reload to be the other one, not to have to stop and start.
                 // `packaging` stays off, so this folds the variant and plans no scene drop.
@@ -436,14 +585,16 @@ export class DevModeManager {
                 // DLC on expects the next reload to have it. Always stated, empty included - a Dev
                 // Mode run is the game a player bought until the author says which extras to add.
                 includedDlc: runDlc,
+                // The interface's language: a notice this assembly prints - an asset set it cannot
+                // resolve, a project file a newer Studio wrote - is the sentence a build would refuse
+                // with, and reads the way the rest of the window does.
+                ...(locale ? { locale } : {}),
                 onNotice: message => this.emitWorkspaceConsoleLog(session, {
                     level: "info",
                     source: "Dev Mode",
                     message,
                 }),
                 compiled: compileResult.artifacts,
-                blueprintCompiledScripts: blueprintScripts.scripts,
-                blueprintScriptsCompileOk: true,
             });
             this.emitVerbose(session, `bundle assembly finished in ${Date.now() - started} ms`);
             this.sendBundle(session, bundle);
@@ -458,7 +609,20 @@ export class DevModeManager {
                 source: "Dev Mode",
                 message: `Dev Mode bundle failed:\n${message}`,
             });
-            this.queueSessionError(session, `Dev Mode bundle failed:\n${message}`);
+            this.queueSessionError(session, message);
+        }
+    }
+
+    /**
+     * The language the interface is shown in, or none when it cannot be read - an app a unit test
+     * stands up has no stored language and no Electron to ask. None leaves the assembly's sentences
+     * in the fallback language, which is what every Dev Mode run printed before it passed one.
+     */
+    private interfaceLocale(): LocaleCode | undefined {
+        try {
+            return getMainLocale(this.app);
+        } catch {
+            return undefined;
         }
     }
 
@@ -484,6 +648,14 @@ export class DevModeManager {
             window.sendIpcEvent(IPCEventType.devModeControlError, { message: session.pendingError });
             this.emitVerbose(session, "sent error payload to Dev Mode window");
             session.pendingError = null;
+        }
+        // Before the bundle, always: the window has to be holding the instruction by the time the
+        // revision it belongs to arrives, or it would treat that revision as an ordinary reload and
+        // resume the play head instead of starting where the author pointed.
+        if (session.pendingStartStory) {
+            window.sendIpcEvent(IPCEventType.devModeControlStartStory, session.pendingStartStory);
+            this.emitVerbose(session, `sent in-place start request to Dev Mode window: token ${session.pendingStartStory.token}`);
+            session.pendingStartStory = null;
         }
         if (session.pendingBundle) {
             const revision = session.pendingBundle.revision;
@@ -521,59 +693,72 @@ export class DevModeManager {
         const assetsRoot = path.join(session.projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
+        // The author's scripts. Watched like every other document the bundle bakes in: a script
+        // saved in another editor is a change to what the running game does, and the reload that
+        // follows is the only thing that makes editing outside Studio feel like editing inside it.
+        const scriptsRoot = path.join(session.projectPath, SCRIPTS_DIR);
         this.emitVerbose(session, "watching project files for Dev Mode reload");
+        // The asset library is watched apart from the documents, and by one handle rather than by
+        // one per file in it: see `watchSubtree` for the three seconds of blocked event loop that
+        // buys back. Nothing downstream loses anything by it - an asset that moved bumps the
+        // session's asset revision and schedules a reload, whichever of the two it was.
+        session.assetWatcher = watchSubtree(assetsContentRoot, session.fileIdentities, file => {
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "change", file);
+        });
+        const documentPaths = [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, scriptsRoot];
+        if (!session.assetWatcher) {
+            // No recursive watch to be had here. Back to what this always did.
+            documentPaths.push(assetsContentRoot);
+        }
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot],
+            documentPaths,
             // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
             // it into place. Reporting it would schedule a reload against a file that is already
             // gone, on top of the reload the rename itself triggers.
             // `alwaysStat` so `fileContentChanged` has a modification time and a size to compare;
             // without it every reported change would have to be taken at face value.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
+            {
+                ignoreInitial: true,
+                // The dependency tree under `scripts/` is the reason this is a list rather than one
+                // pattern: an `npm install` there is tens of thousands of files, and watching them
+                // would cost a reload on every one and enough handles to stall the session. What a
+                // script imports from it is already inside the bundle esbuild produced.
+                ignored: [ATOMIC_WRITE_TEMP_PATTERN, `**/${SCRIPTS_MODULES_DIR}/**`, `**/${SCRIPTS_GENERATED_DIR}/**`],
+                alwaysStat: true,
+            },
         );
         session.watcher.on("add", (file, stats) => {
-            this.rememberFileIdentity(session, file, stats);
+            rememberWatchedFile(session.fileIdentities, file, stats);
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "add", file);
         });
         session.watcher.on("change", (file, stats) => {
-            if (!this.fileContentChanged(session, file, stats)) {
+            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
                 return;
             }
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "change", file);
         });
         session.watcher.on("unlink", file => {
             session.fileIdentities.delete(file);
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "unlink", file);
         });
     }
 
-    private rememberFileIdentity(session: DevModeSession, file: string, stats?: Stats): void {
-        const identity = watchedFileIdentity(stats);
-        if (identity) {
-            session.fileIdentities.set(file, identity);
-        }
-    }
-
     /**
-     * Whether a `change` event is about the file's contents rather than about when it was last read.
+     * Record that this reload is about an asset, not only about documents.
      *
-     * The directory watch reports a last-access-time update as a change, and NTFS updates access
-     * times by default - so every asset the running game preloads, and every asset a preview build
-     * copies, came back as "the project changed". What decides instead is the pair the author can
-     * actually change: an edit moves the modification time or the size, and reading the file moves
-     * neither.
-     *
-     * A file whose identity is unknown (no stats, or one this watch has not seen before) counts as
-     * changed. Missing a real edit is a stale game; an extra reload is a slow one.
+     * Counted rather than flagged so the window compares one number: a bundle whose count matches the
+     * one it prewarmed under is a bundle whose assets have not moved. See
+     * `@shared/devMode/assetRevision` for what "moved" means and why nothing else matters.
      */
-    private fileContentChanged(session: DevModeSession, file: string, stats?: Stats): boolean {
-        const identity = watchedFileIdentity(stats);
-        if (!identity) {
-            return true;
+    private noteAssetChange(session: DevModeSession, assetsRoot: string, file: string): void {
+        if (!isProjectAssetPath(assetsRoot, file)) {
+            return;
         }
-        const previous = session.fileIdentities.get(file);
-        session.fileIdentities.set(file, identity);
-        return previous !== identity;
+        session.assetRevision += 1;
     }
 
     private scheduleReload(session: DevModeSession, event: string, file: string): void {
@@ -604,7 +789,7 @@ export class DevModeManager {
             // forceClose bypasses the blueprint close guard: a programmatic stop (Quit Application
             // node, workspace stop button, relaunch) is not the user closing the window, so it must
             // not fire the On Window Close Requested event.
-            session.window.forceClose();
+            this.retireWindow(session.window);
         }
         this.forgetSession(session);
         await this.discardSnapshot(session);
@@ -700,6 +885,10 @@ export class DevModeManager {
     }
 
     private disposeWatcher(session: DevModeSession): void {
+        if (session.assetWatcher) {
+            session.assetWatcher.close();
+            session.assetWatcher = null;
+        }
         if (!session.watcher) {
             return;
         }

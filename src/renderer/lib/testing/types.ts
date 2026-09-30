@@ -297,6 +297,20 @@ export type TestAvailabilityContext = {
      * and there is nothing for the refusal to protect.
      */
     readonly frozen: boolean;
+    /**
+     * Whether this project is one Studio will not run anything for - it arrived from a package or a
+     * remote source and nobody has vouched for it yet.
+     *
+     * Passed in for the reason above and one more of its own: the ledger that answers it lives in
+     * the main process, so asking costs a round trip, and everything here is synchronous. The host
+     * settles the answer when the workspace comes up and hands the settled copy down.
+     *
+     * `checkAvailability` will not normally see this true - the host refuses every test before it
+     * asks a definition anything, because a run is an execution of the project. It is here because
+     * `options` is *not* gated: a list that would cost real work to build can decline to build it
+     * for a project that cannot run it.
+     */
+    readonly distrusted: boolean;
 };
 
 export type TestAvailability =
@@ -314,8 +328,16 @@ export type TestAvailability =
  * `value` is what the test reads and what is remembered on disk; `label` is what the author picks
  * from. They are separate because the label is a display string that follows the editor language
  * while the value has to survive a language switch and a Studio upgrade unchanged.
+ *
+ * `name` is what a command line calls the row, for a list whose values are generated ids. A value is
+ * the right thing to remember and the wrong thing to type: `--test-list` would have to print it, and
+ * no id belongs in front of a person. With a name, `--test-list` prints the name in the value's
+ * place and `--test-parameter` takes it (matched without regard to case); the value never leaves the
+ * workspace. Unique among the rows, written in words the author already knows the row by, and not a
+ * translated string - a line has to mean the same thing whatever language Studio is in. A list whose
+ * values are already words needs none.
  */
-export type TestParameterOption = { value: string; label: TestText };
+export type TestParameterOption = { value: string; label: TestText; name?: string };
 
 /** A parameter the author answers by picking from a list. */
 export type TestSelectParameterDefinition = {
@@ -392,7 +414,8 @@ export type TestDefinition = {
     /**
      * Evaluated when the picker opens, so keep it synchronous and cheap. Absent means always
      * available; the host still applies its own gates (a `windowed` test is unavailable while the
-     * workspace is frozen no matter what this returns).
+     * workspace is frozen, and no test runs at all in a project that is not trusted, no matter what
+     * this returns).
      */
     checkAvailability?(ctx: TestAvailabilityContext): TestAvailability;
     run(ctx: TestRunContext): Promise<TestVerdict> | TestVerdict;

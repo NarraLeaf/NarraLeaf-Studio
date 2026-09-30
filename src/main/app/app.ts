@@ -1,4 +1,4 @@
-import fs from "fs";
+import { unpatchedFs as fs } from "../utils/unpatchedFs";
 import path from "path";
 import { screen, session } from "electron";
 import {
@@ -8,10 +8,11 @@ import {
     QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
 } from "@shared/constants/quit";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
-import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowCloseResults, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
+import { describePermissionAsker } from "./application/managers/window/unattendedPrompt";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
@@ -24,6 +25,9 @@ import { VcsManager } from "./application/managers/vcs/VcsManager";
 import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import type { VcsServerSession } from "@shared/types/vcs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
+import { readProjectConfigFromDir } from "./application/utils/projectConfigFile";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import {
     LaunchOpenLookup,
@@ -38,9 +42,12 @@ import { ConfirmQuitManager } from "./application/managers/confirmQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
+import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
+import { CommandLineCheckRun } from "./application/commandLineCheck";
+import { getCommandLineRunEnd } from "./application/commandLineRunEnd";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
@@ -102,6 +109,13 @@ interface LauncherStartupOptions {
      * the home screen.
      */
     deferShow?: boolean;
+    /**
+     * Build it for a command-line run: never shown, never focused, never held back as a home screen
+     * to fall back to, and never allowed to put a prompt in front of anybody. The run opens its
+     * project from it and nothing else - there is nobody to hand a home screen to, and a launcher
+     * "revealed" because the run's workspace went away is a window on an operator's desktop.
+     */
+    unattended?: boolean;
 }
 
 /**
@@ -127,15 +141,16 @@ export type OpenProjectOptions = {
      *
      * Two consequences, and both are the point: the workspace window is created hidden and never
      * focused, and a project that fails to load does not reveal the home screen it was opened from.
-     * Only `--build` passes it - see `commandLineBuild.ts` for why an entry point with no interface
-     * has to say both of those things rather than one.
+     * Only the headless entry points pass it - `--build`, `--test`, `--lint`. See
+     * `commandLineBuild.ts` for why an entry point with no interface has to say both of those
+     * things rather than one.
      */
     background?: boolean;
     /**
-     * Run this build in the workspace instead of opening the editor; carried into the window's
-     * props. See `WindowProps[WindowAppType.Workspace].commandLineBuild`.
+     * Run this job in the workspace instead of opening the editor; carried into the window's props.
+     * See `WindowProps[WindowAppType.Workspace].commandLineRun`.
      */
-    commandLineBuild?: WindowProps[WindowAppType.Workspace]["commandLineBuild"];
+    commandLineRun?: WindowProps[WindowAppType.Workspace]["commandLineRun"];
     /**
      * A live session the window should join once it is up. See the prop of the same name.
      *
@@ -225,6 +240,9 @@ export class App extends BaseApp {
             // TeamManager holds, rather than a second request that presents the token afresh.
             // That manager is constructed just below, so this reads it when a publish runs.
             (remoteOrigin, method, params) => this.teamManager.call(remoteOrigin, method, params),
+            // Whether a project uses the sign-in held for its server is asked in a window of its
+            // own, over the project's workspace, and the manager records the answer.
+            (request) => this.askServerSessionUse(request.projectPath, request.session),
         );
 
         // A server is now a place Studio holds a session with, and that is a thing of
@@ -235,6 +253,13 @@ export class App extends BaseApp {
 
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
+        // One project, one Studio - across profiles and machines, which is the half neither the
+        // single-instance lock nor `openProject`'s own dedupe can see. See its header.
+        this.projectSessionLockManager = new ProjectSessionLockManager({
+            userDataDir: this.getUserDataDir(),
+            logger: this.logger,
+            onTakenOver: (projectPath, holder) => this.handleProjectTakenOver(projectPath, holder),
+        });
         // Everything is read through a function rather than captured: this constructor runs before
         // Electron is ready, and `getCacheRootDir` has no answer until it is.
         this.spellcheckManager = new SpellcheckManager({
@@ -250,13 +275,21 @@ export class App extends BaseApp {
         // The tray comes first: the updater rebuilds the tray menu on every state change, and
         // its launch check is scheduled by `initialize()`.
         this.onReady(() => {
-            const tray = new TrayManager(this, {
-                openLauncher: () => this.revealLauncher(),
-                openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
-            });
-            tray.initialize();
-            this.trayManager = tray;
+            // Not in a command-line run, which leaves nothing on the machine - an icon in an
+            // operator's notification area for the few seconds a job takes, offering a launcher
+            // and a Settings panel belonging to a process on its way out, least of all. See
+            // `startupExtras.ts`.
+            if (this.getStartupExtras().statusBarItem) {
+                const tray = new TrayManager(this, {
+                    openLauncher: () => this.revealLauncher(),
+                    openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
+                });
+                tray.initialize();
+                this.trayManager = tray;
+            }
 
+            // Wired whatever the launch is; whether it checks for a newer Studio is its own
+            // question, and `startupExtras.ts` has the answer.
             this.updateManager.initialize();
 
             // After ready, because it listens for webContents being created and the first window is
@@ -278,6 +311,19 @@ export class App extends BaseApp {
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
     private readonly spellcheckManager: SpellcheckManager;
+    private readonly projectSessionLockManager: ProjectSessionLockManager;
+
+    /**
+     * Which projects this Studio has taken, and the claim it left in each of them.
+     *
+     * Read by the workspace's own startup as well as by {@link openProject}: the window asks again
+     * before it reads a document, because a lock taken when the window was built is a lock this
+     * process is already holding and the answer costs nothing, while a Retry on the error screen
+     * has to be able to ask afresh.
+     */
+    public getProjectSessionLockManager(): ProjectSessionLockManager {
+        return this.projectSessionLockManager;
+    }
 
     /** Studio's own spellchecker: the downloaded dictionaries, and each window's project words. */
     public getSpellcheckManager(): SpellcheckManager {
@@ -368,7 +414,7 @@ export class App extends BaseApp {
 
     async launchLauncher(
         options: Partial<Electron.BrowserWindowConstructorOptions>,
-        { deferShow = false }: LauncherStartupOptions = {},
+        { deferShow = false, unattended = false }: LauncherStartupOptions = {},
     ): Promise<AppWindow<WindowAppType.Launcher>> {
         // Asked once, and used twice: it decides the window's size as well as the mode the
         // renderer opens in, so setup gets its room from the first frame rather than growing the
@@ -378,7 +424,9 @@ export class App extends BaseApp {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
-            autoFocus: true,
+            autoFocus: !unattended,
+            failurePrompts: !unattended,
+            unattended,
             preload: this.getPreloadScript(),
             windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
@@ -401,7 +449,9 @@ export class App extends BaseApp {
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
-        if (deferShow) {
+        if (unattended) {
+            // Nothing to hold back: this one is never anybody's home screen.
+        } else if (deferShow) {
             this.holdLauncherBack(window);
         } else {
             window.showWhenReady();
@@ -531,19 +581,20 @@ export class App extends BaseApp {
      * caller wants the home screen *seen*, so they also reveal one that is being held back - a
      * launcher exists either way, and without this they would return happily having shown nothing.
      */
-    async ensureLauncher({ deferShow = false }: LauncherStartupOptions = {}): Promise<void> {
+    async ensureLauncher({ deferShow = false, unattended = false }: LauncherStartupOptions = {}): Promise<void> {
+        const keepOffScreen = deferShow || unattended;
         if (this.hasAliveLauncher()) {
-            if (!deferShow) {
+            if (!keepOffScreen) {
                 this.revealHeldBackLauncher();
             }
             return;
         }
         if (this.launcherStartup) {
             const startup = this.launcherStartup;
-            return deferShow ? startup : startup.then(() => this.revealHeldBackLauncher());
+            return keepOffScreen ? startup : startup.then(() => this.revealHeldBackLauncher());
         }
 
-        this.launcherStartup = this.launchLauncher({}, { deferShow }).then(launcher => {
+        this.launcherStartup = this.launchLauncher({}, { deferShow, unattended }).then(launcher => {
             launcher.onKeyUp("F12", () => {
                 launcher.toggleDevTools();
             });
@@ -708,6 +759,13 @@ export class App extends BaseApp {
         if (this.isQuitting()) {
             return;
         }
+        // Nor is a command-line run's window going away, which is its run ending - and the run owns
+        // what happens next (see `commandLineRunEnd.ts`). Residency would put a notification on an
+        // operator's screen and spend the profile's once-only notice on a process about to exit;
+        // quitting would exit 0 underneath a run that has not reported.
+        if (getCommandLineRunEnd()) {
+            return;
+        }
         if (this.trayManager?.isActive()) {
             this.announceResidencyOnce();
             return;
@@ -860,6 +918,12 @@ export class App extends BaseApp {
             await this.getVcsManager().dispose().catch(error => {
                 this.logger.warn('Failed to close version control before quit:', error);
             });
+            // Last, because until this point the projects are still being written to and the claim
+            // is what says so. Giving them up is what lets the next Studio open them without
+            // having to decide that this one is gone.
+            await this.projectSessionLockManager.releaseAll().catch(error => {
+                this.logger.warn('Failed to release the project session locks before quit:', error);
+            });
         })();
         const deadline = new Promise<void>(resolve => setTimeout(resolve, deadlineMs));
         await Promise.race([teardown, deadline]);
@@ -875,22 +939,40 @@ export class App extends BaseApp {
         }
     }
 
+    /**
+     * The longest {@link drainForShutdown} will take, as it would be computed right now.
+     *
+     * For a command-line run, which has to know how long its own teardown may legitimately run
+     * before a process still alive past it is one that has stopped - see `commandLineRunEnd.ts`.
+     */
+    public getShutdownDeadlineMs(): number {
+        return SHUTDOWN_BASE_DEADLINE_MS + this.resolveQuitCheckpointTimeoutMs();
+    }
+
     public async openStartupWindow(): Promise<void> {
         // In a finally, so that a launch that failed on its way here still lets later requests
         // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
         // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            // Before anything else, including the launcher: `--build` is not a window this session
-            // opens on, it is the session. Nothing below it runs - no home screen, no reopen of the
-            // last project, no first-run setup - and the run ends in the process exiting with a
-            // code. See {@link CommandLineBuildRun}.
+            // Before anything else, including the launcher: a headless entry point is not a window
+            // this session opens on, it is the session. Nothing below it runs - no home screen, no
+            // reopen of the last project, no first-run setup - and the run ends in the process
+            // exiting with a code. See {@link CommandLineBuildRun}.
+            const lookup = {
+                resolveDirectory: (candidate: string) => resolveExistingDirectory(candidate),
+                recentProjects: () => this.globalState.recentlyOpened.list(),
+                isProjectDirectory: directoryHoldsProject,
+            };
             const build = this.getCommandLineBuild();
             if (build) {
-                await new CommandLineBuildRun(this, {
-                    resolveDirectory: candidate => resolveExistingDirectory(candidate),
-                    recentProjects: () => this.globalState.recentlyOpened.list(),
-                    isProjectDirectory: directoryHoldsProject,
-                }).run(build);
+                await new CommandLineBuildRun(this, lookup).run(build);
+                return;
+            }
+            // Beside the build and for the same reason: `--test` and `--lint` are not a window this
+            // session opens on, they are the session. See {@link CommandLineCheckRun}.
+            const check = this.getCommandLineCheck();
+            if (check) {
+                await new CommandLineCheckRun(this, lookup).run(check);
                 return;
             }
 
@@ -1231,6 +1313,8 @@ export class App extends BaseApp {
             enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
             projectPath: typeof projectPath === "string" ? projectPath : null,
             workspaceLoaded: window.hasLoadedWorkspace(),
+            heldElsewhere: typeof projectPath === "string"
+                && this.projectSessionLockManager.heldElsewhere(projectPath) !== null,
         });
     }
 
@@ -1340,6 +1424,48 @@ export class App extends BaseApp {
     }
 
     /**
+     * Another NarraLeaf Studio has taken over a project this one held: stop everything of this
+     * Studio's that could still write it.
+     *
+     * The lock manager finds this out on a heartbeat - the other Studio judged this one gone,
+     * because its heartbeat stood still for the whole staleness window, and opened the project.
+     * This Studio's workspace is still up with every document in memory, and each of them is a
+     * whole file it would write back over whatever the other one saves. So the window is told to
+     * stop writing at once, and not asked to flush first: anything it still owes the disk is owed
+     * to a project that is no longer this Studio's to write.
+     *
+     * The project's runtimes go too. Dev Mode, the preview and a test's game each write into the
+     * project folder, and each would go on doing it beside the Studio that has the project now; the
+     * refusals that keep new ones from starting are already in place (the lock manager records the
+     * project as held elsewhere before it calls this). So does this Studio's hold on the version
+     * control repository: Lore's lock on it is exclusive, and while this process keeps it every
+     * version control call the other Studio makes is refused as a repository somebody else has.
+     * A frozen workspace makes no calls of its own that would take it back - its interval
+     * checkpoint stands down while frozen, and its close no longer check points (see
+     * {@link wantsCheckpointOnClose}).
+     *
+     * No dialog and nothing on any other window: the workspace that lost the project is the one
+     * that says so, on the screen it replaces its editor with.
+     */
+    private handleProjectTakenOver(projectPath: string, holder: ProjectSessionHolder): void {
+        const key = normalizeProjectPath(projectPath);
+        for (const window of this.liveWorkspaceWindows()) {
+            if (normalizeProjectPath(window.getProps().projectPath) !== key) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.workspaceSessionTakenOver, { holder });
+            } catch (error) {
+                this.logger.warn(`[Project] Could not tell the workspace on "${projectPath}" to stop writing:`, error);
+            }
+        }
+        void this.stopProjectRuntimes(projectPath);
+        void this.vcsManager.closeProject(projectPath).catch(error => {
+            this.logger.warn(`[Vcs] Could not let go of the repository for "${projectPath}" after it was taken over:`, error);
+        });
+    }
+
+    /**
      * Stop every project's runtimes. Used on the way out of the app.
      *
      * Not the same thing as the windows closing, and that is the whole reason it exists: a preview
@@ -1365,6 +1491,22 @@ export class App extends BaseApp {
             (window): window is AppWindow<WindowAppType.Workspace> =>
                 !window.isClosed() && window.getWindowType() === WindowAppType.Workspace,
         );
+    }
+
+    /**
+     * The pending writes a crash can still settle: one per workspace that is still on screen.
+     *
+     * The same debt the quit path drains, through the same per-window IPC, because it is the same
+     * debt - auto-save is debounced, so at any instant there is an edit that has been typed and not
+     * written. What differs is that a crash ends the process with `exit()`, which runs none of
+     * `drainForShutdown`; without this, a fatal error in the main process discarded those edits
+     * without ever asking the windows for them.
+     *
+     * Thunks rather than promises so that nothing starts until the crash sequence is ready to bound
+     * the wait, and so the set of windows is read at the moment of the crash rather than earlier.
+     */
+    protected override collectPendingSaveFlushes(): readonly (() => Promise<unknown>)[] {
+        return this.liveWorkspaceWindows().map(window => () => this.flushWorkspacePendingSaves(window));
     }
 
     /** Flush every open workspace concurrently. Used on the way out of the app. */
@@ -1582,6 +1724,139 @@ export class App extends BaseApp {
     }
 
     /**
+     * Put a project on the trust ledger for the window about to open on it.
+     *
+     * One Studio never saw arrives as "opened" and waits for the author; one named to `--build` is
+     * the operator's own choice and is vouched for in their name (see `PROJECT_TRUST_ON_ARRIVAL`).
+     * Called before the trust question is put and again where a window comes into being, so
+     * nothing reaches a window unrecorded and absence-means-distrusted has nothing to guess about.
+     */
+    private recordProjectArrival(projectPath: string, commandLine: boolean): void {
+        const arrivedAt = new Date().toISOString();
+        if (commandLine) {
+            this.projectTrustManager.recordArrival(projectPath, "command-line", arrivedAt);
+        } else {
+            this.projectTrustManager.recordArrival(projectPath, "opened", arrivedAt);
+        }
+    }
+
+    /**
+     * Put the trust question to the author in a window of its own, and record what they said.
+     *
+     * The prompt is a Studio window, not the workspace: the workspace renders the project's content
+     * and is the one surface that must never be able to answer this. Modal over the window that
+     * asked when that window is on screen, and on its own otherwise - a launcher held back for a
+     * `--project` start is not something to hang a modal on.
+     *
+     * A yes is the author's grant, written here. A no, or a window closed without answering, leaves
+     * the project waiting, and the question is put again the next time it opens.
+     */
+    public async askProjectTrust(asker: AppWindow, projectPath: string): Promise<boolean> {
+        const config = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const configuredName = typeof config?.name === "string" ? config.name.trim() : "";
+        const props: WindowProps[WindowAppType.ProjectTrustPrompt] = {
+            projectPath,
+            projectName: configuredName || path.basename(projectPath),
+            origin: this.projectTrustManager.getRecord(projectPath)?.origin ?? "opened",
+        };
+        const parent = !asker.isClosed() && asker.win.isVisible() ? asker : null;
+        const promptWindow = await this.launchProjectTrustPrompt(parent, props);
+        parent?.addChild(promptWindow);
+        const trusted = await new Promise<boolean>(resolve => {
+            promptWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ProjectTrustPrompt]) => {
+                resolve(result?.trusted === true);
+            });
+        });
+        if (trusted) {
+            this.projectTrustManager.grantTrust(projectPath, new Date().toISOString());
+            this.logger.info("[Trust] Author vouched for", projectPath, "when asked");
+        } else {
+            this.logger.info("[Trust] Author left", projectPath, "waiting");
+        }
+        return trusted;
+    }
+
+    /**
+     * Ask whether a project uses the sign-in this installation holds for its server.
+     *
+     * A Studio window rather than a sheet in the workspace, for the reason the trust question is
+     * one: the workspace renders the project's content, and the answer to "may this project act as
+     * your account" must come from a surface that content cannot reach. Modal over the project's
+     * workspace where it is on screen - the question arrives because something was pressed there -
+     * and standing on its own otherwise.
+     *
+     * Only asks and reports. `VcsManager` records the answer, against the pair and the account it
+     * showed; a window closed without answering is `null`, and nothing is recorded for it.
+     */
+    public async askServerSessionUse(projectPath: string, session: VcsServerSession): Promise<boolean | null> {
+        const config = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const configuredName = typeof config?.name === "string" ? config.name.trim() : "";
+        // The address without its scheme: `team.example.lan:41337`, the way every server row reads.
+        const host = session.remoteOrigin.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "");
+        const props: WindowProps[WindowAppType.ServerSessionPrompt] = {
+            projectName: configuredName || path.basename(projectPath),
+            projectPath,
+            serverName: session.name?.trim() || host,
+            serverHost: host,
+            accountName: session.account.displayName || session.account.username || session.account.userId,
+            accountDetail: session.account.identity || session.account.username,
+        };
+        const workspace = this.findWorkspaceForProject(projectPath);
+        const parent = workspace && !workspace.isClosed() && workspace.win.isVisible() ? workspace : null;
+        const promptWindow = await this.launchServerSessionPrompt(parent, props);
+        parent?.addChild(promptWindow);
+        return new Promise<boolean | null>(resolve => {
+            promptWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ServerSessionPrompt]) => {
+                resolve(result === null || result === undefined ? null : result.use === true);
+            });
+        });
+    }
+
+    /**
+     * Carry a change of trust to the windows already open on the project.
+     *
+     * Trust is read once when a workspace boots - the run controls, the status bar, the loader that
+     * refuses a puppet and the cut on the session all settle then - so a window that has booted
+     * reloads to read it again, with its pending saves flushed first as before any other reload
+     * this process starts. Withdrawing trust also stops what the project is doing: a preview or a
+     * Dev Mode session started while it was trusted is the project's code running, which is the
+     * thing the author just said no to.
+     */
+    public async applyProjectTrustChange(projectPath: string, trusted: boolean): Promise<void> {
+        if (!trusted) {
+            await this.getDevModeManager().stop(projectPath).catch(error => {
+                this.logger.warn("[Trust] Could not stop Dev Mode after trust was withdrawn:", error);
+            });
+            await this.getPreviewManager().stop(projectPath).catch(error => {
+                this.logger.warn("[Trust] Could not stop the preview after trust was withdrawn:", error);
+            });
+        }
+        const key = normalizeProjectPath(projectPath);
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed() || window.getWindowType() !== WindowAppType.Workspace) {
+                continue;
+            }
+            const workspace = window as AppWindow<WindowAppType.Workspace>;
+            if (normalizeProjectPath(workspace.getProps().projectPath) !== key) {
+                continue;
+            }
+            const webContentsId = workspace.getWebContents().id;
+            if (trusted) {
+                devModeNetworkPolicy.releaseDistrusted(webContentsId);
+            } else {
+                devModeNetworkPolicy.blockDistrusted(webContentsId);
+                workspace.onClose(() => devModeNetworkPolicy.releaseDistrusted(webContentsId));
+            }
+            await this.flushWorkspacePendingSaves(workspace);
+            this.logger.info(
+                "[Trust] Reloading the workspace on", projectPath,
+                trusted ? "- the project is now trusted" : "- the project is no longer trusted",
+            );
+            workspace.reload();
+        }
+    }
+
+    /**
      * Build a workspace window.
      *
      * `options.show === false` covers two different windows, and `deferredShow` is what tells them
@@ -1606,6 +1881,7 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: !hidden,
             failurePrompts: !headless,
+            unattended: headless,
             preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
@@ -1620,6 +1896,24 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
+        // Every project that gets a window is on the trust ledger from here on. `openProject`
+        // recorded it before putting the question; this covers the launches that do not pass
+        // through there, so nothing reaches a window unrecorded.
+        this.recordProjectArrival(props.projectPath, Boolean(props.commandLineRun));
+        // Before the document loads, which is what `blockDistrusted` requires: a request made
+        // while the first frame is coming up is still a request. A distrusted project reaches
+        // nothing remote from its own window - not through fetch, not through an <img>, not
+        // through a plugin panel - and this is the only hook Electron allows on that session,
+        // so it is shared with the Dev Mode policy rather than registered a second time.
+        if (!this.projectTrustManager.isTrusted(props.projectPath)) {
+            const distrustedWebContentsId = window.getWebContents().id;
+            devModeNetworkPolicy.blockDistrusted(distrustedWebContentsId);
+            // Released the way the Dev Mode policy beside it is. Electron does not hand the same
+            // id to a later window, so nothing is mis-blocked by leaving it - but a set that only
+            // ever grows is a lifecycle nobody is keeping, and the next reader would have to prove
+            // the id-reuse claim to themselves before touching anything near it.
+            window.onClose(() => devModeNetworkPolicy.releaseDistrusted(distrustedWebContentsId));
+        }
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
         // Maximized right here rather than once the page reports ready: the window is on screen
@@ -1808,8 +2102,33 @@ export class App extends BaseApp {
             return existing;
         }
 
+        // Before a window exists, which is what makes this the gate rather than a check: everything
+        // that reads or writes this project's files does so from a window, and there is not one yet.
+        //
+        // A refusal does not stop the open. The window still comes up and says which machine has
+        // the project, because "nothing happened when I asked for my project" is the one outcome
+        // worse than being told why. It is the window's own startup that puts the error screen up
+        // (see `workspaceProjectPreflight`), and it asks this manager again to do it - so Retry on
+        // that screen is a fresh claim rather than a reload of a stale answer.
+        const claim = await this.projectSessionLockManager.acquire(projectPath);
+        if (!claim.ok) {
+            this.logger.info(
+                "[Project] Not opening", projectPath,
+                "for editing: it is already open in another NarraLeaf Studio on", claim.holder.hostname,
+            );
+        }
+
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
+        // On the ledger before the question, and the question before the window. A project Studio
+        // never met is asked about here, over the window the author is looking at, and whatever
+        // they answer the project opens - trusted, or as one to browse. Not for a headless run with
+        // nobody at the screen, which vouches for itself, and not for a project somebody already has
+        // coming up: its question was put when they asked.
+        this.recordProjectArrival(projectPath, Boolean(options.commandLineRun));
+        if (!pending && !options.background && !options.commandLineRun && !this.projectTrustManager.isTrusted(projectPath)) {
+            await this.askProjectTrust(opener, projectPath);
+        }
         // A replacement loads out of sight and takes the screen only once its project has answered:
         // the author asked for this window to become another project, and a second window appearing
         // over the first and the first closing out from under it is the one thing that does not read
@@ -1825,7 +2144,7 @@ export class App extends BaseApp {
             opener,
             {
                 projectPath,
-                ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}),
+                ...(options.commandLineRun ? { commandLineRun: options.commandLineRun } : {}),
                 ...(options.joinLive ? { joinLive: options.joinLive } : {}),
             },
             options.background
@@ -1848,6 +2167,14 @@ export class App extends BaseApp {
             this.projectOpenings.set(key, launch);
             void launch.catch(() => void 0).finally(() => {
                 this.projectOpenings.delete(key);
+            });
+            // A launch that threw leaves no window, so the `window-closed` release below never
+            // runs and the claim would outlive the attempt - a project this Studio could not open
+            // and now refuses to open anywhere else, for the rest of the session.
+            void launch.catch(() => {
+                if (!this.hasLiveWindowForProject(projectPath)) {
+                    void this.projectSessionLockManager.release(projectPath);
+                }
             });
         }
 
@@ -2099,6 +2426,9 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.PluginPermissionPrompt],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.PluginPermissionPrompt>> {
+        // Every path to this prompt waits on its answer, so a window with nobody at the screen may
+        // not open one - see `AppWindow.refuseUnattendedPrompt`.
+        parent.refuseUnattendedPrompt(describePermissionAsker(props.request));
         const config: WindowConfig<WindowAppType.PluginPermissionPrompt> = {
             windowType: WindowAppType.PluginPermissionPrompt,
             isolated: true,
@@ -2135,6 +2465,90 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.PluginPermissionPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a project is trusted.
+     *
+     * The same shape as the server-trust prompt below: a small modal child of whoever asked,
+     * holding one question and two answers. `parent` is null when no window is on screen to be
+     * modal to, and the prompt then stands on its own.
+     */
+    async launchProjectTrustPrompt(
+        parent: AppWindow | null,
+        props: WindowProps[WindowAppType.ProjectTrustPrompt],
+    ): Promise<AppWindow<WindowAppType.ProjectTrustPrompt>> {
+        const config: WindowConfig<WindowAppType.ProjectTrustPrompt> = {
+            windowType: WindowAppType.ProjectTrustPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                ...(parent ? { modal: true, parent: parent.win } : {}),
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 340,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ProjectTrustPrompt>(this, config, props);
+        window.setTitle("Project Trust - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ProjectTrustPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a project uses a server sign-in.
+     *
+     * The project-trust prompt's shape: a small modal child of the workspace that asked, one
+     * question, two answers. Taller than that one by the second identity box, so the footnote is
+     * on screen rather than below a scroll.
+     */
+    async launchServerSessionPrompt(
+        parent: AppWindow | null,
+        props: WindowProps[WindowAppType.ServerSessionPrompt],
+    ): Promise<AppWindow<WindowAppType.ServerSessionPrompt>> {
+        const config: WindowConfig<WindowAppType.ServerSessionPrompt> = {
+            windowType: WindowAppType.ServerSessionPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                ...(parent ? { modal: true, parent: parent.win } : {}),
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 420,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ServerSessionPrompt>(this, config, props);
+        window.setTitle("Server Sign-in - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ServerSessionPrompt));
 
         return window;
     }

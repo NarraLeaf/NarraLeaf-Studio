@@ -8,6 +8,7 @@
  */
 
 import { readCsvTable, serializeCsv } from "./csv";
+import type { ExchangeProblem } from "./exchangeProblem";
 
 export const VOICE_CSV_COLUMNS = ["filename", "unit_id", "character", "scene", "line", "status", "note"] as const;
 
@@ -19,6 +20,11 @@ export type VoiceCsvRow = {
     line: string;
     status: string;
     note: string;
+    /**
+     * Where the row sits in the file it was read from, as a spreadsheet numbers it (the header is
+     * row 1), so a row that is skipped can be named. Absent on rows built for export.
+     */
+    row?: number;
 };
 
 export function serializeVoiceCsv(rows: readonly VoiceCsvRow[]): string {
@@ -30,7 +36,8 @@ export function serializeVoiceCsv(rows: readonly VoiceCsvRow[]): string {
 
 export type ParsedVoiceCsv = {
     rows: VoiceCsvRow[];
-    errors: string[];
+    /** What was wrong with the file, as codes the interface words; see `ExchangeProblem`. */
+    problems: ExchangeProblem[];
 };
 
 /**
@@ -40,17 +47,19 @@ export type ParsedVoiceCsv = {
 export function parseVoiceCsv(text: string): ParsedVoiceCsv {
     const table = readCsvTable(text);
     if (!table) {
-        return { rows: [], errors: ["Empty file"] };
+        return { rows: [], problems: [{ code: "empty" }] };
     }
     if (!table.hasColumn("unit_id")) {
-        return { rows: [], errors: ["Missing required column: unit_id"] };
+        return { rows: [], problems: [{ code: "noIdColumn" }] };
     }
     const rows: VoiceCsvRow[] = [];
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
     table.rows.forEach((cells, lineIndex) => {
+        // The row number a spreadsheet shows beside it: the header is row 1.
+        const row = lineIndex + 2;
         const unitId = table.cell(cells, "unit_id").trim();
         if (!unitId) {
-            errors.push(`Row ${lineIndex + 2}: missing unit_id`);
+            problems.push({ code: "missingId", at: { row } });
             return;
         }
         rows.push({
@@ -61,7 +70,8 @@ export function parseVoiceCsv(text: string): ParsedVoiceCsv {
             line: table.cell(cells, "line"),
             status: table.cell(cells, "status").trim().toLowerCase(),
             note: table.cell(cells, "note"),
+            row,
         });
     });
-    return { rows, errors };
+    return { rows, problems };
 }

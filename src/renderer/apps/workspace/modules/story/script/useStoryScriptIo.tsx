@@ -19,6 +19,10 @@ import { storySceneHistoryScope } from "@/lib/workspace/services/history/history
 import { useWorkspace } from "../../../context";
 import { StoryScriptExportModal } from "./StoryScriptExportModal";
 import { StoryScriptImportModal } from "./StoryScriptImportModal";
+import { basename } from "@shared/utils/path";
+import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
+import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
+import { describeImportFailure, importReadFailureReason } from "@/lib/workspace/assets/importFailure";
 import {
     applicableScenePlans,
     applyStoryScriptScenes,
@@ -122,7 +126,9 @@ export function useStoryScriptIo(): StoryScriptIo {
                 ["txt"],
             );
             if (!selection.success || !selection.data.ok) {
-                throw new Error(selection.success && !selection.data.ok ? selection.data.error.message : "Save dialog failed");
+                // The dialog's own failure is for the log; it is English and says nothing to act on.
+                console.warn("[story script] the save dialog failed", selection);
+                throw new Error(t("workspace.shell.fileDialogFailed"));
             }
             const targetPath = selection.data.data;
             if (!targetPath) {
@@ -132,9 +138,17 @@ export function useStoryScriptIo(): StoryScriptIo {
                 return;
             }
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const written = await filesystem.write(targetPath, text, "utf-8");
+            // Reported here, where the author asked for it, by the name they gave the file - the
+            // save-status surface only logs it. Never the system's message, which is English and
+            // quotes the whole path.
+            const written = await filesystem.write(
+                targetPath,
+                text,
+                "utf-8",
+                itemWrite(basename(targetPath), "workspace.shell.save.stores.story", "handledByWriter"),
+            );
             if (!written.ok) {
-                throw new Error(written.error.message);
+                throw new Error(describeFileWriteFailure(basename(targetPath), written.error, t));
             }
             context.services.get<UIService>(Services.UI)
                 .showNotification(t("story.script.exported", { path: targetPath }), "success");
@@ -167,10 +181,13 @@ export function useStoryScriptIo(): StoryScriptIo {
             if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
                 return;
             }
+            const filePath = selection.data.data[0];
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const content = await filesystem.read(selection.data.data[0], "utf-8");
+            const content = await filesystem.read(filePath, "utf-8");
             if (!content.ok) {
-                throw new Error(content.error.message);
+                // By the file's name and why. The read's own message is English and quotes the path.
+                console.warn("[story script] could not read the script", content.error);
+                throw new Error(describeImportFailure(filePath, importReadFailureReason(content.error.code, t), t));
             }
             const parsed = parseStoryScript(content.data);
             if (!parsed.ok) {

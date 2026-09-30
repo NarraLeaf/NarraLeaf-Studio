@@ -63,6 +63,17 @@ export function isSealedShellFile(name: string): boolean {
     return (SEALED_SHELL_FILES as readonly string[]).includes(name);
 }
 
+/**
+ * Entry prefixes under which a build keeps the code its page loads by URL: bundled plugin entries,
+ * puppet backends and the author's compiled script blueprints.
+ *
+ * These, with the shell files above, are the whole of what `<scheme>://runtime/` answers - from
+ * the store on a sealed build, from the app directory otherwise. Everything else in that directory
+ * (the store and its companion file, the codec, the loaders Electron opens itself, a loose build's
+ * pack) is not a page resource, and a page has no reason to be able to fetch it.
+ */
+export const RUNTIME_HOST_FILE_PREFIXES = ["plugins/", "puppet/", "scripts/"] as const;
+
 export function gameRuntimeBundleRuntimeEntry(pathname: string): string {
     return pathname.replace(/\\/g, "/").replace(/^\/+/, "");
 }

@@ -1,5 +1,6 @@
 import { BrandPalette } from "@shared/brand/brandRegistry";
-import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
+import { BUILTIN_BRAND_COLORS, type BrandColor } from "@shared/types/brand";
+import type { UISurface } from "@shared/types/ui-editor/document";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 
 /**
@@ -30,10 +31,21 @@ export function resolveGameRuntimeEntrySurface(pack: GameRuntimePackV1) {
  * surface to the brand background is an author with a light game).
  */
 export function resolveGameRuntimeInitialBackgroundColor(pack: GameRuntimePackV1): string {
-    const surface = resolveGameRuntimeEntrySurface(pack);
+    return resolveSurfaceInitialBackgroundColor(resolveGameRuntimeEntrySurface(pack), pack.bundle.brand);
+}
+
+/**
+ * The same answer for a surface already in hand, which is what a Dev Mode window has: it opens on a
+ * surface the author picked rather than on a pack's entry. One rule, so the frame an author waits in
+ * while testing is the frame their players wait in.
+ */
+export function resolveSurfaceInitialBackgroundColor(
+    surface: UISurface | undefined,
+    brand: readonly BrandColor[] | undefined,
+): string {
     const configured = surface?.settings?.backgroundColor;
     if (typeof configured === "string" && configured.trim()) {
-        return normalizeOpaqueBackgroundColor(resolvePackBrandValue(pack, configured)) ?? "#000000";
+        return normalizeOpaqueBackgroundColor(resolveBrandValue(brand, configured)) ?? "#000000";
     }
     return surface?.kind === "appSurface" ? "#ffffff" : "#000000";
 }
@@ -56,8 +68,8 @@ export function resolveGameRuntimeInitialBackgroundColor(pack: GameRuntimePackV1
  * same fallback. A pack with no `brand` - one built before the feature - reads the seeds, which is
  * the palette its project would have had.
  */
-function resolvePackBrandValue(pack: GameRuntimePackV1, value: string): string {
-    const palette = new BrandPalette(pack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+function resolveBrandValue(brand: readonly BrandColor[] | undefined, value: string): string {
+    const palette = new BrandPalette(brand ?? BUILTIN_BRAND_COLORS);
     return palette.resolveValueCss(value) ?? value;
 }
 

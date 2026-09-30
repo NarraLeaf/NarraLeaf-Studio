@@ -48,9 +48,18 @@ export type BpEdgeAst = {
 };
 
 export type BpGraphAst = {
-    kind: "event" | "function";
+    /**
+     * Which of the three block keywords opened this layer.
+     *
+     * `script` is a layer like the other two rather than a property of the blueprint: a blueprint
+     * holds a list of layers and each one is a graph or one of the author's files, so a file can
+     * sit beside a graph in the same slot.
+     */
+    kind: "event" | "function" | "script";
     name: string;
     id?: string;
+    /** The author's file, on a `script` layer: `script "scripts/title.ts" id=...`. */
+    scriptRef?: string;
     nodes: BpNodeAst[];
     edges: BpEdgeAst[];
     /** Raw `graphMeta = {...}` escape hatch; merged over the generated meta. */
@@ -70,7 +79,7 @@ export type BpBlueprintAst = {
     name: string;
     id?: string;
     ownerKind: string;
-    /** Owner fields as written (surfaceId / elementId / propPath / componentId / assetId / mode). */
+    /** Owner fields as written (surfaceId / elementId / propPath / componentId / blueprintId / mode). */
     ownerFields: Record<string, string>;
     variables: BpVariableAst[];
     graphs: BpGraphAst[];

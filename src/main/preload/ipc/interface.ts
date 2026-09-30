@@ -4,10 +4,11 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
-import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type { ExternalScriptEditor, ScriptOpenTargetId } from "@shared/types/scriptEditors";
 import type {
     GameProgressExportRequest,
     GameProgressExportResult,
@@ -18,6 +19,7 @@ import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/stat
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type {
     BuildPreflightFinding,
@@ -26,7 +28,7 @@ import type {
     GamePatchExportRequest,
     LastGameBuildRun,
 } from "@shared/types/gameBuild";
-import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent } from "@shared/types/commandLineRun";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
 import type { StudioClipboardKind } from "@shared/types/studioClipboard";
@@ -39,6 +41,10 @@ import type {
 } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
@@ -50,6 +56,7 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type {
     TeamCallOutcome,
     TeamConnection,
@@ -57,7 +64,7 @@ import type {
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -117,8 +124,6 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
             writeFileNoFollowOrCreate: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollowOrCreate", path, data, encoding }),
-            recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
-                invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
             createDir: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "createDir", path }),
             deleteFile: (actor: PrivilegedActor, path: string) =>
@@ -217,7 +222,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
         writeFileNoFollow: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsWriteFileNoFollow, { path, data, encoding }),
-        recoverCorruptedJsonFile: (path: string, replacement: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsRecoverCorruptedJsonFile, { path, replacement, encoding }),
         createDir: (path: string) => ipcClient.invoke(IPCEventType.fsCreateDir, { path }),
         deleteFile: (path: string) => ipcClient.invoke(IPCEventType.fsDeleteFile, { path }),
         deleteDir: (path: string) => ipcClient.invoke(IPCEventType.fsDeleteDir, { path }),
@@ -238,6 +242,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
     selectProjectPackage: () => ipcClient.invoke(IPCEventType.projectWizardSelectPackage, {}),
+    registerCreatedProject: (projectPath: string) =>
+        ipcClient.invoke(IPCEventType.projectWizardCreated, { projectPath }),
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
@@ -281,6 +287,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
+        acquireSessionLock: () =>
+            ipcClient.invoke(IPCEventType.workspaceAcquireSessionLock, {}),
+        onSessionTakenOver: (handler: (holder: ProjectSessionHolder) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceSessionTakenOver, data => handler(data.holder)),
         openProjectFolder: () =>
             ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
@@ -293,7 +303,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
-        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>) =>
+        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<AssetUrlDirectory>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAllAssetUrls, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
@@ -303,14 +313,29 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
-        reportCommandLineBuild: (event: CommandLineBuildEvent) =>
-            ipcClient.send(IPCEventType.workspaceCommandLineBuild, event),
+        reportCommandLineRun: (event: CommandLineRunEvent) =>
+            ipcClient.send(IPCEventType.workspaceCommandLineRun, event),
         reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
             ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
 
+    /**
+     * The project-trust ledger. Reading is what the interface uses to stop offering things;
+     * granting and revoking are the author changing their mind. None of it enforces anything -
+     * the refusals live in main, beside the operations they refuse.
+     */
+    projectTrust: {
+        query: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustQuery, { projectPath }),
+        grant: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustGrant, { projectPath }),
+        revoke: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustRevoke, { projectPath }),
+        list: () => ipcClient.invoke(IPCEventType.projectTrustList, {}),
+        prompt: () => ipcClient.invoke(IPCEventType.projectTrustPrompt, {}),
+    },
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
         onSettingsHighlight: (handler: (highlight: string) => void) =>
@@ -356,6 +381,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         revealRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
+        /**
+         * Hand the project's scripts folder to whatever the author edits with.
+         *
+         * The folder, with the file alongside it - a script resolves its types from the folder. See
+         * `projectScriptAction.ts`.
+         */
+        openScript: (projectPath: string, scriptRef?: string, target?: ScriptOpenTargetId) =>
+            ipcClient.invoke(IPCEventType.projectOpenScript, { projectPath, scriptRef, target }) as Promise<RequestStatus<void>>,
+        /** Which editors this machine can open that folder in. */
+        listScriptEditors: () =>
+            ipcClient.invoke(IPCEventType.projectListScriptEditors, {}) as Promise<RequestStatus<ExternalScriptEditor[]>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         recentProjectIcons: () =>
@@ -366,6 +402,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
         openLogsFolder: () =>
             ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
+        openThirdPartyNotices: () =>
+            ipcClient.invoke(IPCEventType.appOpenThirdPartyNotices, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>
@@ -399,18 +437,50 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getWindowScaleOptions: (
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowScaleOptions, { design, chrome }) as Promise<RequestStatus<{ scales: number[] }>>,
+        setStageSize: (
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowSetStageSize, { width, height, chrome }) as Promise<RequestStatus<void>>,
         getFullscreen: () =>
             ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
         setFullscreen: (fullscreen: boolean) =>
             ipcClient.invoke(IPCEventType.devModeFullscreenSet, { fullscreen }) as Promise<RequestStatus<void>>,
         onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
+        getWindowFocused: () =>
+            ipcClient.invoke(IPCEventType.devModeWindowFocusGet, {}) as Promise<RequestStatus<{ isFocused: boolean }>>,
+        readProcessMemory: () =>
+            ipcClient.invoke(IPCEventType.devModeProcessMemory, {}) as Promise<RequestStatus<{
+                reading: GameProcessMemoryReading;
+            }>>,
+        onWindowFocusChanged: (handler: (payload: { isFocused: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeWindowFocusChanged, handler),
+        saveScreenshot: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeScreenshotSave, { projectRef }) as Promise<RequestStatus<BlueprintScreenshotResult>>,
+        openScreenshotsFolder: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeScreenshotOpenFolder, { projectRef }) as Promise<RequestStatus<BlueprintOpenScreenshotsResult>>,
         onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlStartStory: (
+            handler: (payload: {
+                token: number;
+                storyId: string;
+                sceneId: string;
+                startBlockId?: string;
+                snapshotId?: string;
+            }) => void,
+        ) => ipcClient.onMessage(IPCEventType.devModeControlStartStory, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         onConsoleLog: (handler: (payload: DevModeConsoleLogPayload) => void) =>
@@ -434,7 +504,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         resolveAllAssetUrls: () =>
-            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<{ urls: Record<string, string> }>>,
+            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<AssetUrlDirectory>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
@@ -467,6 +537,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             delete: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveDelete, { projectRef, id }) as Promise<RequestStatus<{ deleted: boolean }>>,
         },
+        // Clear every Dev Mode save slot and the persistence store for one project. The recovery
+        // path when the author's own game poisons that state and crashes on launch.
+        resetData: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeDataReset, { projectRef }) as Promise<RequestStatus<void>>,
     },
 
     preview: {
@@ -476,6 +550,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+        // Clear the Preview save slots and persistence file. Refuses in the main process while a
+        // preview for the project is running.
+        resetData: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.previewResetData, { projectPath }) as Promise<RequestStatus<void>>,
     },
 
     /**
@@ -601,15 +679,21 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
-        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        /** Local read - no socket. `session` null means this project uses no sign-in there. */
         getServerSession: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
+        /** Raises Studio's own sign-in question for this project; the answer is recorded by the host. */
+        useServerSession: (projectPath: string, remoteOrigin?: string) =>
+            ipcClient.invoke(
+                IPCEventType.vcsUseServerSession,
+                remoteOrigin === undefined ? { projectPath } : { projectPath, remoteOrigin },
+            ) as Promise<RequestStatus<VcsProjectServerSession>>,
         /** Goes to the network. The token is not stored here and does not come back. */
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
         /** Changes the machine's trust store. Only a certificate Studio wrote is eligible. */
-        trustAuthority: (projectPath: string, certificatePath: string) =>
-            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
+        trustAuthority: (certificatePath: string) =>
+            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
         signOut: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
         /** Goes to the network. Reads one address and says what is behind it. */
@@ -806,8 +890,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     blueprintExternalLink: {
-        open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
-            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
+        open: (request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { request }) as Promise<
                 RequestStatus<{ result: BlueprintOpenExternalResult }>
             >,
         openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>

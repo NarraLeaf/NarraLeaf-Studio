@@ -16,11 +16,11 @@
  * file; nothing about the credential UI is written twice.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
-import type { SigningCredential, SigningPlatform } from "@shared/types/signing";
+import type { SigningCredential } from "@shared/types/signing";
 import {
     normalizeSigningConfiguration,
     SIGNING_PLATFORMS,
@@ -28,43 +28,26 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SigningSection } from "@/apps/workspace/modules/actions/BuildSigningSection";
 import { SettingsGroup } from "../components/SettingsGroup";
+import { useConfigSlice } from "./useConfigSlice";
 import type { ProjectSectionProps } from "./types";
 
 export function ProjectSigningSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
-    const [signing, setSigning] = useState<SigningConfiguration>(
-        () => normalizeSigningConfiguration(config.app?.signing),
-    );
-    const [saving, setSaving] = useState(false);
-
+    const stored = useMemo(() => normalizeSigningConfiguration(config.app?.signing), [config.app?.signing]);
     /**
      * Point one platform at a credential, or at nothing.
      *
-     * Optimistic and single-flight, like every other write on this page: `updateSigningConfiguration`
-     * is a read-modify-write of the whole manifest, so two in flight together would have the second
-     * clobber the first with a copy read before it landed. The row is disabled while one runs rather
-     * than the change being dropped, so the picker never shows a choice the project did not take.
+     * Shown at once and never refused while another platform's choice is still being written - the
+     * service lands whole-manifest writes one at a time, each on top of the last, so two choices made
+     * back to back are both kept. `undefined` clears the platform: the normalizer drops a blank entry,
+     * which is how the project says "build this one unsigned" rather than carrying a deselected id.
      */
-    const commit = useCallback(async (platform: SigningPlatform, credentialId: string | undefined) => {
-        if (saving) {
-            return;
-        }
-        const previous = signing;
-        setSaving(true);
-        setSigning(current => ({ ...current, [platform]: credentialId }));
-        try {
-            // `undefined` clears the platform: the normalizer drops a blank entry, which is how the
-            // project says "build this one unsigned" rather than carrying a deselected id.
-            const updated = await projectService.updateSigningConfiguration({ [platform]: credentialId });
-            setSigning(normalizeSigningConfiguration(updated.app?.signing));
-            onConfigChange(updated);
-        } catch (error) {
-            setSigning(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(false);
-        }
-    }, [onConfigChange, projectService, saving, signing, uiService]);
+    const { value: signing, commit } = useConfigSlice<SigningConfiguration>({
+        stored,
+        write: patch => projectService.updateSigningConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     /**
      * Delete a credential from this machine's vault, once the author has said so.
@@ -101,8 +84,7 @@ export function ProjectSigningSection({ projectService, uiService, config, onCon
             <SigningSection
                 platforms={SIGNING_PLATFORMS}
                 signing={signing}
-                busy={saving}
-                onChange={(platform, credentialId) => { void commit(platform, credentialId); }}
+                onChange={(platform, credentialId) => { void commit({ [platform]: credentialId }); }}
                 onRemove={removeCredential}
             />
         </SettingsGroup>

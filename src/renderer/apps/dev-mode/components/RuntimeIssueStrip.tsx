@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { countRuntimeIssues, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import { countRuntimeIssues, surfacePlaceHeading, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { RUNTIME_ISSUE_TONE } from "./runtimeIssueTone";
 
 export type RuntimeIssueStripProps = {
@@ -39,13 +39,13 @@ export type RuntimeIssueStripProps = {
  * This used to be the whole report: a paragraph per failure, stacked, growing down over the stage
  * until a scene with a handful of them left nothing of the game to look at. The report now lives in
  * the Issues panel (`RuntimeIssuesPanel`); what stays up here is the notice and the way in. It shows
- * the newest failure because that is the one being caused right now, truncates it because the panel
- * is one click away, and states the tally because "one thing broke" and "eleven things broke" are
- * different situations.
+ * an unacknowledged session failure first and otherwise the newest located failure, because those
+ * are the ones being caused right now; truncates it because the panel is one click away; and states
+ * the tally because "one thing broke" and "eleven things broke" are different situations.
  */
 export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
     const { sessionError, issues, onDismiss, onOpenIssues } = props;
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     if (!sessionError && issues.length === 0) {
         return null;
@@ -63,7 +63,13 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
 
     const newest = issues[0];
     let headline = "";
-    if (newest) {
+    if (sessionError) {
+        // A session failure outranks the located issues, and is the newer of the two whenever it is
+        // still unacknowledged: it is the whole session saying it did not start or did not reload.
+        // Headlining the newest located issue instead painted an old warning in the error colour
+        // and left the reason on the second line of the Issues panel.
+        headline = sessionError.split("\n").find(line => line.trim().length > 0)?.trim() ?? sessionError;
+    } else if (newest) {
         const location = newest.location;
         // No place, no place column. An issue that has no row is normal here - a refused load, a
         // boot failure - and prefixing it with a phrase about not finding one reads as part of the
@@ -75,11 +81,9 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             : newest.surface
               // A Game UI failure has a place too, and it is the one that identifies it: several
               // surfaces can fail with the same sentence, and only the surface name tells them apart.
-              ? t("devMode.issues.onSurface", { surface: newest.surface.surfaceName })
+              ? surfacePlaceHeading(newest.surface, t)
               : null;
         headline = where ? `${where} · ${newest.message}` : newest.message;
-    } else if (sessionError) {
-        headline = sessionError.split("\n").find(line => line.trim().length > 0)?.trim() ?? sessionError;
     }
 
     return (
@@ -108,7 +112,10 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             )}
             {issues.length > 1 ? (
                 <span className="shrink-0 text-2xs opacity-70">
-                    {t("devMode.issues.summary", { errors, warnings })}
+                    {t("devMode.issues.counts", {
+                        errors: tn("common.count.errors", errors),
+                        warnings: tn("common.count.warnings", warnings),
+                    })}
                 </span>
             ) : null}
             <button

@@ -367,9 +367,8 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
     // record that only accrues while one of four tabs happens to be open is not one.
     const trail = useStoryRunTrail(storyRuntime, document, context?.sceneId ?? null);
 
-    // `.nl-editor-surface` rather than `bg-surface-sunken`: the same paint, at the
-    // `editor.surfaceOpacity` the author chose for the editor's reading surfaces. Identical at the
-    // default 100%.
+    // `.nl-editor-surface` rather than `bg-surface-sunken`: the class the editor's reading surfaces
+    // share. This window has no wallpaper, so it resolves to the same opaque paint.
     const rootClass = [
         "nl-editor-surface flex h-full min-h-0 shrink-0 flex-col text-2xs text-fg-muted",
         // Docked, the left hairline is the seam against the stage. Floating, the panel carries its
@@ -577,9 +576,10 @@ function VariablesTab(props: {
                     value = variable.defaultValue;
                 }
             } else {
-                const stored = scopeBridge.persistenceGet(variable.storageKey);
-                live = stored !== undefined;
-                value = stored !== undefined ? stored : variable.defaultValue;
+                // The scope answers the default itself while nothing is stored; `live` is whether
+                // something has been.
+                live = scopeBridge.persistenceIsStored(variable.storageKey);
+                value = scopeBridge.persistenceGet(variable.storageKey);
             }
             return { variable, value, live };
         });

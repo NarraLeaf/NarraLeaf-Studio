@@ -17,6 +17,9 @@
  *         -> transitionState{ isEntering:false, isExiting:true }
  *         -> interaction:clear
  *         -> blueprint:beforeSurfaceExit -> signal:beforeSurfaceExit
+ *     -> anim:returned                    (only when brought back before the exit finished)
+ *         -> transitionState{ isEntering:true, isExiting:false }
+ *         -> ... anim:enterComplete as above
  *     -> exit animation -> unmount
  *     -> scope:close -> blueprint:surfaceUnmount (allowClosedScopeExecution)
  *     -> widget:unmount
@@ -78,4 +81,5 @@ export const LIFECYCLE_CONTRACT = {
         "dispatch:afterSurfaceEnter",
         "bumpSignal:afterSurfaceEnter",
     ],
+    returned: ["setTransitionState:entering"],
 } as const satisfies Record<string, readonly LifecycleCommandKindToken[]>;

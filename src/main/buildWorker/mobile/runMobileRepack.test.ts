@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { derivePackKey, isPackedPayload } from "@narraleaf/bindings";
+import { isPackedPayload, packBuffer, wrapPackKey } from "@narraleaf/bindings";
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
@@ -26,7 +26,14 @@ import {
     appleIdentityP12,
     appleProvisioningProfile,
 } from "./signingFixtures";
-import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_STORE } from "./zipModel";
+import {
+    findMisalignedStoredEntries,
+    parseZipIndex,
+    readEntryBytes,
+    readLocalEntryDataSpan,
+    ZIP_METHOD_STORE,
+    type ZipIndexEntry,
+} from "./zipModel";
 import type { GameBuildWorkerMobileJob } from "../protocol";
 
 /**
@@ -71,16 +78,31 @@ async function makeSiteDir(): Promise<string> {
     return dir;
 }
 
+/**
+ * How long the sealed mobile entry document is. The override cannot be read back out of the
+ * container here, but a sealed file is exactly as long as its plaintext plus the container's own
+ * framing, and the mobile document is a different length from the web one it replaces - so the
+ * length says which of the two went in.
+ */
+function sealedIndexLength(job: GameBuildWorkerMobileJob): number {
+    return packBuffer(Buffer.from(job.indexHtmlOverride, "utf8"), job.contentKey).length;
+}
+
 async function makeJob(overrides: Partial<GameBuildWorkerMobileJob> = {}): Promise<GameBuildWorkerMobileJob> {
     const templateManifest = await readManifest();
+    // A key of the kind the manager mints per build; its value is beside the point here. The
+    // manager writes the same key into shell-config, mirrored below so the worker-level test
+    // reflects the real job it is handed.
+    const contentKey = wrapPackKey(Buffer.alloc(32, 1));
     return {
         sourceDir: await makeSiteDir(),
+        contentKey,
         templateManifest,
         productName: "My Game",
         appDirBaseName: "My Game",
         orientation: "landscape",
         indexHtmlOverride: "<!doctype html><title>mobile variant</title>",
-        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
+        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000", contentKey }),
         android: {
             templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
             outputs: { apk: "MyGame-1.2.3-android.apk", aab: "MyGame-1.2.3-android.aab" },
@@ -142,15 +164,55 @@ describe("runMobileRepack against the real shell templates", () => {
         expect(names).toContain(`${wwwRoot}plugin-api/runtime.js`);
         expect(names).toContain(shellConfigPath);
 
-        // The mobile entry document replaces the web one.
-        const indexEntry = index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!;
-        expect(readEntryBytes(apk, indexEntry).toString("utf8")).toContain("mobile variant");
-
-        // Without a content key, the payload is plain: a known file's bytes come
-        // back verbatim and the package's own detector agrees.
+        // The whole payload is in the container (all-or-nothing, as the shell assumes), checked
+        // with an independent parser reading the real entry bytes back out of the APK - and a known
+        // plaintext file is not shipped as its plaintext.
+        const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
+        expect(wwwEntries.length).toBeGreaterThan(0);
+        for (const entry of wwwEntries) {
+            expect(isPackedPayload(readEntryBytes(apk, entry)), entry.name).toBe(true);
+        }
         const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
-        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
-        expect(isPackedPayload(bgm)).toBe(false);
+        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
+
+        // The mobile entry document replaces the web one, inside the container like the rest.
+        const indexEntry = index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!;
+        expect(readEntryBytes(apk, indexEntry).toString("utf8")).not.toContain("mobile variant");
+        expect(readEntryBytes(apk, indexEntry).length).toBe(sealedIndexLength(job));
+
+        // shell-config.json stays plain: it is the bootstrap the shell reads before it can decode,
+        // and it carries the key it decodes with.
+        const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
+        expect(isPackedPayload(cfgBytes)).toBe(false);
+        expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(job.contentKey);
+    });
+
+    it("stores every payload entry uncompressed and 4-byte aligned, because the shell opens each with openFd", async () => {
+        // The shell asks AssetManager.openFd for the length of every file it serves from wwwRoot,
+        // and openFd throws on a deflated entry; the shell turns that into a 404, so one deflated
+        // index.html is a game that never starts. The site deliberately has the text files the
+        // extension table would otherwise deflate (.html, .js), at the real template's offsets.
+        const job = await makeJob();
+        job.android!.outputs = { apk: "MyGame-1.2.3-android.apk" };
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const { wwwRoot } = job.templateManifest.android;
+        const payload = parseZipIndex(apk).entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.isDirectory);
+        expect(payload.map(entry => entry.name)).toEqual(expect.arrayContaining([
+            `${wwwRoot}index.html`, `${wwwRoot}web.js`, `${wwwRoot}renderer.js`, `${wwwRoot}plugin-api/runtime.js`,
+        ]));
+        for (const entry of payload) {
+            // Both headers: the central directory is what the platform indexes, the local header
+            // is what a reader seeking to the data sees.
+            expect(entry.method, entry.name).toBe(ZIP_METHOD_STORE);
+            expect(apk.readUInt16LE(entry.localHeaderOffset + 8), entry.name).toBe(ZIP_METHOD_STORE);
+            expect(entry.compressedSize, entry.name).toBe(entry.uncompressedSize);
+            // Aligned as zipalign would, and still so after v2 signing moved nothing.
+            expect(readLocalEntryDataSpan(apk, entry).start % 4, entry.name).toBe(0);
+        }
+        expect(verifyApkV2(apk).verified).toBe(true);
     });
 
     it("produces an AAB beside the APK, signed by the same identity", async () => {
@@ -202,97 +264,26 @@ describe("runMobileRepack against the real shell templates", () => {
         await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-android.apk"))).rejects.toThrow();
     });
 
-    it("protects every payload file under a content key, and leaves shell-config plain", async () => {
-        // A real key of the kind the packer hands the repack; the exact value
-        // does not matter here, only that the repack protects under it.
-        const contentKey = derivePackKey(Buffer.alloc(32, 1), Buffer.alloc(16, 2));
-        const job = await makeJob({
-            contentKey,
-            // The manager writes the key into shell-config; mirror that here so
-            // the worker-level test reflects the real job it is handed.
-            shellConfigJson: JSON.stringify({
-                schemaVersion: 1,
-                orientation: "landscape",
-                backgroundColor: "#000000",
-                contentKey,
-            }),
-        });
+    it("an external unzip confirms the payload is in the container and shell-config is plain", async () => {
+        // The judge is the system `unzip`, not Studio's own zip parser or its container detector: a
+        // bug that made both the writer and the reader agree on plaintext would still be caught.
+        const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
+        const { wwwRoot, shellConfigPath } = (await readManifest()).android;
+        const job = await makeJob();
         const outputDir = await tempDir("nls-out-");
         await runMobileRepack(job, outputDir, log, MTIME);
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+        const apkPath = path.join(outputDir, "MyGame-1.2.3-android.apk");
 
-        const index = parseZipIndex(apk);
-        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
-
-        // Every payload file under wwwRoot is protected (all-or-nothing): the
-        // package's own detector says so, checked with an independent parser
-        // reading the real entry bytes back out of the APK.
-        const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
-        expect(wwwEntries.length).toBeGreaterThan(0);
-        for (const entry of wwwEntries) {
-            expect(isPackedPayload(readEntryBytes(apk, entry))).toBe(true);
-        }
-
-        // A known plaintext file is not shipped as its plaintext.
-        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
-        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
-
-        // The entry-document override is protected too, not served as HTML.
-        const indexBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!);
-        expect(isPackedPayload(indexBytes)).toBe(true);
-        expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
-
-        // shell-config.json stays plain: it is the bootstrap the decoder reads,
-        // and it carries the key the shell hands to that decoder.
-        const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
-        expect(isPackedPayload(cfgBytes)).toBe(false);
-        expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
-
-        // Still a valid, installable package.
-        expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
-    });
-
-    it("an external unzip confirms the payload is ciphertext under a key, plaintext without one", async () => {
-        // The judge is the system `unzip`, not Studio's own zip parser or its
-        // protected-payload detector: a bug that made both the writer and the
-        // reader agree on plaintext would still be caught here.
-        const contentKey = derivePackKey(Buffer.alloc(32, 3), Buffer.alloc(16, 4));
-        const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
-        const wwwRoot = (await readManifest()).android.wwwRoot;
-        const bgmEntry = `${wwwRoot}assets/bgm.ogg`;
-
-        const buildApk = async (key: string | undefined): Promise<string> => {
-            const job = await makeJob({
-                ...(key ? { contentKey: key } : {}),
-                shellConfigJson: JSON.stringify({
-                    schemaVersion: 1,
-                    orientation: "landscape",
-                    backgroundColor: "#000000",
-                    ...(key ? { contentKey: key } : {}),
-                }),
-            });
-            const outputDir = await tempDir("nls-out-");
-            await runMobileRepack(job, outputDir, log, MTIME);
-            return path.join(outputDir, "MyGame-1.2.3-android.apk");
-        };
-
-        const unzipEntry = (apkPath: string, entry: string): Buffer =>
+        const unzipEntry = (entry: string): Buffer =>
             execFileSync("unzip", ["-p", apkPath, entry], { maxBuffer: 64 * 1024 * 1024 });
 
-        // Without a key: the external tool reads back the exact plaintext.
-        const plainApk = await buildApk(undefined);
-        expect(Buffer.compare(unzipEntry(plainApk, bgmEntry), marker)).toBe(0);
-
-        // With a key: the external tool reads back bytes that are NOT the
-        // plaintext, while shell-config.json stays plain JSON carrying the key.
-        const protectedApk = await buildApk(contentKey);
-        const protectedBgm = unzipEntry(protectedApk, bgmEntry);
-        expect(protectedBgm.length).toBeGreaterThan(0);
-        expect(Buffer.compare(protectedBgm, marker)).not.toBe(0);
-        expect(protectedBgm.includes(marker)).toBe(false);
-
-        const cfg = JSON.parse(unzipEntry(protectedApk, (await readManifest()).android.shellConfigPath).toString("utf8"));
-        expect(cfg.contentKey).toBe(contentKey);
+        const bgm = unzipEntry(`${wwwRoot}assets/bgm.ogg`);
+        expect(bgm.length).toBeGreaterThan(0);
+        expect(Buffer.compare(bgm, marker)).not.toBe(0);
+        expect(bgm.includes(marker)).toBe(false);
+        // The bootstrap file is plain JSON and it carries the key: the container is a format the
+        // package opens for itself, which is why nothing calls it protection.
+        expect(JSON.parse(unzipEntry(shellConfigPath).toString("utf8")).contentKey).toBe(job.contentKey);
     });
 
     it("produces an IPA laid out as iOS expects, with the executable still executable", async () => {
@@ -326,7 +317,8 @@ describe("runMobileRepack against the real shell templates", () => {
         // The mobile entry document must replace the web one here too - the
         // APK asserting it does not prove the iOS path injects it.
         const indexEntry = index.entries.find(entry => entry.name === `${wwwPrefix}index.html`)!;
-        expect(readEntryBytes(ipa, indexEntry).toString("utf8")).toContain("mobile variant");
+        expect(isPackedPayload(readEntryBytes(ipa, indexEntry))).toBe(true);
+        expect(readEntryBytes(ipa, indexEntry).length).toBe(sealedIndexLength(job));
         // Symlinks would break signing and are forbidden by the contract.
         expect(index.entries.every(entry => (entry.unixMode & 0o170000) !== 0o120000)).toBe(true);
     });
@@ -346,15 +338,34 @@ describe("runMobileRepack against the real shell templates", () => {
         expect(injected).toEqual([...injected].sort());
     });
 
-    it("is reproducible: identical inputs give byte-identical packages", async () => {
-        // Guards the golden property the whole test rests on - if output drifted
-        // run to run, no downstream assertion here would mean anything.
+    it("is reproducible up to the container's nonce: identical inputs differ only inside sealed payload bytes", async () => {
+        // Guards the golden property the whole test rests on - if the layout drifted run to run, no
+        // downstream assertion here would mean anything. The one thing that does differ is the
+        // sealed payload: the container draws a fresh nonce per file, so the bytes inside those
+        // entries are not the same twice, while their names, order, methods, times and lengths
+        // are. Signature entries digest those bytes and follow them.
         const job = await makeJob();
         const [first, second] = [await tempDir("nls-out-"), await tempDir("nls-out-")];
         await runMobileRepack(job, first, log, MTIME);
         await runMobileRepack(job, second, log, MTIME);
+        const shape = (entry: ZipIndexEntry) =>
+            [entry.name, entry.method, entry.uncompressedSize, entry.dosTime, entry.dosDate, entry.unixMode];
         for (const name of ["MyGame-1.2.3-android.apk", "MyGame-1.2.3-android.aab", "MyGame-1.2.3-ios.ipa"]) {
-            expect(await fs.readFile(path.join(first, name))).toEqual(await fs.readFile(path.join(second, name)));
+            const a = await fs.readFile(path.join(first, name));
+            const b = await fs.readFile(path.join(second, name));
+            const [indexA, indexB] = [parseZipIndex(a), parseZipIndex(b)];
+            expect(indexB.entries.map(shape), name).toEqual(indexA.entries.map(shape));
+            for (const [at, entry] of indexA.entries.entries()) {
+                if (entry.isDirectory) {
+                    continue;
+                }
+                const [bytesA, bytesB] = [readEntryBytes(a, entry), readEntryBytes(b, indexB.entries[at])];
+                if (isPackedPayload(bytesA) || entry.name.startsWith("META-INF/")) {
+                    expect(bytesB.length, entry.name).toBe(bytesA.length);
+                } else {
+                    expect(bytesB.equals(bytesA), entry.name).toBe(true);
+                }
+            }
         }
         // Six real packages off the real templates; the default 5s holds when
         // this file runs alone and does not when the whole suite is loading the
@@ -484,11 +495,15 @@ describe("runMobileRepack with an author's release keystore", () => {
         // The reverse control for every assertion above: if the signature did
         // not actually cover the payload, matching the fingerprint would mean
         // nothing.
+        // The payload is sealed, so the entry is found by name rather than by its plaintext, and
+        // one byte of what the signature covers is flipped inside it.
         const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+        const { wwwRoot } = (await readManifest()).android;
+        const entry = parseZipIndex(apk).entries.find(candidate => candidate.name === `${wwwRoot}assets/bgm.ogg`);
+        expect(entry, "payload entry not found in the APK").toBeDefined();
+        const { start } = readLocalEntryDataSpan(apk, entry!);
         const tampered = Buffer.from(apk);
-        const marker = tampered.indexOf(Buffer.alloc(4096, 7)); // the bgm.ogg payload
-        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
-        tampered[marker] ^= 0xff;
+        tampered[start + 64] ^= 0xff;
         expect(verifyApkV2(tampered).verified).toBe(false);
     });
 

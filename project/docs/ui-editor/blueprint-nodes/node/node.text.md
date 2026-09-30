@@ -41,15 +41,15 @@ Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，�
 
 `blueprint.text.getFont` - 获取字体
 
-获取当前文本使用的字体资源。
-- `fontAssetId` - 字体资源 ID（传出引脚）
+获取当前文本使用的字体资产。
+- `fontAssetId` - 字体资产 ID（传出引脚）
 
 ## Set Font
 
 `blueprint.text.setFont` - 设置字体
 
-设置当前文本使用的字体资源。
-- `fontAssetId` - 字体资源 ID
+设置当前文本使用的字体资产。
+- `fontAssetId` - 字体资产 ID
 
 ## Get Font Size
 
@@ -169,7 +169,7 @@ Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，�
 
 获取当前文本元素的全部文本属性。
 - `text` - 文本内容（传出引脚）
-- `fontAssetId` - 字体资源 ID（传出引脚）
+- `fontAssetId` - 字体资产 ID（传出引脚）
 - `fontSize` - 字号（传出引脚）
 - `fontWeight` - 字重（传出引脚）
 - `color` - 文本颜色（传出引脚，`RGBAColor`）
@@ -185,7 +185,7 @@ Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，�
 
 一次性设置当前文本元素的全部文本属性。
 - `text` - 文本内容
-- `fontAssetId` - 字体资源 ID
+- `fontAssetId` - 字体资产 ID
 - `fontSize` - 字号
 - `fontWeight` - 字重
 - `color` - 文本颜色（`RGBAColor`）

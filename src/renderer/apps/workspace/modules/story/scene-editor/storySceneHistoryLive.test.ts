@@ -54,7 +54,7 @@ describe("a scene's undo stack while a session owns the story", () => {
         owned = false;
         restore = vi.fn();
         history = new HistoryService();
-        history.setContext({ project: {} as never, services: {} as never });
+        history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
         history.registerScope<{ scene: string }>({
             id: scopeId,
             label: { key: "workspace.history.scope.storyScene" },

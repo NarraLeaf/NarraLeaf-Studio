@@ -28,7 +28,7 @@ function stubRect(node: HTMLElement, rect: { left: number; top: number; width: n
 function buildSurface(input: {
     surfaceId: string;
     shell: { left: number; top: number; width: number; height: number };
-    widgets: Array<{ elementId: string; left: number; top: number; width: number; height: number }>;
+    widgets: Array<{ elementId: string; left: number; top: number; width: number; height: number; drawing?: string }>;
 }): HTMLElement {
     const shell = document.createElement("div");
     shell.dataset.uiSurfaceId = input.surfaceId;
@@ -36,6 +36,10 @@ function buildSurface(input: {
     for (const widget of input.widgets) {
         const node = document.createElement("div");
         node.dataset.uiElementId = widget.elementId;
+        if (widget.drawing) {
+            // What `EditorNodeWrapper` writes for an element drawn in a row or a placement.
+            node.dataset.uiDrawing = encodeURIComponent(widget.drawing);
+        }
         stubRect(node, widget);
         shell.appendChild(node);
     }
@@ -80,6 +84,51 @@ describe("measureElementSurfaceRect", () => {
             width: 30,
             height: 40,
         });
+    });
+
+    it("measures the drawing an address names, not the first copy on the page", async () => {
+        const { measureElementSurfaceRect } = await import("./surfaceMeasurement");
+        const rowOne = "list-grid-a";
+        const rowTwo = "component:card\0list-grid-b";
+        buildSurface({
+            surfaceId: "main",
+            shell: { left: 0, top: 0, width: 1280, height: 720 },
+            widgets: [
+                { elementId: "go", left: 10, top: 20, width: 30, height: 40, drawing: rowOne },
+                { elementId: "go", left: 10, top: 120, width: 30, height: 40, drawing: rowTwo },
+            ],
+        });
+        expect(measureElementSurfaceRect(`go\0${rowTwo}`, designSizeOf)?.rect).toEqual({
+            x: 10,
+            y: 120,
+            width: 30,
+            height: 40,
+        });
+    });
+
+    it("answers null for a drawing that is not painted, rather than another drawing's box", async () => {
+        const { measureElementSurfaceRect } = await import("./surfaceMeasurement");
+        buildSurface({
+            surfaceId: "main",
+            shell: { left: 0, top: 0, width: 1280, height: 720 },
+            widgets: [{ elementId: "go", left: 10, top: 20, width: 30, height: 40, drawing: "list-grid-a" }],
+        });
+        expect(measureElementSurfaceRect("go\0list-grid-z", designSizeOf)).toBeNull();
+    });
+
+    it("prefers the page's own copy for a bare id, and falls back to the first drawn copy", async () => {
+        const { measureElementSurfaceRect } = await import("./surfaceMeasurement");
+        buildSurface({
+            surfaceId: "main",
+            shell: { left: 0, top: 0, width: 1280, height: 720 },
+            widgets: [
+                { elementId: "panel", left: 1, top: 1, width: 5, height: 5, drawing: "component:card" },
+                { elementId: "panel", left: 50, top: 60, width: 5, height: 5 },
+                { elementId: "row", left: 7, top: 8, width: 5, height: 5, drawing: "list-grid-a" },
+            ],
+        });
+        expect(measureElementSurfaceRect("panel", designSizeOf)?.rect).toMatchObject({ x: 50, y: 60 });
+        expect(measureElementSurfaceRect("row", designSizeOf)?.rect).toMatchObject({ x: 7, y: 8 });
     });
 
     it("answers null for a widget that is not on screen", async () => {

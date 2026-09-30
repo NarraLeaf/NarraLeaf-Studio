@@ -24,6 +24,10 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”",
+        renameSpokenRowsConfirm: {
+            other: "同时重命名以“{name}”作为说话人的 {count} 行？",
+        },
+        renameSpokenRowsDetail: "这些行携带的是名称而非角色，将改为“{name}”",
         deleteCharacterDetail: "对白保留名称，引用该角色的舞台行将失去指向",
         deleteGroupConfirm: "删除分组“{name}”",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
@@ -31,6 +35,7 @@ export const characters = {
     // 这两个删除留下的撤销步骤叫什么（"撤销 删除角色 Hiyori"）。
     history: {
         deleteCharacter: "删除角色 {name}",
+        renameCharacter: "重命名角色 {name}",
         deleteGroup: "删除分组 {name}",
     },
     create: {
@@ -72,6 +77,7 @@ export const characters = {
             describeNoModel: "没有可读取的模型",
             describeNoBackend: "未选择运行时",
             describeBackendMissing: "本机未安装该运行时",
+            describeDistrusted: "项目未受信任",
             describeNotSupported: "该运行时不提供清单",
             describeFailed: "无法读取该模型",
             redescribe: "重新读取模型",
@@ -163,9 +169,14 @@ export const characters = {
             title: "导入 PSD",
             choose: "选择 PSD…",
             canvas: "文档尺寸",
-            cost: "{layers} 层 · 约 {megabytes} MB",
+            costCounts: "{layers} · 约 {megabytes} MB",
+            layerCount: {
+                other: "{count} 层",
+            },
             mapping: "层",
-            axis: "轴，{count} 个差分",
+            axis: {
+                other: "轴，{count} 个差分",
+            },
             blends: "引擎无法还原的混合模式",
             merge: "向下合并",
             skip: "跳过",
@@ -179,6 +190,7 @@ export const characters = {
             import: "导入",
             importing: "正在导入…",
             failed: "导入失败",
+            readFailed: "无法读取该 PSD 文件",
             reason: {
                 hidden: "在 Photoshop 里是隐藏的",
                 blendSkipped: "已跳过",
@@ -226,6 +238,11 @@ export const characters = {
         voiceTrackMissing: "总线已不存在",
         // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
         voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
+        // 登场行未写明的每一项都回落到这里。用的是行上那个动词（`charOp.enter`）的说法
+        entrance: "登场默认值",
+        entranceEmpty: "未设置时，登场行使用舞台的默认值",
+        entranceDrag: "拖动放置",
+        entranceZoom: "拖动缩放",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

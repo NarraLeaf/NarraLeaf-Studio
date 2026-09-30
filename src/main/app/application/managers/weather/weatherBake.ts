@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { spawn } from "child_process";
 import { buildWeatherField, createWeatherRenderer } from "@shared/weather/field";

@@ -213,6 +213,25 @@ export async function commit(globals: LoreGlobals, message: string): Promise<Lor
     return result.one<LoreCommitRevisionPayload>(LoreTag.REVISION_COMMIT_REVISION);
 }
 
+/**
+ * Rewrite the CURRENT revision's record of who put it on the branch, and its message.
+ *
+ * `committed-by` becomes `globals.identity`; `created-by` is kept (it is only filled in where the
+ * revision had none), and so are the parents, the tree and the timestamp. The revision is
+ * re-recorded with a new hash and the branch tip moves to it, so only a revision that has not
+ * left this machine may be amended - one a server already holds would come back as divergence.
+ *
+ * `message` is not optional because v0.8.5 cannot leave it alone: it writes whatever the args
+ * carry, an empty string included, over the old one. A caller keeping the message passes it back.
+ *
+ * Refused as `IdenticalMetadata` when nothing would change. The caller MUST flush afterwards,
+ * for the reason {@link commit} gives.
+ */
+export async function amendRevision(globals: LoreGlobals, message: string): Promise<LoreCommitRevisionPayload> {
+    const result = await invoke("revisionAmend", globals, { message: scopeString(message) });
+    return result.one<LoreCommitRevisionPayload>(LoreTag.REVISION_COMMIT_REVISION);
+}
+
 // -- history ----------------------------------------------------------------
 
 export interface RevisionNode {
@@ -796,6 +815,15 @@ export interface SyncResult {
      * Whatever the caller does not keep here has to be reconstructed off disk.
      */
     conflicts: string[];
+    /**
+     * The merge the sync committed by itself: diverged history, every file merged, nothing left
+     * for anyone to decide. Absent for a fast-forward, for a branch that was already current, and
+     * for a merge that stopped on a conflict - that one is committed later, by the author.
+     *
+     * **It is recorded as the call's `identity`**, the same global the connection was made with,
+     * because the backend commits it inside the call that fetched (docs/version-control.md §4.39).
+     */
+    automaticMerge: LoreCommitRevisionPayload | undefined;
 }
 
 /**
@@ -839,6 +867,8 @@ export async function syncRevision(
         // see the field's own note for why the obvious place has nothing in it.
         conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
             .map((event) => event.path),
+        // A sync commits nothing of its own except that merge, so a commit event here is it.
+        automaticMerge: result.first<LoreCommitRevisionPayload>(LoreTag.REVISION_COMMIT_REVISION),
     };
 }
 

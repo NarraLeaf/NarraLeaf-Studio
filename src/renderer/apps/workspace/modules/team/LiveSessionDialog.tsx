@@ -285,7 +285,7 @@ function HowPeopleJoin({ live }: { live: ReturnType<typeof useLiveSession> }) {
                             "transition-colors disabled:opacity-50",
                             rule === choice.value
                                 ? "border-primary bg-primary/10"
-                                : "border-line hover:bg-fill",
+                                : "border-edge hover:bg-fill",
                         )}
                     >
                         <span className="text-xs text-fg">{t(choice.label)}</span>

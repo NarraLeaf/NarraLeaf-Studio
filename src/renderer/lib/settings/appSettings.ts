@@ -16,12 +16,6 @@ import {
     UI_FONT_PRESET_STACKS,
 } from "@/lib/settings/uiFontOptions";
 import {
-    EDITOR_SURFACE_OPACITY_DEFAULT,
-    EDITOR_SURFACE_OPACITY_MAX,
-    EDITOR_SURFACE_OPACITY_MIN,
-    EDITOR_SURFACE_OPACITY_STEP,
-} from "@/lib/settings/editorSurfaceOptions";
-import {
     MAX_ACTIVE_EDITORS_DEFAULT,
     MAX_ACTIVE_EDITORS_MAX,
     MAX_ACTIVE_EDITORS_MIN,
@@ -103,7 +97,13 @@ import {
     TOOLTIP_DELAY_MIN_MS,
     TOOLTIP_DELAY_STEP_MS,
 } from "@/lib/settings/tooltipOptions";
-import { WINDOW_ICON_DEFAULT, WINDOW_ICON_IDS, WINDOW_ICON_KEY } from "@shared/constants/windowIcon";
+import {
+    WINDOW_ICON_DEFAULT,
+    WINDOW_ICON_IDS,
+    WINDOW_ICON_KEY,
+    resolveWindowIcon,
+    windowIconUrl,
+} from "@shared/constants/windowIcon";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -397,36 +397,46 @@ export const AppSettings: AppSettingDefinition[] = [
     },
     {
         // Applied by the main process (`BaseApp.refreshWindowIcons`), which is the only side that
-        // can call `BrowserWindow.setIcon`: writing this key re-icons every open window and the
-        // tray, so the change lands without a restart.
+        // can call `BrowserWindow.setIcon` and `app.dock.setIcon`: writing this key re-icons every
+        // open window, the tray and the Dock tile, so the change lands without a restart.
         //
-        // What it deliberately does not reach is the desktop shortcut, the Start menu entry, and a
-        // pinned taskbar item - those carry resources compiled into the executable. The row's
-        // description says as much, because otherwise the first thing this setting looks like is
-        // one that did not work.
+        // It does not reach the interface: the title bars and the launcher keep the leaf
+        // (`PRODUCT_MARK_SRC`). What it cannot reach is the installed icon: the desktop shortcut, the
+        // Start menu entry and a pinned taskbar item on Windows carry resources compiled into the
+        // executable, and Finder, Launchpad and the Dock of a Studio that is not running read the
+        // app bundle. The row's description says as much, per platform, because otherwise the first
+        // thing this setting looks like is one that did not work.
         key: WINDOW_ICON_KEY,
         category: "appearance",
         scope: SettingScope.Global,
         type: SettingValueType.Enum,
-        label: "Window icon",
+        label: "App icon",
         labelKey: "settings.items.windowIcon.label",
-        description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+        description: "The icon Studio shows on the taskbar and in the notification area. Desktop and Start menu shortcuts keep the installed icon.",
         descriptionKey: "settings.items.windowIcon.description",
         defaultValue: WINDOW_ICON_DEFAULT,
+        // What the main process wears for the stored id. A profile from before the Narra icon
+        // carries `default` (written to disk as the default it then was), and an id can outlive
+        // its icon; both resolve to the current default there, so the row shows that option and
+        // reads as unchanged rather than printing an id no option carries.
+        resolveStoredValue: stored => resolveWindowIcon(typeof stored === "string" ? stored : null).id,
         options: [...WINDOW_ICON_IDS],
         optionLabelKeys: {
-            default: "settings.items.windowIcon.options.default",
             narra: "settings.items.windowIcon.options.narra",
+            leafWhite: "settings.items.windowIcon.options.leafWhite",
+            leaf: "settings.items.windowIcon.options.leaf",
         },
-        // Hidden on macOS, like the ⌘Q row above and for the mirror-image reason: a Mac window
-        // has no icon of its own to set, so the row could only ever say "not available on this
-        // operating system". Linux keeps it disabled with that reason instead of hidden - a
-        // window icon does exist there, it is just the compositor's to honour or ignore.
-        visible: () => !isMacPlatform(),
+        // Each choice's Windows tile, so the dropdown shows which icon a label means.
+        optionImages: Object.fromEntries(WINDOW_ICON_IDS.map(id => [id, windowIconUrl(id)])),
         availability: async () => {
-            // Static for the lifetime of the window: Windows is the only platform left here where
-            // the choice takes effect.
-            const { isWindowsPlatform } = await import("@/lib/app/platform");
+            // Static for the lifetime of the window. macOS takes the choice too, on the Dock rather
+            // than on a window, and says so in place of the Windows wording. Linux keeps the row
+            // disabled rather than hidden - a window icon does exist there, it is just the
+            // compositor's to honour or ignore.
+            const { isMacPlatform, isWindowsPlatform } = await import("@/lib/app/platform");
+            if (isMacPlatform()) {
+                return { enabled: true, reasonKey: "settings.items.windowIcon.descriptionMac" };
+            }
             return isWindowsPlatform()
                 ? { enabled: true }
                 : { enabled: false, reasonKey: "settings.items.windowIcon.unsupportedPlatform" };
@@ -438,8 +448,9 @@ export const AppSettings: AppSettingDefinition[] = [
         // product resolves through. Stored as a preset id or a `#rrggbb` hex — the presets are
         // the guided path (hue-shifts of the brand anchor at low saturation, see
         // @shared/constants/accent), the picker is there for anything else. What keeps "any
-        // color" honest is `--nl-on-primary`, the derived ink that stops a pale accent from
-        // making every primary button unreadable. Studio chrome only; a game keeps the anchor.
+        // color" honest is the pair of derived inks: `--nl-on-primary` stops a pale accent from
+        // making every primary button unreadable, and `--nl-primary-ink` does the same for the
+        // accent drawn as text on a surface. Studio chrome only; a game keeps the anchor.
         key: "ui.accentColor",
         category: "appearance",
         scope: SettingScope.Global,
@@ -560,26 +571,6 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.editorFontSize.description",
         descriptionParams: { min: EDITOR_FONT_SIZE_MIN, max: EDITOR_FONT_SIZE_MAX },
         defaultValue: EDITOR_FONT_SIZE_DEFAULT,
-    },
-    {
-        // Published as the `--nl-editor-surface-opacity` custom property by `lib/appearance`, and
-        // consumed by the one `.nl-editor-surface` rule in styles.css — the story editor's prose
-        // area, the inspector's field area and the Dev Mode debug panel all resolve their fill
-        // through it. Only meaningful with a workspace wallpaper on: the wallpaper is opt-in, so
-        // the hard opaque plate it puts under the prose has to be adjustable rather than pinned.
-        key: "editor.surfaceOpacity",
-        category: "editor",
-        scope: SettingScope.Global,
-        type: SettingValueType.Integer,
-        label: "Editor surface opacity",
-        labelKey: "settings.items.editorSurfaceOpacity.label",
-        description: "Opacity of the surfaces behind story text and inspector fields.",
-        descriptionKey: "settings.items.editorSurfaceOpacity.description",
-        defaultValue: EDITOR_SURFACE_OPACITY_DEFAULT,
-        min: EDITOR_SURFACE_OPACITY_MIN,
-        max: EDITOR_SURFACE_OPACITY_MAX,
-        step: EDITOR_SURFACE_OPACITY_STEP,
-        unit: "%",
     },
     {
         // Applied by the Story scene editor via `storyEditorTextStyle.tsx`.
@@ -963,6 +954,20 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Shown to collaborators beside your account. Leave empty to use the host name.",
         descriptionKey: "settings.items.teamMachineLabel.description",
         defaultValue: "",
+    },
+    {
+        // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger
+        // lives in main, under `authorization/`, where no renderer can reach it.
+        key: "data.projectTrust",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "projectTrust",
+        label: "Trusted projects",
+        labelKey: "settings.items.projectTrust.label",
+        description: "Projects that Studio did not create, and whether they may run.",
+        descriptionKey: "settings.items.projectTrust.description",
+        defaultValue: null,
     },
     {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel

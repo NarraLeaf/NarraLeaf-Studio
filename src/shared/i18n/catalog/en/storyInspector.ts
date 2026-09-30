@@ -572,6 +572,7 @@ export const storyInspector = {
         xOffset: "X offset",
         yOffset: "Y offset",
         params: "Params",
+        fromCharacter: "From the character",
     },
 
     background: {
@@ -582,7 +583,6 @@ export const storyInspector = {
         change: "Change",
         select: "Select",
         clearImage: "Clear image",
-        assetError: "Image asset could not be resolved: {error}",
         selectImageTitle: "Select Background Image",
     },
 

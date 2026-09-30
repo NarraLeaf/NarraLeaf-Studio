@@ -17,11 +17,12 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     refused: "wizard.source.onServerRefused",
     unreachable: "wizard.source.onServerUnreachable",
     rejected: "wizard.source.onServerUnknown",
-    // Publishing is the only thing that answers either of these, and this picker reads a
+    // Publishing is the only thing that answers any of these, and this picker reads a
     // server's list rather than putting anything on one.
     "wrong-repository": "wizard.source.onServerUnknown",
     "name-taken": "wizard.source.onServerUnknown",
     "already-published": "wizard.source.onServerUnknown",
+    declined: "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
 

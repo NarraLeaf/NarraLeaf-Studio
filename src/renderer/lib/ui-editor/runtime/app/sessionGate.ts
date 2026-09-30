@@ -16,6 +16,9 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
+import { needsRunningGame } from "./runtimeRefusals";
+
 /** A `useRef`-shaped holder. Declared structurally so a test needs no React. */
 type Ref<T> = { readonly current: T };
 
@@ -39,7 +42,11 @@ export type SessionGate<TLiveGame> = {
      * The mounted session's live game, or a throw naming the operation that wanted it. The message
      * is what an author sees in the Dev Mode issues panel, so it leads with their node's name.
      */
-    requireLiveGame: (operation: string) => TLiveGame;
+    /**
+     * The live game, or a refusal naming what asked for it - the catalog key of a node's title (or a
+     * Dev Mode menu item's label), null for an asker that is not one thing an author placed.
+     */
+    requireLiveGame: (asker: TranslationKey | null) => TLiveGame;
     /** Whether a session is mounted and its stage is on screen. */
     isInGame: () => boolean;
     /**
@@ -61,11 +68,11 @@ export type SessionGate<TLiveGame> = {
 
 export function createSessionGate<TLiveGame>(refs: SessionGateRefs<TLiveGame>): SessionGate<TLiveGame> {
     return {
-        requireLiveGame: (operation: string): TLiveGame => {
+        requireLiveGame: (asker: TranslationKey | null): TLiveGame => {
             const sessionId = refs.sessionId.current;
             const liveGame = refs.liveGame.current;
             if (!sessionId || refs.liveGameSessionId.current !== sessionId || !liveGame) {
-                throw new Error(`${operation}: game runtime is not available`);
+                throw needsRunningGame(asker);
             }
             return liveGame;
         },

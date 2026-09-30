@@ -7,7 +7,8 @@ import type {
     DocumentMergeSide,
 } from "../diff";
 import {authoredName, sameJsonValue} from "./diffHelpers";
-import {byKey, countConflicts, KeyedMergeRow, labelled as label, mergeKeyed, stripFields} from "./mergeHelpers";
+import {byKey, countConflicts, KeyedMergeRow, labelled as label, mergeKeyed, mergeMeta, stripFields} from "./mergeHelpers";
+import {blockSubject} from "./storyDiff";
 
 /**
  * Three-way merge of one story - and, as much as anything, the cases it declines to merge.
@@ -82,10 +83,17 @@ const LABEL = {
     blockField: "documentDiff.story.blockField",
 } as const;
 
-/** Handled explicitly below, so they never reach the generic document-field merge. */
-const DOCUMENT_SKIP = new Set(["scenes", "schemaVersion", "id"]);
-/** `blocks` and `rootBlockIds` are the scene's structure; `id` is its key. */
-const SCENE_SKIP = new Set(["blocks", "rootBlockIds", "id"]);
+/**
+ * Handled explicitly below, so they never reach the generic document-field merge.
+ *
+ * `meta` among them because every edit anywhere in the story stamps `meta.updatedAt`: two people who
+ * each changed one line hold two different readings, and as a field that was a row of its own -
+ * "meta changed" - on every merge of the file, over something neither of them typed. `mergeMeta`
+ * settles the readings and still asks about any other key a `meta` carries.
+ */
+const DOCUMENT_SKIP = new Set(["scenes", "schemaVersion", "id", "meta"]);
+/** `blocks` and `rootBlockIds` are the scene's structure; `id` is its key; `meta` as above. */
+const SCENE_SKIP = new Set(["blocks", "rootBlockIds", "id", "meta"]);
 /** `parentId` / `childrenIds` are structure and are stamped from it; `id` is the key. */
 const BLOCK_SKIP = new Set(["id", "parentId", "childrenIds"]);
 
@@ -114,6 +122,15 @@ export function merge3Story(
     for (const row of byKey(fields.rows)) {
         decisions.push(build([row.key], row, documentFieldLabel(row)));
     }
+    const meta = mergeMeta(
+        [],
+        base?.meta,
+        mine.meta,
+        theirs.meta,
+        base !== undefined,
+        key => label(LABEL.documentField, {field: `meta.${key}`}),
+    );
+    decisions.push(...meta.decisions);
 
     const baseScenes = scenesOf(base);
     const mineScenes = scenesOf(mine);
@@ -155,6 +172,7 @@ export function merge3Story(
 
     const document = {
         ...fields.merged,
+        ...(meta.merged === undefined ? {} : {meta: meta.merged}),
         ...(mine.schemaVersion === undefined ? {} : {schemaVersion: mine.schemaVersion}),
         ...(mine.id === undefined ? {} : {id: mine.id}),
         scenes,
@@ -281,6 +299,15 @@ function mergeScene(sceneId: string, base: StoryScene, mine: StoryScene, theirs:
     for (const row of byKey(fields.rows)) {
         decisions.push(build(["scenes", sceneId, row.key], row, sceneFieldLabel(row)));
     }
+    const meta = mergeMeta(
+        ["scenes", sceneId],
+        base.meta,
+        mine.meta,
+        theirs.meta,
+        true,
+        key => label(LABEL.sceneField, {field: `meta.${key}`}),
+    );
+    decisions.push(...meta.decisions);
 
     const blocks = mergeKeyed<StoryBlock>(blocksOf(base), blocksOf(mine), blocksOf(theirs));
     const settled: Record<string, StoryBlock | undefined> = {...blocks.merged};
@@ -296,7 +323,7 @@ function mergeScene(sceneId: string, base: StoryScene, mine: StoryScene, theirs:
             decisions.push(...refined.decisions);
             continue;
         }
-        decisions.push(build(path, row, blockLabel(row)));
+        decisions.push(build(path, row, blockLabel(row), rowSubject(row.mine, row.theirs, row.base)));
     }
 
     // Built from the SHAPE rather than from the merged map, so a row can only be in the scene if the
@@ -313,6 +340,7 @@ function mergeScene(sceneId: string, base: StoryScene, mine: StoryScene, theirs:
 
     const scene = {
         ...fields.merged,
+        ...(meta.merged === undefined ? {} : {meta: meta.merged}),
         ...(sceneId === undefined ? {} : {id: sceneId}),
         rootBlockIds: Array.isArray(shape.rootBlockIds) ? shape.rootBlockIds : [],
         blocks: merged,
@@ -367,7 +395,10 @@ function refineBlock(
         stripFields(mine, BLOCK_SKIP),
         stripFields(theirs, BLOCK_SKIP),
     );
-    const decisions = byKey(fields.rows).map(row => build([...path, row.key], row, blockFieldLabel(row)));
+    // Every field row of one line is about that line, so each carries the line's own words: a
+    // decision called "Line changed" in a scene of forty lines names none of them.
+    const subject = blockSubject(mine) ?? blockSubject(theirs) ?? blockSubject(base);
+    const decisions = byKey(fields.rows).map(row => build([...path, row.key], row, blockFieldLabel(row), subject));
     const block = {
         ...fields.merged,
         ...(base.id === undefined ? {} : {id: base.id}),
@@ -425,6 +456,22 @@ function blockLabel(row: KeyedMergeRow<StoryBlock>): DocumentChangeLabel {
 function sceneSubject(row: KeyedMergeRow<StoryScene>): string | undefined {
     const present = (row.mine.present ? row.mine.value : undefined) ?? row.theirs.value ?? row.base.value;
     return authoredName((present as StoryScene | undefined)?.name);
+}
+
+/**
+ * A whole row's own words, from whichever side still has the row: mine, then theirs, then base.
+ *
+ * The rule `storyDiff` names a row by, so a line is called the same thing on the comparison and on
+ * the merge - and, by that rule, never an action name, a block kind or an id.
+ */
+function rowSubject(...sides: readonly DocumentMergeSide[]): string | undefined {
+    for (const one of sides) {
+        const subject = one.present ? blockSubject(one.value as StoryBlock | undefined) : undefined;
+        if (subject) {
+            return subject;
+        }
+    }
+    return undefined;
 }
 
 function blockCount(row: KeyedMergeRow<StoryScene>): number {

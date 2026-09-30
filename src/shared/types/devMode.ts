@@ -1,5 +1,5 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
-import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { BlueprintDiagnostic, BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
@@ -18,7 +18,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex, StoryLiteralValue, StoryTransformProps } from "./story";
 
 export type DevModeEntry =
     | {
@@ -144,6 +144,16 @@ export type DevModeCharacterSummary = {
      */
     voiceTrackId?: string;
     /**
+     * The transform props this character's `enter` rows fall back to, channel by channel - absent
+     * when the author set none, which is what every character carried before the field existed.
+     *
+     * Carried as authored and merged at compile time rather than pre-merged into the rows: which
+     * channels a row states is a property of the row, and folding the two together here would leave
+     * the bundle unable to say where a number came from - which is exactly what the story inspector
+     * has to show.
+     */
+    entranceTransform?: StoryTransformProps;
+    /**
      * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
      * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried
      * unfiltered and each side decides for itself:
@@ -264,6 +274,21 @@ export type DevModeStartStoryRequest = {
     startBlockId?: string;
     /** Scene Snapshot (变量快照) whose variable overrides seed the launch. */
     snapshotId?: string;
+    /**
+     * Variable values lifted off a running game, laid over the launch's own stage walk.
+     *
+     * Set only by a hot reload resuming where the player was: the walk reconstructs what the values
+     * would be had the story been played from the top down one path, and these are what they
+     * actually were. Applied after the walk and after any Scene Snapshot, because they are the later
+     * state - re-seeding either over them would rewind the player.
+     *
+     * Storage keys, the way the compiler names namespace entries, not variable ids. Persistent
+     * values are absent by design: they outlive the run, so a reload has nothing to restore.
+     */
+    resume?: {
+        sceneVariables: Record<string, StoryLiteralValue>;
+        savedVariables: Record<string, StoryLiteralValue>;
+    };
 };
 
 export type DevModeBundle = {
@@ -281,7 +306,30 @@ export type DevModeBundle = {
      * places for it to be wrong.
      */
     installedDlc?: readonly string[];
+    /**
+     * The surface to show when the running story falls off the end, resolved for the variant this
+     * bundle was assembled as - the same answer the pack compiler writes into a pack.
+     *
+     * Carried so a Dev Mode session ends where a build ends. Absent, or blank, is a project that
+     * named no page: the story stops and the stage stays where it is, which is what every session
+     * did before this existed.
+     */
+    endingSurfaceId?: string;
     revision: number;
+    /**
+     * How many times an asset file has changed since the session that produced this bundle started.
+     *
+     * A reload bumps {@link revision} whatever it was about; this only moves when a file under the
+     * project's `assets/` directory did. The Dev Mode window resolves the whole asset library to URLs
+     * before it compiles a story, which is the most expensive step of a reload, and those URLs stay
+     * valid for exactly as long as no asset file moves - a grant token is derived from a file's path,
+     * size and modification time. So two bundles carrying the same count can share one pass, and an
+     * author editing dialogue does not pay for the library on every save.
+     *
+     * Absent from a bundle no watched session produced (a build, a preview, a test): those resolve
+     * once and never reload, so they have nothing to compare.
+     */
+    assetRevision?: number;
     timestamp: string;
     ui: {
         uidoc: UIDocument;
@@ -289,8 +337,6 @@ export type DevModeBundle = {
         uigraphs: UIGraphDocument;
         /** Instance {@link BlueprintDocument} (same object as `uigraphs.blueprintDocument`); explicit for Dev Mode consumers. */
         localBlueprints: BlueprintDocument;
-        /** Shared blueprint assets loaded from project asset metadata + content files. */
-        sharedBlueprints: SharedBlueprintAsset[];
         /**
          * Project-level persistent variables (M-VAR registry), baked from `editor/variables.json`.
          * The runtime reads persistent definitions from here, not from `localBlueprints` - the field
@@ -311,6 +357,20 @@ export type DevModeBundle = {
          * the other authoring surface, and the compiler unions the two.
          */
         savedVariables: SavedVariableRuntimeTable;
+        /**
+         * The author's compiled scripts, by script-layer key (`scriptLayerKey`).
+         *
+         * A URL rather than the module text, because every host has a Content-Security-Policy and
+         * none of them admits a script from `blob:` or `data:` - the shipped runtime's `script-src`
+         * carries neither those nor `unsafe-eval`. What each host does admit is a URL it serves, so
+         * a compiled script is written to disk and named here, exactly as a plugin's entry is. Dev
+         * Mode names it with an absolute `file:` URL; a pack names it relative to its own page.
+         *
+         * An entry with no `url` failed to compile and carries the reason; its layer does not listen.
+         * Only Dev Mode, a preview or a test run carries one of those - a package build refuses
+         * instead of shipping it.
+         */
+        scripts?: Record<string, { scriptRef: string; url?: string; diagnostics?: BlueprintDiagnostic[] }>;
         /**
          * What one save slot carries besides the engine's own record, baked from
          * `editor/save-schema.json`. In pin order, so the write node and the read node grow the same
@@ -465,11 +525,4 @@ export type DevModeBundle = {
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;
-    /**
-     * Blueprint M5: IIFE bundle JS per TypeScript blueprint id (local + shared), executed in Dev Mode before runtime.
-     */
-    blueprintCompiledScripts?: Record<string, string>;
-    /** When present and false, blueprint script compilation failed (strict block). */
-    blueprintScriptsCompileOk?: boolean;
-    blueprintScriptsCompileErrors?: string[];
 };

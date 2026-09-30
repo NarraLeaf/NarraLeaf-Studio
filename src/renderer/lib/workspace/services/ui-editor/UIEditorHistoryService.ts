@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import type { TranslationKey } from "@shared/i18n";
+import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
@@ -50,9 +51,7 @@ function cloneBlueprint<T>(value: T): T {
 }
 
 function isSurfaceBlueprintOwnerKey(surfaceId: string, ownerKey: string): boolean {
-    return ownerKey === `surfaceMain:${surfaceId}` ||
-        ownerKey.startsWith(`widgetMain:${surfaceId}:`) ||
-        ownerKey.startsWith(`widgetValue:${surfaceId}:`);
+    return ownerKeyBelongsToSurface(ownerKey, surfaceId);
 }
 
 export function captureBlueprintSurfaceSnapshot(
@@ -67,11 +66,9 @@ export function captureBlueprintSurfaceSnapshot(
             continue;
         }
         ownerRecords[ownerKey] = cloneBlueprint(ownerRecord);
-        for (const blueprintId of ownerRecord.privateBlueprintIds) {
-            const blueprint = blueprintDocument.blueprints[blueprintId];
-            if (blueprint) {
-                blueprints[blueprintId] = cloneBlueprint(blueprint);
-            }
+        const blueprint = blueprintDocument.blueprints[ownerRecord.blueprintId];
+        if (blueprint) {
+            blueprints[ownerRecord.blueprintId] = cloneBlueprint(blueprint);
         }
     }
 
@@ -90,23 +87,20 @@ export function applyBlueprintSurfaceSnapshot(
         if (!isSurfaceBlueprintOwnerKey(surfaceId, ownerKey) || targetOwnerKeys.has(ownerKey)) {
             continue;
         }
-        for (const blueprintId of ownerRecord.privateBlueprintIds) {
-            if (!targetBlueprintIds.has(blueprintId)) {
-                delete document.blueprints[blueprintId];
-            }
+        if (!targetBlueprintIds.has(ownerRecord.blueprintId)) {
+            delete document.blueprints[ownerRecord.blueprintId];
         }
         delete document.ownerRecords[ownerKey];
     }
 
     for (const [ownerKey, targetOwnerRecord] of Object.entries(target.ownerRecords)) {
         const previousOwnerRecord = document.ownerRecords[ownerKey];
-        const targetIds = new Set(targetOwnerRecord.privateBlueprintIds);
-        if (previousOwnerRecord) {
-            for (const blueprintId of previousOwnerRecord.privateBlueprintIds) {
-                if (!targetIds.has(blueprintId) && !targetBlueprintIds.has(blueprintId)) {
-                    delete document.blueprints[blueprintId];
-                }
-            }
+        if (
+            previousOwnerRecord
+            && previousOwnerRecord.blueprintId !== targetOwnerRecord.blueprintId
+            && !targetBlueprintIds.has(previousOwnerRecord.blueprintId)
+        ) {
+            delete document.blueprints[previousOwnerRecord.blueprintId];
         }
         document.ownerRecords[ownerKey] = cloneBlueprint(targetOwnerRecord);
     }

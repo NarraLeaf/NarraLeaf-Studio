@@ -44,6 +44,18 @@ export type ProjectTemplateDescriptor = {
      * to everybody.
      */
     contentLocales?: string[];
+    /**
+     * Plugin ids the template's own content depends on, as namespaced plugin ids.
+     *
+     * A project's dependency table is otherwise machine-derived, by scanning the documents for
+     * types a loaded plugin owns. That scan cannot answer for a project that has just been created:
+     * it needs the owning plugin loaded to attribute a node type to it, and a plugin the author has
+     * never switched on is not. A template that ships graphs built on a plugin's nodes therefore
+     * says so here, and the project it creates declares the dependency from its first open - which
+     * is what raises the warning and puts the plugin on the install screen instead of leaving the
+     * author looking at a page of unknown nodes.
+     */
+    dependencies?: string[];
 };
 
 /**

@@ -3,6 +3,7 @@ import {
     useContext,
     useLayoutEffect,
     useMemo,
+    useRef,
     useState,
     type CSSProperties,
     type ReactNode,
@@ -73,12 +74,33 @@ export function ElementAnimationPresence(props: {
         [inherited.enterBaseMs, inherited.exitBaseMs, isParentPresent, settled, timing.enterOriginMs, timing.exitOriginMs],
     );
 
+    /**
+     * What this element showed the last time the presence above it was present.
+     *
+     * Once the parent starts leaving, a `propagate` presence counts none of its children as present,
+     * and if it is then handed a changed child it keeps the one it had as leaving *and* adds the new
+     * one - two children under one key. React mounts the second as a fresh copy of the whole subtree,
+     * widget Init blueprints included, and a page that re-renders while it leaves (any write, any
+     * change of interactivity) stacks up a copy per render until it is gone.
+     *
+     * So while the parent is leaving, the presence is handed exactly what it held when the parent was
+     * last present - which is also what a presence renders for a child it is animating out itself.
+     * Contexts still reach the held subtree, so its own exit timing and state keep working.
+     */
+    const heldRef = useRef<{ visible: boolean; children: ReactNode }>({ visible, children });
+    const shown = isParentPresent ? { visible, children } : heldRef.current;
+    useLayoutEffect(() => {
+        if (isParentPresent) {
+            heldRef.current = { visible, children };
+        }
+    });
+
     return (
         <ElementAnimationScopeContext.Provider value={scope}>
             {/* `presenceAffectsLayout` off: it rebuilds the context on every render (by design, for
                 layout animations), which would re-render every element under this one for nothing. */}
             <AnimatePresence propagate initial={false} presenceAffectsLayout={false}>
-                {visible ? children : null}
+                {shown.visible ? shown.children : null}
             </AnimatePresence>
         </ElementAnimationScopeContext.Provider>
     );

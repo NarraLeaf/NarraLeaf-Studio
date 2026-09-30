@@ -66,7 +66,7 @@ describe.each(TRANSLATION_EXCHANGE_FORMATS)("%s exchange round-trip", format => 
     it("returns every row unchanged", () => {
         const text = serializeTranslationExchange(format, document(AWKWARD_ROWS));
         const parsed = parseTranslationExchange(format, text);
-        expect(parsed.errors).toEqual([]);
+        expect(parsed.problems).toEqual([]);
         expect(parsed.rows).toEqual(AWKWARD_ROWS);
     });
 
@@ -248,10 +248,10 @@ describe("xliff specifics", () => {
         expect(parsed.rows[0].target).toBe(" leading space is mine ");
     });
 
-    it("refuses a file that is not XLIFF, and says what it got", () => {
-        expect(parse("<html><body>nope</body></html>").errors).toEqual(["Not an XLIFF file: the root element is <html>"]);
-        expect(parse("not xml at all").errors).toEqual(["Not a readable XML file"]);
-        expect(parse("<xliff version=\"1.2\"></xliff>").errors).toEqual(["This XLIFF file has no translation units"]);
+    it("refuses a file that is not XLIFF, and says so", () => {
+        expect(parse("<html><body>nope</body></html>").problems).toEqual([{ code: "notFormat", format: "xliff" }]);
+        expect(parse("not xml at all").problems).toEqual([{ code: "notFormat", format: "xliff" }]);
+        expect(parse("<xliff version=\"1.2\"></xliff>").problems).toEqual([{ code: "noRows" }]);
     });
 });
 
@@ -296,7 +296,7 @@ msgstr "Tschüss"
 #~ msgid "Removed"
 #~ msgstr "Entfernt"
 `);
-        expect(parsed.errors).toEqual([]);
+        expect(parsed.problems).toEqual([]);
         expect(parsed.targetLocale).toBe("de");
         expect(parsed.rows).toEqual([
             row({ unitId: "t-1", context: "Scene 1", source: "Hello", target: "Hallo", status: "machine" }),
@@ -348,7 +348,26 @@ describe("json specifics", () => {
     });
 
     it("reports a file with nothing translatable in it", () => {
-        expect(parse("{\"version\": 1}").errors).toEqual(["This JSON file holds no translation units"]);
-        expect(parse("nope").errors[0]).toContain("Not a readable JSON file");
+        expect(parse("{\"version\": 1}").problems).toEqual([{ code: "noRows" }]);
+        expect(parse("nope").problems).toEqual([{ code: "notFormat", format: "json" }]);
+    });
+
+    it("points at a skipped entry by its place in the array, never by what it holds", () => {
+        const parsed = parse("[{\"unitId\": \"t-1\", \"target\": \"嗨\"}, 7, {\"target\": \"no id\"}]");
+        expect(parsed.rows).toEqual([row({ unitId: "t-1", target: "嗨" })]);
+        expect(parsed.problems).toEqual([
+            { code: "notEntry", at: { entry: 2 } },
+            { code: "missingId", at: { entry: 3 } },
+        ]);
+        // A map value of the wrong shape is skipped too, and its key - a unit id - stays out of it.
+        expect(parse("{\"units\": {\"t-1\": \"ok\", \"t-2\": 5}}").problems).toEqual([{ code: "notEntry" }]);
+    });
+});
+
+describe("po problems", () => {
+    it("points at an unreadable line by its line number, not by its text", () => {
+        const parsed = parseTranslationExchange("po", "msgctxt \"t-1\"\nmsgid \"Hi\"\nmsgstr \"嗨\"\n\nthis is not po\n");
+        expect(parsed.rows.map(entry => entry.unitId)).toEqual(["t-1"]);
+        expect(parsed.problems).toEqual([{ code: "unreadableLine", at: { line: 5 } }]);
     });
 });

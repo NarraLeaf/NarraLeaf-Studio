@@ -22,27 +22,18 @@ import type {
     BpVariableAst,
 } from "./ast";
 import { indexOfTopLevel, parseValue, splitTokens, splitTopLevel } from "./values";
+import {
+    BLUEPRINT_OWNER_KINDS,
+    blueprintOwnerFieldAliases,
+    knownBlueprintOwnerFieldNames,
+} from "./ownerGrammar";
 
 export type BpParseResult = {
     document: BpDocumentAst;
     diagnostics: BpDiagnostic[];
 };
 
-const OWNER_FIELD_ALIASES: Record<string, string> = {
-    surface: "surfaceId",
-    surfaceid: "surfaceId",
-    element: "elementId",
-    elementid: "elementId",
-    prop: "propPath",
-    proppath: "propPath",
-    component: "componentId",
-    componentid: "componentId",
-    asset: "assetId",
-    assetid: "assetId",
-    blueprint: "blueprintId",
-    blueprintid: "blueprintId",
-    mode: "mode",
-};
+const OWNER_FIELD_ALIASES = blueprintOwnerFieldAliases();
 
 type FailFn = (line: number, code: string, message: string, hint?: string) => void;
 
@@ -77,7 +68,7 @@ export function parseBlueprintText(source: string): BpParseResult {
             node = null;
             continue;
         }
-        if (keyword === "event" || keyword === "function") {
+        if (keyword === "event" || keyword === "function" || keyword === "script") {
             if (!blueprint) {
                 fail(lineNumber, "dsl.orphan_graph", `"${keyword}" before any "blueprint" line.`);
                 continue;
@@ -195,7 +186,7 @@ export function parseBlueprintText(source: string): BpParseResult {
  * a keyword only counts when what follows it is not an assignment.
  */
 function blockKeyword(text: string): string {
-    const match = /^(blueprint|event|function|var)(\s+|$)/.exec(text);
+    const match = /^(blueprint|event|function|script|var)(\s+|$)/.exec(text);
     if (!match) {
         return "";
     }
@@ -281,7 +272,7 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
                 line,
                 "dsl.unknown_owner_field",
                 `Unknown blueprint field "${key}".`,
-                "Known fields: owner, id, surface, element, prop, component, asset, blueprint, mode.",
+                `Known fields: owner, id, ${knownBlueprintOwnerFieldNames().join(", ")}.`,
             );
             continue;
         }
@@ -292,15 +283,14 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
             line,
             "dsl.missing_owner",
             "Blueprint has no `owner=`.",
-            "One of: globalMain, surfaceMain, widgetMain, widgetValue, componentWidgetMain, "
-                + "sharedAsset, storyAction.",
+            `One of: ${BLUEPRINT_OWNER_KINDS.join(", ")}.`,
         );
     }
     return blueprint;
 }
 
 function parseGraphHeader(
-    keyword: "event" | "function",
+    keyword: "event" | "function" | "script",
     text: string,
     line: number,
     fail: FailFn,
@@ -313,11 +303,15 @@ function parseGraphHeader(
         return null;
     }
     tokens.shift();
-    let name = keyword === "event" ? "Layer 1" : "Function";
+    // A script layer's quoted word is its FILE, not a name: the layer is the file, and a name
+    // beside it would be a second thing to keep in step with what is on disk.
+    let name = keyword === "event" ? "Layer 1" : keyword === "script" ? "" : "Function";
     if (tokens.length > 0 && indexOfTopLevel(tokens[0], "=") < 0) {
         name = readString(tokens.shift() as string);
     }
-    const graph: BpGraphAst = { kind: keyword, name, nodes: [], edges: [], line };
+    const graph: BpGraphAst = keyword === "script"
+        ? { kind: keyword, name: "", scriptRef: name, nodes: [], edges: [], line }
+        : { kind: keyword, name, nodes: [], edges: [], line };
     for (const token of tokens) {
         const at = indexOfTopLevel(token, "=");
         if (at < 0) {
@@ -486,7 +480,8 @@ function applyBlueprintKey(
                 line,
                 "dsl.unknown_blueprint_field",
                 `"${key}" is not a blueprint field.`,
-                "Known: id, meta, bindings, fields, functions. Node params must follow a node declaration.",
+                "Known: id, meta, bindings, fields, functions. Node params must follow a node declaration."
+                    + " A script is a `script \"scripts/....ts\"` block, not a blueprint field.",
             );
     }
 }

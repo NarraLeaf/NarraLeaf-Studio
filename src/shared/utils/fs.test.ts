@@ -84,6 +84,53 @@ describe("Fs.directorySize", () => {
 });
 
 /**
+ * The pair a caller uses to serve a file in pieces: one handle, measured once, read by span. A
+ * directory has to be refused at the open, because on Windows opening one succeeds.
+ */
+describe("Fs.openForRead and Fs.readSpan", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(join(tmpdir(), "nls-span-"));
+        await writeFile(join(root, "digits.bin"), "0123456789");
+        await mkdir(join(root, "folder"));
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    it("measures the file and reads a span, or only what is there past the end", async () => {
+        const opened = await Fs.openForRead(join(root, "digits.bin"));
+        if (!opened.ok) throw new Error(opened.error.message);
+        try {
+            expect(opened.data.size).toBe(10);
+            const middle = await Fs.readSpan(opened.data.handle, 2, 3);
+            expect(middle.ok && middle.data.toString()).toBe("234");
+            const tail = await Fs.readSpan(opened.data.handle, 8, 10);
+            expect(tail.ok && tail.data.toString()).toBe("89");
+        } finally {
+            await opened.data.handle.close();
+        }
+    });
+
+    it("refuses a directory and a missing path with the codes a whole-file read gives", async () => {
+        const folder = await Fs.openForRead(join(root, "folder"));
+        expect(!folder.ok && folder.error.code).toBe(FsRejectErrorCode.NOT_A_FILE);
+        const missing = await Fs.openForRead(join(root, "nope.bin"));
+        expect(!missing.ok && missing.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
+    });
+
+    it("reports a read on a closed handle as a failure rather than throwing", async () => {
+        const opened = await Fs.openForRead(join(root, "digits.bin"));
+        if (!opened.ok) throw new Error(opened.error.message);
+        await opened.data.handle.close();
+        const read = await Fs.readSpan(opened.data.handle, 0, 4);
+        expect(read.ok).toBe(false);
+    });
+});
+
+/**
  * The atomic writer. These pin the two things that are easy to break while "just" swapping the
  * implementation body: that the target is *replaced* rather than truncated in place (the whole
  * point), and that `writeFileNoFollow` keeps refusing the paths it used to refuse (its `lstat` gate
@@ -347,6 +394,52 @@ describe("Fs atomic writes", () => {
          */
         it("reports NOT_FOUND when the parent directory is gone", async () => {
             const result = await Fs.writeFileNoFollowOrCreate(join(root, "missing-dir", "doc.json"), "{}");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
+        });
+    });
+
+    /**
+     * The verb a lock file is built on: only one caller may come away believing it wrote the file.
+     *
+     * The neighbours cannot answer that question. `ensureRegularFile` performs the same `wx` create
+     * and reports nothing about which branch it took, so two callers both read success; the atomic
+     * writers replace whatever is there, which for a claim is the failure itself.
+     */
+    describe("createFileExclusive", () => {
+        it("creates the file and says it was the one that did", async () => {
+            const target = join(root, "session.lock");
+
+            const result = await Fs.createFileExclusive(target, "mine");
+
+            expect(result).toEqual({ ok: true, data: true });
+            expect(await readFile(target, "utf-8")).toBe("mine");
+        });
+
+        it("writes nothing over a file that is already there, and says so", async () => {
+            const target = join(root, "session.lock");
+            await writeFile(target, "theirs");
+
+            const result = await Fs.createFileExclusive(target, "mine");
+
+            expect(result).toEqual({ ok: true, data: false });
+            expect(await readFile(target, "utf-8")).toBe("theirs");
+        });
+
+        it("hands the file to exactly one of many callers racing for it", async () => {
+            const target = join(root, "session.lock");
+
+            const results = await Promise.all(
+                Array.from({ length: 8 }, (_, index) => Fs.createFileExclusive(target, `writer-${index}`)),
+            );
+
+            expect(results.filter(result => result.ok && result.data)).toHaveLength(1);
+            expect(results.every(result => result.ok)).toBe(true);
+        });
+
+        it("reports a path it could not write rather than claiming it", async () => {
+            const result = await Fs.createFileExclusive(join(root, "missing-dir", "session.lock"), "mine");
 
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.NOT_FOUND);

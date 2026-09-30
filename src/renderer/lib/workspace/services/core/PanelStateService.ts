@@ -2,6 +2,7 @@ import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "./ServiceAssetsService";
+import { storeWrite } from "../autosave/writeReport";
 import { UIService } from "./UIService";
 
 type PanelStateStore = {
@@ -84,11 +85,14 @@ export class PanelStateService extends Service<PanelStateService> {
     private async flush(): Promise<void> {
         if (!this.dirty) return;
         this.dirty = false;
-        const result = await this.getServiceAssets().writeStore(PanelStateService.Namespace, this.store);
-        if (!result.ok) {
-            const uiService = this.getContext().services.get<UIService>(Services.UI);
-            uiService.showError(`Failed to persist panel state: ${result.error.message}`);
-        }
+        // A failure is not retried - `dirty` is already clear - and is reported by the save-status
+        // surface as the panel layout not being saved. Nothing here repeats it: the filesystem's
+        // own message is English whatever the interface speaks, and names the store's file.
+        await this.getServiceAssets().writeStore(
+            PanelStateService.Namespace,
+            this.store,
+            storeWrite("workspace.shell.save.stores.panelLayout", "notRetried"),
+        );
     }
 
     private getServiceAssets(): ServiceAssetsService {

@@ -1,9 +1,11 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import { existsSync } from "fs";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
-import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings";
+import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME, wrapPackKey } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import { electronBuilderCacheRoot } from "../storage/cacheInventory";
@@ -18,6 +20,7 @@ import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
     gameBuildArtifactBaseName,
     hostCanBuildTarget,
+    iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
     mobileExportFileName,
@@ -29,6 +32,7 @@ import {
     type AssetCompressionReport,
     type AssetCompressionTrackReport,
     type BuildPreflightFinding,
+    type GameBuildArch,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildMobilePlatform,
@@ -56,7 +60,6 @@ import {
     signingNotarizes,
     type ResolvedAppleNotarization,
     type ResolvedSigningMaterial,
-    type SigningCredential,
     type SigningPlatform,
 } from "@shared/types/signing";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
@@ -83,6 +86,7 @@ import {
     signingExpiryCode,
     signingPlatformForTarget,
     signingReachesNetwork,
+    type ProjectSigningIds,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
@@ -91,6 +95,8 @@ import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
+import { ensureDesktopIcon } from "./desktopIcons";
+import type { CommandLineSigningCredential } from "../../commandLineSigning";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
@@ -110,10 +116,12 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
+import { electronLanguagesForGame } from "../../../../buildWorker/electronLanguages";
 import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1, GameRuntimeProjectRevision } from "@shared/types/gameRuntime";
+import { checkPatchEngine, describeBuildProvenance, describePatchEngineCheck } from "@shared/build/buildProvenance";
 import { readDistributionKey } from "@shared/utils/distributionKey";
 import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
@@ -142,7 +150,6 @@ import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
 import {
     type GameRuntimeArtifactCompileResult,
@@ -152,7 +159,7 @@ import {
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
     GameBuildWorkerAndroidSigning,
     GameBuildWorkerConfig,
@@ -169,6 +176,7 @@ import { DownloadTaskBridge } from "../tasks/downloadTasks";
 import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
+import { gameThirdPartyNotices, THIRD_PARTY_NOTICES_FILENAME } from "./thirdPartyNotices";
 
 type BuildSession = {
     id: string;
@@ -256,6 +264,25 @@ export function resolveElectronDistDirForApp(
     }
     // <dist>/electron[.exe]
     return path.dirname(currentExecutable);
+}
+
+/**
+ * Whether the Electron installation Studio runs on can be the runtime a desktop target ships.
+ *
+ * Only when it is the same platform *and* the same architecture. The installation is one binary
+ * for one machine, and electron-builder copies whatever directory it is given without asking what
+ * it holds - so handing it the host's Electron for any other arch packages the host's binaries
+ * under the target's name: a "Windows arm64" build that is an x64 program, an Intel-Mac build that
+ * cannot start on an Intel Mac, a universal build whose two halves are the same arm64 app. Every
+ * other target leaves `electronDist` unset, and electron-builder downloads (and caches) the release
+ * for exactly that platform and arch. `universal` is never a host arch, so it always downloads.
+ */
+export function hostElectronServesTarget(
+    target: { platform: GameBuildDesktopPlatform; arch: GameBuildArch },
+    hostPlatform: GameBuildDesktopPlatform = currentGameBuildPlatform(),
+    hostArch: string = process.arch,
+): boolean {
+    return target.platform === hostPlatform && target.arch === hostArch;
 }
 
 // Moved to @shared/types/gameBuild so the build dialog derives the displayed
@@ -528,8 +555,34 @@ export class GameBuildManager {
     private readonly sessions = new Map<string, BuildSession>();
     /** Lazily built: the vault needs a user-data dir, which a test double has no reason to provide. */
     private signingVaultCache: SigningVault | null = null;
+    /**
+     * Credentials `--build-signing` handed this launch, by platform. Empty for every launch that
+     * did not, which is every launch with a person in it.
+     */
+    private commandLineSigning = new Map<SigningPlatform, CommandLineSigningCredential>();
+    /** Build settings `--build-setting` gave this launch, read ahead of the profile's. */
+    private commandLineSettings: Record<string, string> = {};
 
     constructor(private readonly app: App) {}
+
+    /**
+     * Take the credentials and settings a command-line build was launched with.
+     *
+     * Called once, before anything is checked or built, and by that one caller only - see
+     * `CommandLineBuildRun`. Kept on the manager rather than threaded through `preflight` and
+     * `start` because both of them have to see it and they are reached separately: a check pass
+     * that said "unsigned" about a build that then signed would be worse than either answer.
+     *
+     * Nothing here is written to disk. The credentials are unsealed material held for the length of
+     * the process, and the settings are read instead of the profile's rather than into it.
+     */
+    public useCommandLineBuildOverrides(input: {
+        signing: readonly CommandLineSigningCredential[];
+        settings: Record<string, string>;
+    }): void {
+        this.commandLineSigning = new Map(input.signing.map(credential => [credential.platform, credential]));
+        this.commandLineSettings = { ...input.settings };
+    }
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
         return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
@@ -541,11 +594,20 @@ export class GameBuildManager {
      * everything and stays the authority (see preflight.ts).
      *
      * Deliberately NOT refused while the workspace is frozen. It starts no work
-     * and writes nothing - every check here reads (`checkOutputDir` probes with
-     * `access`, the vault answers `secretsAvailable` without unsealing) - so
-     * there is nothing for a freeze to be inconsistent with, and refusing would
-     * replace the dialog's findings with an error about a build nobody asked
-     * for yet. {@link start} is where the refusal belongs.
+     * and writes nothing - `checkOutputDir` probes with `access`, the vault
+     * answers `secretsAvailable` without unsealing - so there is nothing for a
+     * freeze to be inconsistent with, and refusing would replace the dialog's
+     * findings with an error about a build nobody asked for yet.
+     * {@link start} is where the refusal belongs.
+     *
+     * Not refused for a distrusted project either, which is the closer call:
+     * `checkBuildDependencies` sends a HEAD to each build dependency a shipping
+     * plugin declares, so this is not purely local. It stays open because the
+     * addresses come from plugins the author installed on this machine rather
+     * than from the project, and because the alternatives are worse - skipping
+     * the probe would report no gaps, which reads as a clean bill of health for
+     * a check that never ran. The build those findings describe is refused in
+     * {@link start} regardless.
      */
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
@@ -813,14 +875,11 @@ export class GameBuildManager {
             variant,
             appTagDocument.pluginConfig ?? {},
         ));
-        if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
-            const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
-            if (!key) {
-                findings.push({ code: "encryption-key-unavailable", severity: "error", section: "content" });
-            }
-        }
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
+        }
+        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
         }
         findings.push(...await collectProgressCarryFindings({
             projectPath: normalizedProjectPath,
@@ -934,6 +993,26 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
+        // Another Studio having the project is refused the same way and for a kindred reason: the
+        // build writes into the project folder, which is that Studio's to write. See
+        // `projectSessionGate`. The pure form, so the line below is the only one the console gets.
+        const refusedBuild = refuseDistrustedOperation(this.app, normalizedProjectPath, "production build")
+            ?? projectHeldElsewhereRefusal(this.app, normalizedProjectPath, "production build");
+        if (refusedBuild) {
+            // Same shape as the frozen refusal below, and for the same reason: recorded on the
+            // session so the dialog shows it, emitted verbatim rather than through failSession,
+            // whose "build failed:" prefix would send the author looking for a broken toolchain.
+            session.snapshot = {
+                status: "error",
+                progress: null,
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
+                error: refusedBuild,
+            };
+            this.emit(session, { level: "error", source: "Build", message: refusedBuild });
+            return session.snapshot;
+        }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "production build");
@@ -1013,6 +1092,23 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
+        const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
+            ?? projectHeldElsewhereRefusal(this.app, normalizedProjectPath, "patch export");
+        if (refusedPatch) {
+            // Same shape as the frozen refusal below, and for the same reason: recorded on the
+            // session so the dialog shows it, emitted verbatim rather than through failSession,
+            // whose "build failed:" prefix would send the author looking for a broken toolchain.
+            session.snapshot = {
+                status: "error",
+                progress: null,
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
+                error: refusedPatch,
+            };
+            this.emit(session, { level: "error", source: "Build", message: refusedPatch });
+            return session.snapshot;
+        }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "patch export");
@@ -1040,6 +1136,12 @@ export class GameBuildManager {
     ): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
+
+        // The same mark a build leaves, for the same reason: a patch is a thing a player installs
+        // and can report a bug against, so the state it came out of has to be one the author can
+        // return to. Without the checkpoint the head would name a revision the working tree has
+        // moved on from, and the pack below would be pointing at the wrong project.
+        const projectRevision = await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
@@ -1105,8 +1207,7 @@ export class GameBuildManager {
         // how an asset is named inside the payload. A patch whose entries were
         // named the other way would carry every asset under a name nothing asks
         // for, and would apply cleanly while changing nothing.
-        const encryptionKey = await this.resolveEncryptionKey(projectPath, projectConfig);
-        this.ensureNotCancelled(session);
+        const protectAssets = this.encryptAssetsEnabled(projectConfig);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // The same re-encoding the build applied. Without it every optimized image
@@ -1140,7 +1241,7 @@ export class GameBuildManager {
                 distribution,
                 projectConfig,
                 assetReplacements,
-                ...(encryptionKey ? { encryptionKey } : {}),
+                protectAssets,
             })
             : null;
         const baselineAppDir = request.baselineAppDir || builtBaseline;
@@ -1151,6 +1252,7 @@ export class GameBuildManager {
             entry,
             runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
             runtimeVersion: this.readRuntimeVersion(),
+            ...(projectRevision ? { projectRevision } : {}),
             outputRoot: path.join(projectPath, ".nlstudio", "build", "patch"),
             runtimePlugins: pluginSelection.selected,
             mode: "production",
@@ -1169,7 +1271,7 @@ export class GameBuildManager {
             // updated is exactly what the DLC adds. An ordinary patch gets the base game's alone.
             includedDlc: dlc ? [dlc.id] : [],
             locale: getMainLocale(this.app),
-            ...(encryptionKey ? { encryptionKey } : {}),
+            protectAssets,
             appId: identity.appId,
             productName: identity.productName,
             ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1194,6 +1296,7 @@ export class GameBuildManager {
             source: "Build",
             message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
         });
+        this.reportBuildProvenance(session, artifact.pack);
         this.reportShippedAssets(session, artifact.assetReport ?? null, pluginSelection.selected);
         this.reportShippedContentAudit(session, contentAudit);
         this.ensureNotCancelled(session);
@@ -1297,10 +1400,12 @@ export class GameBuildManager {
             identity: { appId: string; productName: string; identifier?: string };
             projectConfig: ProjectConfigData | null;
             assetReplacements: Record<string, OptimizedAssetFile>;
-            encryptionKey?: string;
+            protectAssets: boolean;
             /** The payload this build produced - what a player has before installing any of these. */
             baselineAppDir: string;
             outputDir: string;
+            /** The revision the build these attach to was made from; see the field on the pack. */
+            projectRevision?: GameRuntimeProjectRevision;
         },
     ): Promise<string[]> {
         const { appTag, identity, projectPath } = options;
@@ -1333,6 +1438,7 @@ export class GameBuildManager {
                 entry: options.entry,
                 runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
                 runtimeVersion: this.readRuntimeVersion(),
+                ...(options.projectRevision ? { projectRevision: options.projectRevision } : {}),
                 // Per DLC, so one compile cannot be handed the previous one's leftovers.
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "dlc", dlc.id),
                 runtimePlugins: options.runtimePlugins,
@@ -1346,7 +1452,7 @@ export class GameBuildManager {
                 // what this DLC adds.
                 includedDlc: [dlc.id],
                 locale: getMainLocale(this.app),
-                ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+                protectAssets: options.protectAssets,
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1411,7 +1517,7 @@ export class GameBuildManager {
             distribution: { key: string; titleId: string };
             projectConfig: ProjectConfigData | null;
             assetReplacements: Record<string, OptimizedAssetFile>;
-            encryptionKey?: string;
+            protectAssets: boolean;
         },
     ): Promise<string> {
         const { appTag, identity } = options;
@@ -1440,7 +1546,7 @@ export class GameBuildManager {
             // the game without it, and that is the only thing worth comparing against.
             includedDlc: [],
             locale: getMainLocale(this.app),
-            ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+            protectAssets: options.protectAssets,
             appId: identity.appId,
             productName: identity.productName,
             ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1613,6 +1719,13 @@ export class GameBuildManager {
                 // that breaks saves is sometimes exactly the patch an author means to make, and a
                 // gate here would teach them to turn the whole check off.
                 await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
+                // Beside it because it answers the other half of the same question: whether the game
+                // this file lands in is the game the content was made for. Saves are about the
+                // player's progress, the engine is about the code that will read it.
+                this.emit(session, {
+                    source: "Build",
+                    ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+                });
             } finally {
                 await previous.close().catch(() => undefined);
             }
@@ -1744,18 +1857,29 @@ export class GameBuildManager {
     }
 
     /**
-     * Record a checkpoint before the build touches anything.
+     * Record a checkpoint before the run touches anything, and read back the revision it leaves the
+     * project standing on.
      *
      * One of the three unconditional checkpoints: a build is the moment an author most
      * wants a mark in the history, because it is what they will come back to when the
      * shipped thing is wrong. It writes into the output directory, which the author is
      * free to point inside the project.
      *
+     * The revision goes into the pack, which is what makes coming back to it possible from a copy a
+     * player is holding rather than only from the author's own history. Reading it here rather than
+     * taking the checkpoint's own answer is deliberate: an unchanged tree records no revision and
+     * still stands on one, and that head describes the project just as truthfully.
+     *
      * Best effort, and silent when there is nothing to do: a project with no repository,
      * a host with no backend, and an unchanged tree all answer "no revision" rather than
      * failing. A version control problem must never be the reason a build does not run.
+     *
+     * A checkpoint that FAILED answers nothing at all, rather than the head. The head is only the
+     * state this artifact was compiled from because the checkpoint has just put the working tree
+     * into it; without that, naming it would be pointing an author at a revision that is not what
+     * they shipped.
      */
-    private async checkpointBeforeBuild(session: BuildSession): Promise<void> {
+    private async checkpointBeforeBuild(session: BuildSession): Promise<GameRuntimeProjectRevision | null> {
         try {
             const result = await this.app.getVcsManager().checkpoint(session.projectPath, "build");
             if (result) {
@@ -1771,6 +1895,26 @@ export class GameBuildManager {
                 source: "Build",
                 message: `could not record a version control checkpoint: ${error instanceof Error ? error.message : String(error)}`,
             });
+            return null;
+        }
+        try {
+            // `getInfo` opens a session, and opening one on a directory that is not a repository is
+            // how it reports that - so the question is asked first, the same way the checkpoint asks
+            // it, instead of reading a thrown error as an answer.
+            const vcs = this.app.getVcsManager();
+            if (!(await vcs.isRepository(session.projectPath))) {
+                return null;
+            }
+            const info = await vcs.getInfo(session.projectPath);
+            return info.head ? { id: info.head, number: info.headNumber } : null;
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not read which version this run was made from, so the artifact will not say: "
+                    + `${error instanceof Error ? error.message : String(error)}`,
+            });
+            return null;
         }
     }
 
@@ -1778,7 +1922,7 @@ export class GameBuildManager {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
 
-        await this.checkpointBeforeBuild(session);
+        const projectRevision = await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
@@ -1845,17 +1989,22 @@ export class GameBuildManager {
         if (pluginSelection.errors.length > 0) {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
-        // Desktop and mobile both protect their assets on the same key; the web
-        // export never does (its files are served over HTTP by nature). Resolving
-        // once here keeps the desktop and mobile paths on one key.
-        const encryptionKey = (desktopTargets.length > 0 || mobileTargets.length > 0)
-            ? await this.resolveEncryptionKey(projectPath, projectConfig)
-            : undefined;
-        if (encryptionKey && desktopTargets.length > 0) {
+        // Here rather than beside the copyright notice below, where it is shipped: a Studio whose
+        // notice documents are missing cannot package any game, and that is better learnt before
+        // the compile than after it.
+        const thirdPartyNotices = await this.writeThirdPartyNotices(projectPath, {
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            plugins: pluginSelection.selected,
+            desktop: desktopTargets.length > 0,
+            web: Boolean(webTarget) || mobileTargets.length > 0,
+        });
+        // Only a desktop package seals its payload. The web export cannot (its files are served
+        // over HTTP by nature), and the mobile packages keep that same site in a container whose
+        // key ships inside them, which is a format rather than a protection. Both are reported to
+        // the author below rather than quietly built as if they were covered.
+        const protectAssets = desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig);
+        if (protectAssets) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; sealing pack" });
-        }
-        if (encryptionKey && mobileTargets.length > 0) {
-            this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; protecting the mobile payload" });
         }
         // The project's own key, folded against the identity this build ships under
         // so two editions never resolve to the same material. Independent of
@@ -1875,6 +2024,13 @@ export class GameBuildManager {
                 level: "info",
                 source: "Build",
                 message: "asset protection does not apply to the web export; its files ship unprotected",
+            });
+        }
+        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "asset protection does not apply to Android or iOS packages",
             });
         }
         this.ensureNotCancelled(session);
@@ -1906,6 +2062,9 @@ export class GameBuildManager {
                 entry,
                 runtimeDistDir,
                 runtimeVersion,
+                // What the player's copy can be traced back to. Both compiles below get it: the
+                // desktop package and the web/mobile one are one project state shipped twice.
+                ...(projectRevision ? { projectRevision } : {}),
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
@@ -1926,7 +2085,7 @@ export class GameBuildManager {
                 // The compile can refuse this build (a blueprint whose variant test does not come out
                 // a constant), and that sentence is the author's to read.
                 locale: getMainLocale(this.app),
-                encryptionKey,
+                protectAssets,
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1980,6 +2139,7 @@ export class GameBuildManager {
                 entry,
                 runtimeDistDir,
                 runtimeVersion,
+                ...(projectRevision ? { projectRevision } : {}),
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
@@ -2024,6 +2184,7 @@ export class GameBuildManager {
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
         }
+        this.reportBuildProvenance(session, (desktopArtifact ?? webArtifact)?.pack ?? null);
         // Stated rather than assumed: a build that could not compile its codec for
         // this title does not reach here at all - it stops with a message saying
         // so - and the line is what tells the author which of the two they have.
@@ -2049,6 +2210,12 @@ export class GameBuildManager {
         if (copyrightFile && webArtifact) {
             await fs.copyFile(copyrightFile, path.join(webArtifact.appDir, COPYRIGHT_NOTICE_FILENAME));
         }
+        // The third-party notice goes to the same two places, and always: the runtime's npm
+        // packages are inside every game whatever the project says, and their licences ask for
+        // their notices to travel with every copy.
+        if (thirdPartyNotices.web && webArtifact) {
+            await fs.copyFile(thirdPartyNotices.web, path.join(webArtifact.appDir, THIRD_PARTY_NOTICES_FILENAME));
+        }
         this.ensureNotCancelled(session);
 
         this.emit(session, { level: "info", source: "Build", message: "packaging..." });
@@ -2067,18 +2234,23 @@ export class GameBuildManager {
                 message: `installer tooling will be downloaded from ${binariesMirror}`,
             });
         }
-        const crossTargets = desktopTargets.filter(target => target.platform !== hostPlatform);
-        if (electronMirror && crossTargets.length > 0) {
+        // The host's own Electron serves only a target that matches it in platform *and* arch
+        // (hostElectronServesTarget); every other desktop target downloads its own.
+        const downloadingTargets = desktopTargets
+            .map(target => ({ platform: target.platform, arch: normalizeGameBuildArch(target.platform, target.arch) }))
+            .filter(target => !hostElectronServesTarget(target, hostPlatform))
+            .map(target => `${target.platform} ${target.arch}`);
+        if (electronMirror && downloadingTargets.length > 0) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `cross-building for ${crossTargets.map(t => t.platform).join(", ")}; using Electron mirror ${electronMirror}`,
+                message: `cross-building for ${downloadingTargets.join(", ")}; using Electron mirror ${electronMirror}`,
             });
-        } else if (crossTargets.length > 0) {
+        } else if (downloadingTargets.length > 0) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `cross-building for ${crossTargets.map(t => t.platform).join(", ")}; downloading Electron on first use (cached afterwards)`,
+                message: `cross-building for ${downloadingTargets.join(", ")}; downloading Electron on first use (cached afterwards)`,
             });
         }
         const workerConfig: GameBuildWorkerConfig = {
@@ -2090,9 +2262,11 @@ export class GameBuildManager {
             electronVersion: process.versions.electron,
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
             ...(copyrightFile ? { copyrightFile } : {}),
+            ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
-            asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
+            asarUnpack: buildAsarUnpackPatterns(protectAssets),
+            electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
@@ -2106,9 +2280,12 @@ export class GameBuildManager {
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
                     debuggable,
-                    Boolean(encryptionKey),
+                    protectAssets,
                 ),
-                ...(target.platform === hostPlatform
+                ...(hostElectronServesTarget(
+                    { platform: target.platform, arch: normalizeGameBuildArch(target.platform, target.arch) },
+                    hostPlatform,
+                )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
@@ -2129,9 +2306,6 @@ export class GameBuildManager {
                     identity,
                     targets: mobileTargets,
                     site: webArtifact,
-                    // When set, the repack protects every payload file with this
-                    // key and writes it into shell-config for the shell's decoder.
-                    contentKey: encryptionKey,
                     signing,
                 }),
             } : {}),
@@ -2157,9 +2331,12 @@ export class GameBuildManager {
                 identity,
                 projectConfig,
                 assetReplacements,
-                ...(encryptionKey ? { encryptionKey } : {}),
+                protectAssets,
                 baselineAppDir: desktopArtifact.appDir,
                 outputDir,
+                // The same revision the game itself carries. A DLC is a separate download a player
+                // can report a bug against on its own, and it came out of this one project state.
+                ...(projectRevision ? { projectRevision } : {}),
             }));
             this.ensureNotCancelled(session);
         }
@@ -2233,9 +2410,21 @@ export class GameBuildManager {
     /**
      * Resolve the configured app icon for a target platform into a worker
      * `iconPath`. An absent or corrupt icon falls back to NarraLeaf's mark - an
-     * icon that is merely smaller than the packager's floor still ships,
+     * icon that is merely smaller than the platform's largest slot still ships,
      * upscaled, because a blurry version of the author's icon beats a packaged
      * game wearing somebody else's logo.
+     *
+     * What goes to the worker is the platform's own container (`.ico`, `.icns`)
+     * rather than the PNG: handed a PNG, electron-builder converts it by
+     * starting a second Electron, which is fatal on a machine with no window
+     * server. See `desktopIcons.ts`. Linux keeps the PNG, which is already the
+     * format its target asks for.
+     *
+     * A conversion that fails ships no icon at all rather than falling back to
+     * the PNG. The fallback would be the packager's converter, which is the one
+     * thing this must never reach - and an Electron-branded build is a visible
+     * fault somebody notices, where a build that died two minutes later on an
+     * opaque packager error is not.
      */
     private async resolveTargetIcon(
         session: BuildSession,
@@ -2244,6 +2433,8 @@ export class GameBuildManager {
         platform: GameBuildDesktopPlatform,
     ): Promise<{ iconPath?: string }> {
         const icon = await checkIcon(projectPath, projectConfig, platform);
+        const fallback = this.app.getDefaultGameIconPath();
+        const sources: string[] = [];
         if (icon.status === "ok") {
             if (icon.lowResolution) {
                 this.emit(session, {
@@ -2253,18 +2444,49 @@ export class GameBuildManager {
                         + "it ships upscaled",
                 });
             }
-            return { iconPath: icon.iconPath };
+            sources.push(icon.iconPath);
+        } else {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: (icon.status === "missing"
+                    ? `no ${platform} app icon configured; `
+                    : `the ${platform} icon could not be read; `)
+                    + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
+            });
         }
-        const fallback = this.app.getDefaultGameIconPath();
-        this.emit(session, {
-            level: "warning",
-            source: "Build",
-            message: (icon.status === "missing"
-                ? `no ${platform} app icon configured; `
-                : `the ${platform} icon could not be read; `)
-                + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
-        });
-        return fallback ? { iconPath: fallback } : {};
+        if (fallback) {
+            sources.push(fallback);
+        }
+
+        for (const [index, sourceIconPath] of sources.entries()) {
+            try {
+                const converted = await ensureDesktopIcon({ sourceIconPath, platform, projectPath });
+                if (!converted.passedThrough && !converted.reused) {
+                    this.emit(session, {
+                        level: "info",
+                        source: "Build",
+                        message: `wrote the ${platform} app icon as `
+                            + `${path.extname(converted.iconPath)} (${path.basename(sourceIconPath)})`,
+                    });
+                }
+                return { iconPath: converted.iconPath };
+            } catch (error) {
+                // The last candidate is Studio's own mark; failing on that is a
+                // broken installation rather than a project problem, and either
+                // way the build goes on without an icon.
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: `the ${platform} app icon could not be converted `
+                        + `(${error instanceof Error ? error.message : String(error)}); `
+                        + (index === sources.length - 1
+                            ? "using the default Electron icon"
+                            : "falling back to the NarraLeaf icon"),
+                });
+            }
+        }
+        return {};
     }
 
     /**
@@ -2432,9 +2654,15 @@ export class GameBuildManager {
      * asked for, whether this machine can deliver it, and - when it asked for
      * nothing - the standing caveats of shipping unsigned.
      *
-     * Reads the vault but never unseals anything: `secretsAvailable` answers the
-     * only question preflight has about a password, without producing one. A
-     * dialog that is merely open must not be holding the author's private keys.
+     * A credential given on the command line counts as configured and overrides
+     * the project's choice for that platform, which is what makes a build agent
+     * able to sign a project whose author configured signing on their own machine
+     * (where the credential id means something) and not on this one.
+     *
+     * `secretsAvailable` answers the only question preflight has about a vault
+     * password without producing one; the certificate checks below do have to
+     * unseal, which is why they are the last thing done and why nothing they
+     * touch is emitted.
      */
     private async signingPreflight(
         projectConfig: ProjectConfigData | null,
@@ -2445,22 +2673,22 @@ export class GameBuildManager {
         const findings: BuildPreflightFinding[] = [];
         const ids = readProjectSigningIds(projectConfig);
         const vault = this.signingVault();
+        const configured = (slot: SigningPlatform | null): boolean =>
+            slot !== null && (this.commandLineSigning.has(slot) || Boolean(ids[slot]));
 
-        // The unsigned caveats are now conditional: they describe a platform
-        // nobody pointed at a credential. Once one is configured, whatever is
-        // wrong with it is reported instead, and repeating "this is unsigned"
-        // would be plainly false.
-        const unsignedDesktop = targets.filter(isDesktopTarget).some(target => {
-            const slot = signingPlatformForTarget(target.platform);
-            return slot === null || !ids[slot];
-        });
+        // The unsigned caveats are conditional: they describe a platform nobody
+        // pointed at a credential. Once one is configured, whatever is wrong with
+        // it is reported instead, and repeating "this is unsigned" would be
+        // plainly false.
+        const unsignedDesktop = targets.filter(isDesktopTarget)
+            .some(target => !configured(signingPlatformForTarget(target.platform)));
         if (unsignedDesktop) {
             findings.push({ code: "unsigned", severity: "warning", section: "signing" });
         }
-        if (targets.some(target => target.platform === "android") && !ids.android) {
+        if (targets.some(target => target.platform === "android") && !configured("android")) {
             findings.push({ code: "unsigned-android", severity: "warning", section: "signing" });
         }
-        if (targets.some(target => target.platform === "ios") && !ids.ios) {
+        if (targets.some(target => target.platform === "ios") && !configured("ios")) {
             // Not the same caveat as Android's: an .ipa without a signature
             // cannot be installed at all, so this is a prerequisite the author
             // must act on, not a limitation they can ignore.
@@ -2474,23 +2702,15 @@ export class GameBuildManager {
         // Checked whenever one is configured, not only alongside a Linux target:
         // the GPG signatures cover every artifact, and resolveSigningForBuild
         // will go looking for this credential on the same terms.
-        if (ids.linux) {
+        if (configured("linux")) {
             slots.add("linux");
         }
         for (const platform of slots) {
-            const id = ids[platform];
-            if (!id) {
+            const found = await this.preflightSigningCredential(vault, ids, platform);
+            if (found.status === "none") {
                 continue;
             }
-            // The id is deliberately absent from every finding below: it is an
-            // opaque internal handle, and the author knows their credentials by
-            // the label they gave them.
-            const credential = vault ? await vault.get(id).catch(() => null) : null;
-            // A credential of the wrong kind counts as "not here" rather than
-            // earning its own code: the dialog only ever offers the kinds a
-            // platform can use, so this is a hand-edited or stale config, and
-            // what the author has to do about it is the same either way.
-            if (!vault || !credential || SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+            if (found.status === "missing") {
                 findings.push({
                     code: "signing-credential-missing",
                     severity: "error",
@@ -2499,16 +2719,11 @@ export class GameBuildManager {
                 });
                 continue;
             }
-            if (!signingCredentialSupportedOnHost(credential.kind, hostPlatform)) {
-                findings.push({
-                    code: "signing-host-unsupported",
-                    severity: "error",
-                    section: "signing",
-                    detail: { platform, host: hostPlatform },
-                });
-            }
-            if (SIGNING_CREDENTIAL_SECRET_FIELDS[credential.kind].length > 0
-                && !await vault.secretsAvailable(id).catch(() => false)) {
+            if (found.sealed) {
+                // Reported, and not the end of it: everything below is about the
+                // credential and the selection rather than about the password, and
+                // an author whose keyring is unavailable still needs to hear that
+                // their APK-only build cannot go to Play.
                 findings.push({
                     code: "signing-secret-unavailable",
                     severity: "error",
@@ -2516,38 +2731,117 @@ export class GameBuildManager {
                     detail: { platform },
                 });
             }
-            if (signingReachesNetwork(credential)) {
-                findings.push({
-                    code: "signing-needs-network",
-                    severity: "warning",
-                    section: "signing",
-                    detail: { platform },
-                });
-            }
-            if (credential.kind === "linux-gpg"
-                && !await findGpgBinary({ ...(credential.gpgPath ? { configuredPath: credential.gpgPath } : {}) })) {
-                findings.push({
-                    code: "signing-tool-missing",
-                    severity: "error",
-                    section: "signing",
-                    detail: { platform, tool: "gpg" },
-                });
-            }
-            if (credential.kind === "macos-keychain" && hostPlatform === "macos") {
-                findings.push(...await this.macIdentityPreflight(credential.identity));
-            }
-            findings.push(...await this.signingExpiryPreflight(vault, credential, platform));
-            if (platform === "android" && androidLacksPlayPackage(targets)) {
-                // Signed, and still not publishable on Play - which is exactly
-                // the assumption a release keystore invites. Read off the
-                // selected formats (which `targets` carries) rather than off the
-                // platform alone: turning the AAB format on is the fix, so a
-                // selection that already has it must stop saying this.
-                findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
-            }
-            if (platform === "ios" && targets.some(target => target.platform === "ios")) {
-                findings.push(...await this.iosProfilePreflight(vault, credential, iosBundleId));
-            }
+            findings.push(...await this.credentialPreflight({
+                material: found.material,
+                platform,
+                hostPlatform,
+                targets,
+                iosBundleId,
+            }));
+        }
+        return findings;
+    }
+
+    /**
+     * The credential a platform will sign with, or which way it is not there.
+     *
+     * The command line is asked first and answers outright: a credential handed over that way
+     * arrived as plain material, so neither of the vault-shaped failures can apply to it.
+     */
+    private async preflightSigningCredential(
+        vault: SigningVault | null,
+        ids: ProjectSigningIds,
+        platform: SigningPlatform,
+    ): Promise<
+        | { status: "none" }
+        | { status: "missing" }
+        | { status: "ready"; material: ResolvedSigningMaterial; sealed: boolean }
+    > {
+        const supplied = this.commandLineSigning.get(platform);
+        if (supplied) {
+            return { status: "ready", material: supplied.material, sealed: false };
+        }
+        const id = ids[platform];
+        if (!id) {
+            return { status: "none" };
+        }
+        // The id is deliberately absent from every finding this feeds: it is an
+        // opaque internal handle, and the author knows their credentials by the
+        // label they gave them.
+        const credential = vault ? await vault.get(id).catch(() => null) : null;
+        // A credential of the wrong kind counts as "not here" rather than
+        // earning its own code: the dialog only ever offers the kinds a platform
+        // can use, so this is a hand-edited or stale config, and what the author
+        // has to do about it is the same either way.
+        if (!vault || !credential || SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+            return { status: "missing" };
+        }
+        const sealed = SIGNING_CREDENTIAL_SECRET_FIELDS[credential.kind].length > 0
+            && !await vault.secretsAvailable(id).catch(() => false);
+        // Caught rather than allowed to escape: a credentials.json missing a field it declares is a
+        // credential nobody can use, and it used to take the whole check pass down with it.
+        const material = await vault.resolveMaterial(id).catch(() => null);
+        return material ? { status: "ready", material, sealed } : { status: "missing" };
+    }
+
+    /**
+     * Everything preflight can say about a credential it has in hand, whichever side gave it to it.
+     *
+     * Above this, the vault and the command line differ in how a credential is found and in how it
+     * can fail to be. From here down a credential is a credential, and one set of checks is what
+     * keeps a build agent from being held to a different standard than the dialog.
+     */
+    private async credentialPreflight(input: {
+        material: ResolvedSigningMaterial;
+        platform: SigningPlatform;
+        hostPlatform: GameBuildDesktopPlatform;
+        targets: GameBuildTarget[];
+        iosBundleId: string;
+    }): Promise<BuildPreflightFinding[]> {
+        const { material, platform, hostPlatform, targets, iosBundleId } = input;
+        const findings: BuildPreflightFinding[] = [];
+        if (!signingCredentialSupportedOnHost(material.kind, hostPlatform)) {
+            findings.push({
+                code: "signing-host-unsupported",
+                severity: "error",
+                section: "signing",
+                detail: { platform, host: hostPlatform },
+            });
+        }
+        if (signingReachesNetwork(material)) {
+            findings.push({
+                code: "signing-needs-network",
+                severity: "warning",
+                section: "signing",
+                detail: { platform },
+            });
+        }
+        if (material.kind === "linux-gpg"
+            && !await findGpgBinary({ ...(material.gpgPath ? { configuredPath: material.gpgPath } : {}) })) {
+            findings.push({
+                code: "signing-tool-missing",
+                severity: "error",
+                section: "signing",
+                detail: { platform, tool: "gpg" },
+            });
+        }
+        if (material.kind === "macos-keychain" && hostPlatform === "macos") {
+            findings.push(...await this.macIdentityPreflight(material.identity));
+        }
+        findings.push(...await this.signingExpiryPreflight(material, platform));
+        if (platform === "android" && androidLacksPlayPackage(targets)) {
+            // Signed, and still not publishable on Play - which is exactly the
+            // assumption a release keystore invites. Read off the selected
+            // formats (which `targets` carries) rather than off the platform
+            // alone: turning the AAB format on is the fix, so a selection that
+            // already has it must stop saying this.
+            findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
+        }
+        if (platform === "ios" && targets.some(target => target.platform === "ios")) {
+            findings.push(...await this.iosProfilePreflight(
+                material.kind === "ios-apple" ? material.provisioningProfileFile : null,
+                iosBundleId,
+            ));
         }
         return findings;
     }
@@ -2566,11 +2860,9 @@ export class GameBuildManager {
      * which is more use than "something is wrong with your profile".
      */
     private async iosProfilePreflight(
-        vault: SigningVault,
-        credential: SigningCredential,
+        profilePath: string | null,
         bundleId: string,
     ): Promise<BuildPreflightFinding[]> {
-        const profilePath = vault.materialPath(credential, "provisioningProfileFile");
         if (!profilePath) {
             return [];
         }
@@ -2645,22 +2937,20 @@ export class GameBuildManager {
      * The expiry findings for one credential's certificate.
      *
      * Every certificate worth checking here lives inside a PKCS#12 or a JKS,
-     * whose certificate bags are encrypted under the store password - so this
-     * unseals the credential to read them. The passwords are dropped when the
-     * call returns; what comes back is `SigningInspectResult`, which by its type
-     * carries only certificate facts.
+     * whose certificate bags are encrypted under the store password - which is
+     * why this takes unsealed material rather than a credential. The passwords
+     * are dropped when the call returns; what comes back is
+     * `SigningInspectResult`, which by its type carries only certificate facts.
      *
      * A credential whose certificate this process cannot reach at all - one in
      * the Windows certificate store, or in Azure - has no container and is
      * skipped. Its expiry is the signing tool's business, not ours.
      */
     private async signingExpiryPreflight(
-        vault: SigningVault,
-        credential: SigningCredential,
+        material: ResolvedSigningMaterial,
         platform: SigningPlatform,
     ): Promise<BuildPreflightFinding[]> {
-        const material = await vault.resolveMaterial(credential.id);
-        const container = material ? certificateContainer(material) : null;
+        const container = certificateContainer(material);
         if (!container) {
             return [];
         }
@@ -2729,19 +3019,38 @@ export class GameBuildManager {
         // is resolved whenever the author configured one, whether or not a Linux
         // target is in the request - which is the only way it is reachable at
         // all from a Windows host, where a Linux target cannot be built.
-        if (ids.linux) {
+        if (ids.linux || this.commandLineSigning.has("linux")) {
             needed.add("linux");
         }
-        const slots = [...needed].filter(slot => ids[slot]);
+        const slots = [...needed].filter(slot => this.commandLineSigning.has(slot) || ids[slot]);
         if (slots.length === 0) {
             return {};
         }
-        const vault = this.signingVault();
-        if (!vault) {
-            throw new Error("This project is configured to sign its builds, but the credential vault is unavailable.");
-        }
         const signing: ResolvedBuildSigning = {};
         for (const platform of slots) {
+            // The command line wins over the project's selection. A project's id
+            // names a credential in the vault of the machine its author works on,
+            // which on a build agent is a handle to nothing; a job that carried
+            // its own credential in meant to sign with it.
+            const supplied = this.commandLineSigning.get(platform);
+            if (supplied) {
+                signing[platform] = supplied.material;
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `signing the ${platform} build with the credential given on the command line`
+                        + ` (${supplied.kind})`,
+                });
+                continue;
+            }
+            // Looked up lazily: a run whose every slot came from the command line
+            // has no business failing because this machine has no vault.
+            const vault = this.signingVault();
+            if (!vault) {
+                throw new Error(
+                    "This project is configured to sign its builds, but the credential vault is unavailable.",
+                );
+            }
             const id = ids[platform]!;
             const credential = await vault.get(id);
             if (!credential) {
@@ -2792,8 +3101,6 @@ export class GameBuildManager {
              */
             targets: GameBuildMobileTarget[];
             site: GameRuntimeArtifactCompileResult;
-            /** Opaque protection key, or undefined for a plain (unprotected) build. */
-            contentKey?: string;
             /** Credentials this build already unsealed; the mobile slots may be empty. */
             signing: ResolvedBuildSigning;
         },
@@ -2806,15 +3113,20 @@ export class GameBuildManager {
         });
         const { identity, site } = input;
         const orientation = readMobileOrientation(input.projectConfig);
+        // The key the payload container is sealed under. Fresh per build and kept nowhere, because
+        // nothing later needs it: the shell reads it from shell-config.json, in the same package as
+        // the payload it opens - which is also why the container is a format rather than a
+        // protection. Independent of the project's protection switch: every mobile build is packed
+        // this way, as every desktop build is packed into its own format.
+        const contentKey = wrapPackKey(crypto.randomBytes(32));
         const shellConfig: MobileShellConfigV1 = {
             schemaVersion: template.manifest.shellConfigSchemaVersion,
             orientation,
             // Same pre-boot background the entry document paints, so the native
             // window and the document agree on the first frame.
             backgroundColor: resolveGameRuntimeInitialBackgroundColor(site.pack),
-            // Present only when the payload is protected; the shell reads it to
-            // decode, and it stays plain in shell-config (the bootstrap file).
-            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
+            // Plain in the bootstrap file, which is what the shell reads before it can decode.
+            contentKey,
         };
         // The mobile shells serve the compiled web site, so its icon files are
         // already staged; the entry document just has to reference the ones
@@ -2824,10 +3136,10 @@ export class GameBuildManager {
 
         const job: GameBuildWorkerMobileJob = {
             sourceDir: site.appDir,
-            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
+            contentKey,
             templateManifest: template.manifest,
             productName: identity.productName,
-            appDirBaseName: identity.artifactBaseName,
+            appDirBaseName: iosAppDirectoryName(identity.artifactBaseName, identity.appId),
             orientation,
             indexHtmlOverride: buildWebIndexHtml(site.pack, { hasFavicon, hasAppleTouchIcon, variant: "mobile" }),
             shellConfigJson: JSON.stringify(shellConfig),
@@ -3224,7 +3536,7 @@ export class GameBuildManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
@@ -3265,6 +3577,41 @@ export class GameBuildManager {
         // one thing every reader of one expects is that the last line ends.
         await fs.writeFile(target, `${text}\n`, "utf-8");
         return target;
+    }
+
+    /**
+     * Stage the third-party notice for each kind of package this build writes, and answer with
+     * their paths: `desktop` for the Electron packages, `web` for the site the web export and both
+     * mobile packages serve. They differ because the two carry different runtime files (see
+     * thirdPartyNotices.ts). A kind the build does not write is null.
+     *
+     * Files for the reason the copyright notice is one, beside it in the build scratch directory.
+     */
+    private async writeThirdPartyNotices(
+        projectPath: string,
+        input: {
+            runtimeDistDir: string;
+            plugins: readonly GameRuntimePluginSource[];
+            desktop: boolean;
+            web: boolean;
+        },
+    ): Promise<{ desktop: string | null; web: string | null }> {
+        const dir = path.join(projectPath, ".nlstudio", "build");
+        const write = async (shell: "electron" | "web", fileName: string): Promise<string> => {
+            const text = await gameThirdPartyNotices({
+                runtimeDistDir: input.runtimeDistDir,
+                shell,
+                plugins: input.plugins,
+            });
+            const target = path.join(dir, fileName);
+            await fs.mkdir(dir, { recursive: true });
+            await fs.writeFile(target, text, "utf-8");
+            return target;
+        };
+        return {
+            desktop: input.desktop ? await write("electron", THIRD_PARTY_NOTICES_FILENAME) : null,
+            web: input.web ? await write("web", `web-${THIRD_PARTY_NOTICES_FILENAME}`) : null,
+        };
     }
 
     /**
@@ -3421,17 +3768,6 @@ export class GameBuildManager {
         }
     }
 
-    /** Same key resolution Preview uses: production ships the identical protection path. */
-    private async resolveEncryptionKey(
-        projectPath: string,
-        projectConfig: ProjectConfigData | null,
-    ): Promise<string | undefined> {
-        if (!this.encryptAssetsEnabled(projectConfig)) {
-            return undefined;
-        }
-        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
-    }
-
     /**
      * Report the shipped-content audit, and stop the build if the package cannot answer for itself.
      *
@@ -3579,8 +3915,35 @@ export class GameBuildManager {
      * window in which the finished run reads as "there is no report".
      */
     private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
-        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, snapshot));
-        session.snapshot = snapshot;
+        const stamped = this.stampRunVariant(session, snapshot);
+        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, stamped));
+        session.snapshot = stamped;
+    }
+
+    /**
+     * Say what this run can be traced back to, off the pack it just produced.
+     *
+     * Read from the pack rather than from the values that went into it, so that what the console
+     * says and what the artifact carries cannot differ. `null` is a run that compiled nothing, which
+     * has no artifact to describe.
+     */
+    private reportBuildProvenance(session: BuildSession, pack: GameRuntimePackV1 | null): void {
+        if (!pack) {
+            return;
+        }
+        this.emit(session, { level: "info", source: "Build", message: describeBuildProvenance(pack) });
+    }
+
+    /**
+     * Carry the run's variant onto the snapshot it finishes with.
+     *
+     * Done here rather than at each of the places that assemble a terminal snapshot: the variant is
+     * resolved once per run and recorded on the session, and every terminal snapshot goes through
+     * this or {@link failSession}. A run that never got as far as resolving one says nothing, which
+     * is the truthful answer for a build that failed on its first gate.
+     */
+    private stampRunVariant(session: BuildSession, snapshot: GameBuildStateSnapshot): GameBuildStateSnapshot {
+        return session.appTagName ? { ...snapshot, variant: session.appTagName } : snapshot;
     }
 
     private runRecord(session: BuildSession, snapshot: GameBuildStateSnapshot): LastGameBuildRun {
@@ -3624,7 +3987,7 @@ export class GameBuildManager {
         if (session.snapshot.status === "done") {
             return;
         }
-        session.snapshot = {
+        session.snapshot = this.stampRunVariant(session, {
             status: "error",
             // A run that stopped counts nothing. A fraction left over from the step it stopped in
             // would go on describing a pass that ended when the build did.
@@ -3633,7 +3996,7 @@ export class GameBuildManager {
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
             error: message,
-        };
+        });
         if (!session.cancelled) {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
@@ -3685,10 +4048,18 @@ export class GameBuildManager {
     /**
      * A configured, non-empty string setting, or undefined.
      *
+     * `--build-setting` is read first and wins outright, including when it gives an empty value:
+     * that is how a command line says "the official source" about a mirror the profile has set, and
+     * falling through to the profile would leave no way to say it.
+     *
      * Guarded because a build must not fail over a store read: an unreadable setting means the
      * official source, which is the same thing an unconfigured one means.
      */
     private readStringSetting(key: string): string | undefined {
+        const given = this.commandLineSettings[key];
+        if (given !== undefined) {
+            return given.trim() ? given.trim() : undefined;
+        }
         try {
             const value = this.app.getGlobalState().get(key);
             return typeof value === "string" && value.trim() ? value.trim() : undefined;

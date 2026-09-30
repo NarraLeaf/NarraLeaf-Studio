@@ -18,6 +18,7 @@
 
 import { Game } from "narraleaf-react";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { getInterface } from "@/lib/app/bridge";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
@@ -243,6 +244,22 @@ export async function installPrebuiltPuppetRuntime(
     const backend = requestedBackend.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(backend)) {
         fail(`"${requestedBackend}" cannot be a runtime folder name. Use letters, digits, dots, dashes or underscores.`);
+    }
+
+    // Ahead of the copy, because the load below cannot succeed for a distrusted project and the
+    // rollback would leave the author with a whole directory copied, deleted, and one word of
+    // explanation. Nothing about the writing is refused - distrust does not freeze a project - but
+    // this route ends in running the module to learn what it registers, and that is what waits on
+    // the author's say-so. The SDK route writes without loading and is not refused here.
+    //
+    // Said in full rather than pointed at Settings, because the connection between installing a
+    // runtime and running one is not obvious from where the author is standing.
+    if (!await isProjectTrusted(project.resolve())) {
+        fail(
+            "This project is not trusted, so Studio will not load code from it - and installing a "
+            + "prebuilt runtime means loading it to find out which backend it registers. Trust the "
+            + "project under Settings, then install it.",
+        );
     }
 
     const target = runtimeDir(project, backend);

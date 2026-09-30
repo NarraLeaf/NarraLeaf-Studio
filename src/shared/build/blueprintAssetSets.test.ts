@@ -210,7 +210,7 @@ describe("attachBlueprintAssetSetVariants", () => {
             };
 
             expect(run(graph).problems).toEqual([
-                { kind: "axisUnset", setId: EDITION_SET_ID, setName: "Cover", axisKey: "release", slice: "a blueprint" },
+                { kind: "axisUnset", setId: EDITION_SET_ID, setName: "Cover", axisKey: "release", slice: "blueprint" },
             ]);
         });
     });

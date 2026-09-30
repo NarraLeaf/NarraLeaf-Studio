@@ -102,3 +102,14 @@ export function loreTestIdentity(fallback: string): string {
 export function loreTestSession(): VcsServerSession | null {
     return resolved;
 }
+
+/**
+ * The sign-in question, answered yes - for a `VcsManager` whose projects use the test sign-in.
+ *
+ * A sign-in serves a project only once the author has said it does, and the manager asks through
+ * a function the product wires to a window. A suite that wants its projects to go online as the
+ * test account passes this, which is what an author who said yes would have given.
+ */
+export async function loreTestSessionUse(): Promise<boolean> {
+    return true;
+}

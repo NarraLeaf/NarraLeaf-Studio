@@ -110,6 +110,11 @@ export class UpdateManager {
      *
      * Called once the app is ready. The delay exists so the check never competes with opening a
      * project: it is the least urgent thing Studio does at start-up.
+     *
+     * The launch check is the half a command-line run does not get: `--build`, `--test` and `--lint`
+     * answer one question and ask nothing of the network on the way. See `startupExtras.ts`. The
+     * wiring above it still happens, so anything that reads this state in a run reads a true one -
+     * only the request is missing.
      */
     public initialize(): void {
         this.state = { ...this.state, currentVersion: this.app.getAppInfo().version };
@@ -118,6 +123,10 @@ export class UpdateManager {
             this.wireAutoUpdater();
         }
 
+        if (!this.app.getStartupExtras().launchUpdateCheck) {
+            this.app.logger.info("[Update] No launch check: this is a command-line run.");
+            return;
+        }
         if (this.app.globalState.get(UPDATE_AUTO_CHECK_KEY) === false) {
             this.app.logger.info("[Update] Launch check is off.");
             return;

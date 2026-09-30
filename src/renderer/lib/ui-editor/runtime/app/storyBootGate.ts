@@ -7,6 +7,7 @@
  */
 
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import { needsRunningGame } from "./runtimeRefusals";
 
 /**
  * Whether the surface stack may draw.
@@ -25,7 +26,11 @@ export function surfacesMayDraw(input: {
     return (input.storyBootFinished || input.hostDrawsBeforeStoryBoot) && !input.localeResumePending;
 }
 
-export type StoryStartGate = (request: DevModeStartStoryRequest) => Promise<void>;
+export type StoryStartGate = (
+    request: DevModeStartStoryRequest,
+    /** What a Load Save carries into the run it starts; forwarded, never the gate's to read. */
+    options?: { inheritSavedGame?: unknown },
+) => Promise<void>;
 
 /**
  * The player entering a story, made to wait for a boot still in flight.
@@ -34,19 +39,92 @@ export type StoryStartGate = (request: DevModeStartStoryRequest) => Promise<void
  * takes its slow path: a second compile of the same story, racing the boot's own mount, with the
  * loser superseded. Waiting is both cheaper and what the press means - the player asked to play,
  * not to play twice.
+ *
+ * Every surface a game draws reaches `startStory` through this - the page, a frame inside it and a
+ * Game UI slot alike. They used to differ: only the slot waited, because only the slot had a reason
+ * of its own to go through a ref. The window they disagreed about is exactly the one Dev Mode makes
+ * wide, since the title screen is up seconds before the story behind it is warm, and Start Game is
+ * on the title screen.
  */
+/**
+ * Mount the environment a menu stands on in the background, published where a boot is.
+ *
+ * A menu needs a game environment although nothing is being played on it: its buttons' sounds play
+ * through it, a volume slider moves its mixer, and Load and Continue read a save into it. The boot
+ * mounts one before the first page; a quit tears the run's one down and needs another under the
+ * page it lands on. Published as `pendingBoot`, so a Start pressed meanwhile waits for it and then
+ * enters the scene it warmed instead of mounting a second environment beside it.
+ *
+ * The published promise never rejects, which is the gate's contract for `pendingBoot`. A mount that
+ * was superseded - by a hot reload, or by another quit - is not a failure: whatever superseded it
+ * owns the environment now. Anything else is reported, and the gate is released either way.
+ */
+export function publishMenuEnvironmentMount(input: {
+    mount: () => Promise<void>;
+    pendingBoot: { current: Promise<void> | null };
+    isSuperseded: (error: unknown) => boolean;
+    onSuperseded: (error: unknown) => void;
+    onFailure: (error: unknown) => void;
+}): Promise<void> {
+    const pending = (async () => {
+        try {
+            await input.mount();
+        } catch (error) {
+            if (input.isSuperseded(error)) {
+                input.onSuperseded(error);
+                return;
+            }
+            input.onFailure(error);
+        }
+    })();
+    input.pendingBoot.current = pending;
+    return pending;
+}
+
 export function createStoryStartGate(input: {
     /** The boot in flight, or null when none is. Never rejects: the boot reports its own failures. */
     pendingBoot: { readonly current: Promise<void> | null };
     /** The runtime's own start, once it exists. */
     start: { readonly current: StoryStartGate | null };
 }): StoryStartGate {
-    return async request => {
-        await input.pendingBoot.current;
-        const start = input.start.current;
-        if (!start) {
-            throw new Error("Start Game: runtime is not ready");
+    /**
+     * The start already running and what it was for, so a second press of the same button joins it.
+     *
+     * The wait above is what makes this necessary. A press that has to wait looks to the player
+     * exactly like a press that did nothing, so they press again - and every press used to be
+     * another run of `startStoryInGame`, all of them released at once when the boot settled, each
+     * superseding the last. What the player saw for that was the title screen, unchanged.
+     *
+     * Only an identical request folds in. A different story, or one carrying a saved game, is a
+     * different thing to have asked for and still runs on its own.
+     */
+    let inFlight: { key: string; done: Promise<void> } | null = null;
+
+    return async (request, options) => {
+        const key = options?.inheritSavedGame === undefined
+            ? JSON.stringify([request.storyId, request.sceneId, request.startBlockId ?? "", request.snapshotId ?? ""])
+            : null;
+        if (key !== null && inFlight?.key === key) {
+            await inFlight.done;
+            return;
         }
-        await start(request);
+        const done = (async () => {
+            await input.pendingBoot.current;
+            const start = input.start.current;
+            if (!start) {
+                throw needsRunningGame("blueprint.node.startGame");
+            }
+            await start(request, options);
+        })();
+        if (key !== null) {
+            const entry = { key, done };
+            inFlight = entry;
+            void done.catch(() => undefined).then(() => {
+                if (inFlight === entry) {
+                    inFlight = null;
+                }
+            });
+        }
+        await done;
     };
 }

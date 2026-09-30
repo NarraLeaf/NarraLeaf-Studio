@@ -12,9 +12,11 @@ import {
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { getProject, listProjectHistory } from "@/lib/team";
+import { revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
 import type { TranslationKey } from "@shared/i18n";
 import { serverProblemFromTeam } from "@shared/types/vcs";
 import type {
+    VcsServerAccount,
     VcsServerProject,
     VcsServerProjectDetail as ServerProjectDetail,
     VcsServerProjectHistoryPage,
@@ -55,6 +57,11 @@ export interface ServerProjectDetailProps {
     project: VcsServerProject;
     /** The server's name, for the one sentence that has to say which list is being changed. */
     server: string;
+    /**
+     * The account this installation is signed in to the server as, so a version recorded under
+     * its id is drawn under its name (`revisionAuthorLabel`).
+     */
+    account?: VcsServerAccount | null;
     /**
      * Where this machine keeps this project, or null when it has never had it.
      *
@@ -100,6 +107,7 @@ export function ServerProjectDetailView({
     remoteOrigin,
     project,
     server,
+    account = null,
     localPath,
     canDetail,
     canHistory,
@@ -289,7 +297,7 @@ export function ServerProjectDetailView({
                 )}
                 {problem !== null && <p className="text-xs text-danger">{t(problem)}</p>}
 
-                <Facts project={known} file={file} />
+                <Facts project={known} file={file} account={account} />
 
                 {empty && (
                     <p className="mt-2 text-xs text-fg-subtle" data-project-empty>
@@ -308,7 +316,7 @@ export function ServerProjectDetailView({
                     heading and a box. A count that disagrees with the page still draws, so
                     nothing real is hidden by this. */}
                 {page?.revisions !== undefined && (!empty || page.revisions.length > 0) && (
-                    <Versions revisions={page.revisions} more={page.more} />
+                    <Versions revisions={page.revisions} more={page.more} account={account} />
                 )}
 
                 {/* Under the same heading the list would have had, because it is about the
@@ -440,14 +448,16 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 function Facts({
     project,
     file,
+    account,
 }: {
     project: VcsServerProject;
     file: ServerProjectDetail["file"] | null;
+    account: VcsServerAccount | null;
 }) {
     const { t, formatDate, formatNumber } = useTranslation();
     const day: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric" };
     const lastAt = project.history?.lastAt;
-    const lastBy = project.history?.lastBy?.trim();
+    const lastBy = revisionAuthorLabel(project.history?.lastBy, account) ?? undefined;
     const readable = file?.readable === true ? file : null;
     const stage = readable !== null
         && typeof readable.stageWidth === "number"
@@ -499,7 +509,15 @@ function Facts({
  * real state a project passes through and is drawn as what it is. It is reached only
  * because the absent case was separated out before this was called.
  */
-function Versions({ revisions, more }: { revisions: readonly VcsServerRevision[]; more: boolean }) {
+function Versions({
+    revisions,
+    more,
+    account,
+}: {
+    revisions: readonly VcsServerRevision[];
+    more: boolean;
+    account: VcsServerAccount | null;
+}) {
     const { t, formatDate } = useTranslation();
 
     return (
@@ -511,35 +529,38 @@ function Versions({ revisions, more }: { revisions: readonly VcsServerRevision[]
                         {t("launcher.servers.detail.noVersions")}
                     </p>
                 )}
-                {revisions.map(revision => (
-                    <div
-                        key={revision.id}
-                        data-project-revision={revision.id}
-                        className="border-t border-edge px-3 py-2 first:border-t-0"
-                    >
-                        {/* A version with no message is still a version; it reads as the id
-                            it can be referred to by rather than as a blank line. */}
-                        <span className="block truncate text-xs text-fg">
-                            {revision.message ?? revision.id.slice(0, 7)}
-                        </span>
-                        {(revision.by !== undefined || (revision.at ?? 0) > 0) && (
-                            <span className="flex gap-2 text-2xs text-fg-subtle">
-                                {revision.by !== undefined && (
-                                    <span className="min-w-0 truncate">{revision.by}</span>
-                                )}
-                                {(revision.at ?? 0) > 0 && (
-                                    <span className="shrink-0">
-                                        {formatDate(revision.at as number, {
-                                            year: "numeric",
-                                            month: "short",
-                                            day: "numeric",
-                                        })}
-                                    </span>
-                                )}
+                {revisions.map(revision => {
+                    const by = revisionAuthorLabel(revision.by, account);
+                    return (
+                        <div
+                            key={revision.id}
+                            data-project-revision={revision.id}
+                            className="border-t border-edge px-3 py-2 first:border-t-0"
+                        >
+                            {/* A version with no message is still a version; it reads as the id
+                                it can be referred to by rather than as a blank line. */}
+                            <span className="block truncate text-xs text-fg">
+                                {revision.message ?? revision.id.slice(0, 7)}
                             </span>
-                        )}
-                    </div>
-                ))}
+                            {(by !== null || (revision.at ?? 0) > 0) && (
+                                <span className="flex gap-2 text-2xs text-fg-subtle">
+                                    {by !== null && (
+                                        <span className="min-w-0 truncate">{by}</span>
+                                    )}
+                                    {(revision.at ?? 0) > 0 && (
+                                        <span className="shrink-0">
+                                            {formatDate(revision.at as number, {
+                                                year: "numeric",
+                                                month: "short",
+                                                day: "numeric",
+                                            })}
+                                        </span>
+                                    )}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
             {more && (
                 <p className="mt-1 text-2xs text-fg-subtle">

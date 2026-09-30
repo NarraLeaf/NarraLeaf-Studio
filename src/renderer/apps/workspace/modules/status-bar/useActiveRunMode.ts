@@ -43,13 +43,17 @@ const PREVIEW_PHASE: Partial<Record<PreviewStatus, TranslationKey>> = {
 };
 
 const BUILD_PHASE: Partial<Record<GameBuildStatus, TranslationKey>> = {
+    // The pre-build checks, which run in this window before the pipeline is asked for anything -
+    // see `GameBuildStatus`. They are the first thing a build does and they can read the whole
+    // project, so this is the phase the cell shows for most of a stopped build.
+    checking: PHASE("checking"),
     preparing: PHASE("preparing"),
     compiling: PHASE("compiling"),
     packaging: PHASE("packaging"),
 };
 
 function isBuildActive(status: GameBuildStatus): boolean {
-    return status === "preparing" || status === "compiling" || status === "packaging";
+    return status === "checking" || status === "preparing" || status === "compiling" || status === "packaging";
 }
 
 /**

@@ -68,6 +68,7 @@ export const pluginPermission = {
             node: "插件自身的代码作为游戏的一部分运行",
         },
         buildDependencyHosts: "下载来源：{hosts}",
+        studioApi: "Studio API：{capability}",
         runtimeCapability: {
             store: "在玩家的存档旁保存自己的数据",
             events: "获知游戏进程（场景、对白、选项、存档）",
@@ -77,8 +78,11 @@ export const pluginPermission = {
             savesWrite: "覆盖玩家的存档，并读取存档（会替换当前进度）",
             uiOverlay: "在游戏画面上叠加显示内容",
             assets: "解析游戏内置资产的地址",
-            locale: "读取并跟随游戏语言",
+            locale: "读取游戏语言与项目的本地化文案",
+            menu: "提供游戏窗口的菜单栏",
             storyCompile: "参与剧情的编译，并在它没有写过的对白上追加动作",
+            diagnostics: "读取游戏缓存占用了多少内存",
+            processMemory: "读取游戏占用了多少电脑内存",
         },
     },
     button: {

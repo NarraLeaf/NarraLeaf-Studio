@@ -24,39 +24,29 @@ import {
     BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE,
     BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
-    const raw = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const raw = resolveNodeInput(ctx, pinId);
     return raw === null || raw === undefined ? "" : String(raw);
 }
 
 /** An optional boolean pin, false when unwired and left blank. */
 function resolvePinBoolean(ctx: NodeExecuteContext, pinId: string): boolean {
-    const raw = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const raw = resolveNodeInput(ctx, pinId);
     return raw === true || raw === "true" || raw === 1;
 }
 
 export const voiceBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
+        assetNames: "assembled",
         displayName: "Get Voice Language",
         category: "Voice",
         keywords: ["voice", "dub", "language", "locale", "audio", "get"],
@@ -90,11 +80,23 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const locales = api.voice.listLocales();
             if (locales.length === 0) {
-                throw new BlueprintGraphExecutionError("This project has no voice languages configured", ctx.node.id);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noVoiceLanguages"), ctx.node.id);
             }
             const code = resolvePinString(ctx, "language").trim();
-            if (!code || !locales.some(entry => entry.code === code)) {
-                throw new BlueprintGraphExecutionError(`Unknown voice language: ${code || "(empty)"}`, ctx.node.id);
+            if (!code) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.setVoiceLanguage"),
+                        pin: translate("blueprint.port.language"),
+                    }),
+                    ctx.node.id,
+                );
+            }
+            if (!locales.some(entry => entry.code === code)) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.unknownVoiceLanguage", { language: code }),
+                    ctx.node.id,
+                );
             }
             await api.voice.setLocale(code);
             return { nextPort: "next" };
@@ -102,6 +104,7 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
+        assetNames: "assembled",
         displayName: "Get Available Voice Languages",
         category: "Voice",
         keywords: ["voice", "dub", "language", "locale", "audio", "list", "selector"],
@@ -179,7 +182,7 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
             const item = ctx.listItemScope?.item;
             if (!item || typeof item !== "object") {
                 throw new BlueprintGraphExecutionError(
-                    "Play Choice Voice runs inside a choice list row",
+                    translate("blueprint.runtimeError.needsChoiceRow", { node: translate("blueprint.node.playChoiceVoice") }),
                     ctx.node.id,
                 );
             }

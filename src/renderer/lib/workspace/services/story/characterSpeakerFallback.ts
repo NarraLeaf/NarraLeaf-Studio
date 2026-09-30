@@ -2,6 +2,7 @@ import type { StoryBlock, StoryBlockId, StoryDocument, StoryId, StorySceneId } f
 import {
     bindRowsToCharacter,
     collectRowsSpokenBy,
+    collectRowsSpokenByName,
     setRowsSpeakerName,
     type StoryDialogueRowRef,
 } from "./storyModel";
@@ -81,6 +82,51 @@ export async function planCharacterSpeakerFallback(
         }
     }
     return plan;
+}
+
+/**
+ * Find every dialogue row in the project spoken by a bare name, matched exactly.
+ *
+ * The sibling of {@link planCharacterSpeakerFallback}, for the case a rename raises: rows that say
+ * a name with no character behind them. They are not this character's rows - nothing binds them -
+ * which is why renaming never touches them on its own. They are offered, and only when the author
+ * says so does {@link applySpeakerNameRename} write the new name onto them.
+ *
+ * Exact match, and only rows with no `characterId`: a row bound to a character already follows that
+ * character's name, and matching loosely would rename lines that merely look similar.
+ */
+export async function planSpeakerNameRows(
+    stories: StoryDocumentWriter,
+    speakerName: string,
+): Promise<CharacterSpeakerFallbackPlan> {
+    const wanted = speakerName.trim();
+    if (!wanted) {
+        return [];
+    }
+    const plan: { storyId: StoryId; rows: readonly StoryDialogueRowRef[] }[] = [];
+    for (const entry of stories.listStories()) {
+        let document: StoryDocument;
+        try {
+            document = await stories.loadStory(entry.id);
+        } catch (error) {
+            console.warn(`[characterSpeakerFallback] could not read story ${entry.id}:`, error);
+            continue;
+        }
+        const rows = collectRowsSpokenByName(document, wanted);
+        if (rows.length > 0) {
+            plan.push({ storyId: entry.id, rows });
+        }
+    }
+    return plan;
+}
+
+/** Write a new bare name onto every planned row. The inverse is the same call with the old name. */
+export function applySpeakerNameRename(
+    stories: StoryDocumentWriter,
+    plan: CharacterSpeakerFallbackPlan,
+    speakerName: string,
+): void {
+    applyCharacterSpeakerFallback(stories, plan, speakerName);
 }
 
 /** Write the bare name onto every planned row - one mutation per document, so one save each. */

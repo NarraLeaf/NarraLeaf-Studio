@@ -135,9 +135,6 @@ function createHarness(files: Record<string, string> = {}, options: { refuseWrit
             }
             return record(path, data);
         },
-        async recoverCorruptedJsonFile(path: string, replacement: string) {
-            return record(path, replacement);
-        },
     };
 
     const context = {

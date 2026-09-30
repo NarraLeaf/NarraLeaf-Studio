@@ -7,7 +7,7 @@
  * of range snaps back to the last good value instead of being stored.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/lib/components/elements";
 
 export function NumberField({
@@ -29,6 +29,10 @@ export function NumberField({
     onCommit: (value: number) => void;
 }) {
     const [draft, setDraft] = useState(String(value));
+    // Set by Escape for the blur it causes. That blur runs the handler this render created, which
+    // still holds the typed draft - putting the draft back is only visible from the next render - so
+    // without this the edit Escape abandons was the one that got stored.
+    const abandoning = useRef(false);
 
     // Follow the stored value when it changes underneath us - a rejected write
     // rolls back, and the field has to roll back with it.
@@ -37,6 +41,10 @@ export function NumberField({
     }, [value]);
 
     const commit = () => {
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         const parsed = Number.parseInt(draft, 10);
         if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
             setDraft(String(value));
@@ -65,11 +73,15 @@ export function NumberField({
                 aria-label={ariaLabel}
                 className={`${width} text-right`}
                 onChange={event => setDraft(event.target.value)}
+                onFocus={() => {
+                    abandoning.current = false;
+                }}
                 onBlur={commit}
                 onKeyDown={event => {
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     } else if (event.key === "Escape") {
+                        abandoning.current = true;
                         setDraft(String(value));
                         event.currentTarget.blur();
                     }

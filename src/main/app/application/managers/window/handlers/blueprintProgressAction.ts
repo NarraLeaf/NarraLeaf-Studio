@@ -16,6 +16,12 @@
  * and it is deliberately not a fallback: a guessed key would write a document the real build would
  * never look at, which is worse than a failure branch the author can see.
  *
+ * **Which project** is the window's, not the payload's. The document these reach is not Studio's
+ * own: it is the file a shipped build of that title writes on this machine, under the player's
+ * `NarraLeaf/progress/`. Deriving the key here rather than taking one from the caller stops a
+ * request reaching *another title's* document; requiring the window's project stops it reaching
+ * another project's title, which is the same document by a longer route.
+ *
  * Comments in English per project convention.
  */
 
@@ -37,6 +43,7 @@ import {
 } from "@shared/utils/gameProgressFile";
 import path from "path";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -45,11 +52,12 @@ export class BlueprintProgressWriteHandler extends IPCHandler<IPCEventType.bluep
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
+        window: AppWindow,
         data: IPCEvents[IPCEventType.blueprintProgressWrite]["data"],
     ): Promise<RequestStatus<{ result: GameProgressExportResult }>> {
         try {
-            return this.success({ result: await writeProjectProgress(data.projectPath, data.request) });
+            const projectPath = requireWindowProject(window, data.projectPath);
+            return this.success({ result: await writeProjectProgress(projectPath, data.request) });
         } catch (err) {
             return this.failed(err);
         }
@@ -61,11 +69,12 @@ export class BlueprintProgressReadHandler extends IPCHandler<IPCEventType.bluepr
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
+        window: AppWindow,
         data: IPCEvents[IPCEventType.blueprintProgressRead]["data"],
     ): Promise<RequestStatus<{ result: GameProgressImportResult }>> {
         try {
-            return this.success({ result: await readProjectProgress(data.projectPath) });
+            const projectPath = requireWindowProject(window, data.projectPath);
+            return this.success({ result: await readProjectProgress(projectPath) });
         } catch (err) {
             return this.failed(err);
         }

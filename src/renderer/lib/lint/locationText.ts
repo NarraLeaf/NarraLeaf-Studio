@@ -40,6 +40,10 @@ export function describeLintLocation(location: LintLocation): string {
             return location.elementName
                 ? `${location.surfaceName}${LINT_LOCATION_SEPARATOR}${location.elementName}`
                 : location.surfaceName;
+        case "component":
+            return location.elementName
+                ? `${location.componentName}${LINT_LOCATION_SEPARATOR}${location.elementName}`
+                : location.componentName;
         case "character":
             return location.characterName;
     }

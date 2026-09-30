@@ -4,6 +4,8 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { UserDataNamespace } from "@shared/types/constants";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
+import { forgetProjectStoreIdentifiers } from "../../../utils/windowProjectStore";
 import type { AppWindow } from "../appWindow";
 import {
     DevModeSaveDeleteHandler,
@@ -15,8 +17,10 @@ import {
 
 let tempDir = "";
 
-function createWindow(): AppWindow {
+/** A Dev Mode window open on one project, whose stores land on disk under the temp directory. */
+function createWindow(projectPath: string): AppWindow {
     return {
+        getProps: () => ({ projectPath }),
         app: {
             storageManager: {
                 getNamespacePath(namespace: UserDataNamespace) {
@@ -25,6 +29,17 @@ function createWindow(): AppWindow {
             },
         },
     } as unknown as AppWindow;
+}
+
+/** A project folder whose configuration carries `identifier`, which is what names its stores. */
+async function createProject(name: string, identifier: string): Promise<string> {
+    const projectPath = path.join(tempDir, "projects", name);
+    await fs.mkdir(projectPath, { recursive: true });
+    await fs.writeFile(
+        path.join(projectPath, "game.nlproj"),
+        encodeProjectConfig({ name, identifier, metadata: {} }),
+    );
+    return projectPath;
 }
 
 async function listAllFiles(root: string): Promise<string[]> {
@@ -46,6 +61,7 @@ async function listAllFiles(root: string): Promise<string[]> {
 
 describe("dev mode save IPC handlers", () => {
     beforeEach(async () => {
+        forgetProjectStoreIdentifiers();
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-dev-save-"));
     });
 
@@ -54,14 +70,17 @@ describe("dev mode save IPC handlers", () => {
     });
 
     it("writes, overwrites, reads, lists, and reads preview captures by project", async () => {
-        const window = createWindow();
+        const pathA = await createProject("a", "project-a");
+        const pathB = await createProject("b", "project-b");
+        const window = createWindow(pathA);
+        const windowB = createWindow(pathB);
         const write = new DevModeSaveWriteHandler();
         const read = new DevModeSaveReadHandler();
         const list = new DevModeSaveListIdsHandler();
         const preview = new DevModeSaveReadPreviewHandler();
         const deleteSave = new DevModeSaveDeleteHandler();
-        const projectA: DevModeSaveProjectRef = { projectIdentifier: "project-a", projectPath: "/tmp/project" };
-        const projectB: DevModeSaveProjectRef = { projectIdentifier: "project-b", projectPath: "/tmp/project" };
+        const projectA: DevModeSaveProjectRef = { projectPath: pathA };
+        const projectB: DevModeSaveProjectRef = { projectPath: pathB };
 
         await expect(
             write.handle(window, {
@@ -103,7 +122,7 @@ describe("dev mode save IPC handlers", () => {
             success: true,
             data: { capture: "data:image/jpeg;base64,two" },
         });
-        await expect(list.handle(window, { projectRef: projectB })).resolves.toEqual({
+        await expect(list.handle(windowB, { projectRef: projectB })).resolves.toEqual({
             success: true,
             data: { ids: [] },
         });
@@ -134,12 +153,13 @@ describe("dev mode save IPC handlers", () => {
     });
 
     it("rejects unsafe ids and skips corrupted files when listing", async () => {
-        const window = createWindow();
+        const projectPath = await createProject("project", "project");
+        const window = createWindow(projectPath);
         const write = new DevModeSaveWriteHandler();
         const read = new DevModeSaveReadHandler();
         const list = new DevModeSaveListIdsHandler();
         const deleteSave = new DevModeSaveDeleteHandler();
-        const projectRef: DevModeSaveProjectRef = { projectPath: "/tmp/project" };
+        const projectRef: DevModeSaveProjectRef = { projectPath };
 
         await expect(write.handle(window, { projectRef, id: "bad/id", savedGame: {} })).resolves.toMatchObject({
             success: false,
@@ -176,5 +196,24 @@ describe("dev mode save IPC handlers", () => {
             success: true,
             data: { ids: ["good"] },
         });
+    });
+
+    /**
+     * The store follows the identifier in the project's configuration, not the folder: that is what
+     * lets an author move a project without losing the saves they were testing against. Read by the
+     * main process off disk, so it holds for every window on the project whatever a request says.
+     */
+    it("finds a moved project's saves by the identifier in its configuration", async () => {
+        const before = await createProject("before", "game.moved");
+        const after = await createProject("after", "game.moved");
+
+        await new DevModeSaveWriteHandler().handle(createWindow(before), {
+            projectRef: { projectPath: before },
+            id: "slot",
+            savedGame: { scene: "intro" },
+        });
+
+        await expect(new DevModeSaveListIdsHandler().handle(createWindow(after), { projectRef: { projectPath: after } }))
+            .resolves.toEqual({ success: true, data: { ids: ["slot"] } });
     });
 });

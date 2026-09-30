@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useWorkspace } from "../../context";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -65,6 +67,12 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
             return;
         }
         setConfig(cloneProjectConfig(projectService.getProjectConfig()));
+        // Every manifest write and re-read, whoever made it. The sections read their rows from this
+        // config, so a change made elsewhere (the build dialog's switches, a reload after a hand edit)
+        // shows here rather than the panel going on showing what it had - and a row that sends a
+        // whole map built from what it shows (lint severities, the allowlist) does not send that
+        // stale map back.
+        return projectService.onConfigChanged(next => setConfig(cloneProjectConfig(next)));
     }, [projectService]);
 
     const handleConfigChange = useCallback((next: ProjectConfig) => {
@@ -72,17 +80,23 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
     }, []);
 
     const closeSection = useCallback(() => setActiveSection(null), []);
+    const rootRef = useRef<HTMLDivElement | null>(null);
 
-    // Escape returns to the overview when a sub-page is open.
+    // Escape returns to the overview when a sub-page is open - unless the key was meant for
+    // something else (see `escapeLeavesSubPage`).
     useEffect(() => {
         if (!activeSection) {
             return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                setActiveSection(null);
+            if (event.key !== "Escape" || isImeKeyEvent(event)) {
+                return;
             }
+            if (!escapeLeavesSubPage(event.target, rootRef.current)) {
+                return;
+            }
+            event.stopPropagation();
+            setActiveSection(null);
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
@@ -102,6 +116,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
 
     return (
         <div
+            ref={rootRef}
             className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface"
             data-panel-id={panelId}
         >
@@ -146,6 +161,33 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
             </AnimatePresence>
         </div>
     );
+}
+
+/**
+ * Whether an Escape pressed on `target` is the panel's, to leave the open sub-page with.
+ *
+ * Not when it was pressed in a field. Escape there abandons the edit (see `NumberField` and
+ * `DetailField`), and a key that also left the page took the author away from the field whose edit
+ * they had just thrown out - to an overview they had not asked for.
+ *
+ * Not when it was pressed anywhere outside the panel either: another panel, a dialog or a menu drawn
+ * over everything. The listener is on the window, and the panel stays mounted while another tab is
+ * in front of it, so without this an Escape that closed a dialog somewhere else also reset this page.
+ *
+ * With nothing focused the key arrives at the body, and then the page on screen is the one it means.
+ */
+export function escapeLeavesSubPage(target: EventTarget | null, panelRoot: HTMLElement | null): boolean {
+    if (!panelRoot || !(target instanceof Node)) {
+        return false;
+    }
+    if (isEditableKeyboardTarget(target)) {
+        return false;
+    }
+    const doc = panelRoot.ownerDocument;
+    if (target === doc.body || target === doc.documentElement) {
+        return true;
+    }
+    return panelRoot.contains(target);
 }
 
 function cloneProjectConfig(config: ProjectConfig): ProjectConfig {

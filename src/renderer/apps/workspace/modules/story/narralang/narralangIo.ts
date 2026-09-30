@@ -1,7 +1,6 @@
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
 import type { NarralangIssue, NarralangIssueDetail, NarralangIssueReason, NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
-import { describeStoryBlock, type StoryRowLookups } from "@/lib/story/storyRowProjection";
-import type { Character } from "@/lib/workspace/services/character/Character";
+import { describeStoryBlock } from "@/lib/story/storyRowProjection";
 import { exportFileName } from "../script/storyScriptIo";
 
 /**
@@ -15,37 +14,6 @@ import { exportFileName } from "../script/storyScriptIo";
  * `unresolvedRef` issue, so a half-built lookup table does not degrade the file, it reports the whole
  * scene as unspeakable.
  */
-
-/**
- * `characterId, refId → name`, over every pose of a preset character and every tag of a layered one.
- *
- * Built the way `buildStoryCommandContext` builds its own appearance table - tags flat across axes,
- * because the engine resolves a tag against the group that owns it and no surface has to say which
- * axis the author meant. A puppet character contributes nothing: what it looks like is named by the
- * model its backend loaded, and the printer takes that name off the payload.
- */
-export function narralangAppearanceNames(
-    characters: readonly Character[],
-): NonNullable<StoryRowLookups["appearanceName"]> {
-    const byCharacter = new Map<string, Map<string, string>>();
-    for (const character of characters) {
-        const appearance = character.profile.appearance;
-        const names = new Map<string, string>();
-        if (appearance.getKind() === "preset") {
-            for (const pose of appearance.getPoses()) {
-                names.set(pose.id, pose.name);
-            }
-        } else {
-            for (const axis of appearance.getAxes()) {
-                for (const tag of axis.tags) {
-                    names.set(tag.id, tag.name);
-                }
-            }
-        }
-        byCharacter.set(character.profile.getId(), names);
-    }
-    return (characterId, refId) => byCharacter.get(characterId)?.get(refId) ?? null;
-}
 
 /** The file name a native save dialog opens with. `.nl` is the NarraLang extension. */
 export function narralangFileName(name: string): string {

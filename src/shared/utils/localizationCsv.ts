@@ -8,6 +8,7 @@
  */
 
 import { readCsvTable, serializeCsv } from "./csv";
+import type { ExchangeProblem } from "./exchangeProblem";
 import type { ParsedTranslationExchange, TranslationExchangeRow } from "./localizationExchange";
 
 export const TRANSLATION_CSV_COLUMNS = ["unit_id", "context", "source", "target", "status", "note"] as const;
@@ -32,17 +33,18 @@ export type ParsedTranslationCsv = ParsedTranslationExchange;
 export function parseTranslationCsv(text: string): ParsedTranslationCsv {
     const table = readCsvTable(text);
     if (!table) {
-        return { rows: [], errors: ["Empty file"] };
+        return { rows: [], problems: [{ code: "empty" }] };
     }
     if (!table.hasColumn("unit_id")) {
-        return { rows: [], errors: ["Missing required column: unit_id"] };
+        return { rows: [], problems: [{ code: "noIdColumn" }] };
     }
     const rows: TranslationCsvRow[] = [];
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
     table.rows.forEach((cells, lineIndex) => {
         const unitId = table.cell(cells, "unit_id").trim();
         if (!unitId) {
-            errors.push(`Row ${lineIndex + 2}: missing unit_id`);
+            // The row number a spreadsheet shows beside it: the header is row 1.
+            problems.push({ code: "missingId", at: { row: lineIndex + 2 } });
             return;
         }
         rows.push({
@@ -54,5 +56,5 @@ export function parseTranslationCsv(text: string): ParsedTranslationCsv {
             note: table.cell(cells, "note"),
         });
     });
-    return { rows, errors };
+    return { rows, problems };
 }

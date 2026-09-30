@@ -94,6 +94,10 @@ export const help = {
                 + "\n"
                 + "- Dev Mode opens the line that is playing in the story editor, from its debug menu.\n"
                 + "- Run starts the mode chosen last.\n"
+                + "- A project that protects its assets has Preview as shipped in the Run menu. Off, a "
+                + "preview and a test run use the project's files directly and start in about a second.\n"
+                + "- Turn it on before a release. A preview and a test run then hold their content "
+                + "exactly as the delivered game does, and the preview window title says so.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",
         },
@@ -225,10 +229,12 @@ export const help = {
             title: "Playing from a row",
             body:
                 "Dev Mode can start at the current row instead of at the beginning of the scene. Nothing before "
-                + "that row runs, and the variables it would have set come from a snapshot.\n"
+                + "that row runs, and the variables it would have set hold the values the project declares for "
+                + "them.\n"
                 + "\n"
                 + "- A snapshot belongs to one scene and gives every variable in its scope a starting value.\n"
-                + "- Starting from a row with no snapshot offers to create one.\n"
+                + "- A snapshot is optional. The snapshot list starts with Defaults, which applies none.\n"
+                + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
         },
         dictionary: {
@@ -284,11 +290,25 @@ export const help = {
                 + "- Replacing an asset's file keeps every reference to it.\n"
                 + "- Deleting an asset that is still in use lists its usages first.",
         },
+        assetSources: {
+            title: "Where an asset's file comes from",
+            body:
+                "An asset holds its own copy of a file. The copy is stored in the project and versioned "
+                + "with it, and it was taken in one of two ways.\n"
+                + "\n"
+                + "- Imported from a file on this machine. The file stays where it is, and Studio does not "
+                + "track it. Replace File imports it again after it changes.\n"
+                + "- Downloaded from an address. The asset records the address and the time of the "
+                + "download, and Check for Updates asks the server whether the copy still matches.\n"
+                + "\n"
+                + "A build and a fresh clone of the project use the stored copy. Neither needs the file "
+                + "it came from, and neither needs a network connection.",
+        },
         assetSets: {
             title: "Asset sets",
             body:
                 "An asset set is one library entry standing for several files that differ by language or by "
-                + "build variant. A story row names the set instead of a file, and the game uses the file "
+                + "build variant. A field can name the set instead of a file, and the game uses the file "
                 + "that matches.\n"
                 + "\n"
                 + "A set stays in the folder it was created in, and its files are listed inside it rather "
@@ -300,8 +320,9 @@ export const help = {
                 + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
                 + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
-                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
-                + "appearances and interface widgets accept a file.",
+                + "- Story rows, character appearances and dialog avatars, images, backgrounds and videos in "
+                + "the interface, and image and sound fields in blueprints accept a set, and their pickers "
+                + "list sets under Asset sets. Font fields accept a file.",
         },
         assetSetAxes: {
             title: "What a set varies by",
@@ -387,12 +408,36 @@ export const help = {
         audioClips: {
             title: "Trimming and looping a clip",
             body:
-                "Opening an audio asset shows its waveform, where three marks can be set: the start, the loop "
-                + "point and the end.\n"
+                "Opening an audio asset shows its waveform, where three marks can be set: the in point, the "
+                + "loop point and the out point.\n"
                 + "\n"
                 + "- With a loop point set, the opening plays once and the part after it repeats.\n"
                 + "- The marks belong to the asset, so every row that plays it uses them.\n"
+                + "- Under the waveform, the loop seam shows the end of the loop beside the point it returns to. "
+                + "Dragging either half sideways moves that mark. Audition seam plays a few seconds either side of it.\n"
+                + "- Levels lists the peak, the loudness, the silence at each end and any clipping.\n"
+                + "- Gain lowers the clip's volume wherever the game plays it. Align loudness sets it from the "
+                + "measured loudness, so every aligned clip plays at the same level. A clip cannot be made louder.\n"
+                + "- Clear all markers plays and loops the whole file again.\n"
+                + "- Scrolling with Option (Alt) held magnifies the waveform vertically. Only the display changes.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
+        },
+        videoClips: {
+            title: "Inspecting a video",
+            body:
+                "Opening a video asset shows the picture, a timeline of its frames and, when the clip has sound, "
+                + "its waveform. Nothing here changes the file.\n"
+                + "\n"
+                + "- Dragging along the ruler scrubs through the clip. Dragging below it selects a range, and play "
+                + "repeats the range while Loop is on.\n"
+                + "- The arrow keys step one frame at a time. The frame number and frame rate are in the status bar.\n"
+                + "- Preview loop seam plays the last two seconds and carries on into the first two, the way a "
+                + "looping clip turns around in the game.\n"
+                + "- The zoom menu sets the picture's size. Scrolling with Command (Ctrl) held zooms at the pointer, "
+                + "and double-clicking switches between the fitted view and actual pixels.\n"
+                + "- A clip with transparent pixels is shown over a checkerboard.\n"
+                + "- Save frame as image adds the frame on screen to the image assets at the clip's own resolution, "
+                + "for use as a poster or a still.",
         },
         voice: {
             title: "Voice-over",
@@ -493,7 +538,12 @@ export const help = {
                 + "\n"
                 + "A scrolling list is the one exception, and only for a scroll: it keeps the scroll while it "
                 + "has somewhere left to travel and lets it through once it does not. That is what lets one "
-                + "more pull at the bottom of a list close the page the list is in.",
+                + "more pull at the bottom of a list close the page the list is in.\n"
+                + "\n"
+                + "Keys go to one place at a time: the modal layer on top, or the page on top, or, while the "
+                + "story is on screen with nothing over it, the interfaces on the stage such as the dialogue "
+                + "box. A key held down fires its action once. When a button or list row has the keyboard "
+                + "focus, Enter and Space press it and fire no action.",
         },
         inputActionsInBlueprints: {
             title: "Actions in blueprints",
@@ -501,7 +551,9 @@ export const help = {
                 "Three nodes read input actions.\n"
                 + "\n"
                 + "- On Action runs when the action fires. It reports which device raised it and where the "
-                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget.\n"
+                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget. "
+                + "On the global blueprint it runs for every action on every screen, before any interface "
+                + "answers it.\n"
                 + "- Is Action Held answers whether the action is held at this moment. A key, a mouse button "
                 + "and a long press can be held; a scroll is an instant and a double click is a sequence, so "
                 + "both read false.\n"
@@ -548,6 +600,28 @@ export const help = {
                 + "arranged from left to right.\n"
                 + "- Each pin takes one wire. Values with no wire are typed on the node itself.\n"
                 + "- Problems are listed under the canvas, and selecting one selects what it refers to.",
+        },
+        scripts: {
+            title: "Scripts",
+            body:
+                "The logic of a page, a component or a story row is a list of layers, and each layer is "
+                + "either a blueprint or a script. A blueprint is a graph on a canvas. A script is a TypeScript "
+                + "file under the project's scripts folder, written in an external editor. Studio creates the "
+                + "file once and never writes it again.\n"
+                + "\n"
+                + "Every layer in the list runs, so a script can sit beside a graph in the same place and both "
+                + "answer. New layer asks which of the two it is, and each row says which one it holds.\n"
+                + "\n"
+                + "- A script is entered through its exported functions. Which names this position calls follows "
+                + "from where it sits, and the first lines of a new file list them. A story row uses the default "
+                + "export instead.\n"
+                + "- Open in editor opens the whole scripts folder. The types come from the files beside a script, "
+                + "so an editor opened on one file alone resolves none of them.\n"
+                + "- The Scripts section of the Assets panel lists every file under the scripts folder, which logic "
+                + "runs each one, and which of them nothing runs.\n"
+                + "- A file that fails to compile, and one that exports nothing this position calls, are reported "
+                + "in Dev Mode. The blueprint list there names the file and says whether it loaded.\n"
+                + "- Removing a layer leaves its file on disk. Deleting the file is done in the file manager.",
         },
         uiBindings: {
             title: "Values on a screen",
@@ -895,7 +969,7 @@ export const help = {
                 "With asset protection enabled, the images, audio, story text and plugin code inside a packaged game "
                 + "are encrypted, and so are the player's saves. Dev Mode is unaffected.\n"
                 + "\n"
-                + "- Web builds always ship without it.\n"
+                + "- Web, Android and iOS builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "
                 + "game is still possible.\n"
                 + "- The other switch on this page decides whether the game may use the network.",
@@ -943,7 +1017,9 @@ export const help = {
                 + "- What a plugin contributes appears in the same places as the built-in equivalents, marked "
                 + "with the plugin it came from.\n"
                 + "- A project records the plugins it depends on. Opened on a machine that is missing one, it "
-                + "states which plugin is missing and what in the project uses it.",
+                + "states which plugin is missing and what in the project uses it.\n"
+                + "- A plugin installed at a different major version from the one the project was made with is off "
+                + "for the project until Rescan in Project ▸ App records the installed version.",
         },
     },
 } as const;

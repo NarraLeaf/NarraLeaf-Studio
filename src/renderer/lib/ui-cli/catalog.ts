@@ -28,6 +28,8 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { propAssignmentKey } from "./dsl/parse";
+import { cliPluginOwnerOf, listCliPluginWidgetModules } from "./plugins";
 import { nearest } from "./text";
 
 export type WidgetPropDoc = {
@@ -57,6 +59,8 @@ export type WidgetSummary = {
     /** Stage slots the palette restricts this type to; empty means any. */
     stageSlots: string[];
     extends?: string;
+    /** The plugin a widget type comes from, when `--plugin` loaded one that contributes it. */
+    plugin?: string;
     acceptsUserChildren: boolean;
     operable: boolean;
     supportsPrivateBlueprint: boolean;
@@ -79,6 +83,19 @@ export type WidgetDetail = WidgetSummary & {
 };
 
 /**
+ * How a label's marks are written, which is one model on every widget that draws a label: the same
+ * runs, the same marks and the same fallback, whatever the widget calls its string.
+ */
+function markedLabelNote(stringProp: string): string {
+    return `\`${stringProp}\` is the label's plain string and stays the one every other thing reads. A label `
+        + "whose words are marked also carries `rich`, an array of `{text, marks}` runs spelling the same "
+        + "string: `marks` may hold `bold`, `italic`, `color`, `ruby`, `emphasis` "
+        + "(`dot`/`circle`/`sesame`/`under-dot`) and `fontSizeStep` (steps away from the label's own size). "
+        + `The runs are drawn only while they still spell \`${stringProp}\`, so a translated label, a list `
+        + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
+}
+
+/**
  * Facts about a widget that no declaration in the repository states.
  *
  * Each one has cost somebody a wrong-looking interface at least once, and each is about *authoring*
@@ -92,23 +109,31 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
             + "the matching row of `appearance.variants[*].propertyGroups`, and the flat prop is only the "
             + "baseline it is laid over - change both, or copy the whole `props` bag from a container that "
             + "already looks right.",
-        "Children are laid out absolutely unless `layoutKind` is `stack` or `scroll`, and a stack does "
-            + "not wrap: `flexWrap` is fixed at `nowrap`, so a grid has to be built out of nested stacks.",
+        "Children are laid out absolutely unless `layoutKind` is `stack` or `scroll`. A stack keeps its "
+            + "children on one line until `stackWrap = true`; wrapped lines pack against the start of the "
+            + "cross axis with `stackGap` between them, and `stackAlignItems` then reads within each line "
+            + "rather than across the whole box.",
     ],
     "nl.button": [
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
             + "flat prop alone leaves the variant row holding the old one; see the container note.",
+        markedLabelNote("label"),
     ],
     "nl.image": [
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
             + "image prop a value blueprint can drive, which is what makes per-row thumbnails possible.",
     ],
+    "nl.text": [
+        markedLabelNote("text"),
+    ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "
             + "template read their row through `bind <prop> = field <fieldId>`, and the field ids come from "
             + "the struct named by `itemStructId`.",
-        "`repeatDirection` is a single axis and there is no wrap or chunking, so a grid of rows is built "
-            + "by hand rather than by the list.",
+        "`repeatDirection` is one axis and `repeatWrap = true` adds the other: items flow along the "
+            + "direction, break at the edge of the list's box, and the lines pack from the start with "
+            + "`itemGap` between them - which is how a grid is built from one item template. Wrapping also "
+            + "turns the axis the list scrolls along, since what grows is now the stack of lines.",
     ],
     "nl.slider": [
         "The track and the handle are elements the widget built and pointed at through "
@@ -122,6 +147,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     "nl.frame": [
         "A frame draws another Page inside this one. `targetSurfaceId` names the surface, and `params` is "
             + "the prop bag that surface reads through `Get Page Prop`.",
+        "`props.animation = {…}` overrides how the target Page enters and leaves inside this frame; unset, "
+            + "the Page's own animation plays. It is written with the prefix because a bare `animation = {…}` "
+            + "is the frame element's own enter/exit, as on every element - the same shape of record, so "
+            + "writing the wrong one is not an error, it just animates the frame instead of its page.",
     ],
     "nl.root": [
         "Every surface and every component definition has exactly one, and it is not insertable: it is "
@@ -134,15 +163,18 @@ function paletteEntry(type: string): InsertPaletteConfigEntry | undefined {
     // Widened to the declared entry type: the config is `as const`, so each element is its own
     // literal type and the union has no common `placement` to read.
     const config: readonly InsertPaletteConfigEntry[] = DEFAULT_INSERT_PALETTE_CONFIG;
-    return config.find(entry => entry.type === type);
+    // A plugin's widget is not in the config; the editor lists every one in the palette's overflow
+    // menu (`listPluginInsertPaletteEntries`), on any surface.
+    return config.find(entry => entry.type === type) ?? (cliPluginOwnerOf(type) ? { type, placement: "overflow" } : undefined);
 }
 
+/** Studio's widgets, and those of any plugin this run was handed with `--plugin`. */
 export function listWidgetModules(): UIWidgetModule[] {
-    return BuiltinWidgetModules;
+    return [...BuiltinWidgetModules, ...listCliPluginWidgetModules()];
 }
 
 export function findWidgetModule(type: string): UIWidgetModule | undefined {
-    return BuiltinWidgetModules.find(module => module.type === type);
+    return listWidgetModules().find(module => module.type === type);
 }
 
 /**
@@ -186,6 +218,7 @@ export function summariseWidget(module: UIWidgetModule): WidgetSummary {
         surfaceKinds: [...(entry?.surfaceKinds ?? [])],
         stageSlots: [...(entry?.stageSlots ?? [])],
         extends: module.extends ?? getWidgetTypeParent(module.type),
+        ...(cliPluginOwnerOf(module.type) ? { plugin: cliPluginOwnerOf(module.type) } : {}),
         acceptsUserChildren: uiElementTypeAcceptsUserChildren(module.type),
         operable: logic?.operable === true,
         supportsPrivateBlueprint: logic?.supportsPrivateBlueprint === true,
@@ -303,7 +336,7 @@ export const WIDGET_STAGE_SLOTS = UI_STAGE_SLOT_IDS;
 
 /** Widget types spelled close to `type`, for a message that ends the search rather than starting one. */
 export function nearestWidgetTypes(type: string, limit = 5): string[] {
-    return nearest(type, BuiltinWidgetModules.map(module => module.type), limit);
+    return nearest(type, listWidgetModules().map(module => module.type), limit);
 }
 
 export type WidgetQuery = {
@@ -318,7 +351,7 @@ export type WidgetQuery = {
 
 export function queryWidgets(query: WidgetQuery): WidgetSummary[] {
     const words = (query.search ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return BuiltinWidgetModules.map(summariseWidget).filter(widget => {
+    return listWidgetModules().map(summariseWidget).filter(widget => {
         if (query.insertableOnly && widget.palette === "internal") {
             return false;
         }
@@ -384,6 +417,9 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     if (detail.extends) {
         lines.push(`  extends    ${detail.extends}`);
     }
+    if (detail.plugin) {
+        lines.push(`  plugin     ${detail.plugin} (loaded with --plugin)`);
+    }
     lines.push(
         `  children   ${
             detail.acceptsUserChildren
@@ -412,12 +448,14 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     if (detail.props.length > 0) {
         lines.push("");
         lines.push("  props (write these as `key = value` under the element)");
-        const width = Math.max(...detail.props.map(prop => prop.key.length));
-        for (const prop of detail.props) {
+        // Keyed as a `.ui` file writes them, so a prop that needs `props.` is shown with it.
+        const keys = detail.props.map(prop => propAssignmentKey(prop.key));
+        const width = Math.max(...keys.map(key => key.length));
+        for (const [index, prop] of detail.props.entries()) {
             const value = JSON.stringify(prop.defaultValue) ?? "(unset)";
             const shown = value.length > 60 ? `${value.slice(0, 57)}...` : value;
             lines.push(
-                `    ${prop.key.padEnd(width)}  ${prop.valueType.padEnd(7)} = ${shown}`
+                `    ${keys[index].padEnd(width)}  ${prop.valueType.padEnd(7)} = ${shown}`
                     + (prop.inherited ? `  (from ${detail.extends})` : ""),
             );
         }

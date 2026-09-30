@@ -1,5 +1,7 @@
 import { CharacterAppearance, AssetChangeCallback, emptyAppearance } from "./CharacterAppearance";
 import { CharacterAppearanceKind, CharacterEditorProfile, ICharacterAppearance, PortraitCrop } from "./types";
+import type { StoryTransformProps } from "@shared/types/story/document";
+import { sanitizeCharacterEntranceProps } from "@shared/story/characterEntrance";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
     appearance: ICharacterAppearance;
@@ -191,6 +193,34 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    /**
+     * The transform props this character's entrances fall back to. `undefined` is "no defaults",
+     * which is what every character had before the field existed.
+     */
+    public getEntranceTransform(): StoryTransformProps | undefined {
+        return this.profile.entranceTransform;
+    }
+
+    /**
+     * Stored sanitized, so what the compiler reads back is what this setter accepted - a bag holding
+     * only channels an entrance can act on. An empty bag is stored as no bag at all: "states
+     * nothing" and "has no defaults" are the same instruction here, and keeping the empty record
+     * would leave a key in the document that no longer means anything.
+     */
+    public setEntranceTransform(props: StoryTransformProps | undefined): void {
+        const next = sanitizeCharacterEntranceProps(props);
+        if (next === undefined) {
+            if (this.profile.entranceTransform === undefined) {
+                return;
+            }
+            delete this.profile.entranceTransform;
+            this.notifyChange();
+            return;
+        }
+        this.profile.entranceTransform = next;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -230,6 +260,9 @@ export class CharacterProfile {
                 ? {}
                 : { defaultAvatarAssetId: this.profile.defaultAvatarAssetId }),
             ...(this.profile.voiceTrackId === undefined ? {} : { voiceTrackId: this.profile.voiceTrackId }),
+            ...(this.profile.entranceTransform === undefined
+                ? {}
+                : { entranceTransform: this.profile.entranceTransform }),
             appearance: this.appearance.toJSON(),
         };
     }

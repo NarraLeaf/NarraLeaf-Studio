@@ -1,4 +1,3 @@
-import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import type {
     LiveAssetBytePart,
     LiveAssetBytes,
@@ -10,7 +9,7 @@ import type {
 } from "@shared/live/ops";
 import type { TeamTransferProblem, TeamTransferState } from "@shared/types/teamTransfer";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FsRequestResult } from "@shared/types/os";
+import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { RendererError } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -21,27 +20,28 @@ import { FontService } from "../assets/FontService";
 import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
 import { ModelService } from "../assets/ModelService";
-import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
-import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
+import { AssetsMetadataManager, type UnreadableAssetShard } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type CreateLocalBundleAssetOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
+import type { AssetImportStatus, RefusableStatus } from "../assets/assetImportRefusal";
 import { Asset, AssetExtras, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
 import { VideoService } from "../assets/VideoService";
 import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
+import { ASSET_LIBRARY_WRITE, type AssetFolderWriteOptions } from "../assets/assetLibraryWrite";
+import { storeWrite } from "../autosave/writeReport";
 import { UIService } from "./UIService";
 import { NotificationType } from "../ui/types";
 import { translate } from "@/lib/i18n";
 import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
-import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
 import {
     collectAssetReferences,
     describeBlockedDelete,
@@ -314,7 +314,91 @@ interface AssetsEvents {
     transfers: readonly AssetTransfer[];
 }
 
+/**
+ * The `code` of a replacement a live session would not carry. Its `error` is already the author's
+ * sentence, unlike every other failure of {@link AssetsService.replaceAssetContent}, whose `error` is
+ * for the log and whose `refusal` is what gets worded.
+ */
+export const REPLACE_REFUSED_IN_SESSION = "REPLACE_REFUSED_IN_SESSION";
+
 const THUMBNAIL_DIMENSION = 160;
+
+/** How long a first frame is waited for before the clip keeps its glyph instead. */
+const VIDEO_FRAME_TIMEOUT_MS = 8_000;
+
+/**
+ * The media type a clip's bytes are handed to a `<video>` under.
+ *
+ * A blob with no type is not decoded, so the extension has to answer - and it is the only thing that
+ * can, since the bytes are stored under the asset's id with no name left on them. QuickTime goes in
+ * as MP4 because that is the demuxer Chromium reads it with; anything unrecognised is offered as MP4
+ * too, which either works or leaves the clip its glyph.
+ */
+function videoBlobType(ext: string | undefined): string {
+    switch ((ext ?? "").toLowerCase()) {
+        case "webm":
+            return "video/webm";
+        case "ogv":
+        case "ogg":
+            return "video/ogg";
+        default:
+            return "video/mp4";
+    }
+}
+
+/**
+ * Load a clip far enough to draw a frame from it, or fail.
+ *
+ * Every arm settles the promise exactly once and every listener is removed on the way out: this runs
+ * against whatever the author imported, including files that never fire `loadeddata` at all, and a
+ * pending promise there would hold the element, its decoder and the bytes behind it for the life of
+ * the window.
+ */
+function decodeFirstVideoFrame(
+    video: HTMLVideoElement,
+    url: string,
+): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (outcome: () => void): void => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            window.clearTimeout(timer);
+            video.removeEventListener("loadeddata", onLoaded);
+            video.removeEventListener("seeked", onSeeked);
+            video.removeEventListener("error", onError);
+            outcome();
+        };
+        const timer = window.setTimeout(
+            () => finish(() => reject(new RendererError("Timed out waiting for the clip's first frame"))),
+            VIDEO_FRAME_TIMEOUT_MS,
+        );
+        const done = (): void => finish(() => {
+            if (!video.videoWidth || !video.videoHeight) {
+                reject(new RendererError("The clip reported no picture to draw"));
+                return;
+            }
+            resolve({ width: video.videoWidth, height: video.videoHeight });
+        });
+        const onLoaded = (): void => {
+            // A clip shorter than the seek target has nothing to seek to, so its loaded frame stands.
+            if (video.duration && video.duration > 0.2) {
+                video.currentTime = 0.1;
+                return;
+            }
+            done();
+        };
+        const onSeeked = (): void => done();
+        const onError = (): void => finish(() => reject(new RendererError("The clip could not be decoded")));
+        video.addEventListener("loadeddata", onLoaded);
+        video.addEventListener("seeked", onSeeked);
+        video.addEventListener("error", onError);
+        video.src = url;
+        video.load();
+    });
+}
 
 /**
  * How often the browser is told a transfer has got further.
@@ -335,17 +419,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public audioService: AudioService | null = null;
     public videoService: VideoService | null = null;
     public jsonService: JSONService | null = null;
-    public blueprintService: BlueprintService | null = null;
     public fontService: FontService | null = null;
     public modelService: ModelService | null = null;
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
     private readonly thumbnailCache = new Map<string, string>();
-
-    /**
-     * Asset lock manager
-     */
-    private readonly lockManager = new AssetLockManager();
 
     /** Where record edits go instead of into the shard, when something else owns them. */
     private opSink: AssetOpSink | null = null;
@@ -409,6 +487,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     /** Categories whose `assets.order.<category>.json` is behind the shards it orders. */
     private dirtyOrderCategories = new Set<AssetCategory>();
     private assetsMetadataInitializing = false;
+    /**
+     * Shards whose refused write has already been announced. One notice per shard per library:
+     * every later edit to the same section is refused for the same reason, and a sticky toast per
+     * keystroke would bury the one that says why.
+     */
+    private refusedUnreadableShardWrites = new Set<AssetType>();
     private assetTrash: AssetTrash | null = null;
     /**
      * Open while a group cascade is running; see `deleteGroupWithHistory`. Non-null means
@@ -710,6 +794,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         if (!bytes.ok) {
             return {
                 success: false,
+                code: REPLACE_REFUSED_IN_SESSION,
                 error: translate(
                     bytes.problem.kind === "quota"
                         ? "assets.live.replaceRefusedQuota"
@@ -1433,8 +1518,16 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const metadataManager = this.assetsMetadataManager;
         const groupManager = this.groupAssetsManager;
         const orderManager = this.assetOrderManager;
-        const categories = Array.from(this.dirtyOrderCategories);
-        this.dirtyOrderCategories.clear();
+        // A section whose shard could not be read keeps its order file as well. The file lists
+        // every row of the section, and the rows this open cannot see are exactly the ones a write
+        // now would drop from it; the debt stays queued, like a refused write's, and the next open
+        // that reads the shard settles it.
+        const categories = Array.from(this.dirtyOrderCategories).filter(category =>
+            !ASSET_CATEGORY_TYPES[category].some(type => metadataManager.isShardUnreadable(type)),
+        );
+        for (const category of categories) {
+            this.dirtyOrderCategories.delete(category);
+        }
 
         const results = await Promise.all(categories.map(async category => ({
             category,
@@ -1472,7 +1565,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.audioService = new AudioService(ctx);
         this.videoService = new VideoService(ctx);
         this.jsonService = new JSONService(ctx);
-        this.blueprintService = new BlueprintService(ctx);
         this.fontService = new FontService(ctx);
         this.modelService = new ModelService(ctx);
         this.otherService = new OtherService(ctx);
@@ -1487,6 +1579,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         const assetsMetadataManager = new AssetsMetadataManager(this, ctx);
         this.assetsMetadataManager = assetsMetadataManager;
+        // A new library, so a new set of shards to have said something about.
+        this.refusedUnreadableShardWrites.clear();
         this.assetsMetadataInitializing = true;
         try {
             await assetsMetadataManager.init();
@@ -1557,6 +1651,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.assetOrderManager = order;
         this.assetsMetadataManager = metadata;
         this.groupAssetsManager = groups;
+        this.refusedUnreadableShardWrites.clear();
         this.dirtyTypes.clear();
         this.dirtyOrderCategories.clear();
         // Thumbnails are keyed by asset id and cached outside the working set, so a restored asset
@@ -1582,6 +1677,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             throw new RendererError("Assets metadata manager not initialized");
         }
         return this.assetsMetadataManager;
+    }
+
+    /**
+     * The shards this library found on disk and could not read, by type. Empty before the library
+     * is up and for a healthy one; what the assets panel reads to say a section is unreadable
+     * rather than empty.
+     */
+    public getUnreadableAssetShards(): ReadonlyMap<AssetType, UnreadableAssetShard> {
+        return this.assetsMetadataManager?.getUnreadableShards() ?? new Map();
     }
 
     public getGroupAssetsManager(): GroupAssetsManager {
@@ -1636,15 +1740,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getLocalAssetsManager().fetch(asset as Asset<T, AssetSource.Local>);
     }
 
-    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        return this.transactionResult(() => this.getLocalAssetsManager().importLocalAssets(type));
-    }
-
+    /**
+     * Fetch a URL and keep what it serves as a new asset. A refusal carries the reason the author is
+     * told (see `describeAssetImportRefusal`); its `error` is the log's.
+     */
     public async importRemoteAsset(
         category: AssetCategory,
         url: string,
         groupId?: string,
-    ): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>> {
+    ): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>> {
         return this.getRemoteAssetsManager().importRemoteAsset(category, url, groupId);
     }
 
@@ -1659,10 +1763,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     public async refreshRemoteAsset<T extends AssetType>(
         asset: Asset<T, AssetSource.Remote>,
-    ): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
+    ): Promise<RefusableStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
         const refreshed = await this.getRemoteAssetsManager().refresh(asset);
         if (!refreshed.success || !refreshed.data) {
-            return { success: false, error: refreshed.error };
+            return { success: false, error: refreshed.error, refusal: refreshed.refusal };
         }
 
         const { changed, digest, meta } = refreshed.data;
@@ -1688,9 +1792,21 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getRemoteAssetsManager().snapshotExists(assetId);
     }
 
+    /**
+     * A 160px square of what an asset looks like, rendered once and kept on disk.
+     *
+     * Clips answer too, with their first frame. A clip has a picture just as much as an image does,
+     * and anywhere the two are offered side by side - the command line's subject list above all - a
+     * clip drawn as a film glyph is indistinguishable from a *clip already on the stage*, which draws
+     * the same glyph and means something else entirely. The frame is what tells them apart.
+     *
+     * The frame is decoded by the renderer's own `<video>`, not by a converter: it answers for exactly
+     * the formats the shipped game can play, which is the envelope that matters, and a clip whose
+     * first frame cannot be decoded simply keeps its glyph.
+     */
     public async getThumbnailPath(asset: Asset): Promise<RequestStatus<string>> {
-        if (asset.type !== AssetType.Image) {
-            return { success: false, error: "Thumbnails are only supported for image assets" };
+        if (asset.type !== AssetType.Image && asset.type !== AssetType.Video) {
+            return { success: false, error: "Thumbnails are only supported for image and video assets" };
         }
 
         const cachePath = this.getThumbnailCachePath(asset.id);
@@ -1701,18 +1817,22 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return { success: true, data: cachePath };
         }
 
-        if (!this.imageService) {
-            return { success: false, error: "Image service is not initialized" };
+        const source = await this.readThumbnailSource(asset);
+        if (!source.success || !source.data) {
+            return { success: false, error: source.error ?? "Failed to read the asset" };
         }
 
-        const imageResult = await this.imageService.readLocalImage(asset as Asset<AssetType.Image>);
-        if (!imageResult.success || !imageResult.data) {
-            return { success: false, error: imageResult.error ?? "Failed to read source image" };
-        }
-
-        const thumbnailBuffer = await this.createThumbnailBuffer(imageResult.data.data);
+        const thumbnailBuffer = asset.type === AssetType.Video
+            ? await this.createVideoThumbnailBuffer(source.data, videoBlobType(asset.ext))
+            : await this.createThumbnailBuffer(source.data);
         await this.ensureThumbnailDir(cachePath);
-        const writeResult = await fs.writeRaw(cachePath, thumbnailBuffer);
+        // A cache: a thumbnail that could not be stored is drawn again from the image next time,
+        // and costs the author nothing to be told about.
+        const writeResult = await fs.writeRaw(
+            cachePath,
+            thumbnailBuffer,
+            storeWrite("workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!writeResult.ok) {
             return { success: false, error: writeResult.error?.message };
         }
@@ -1779,6 +1899,78 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
     }
 
+    /**
+     * The bytes a thumbnail is drawn from. An image goes through the image service, which is where
+     * the format checks and the local/remote split already live; anything else is read whole by the
+     * ordinary asset read.
+     */
+    private async readThumbnailSource(asset: Asset): Promise<RequestStatus<Uint8Array>> {
+        if (asset.type === AssetType.Image) {
+            if (!this.imageService) {
+                return { success: false, error: "Image service is not initialized" };
+            }
+            const read = await this.imageService.readLocalImage(asset as Asset<AssetType.Image>);
+            return read.success && read.data
+                ? { success: true, data: read.data.data }
+                : { success: false, error: read.error ?? "Failed to read source image" };
+        }
+        const read = await this.fetch(asset as Asset<AssetType, AssetSource>);
+        return read.success && read.data
+            ? { success: true, data: read.data.data as Uint8Array }
+            : { success: false, error: read.error ?? "Failed to read the asset" };
+    }
+
+    /**
+     * A clip's first frame, drawn into the same square an image's thumbnail is drawn into.
+     *
+     * The seek is what makes it a frame rather than a black square: `loadeddata` fires as soon as the
+     * element has *something* at the current position, and a position of exactly zero is the frame
+     * least likely to have been decoded. A tenth of a second in is inside every clip long enough to
+     * be worth previewing, and a clip shorter than that gives the frame it has.
+     */
+    private async createVideoThumbnailBuffer(buffer: Uint8Array, type: string): Promise<Uint8Array> {
+        if (typeof document === "undefined") {
+            throw new RendererError("Video thumbnail generation requires a document");
+        }
+        const bufferSource = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+        const url = URL.createObjectURL(new Blob([bufferSource], { type }));
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "auto";
+        // Some builds refuse to decode a frame for an element that was never in the document, so it is
+        // attached where nothing can see it rather than left floating.
+        video.style.position = "fixed";
+        video.style.left = "-10000px";
+        video.style.width = "1px";
+        video.style.height = "1px";
+        document.body.appendChild(video);
+        try {
+            const frame = await decodeFirstVideoFrame(video, url);
+            const canvas = this.createCanvas();
+            const context = canvas.getContext("2d");
+            if (!context) {
+                throw new RendererError("Failed to acquire canvas context for thumbnail rendering");
+            }
+            const ratio = Math.min(THUMBNAIL_DIMENSION / frame.width, THUMBNAIL_DIMENSION / frame.height, 1);
+            const drawWidth = frame.width * ratio;
+            const drawHeight = frame.height * ratio;
+            context.clearRect(0, 0, THUMBNAIL_DIMENSION, THUMBNAIL_DIMENSION);
+            context.drawImage(
+                video,
+                (THUMBNAIL_DIMENSION - drawWidth) / 2,
+                (THUMBNAIL_DIMENSION - drawHeight) / 2,
+                drawWidth,
+                drawHeight,
+            );
+            return await this.canvasToUint8Array(canvas);
+        } finally {
+            video.removeAttribute("src");
+            video.load();
+            video.remove();
+            URL.revokeObjectURL(url);
+        }
+    }
+
     private async createThumbnailBuffer(buffer: Uint8Array): Promise<Uint8Array> {
         if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") {
             throw new RendererError("Thumbnail generation requires a document or OffscreenCanvas context");
@@ -1841,18 +2033,77 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     private async writeAssetsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
-        const metadata = this.getAssetsMetadataManager().getAssets();
+        const metadataManager = this.getAssetsMetadataManager();
+
+        // The one write that must never happen: the record for this type is empty because the file
+        // could not be read, not because it is, and `{}` written here replaces the author's
+        // library with nothing. Answered as a failure so the debt stays queued (see
+        // `flushPendingWrites`), and said once on screen so the edit that was just refused is not
+        // mistaken for one that landed.
+        const unreadable = metadataManager.getUnreadableShards().get(type);
+        if (unreadable) {
+            this.reportRefusedUnreadableShardWrite(unreadable);
+            return {
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.INVALID_JSON,
+                    message: `${unreadable.path} could not be read (${unreadable.reason}); refusing to write over it`,
+                },
+            };
+        }
+
+        const metadata = metadataManager.getAssets();
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data = JSON.stringify(metadata[type]);
 
-        return await filesystemService.writeFileNoFollow(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
+        return await filesystemService.writeFileNoFollow(
+            this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)),
+            data,
+            "utf-8",
+            ASSET_LIBRARY_WRITE,
+        );
     }
 
+    /**
+     * Tell the author that an edit to a section whose shard could not be read is not on disk.
+     *
+     * Sticky, like `SaveStatusService`'s notice for a write that failed, because it is the same
+     * fact - the change is not saved - and a toast that retired itself would leave a workspace that
+     * looks saved. Reported here rather than through the write observer because no write was
+     * attempted; the observer's vocabulary is "this path failed", and a refusal is not a failure.
+     * Not in recovery mode, where there is no UI service and the freeze already stands in front.
+     */
+    private reportRefusedUnreadableShardWrite(shard: UnreadableAssetShard): void {
+        console.warn(`[AssetsService] refusing to write ${shard.path}: ${shard.reason}`);
+        if (this.refusedUnreadableShardWrites.has(shard.type)) {
+            return;
+        }
+        this.refusedUnreadableShardWrites.add(shard.type);
+        try {
+            // The section, by the label the sidebar gives it - which is also where the section says
+            // it could not be read. Never the shard's file name (`assets.metadata.image.json`), a name
+            // Studio chose and the author meets nowhere else.
+            const category = translate(`assets.categories.${categoryOfAssetType(shard.type)}` as `assets.categories.${AssetCategory}`);
+            this.getContext().services.get<UIService>(Services.UI).notifications.showSticky({
+                type: NotificationType.Error,
+                message: translate("assets.unreadable.notSaved"),
+                detail: translate("assets.unreadable.notSavedDetail", { category }),
+            });
+        } catch {
+            // No UI service in this window. The console line above is the record.
+        }
+    }
+
+    /**
+     * Make a folder. `options.callerReports` is for a caller that says itself that the folder could
+     * not be written - see `AssetFolderWriteOptions` for which callers those are.
+     */
     public async createGroup(
         category: AssetCategory,
         name: string,
-        parentGroupId?: string
+        parentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         if (this.opSink) {
             // Minted here rather than by the applier, for `create-assets`' reason: the id and the
@@ -1874,7 +2125,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             });
             return { success: true, data: folder };
         }
-        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId);
+        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId, options);
     }
 
     /**
@@ -1940,25 +2191,27 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async renameGroup(
         category: AssetCategory,
         groupId: string,
-        newName: string
+        newName: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         return this.stateFolderChange(category, groupId, folder => ({
             ...folder,
             name: newName,
             updatedAt: Date.now(),
-        })) ?? this.getGroupAssetsManager().renameGroup(category, groupId, newName);
+        })) ?? this.getGroupAssetsManager().renameGroup(category, groupId, newName, options);
     }
 
     public async moveGroupToParent(
         category: AssetCategory,
         groupId: string,
-        newParentGroupId?: string
+        newParentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         return this.stateFolderChange(category, groupId, folder => ({
             ...folder,
             parentGroupId: newParentGroupId,
             updatedAt: Date.now(),
-        })) ?? this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId);
+        })) ?? this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId, options);
     }
 
     public async moveAssetToGroup<T extends AssetType>(
@@ -2411,7 +2664,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async replaceAssetContent<T extends AssetType>(
         asset: Asset<T, AssetSource>,
         sourcePath: string,
-    ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
         if (asset.source !== AssetSource.Local) {
             return { success: false, error: "Replacing the contents of a remote asset is not supported" };
         }
@@ -2419,7 +2672,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const written = await this.getLocalAssetsManager()
             .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath);
         if (!written.success || !written.data) {
-            return { success: false, error: written.error };
+            // The refusal travels with it: it is what the surface that asked words for the author.
+            return { success: false, error: written.error, refusal: written.refusal };
         }
 
         try {
@@ -2545,7 +2799,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         type: T,
         paths: string[],
         options?: ImportFromPathsOptions,
-    ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
+    ): Promise<RequestStatus<AssetImportStatus<T>[]>> {
         // ⚠ Inside a transaction so that a directory of forty files is ONE operation. The importer
         // loops, and forty operations would be forty things for every other screen in the room to
         // draw and forty presses to take back.
@@ -2635,78 +2889,5 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         categoryMapping: Record<number, string>
     ): MagicTagPreview[] {
         return MagicTagManager.generatePreview(template, categoryMapping);
-    }
-
-    // Asset Lock Management APIs
-
-    /**
-     * Lock an asset with a specific reason
-     */
-    public lockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        this.lockManager.lock(assetId, reason, metadata);
-    }
-
-    /**
-     * Unlock an asset for a specific reason
-     */
-    public unlockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        this.lockManager.unlock(assetId, reason, metadata);
-    }
-
-    /**
-     * Check if an asset is locked
-     */
-    public isAssetLocked(assetId: string): boolean {
-        return this.lockManager.isLocked(assetId);
-    }
-
-    /**
-     * Get all locks on an asset
-     */
-    public getAssetLocks(assetId: string): string[] {
-        return this.lockManager.getLockReasons(assetId);
-    }
-
-    /**
-     * Get a formatted lock message for an asset
-     */
-    public getAssetLockMessage(assetId: string): string | null {
-        return this.lockManager.getLockMessage(assetId);
-    }
-
-    /**
-     * Get the lock manager instance (for internal service use)
-     */
-    public getLockManager(): AssetLockManager {
-        return this.lockManager;
-    }
-
-    /**
-     * Every shared blueprint asset this project holds, parsed.
-     *
-     * The renderer's blind spot until now. A blueprint asset is a file, and the checks that walk
-     * graphs walk `UIGraphService`'s document - so a `.nlbp` was judged by nothing on this side, and
-     * the build's variant refusal only reached it when the main process folded the pack and threw.
-     * That is a refusal after the author has committed to a build, phrased in the packer's terms.
-     *
-     * Reads on demand, without a cache. This has one caller, a build gate, and a project's shared
-     * blueprints are a handful of small JSON files; a cache here would buy a few milliseconds once
-     * per build in exchange for a staleness question every author-side edit would have to answer.
-     *
-     * Skips what it cannot read rather than throwing. An unreadable asset is still folded (and still
-     * refused) in the main process, so nothing ships unjudged; a gate that failed the build over a
-     * file it merely could not open would be refusing on a question it never asked.
-     */
-    public async listSharedBlueprints(): Promise<SharedBlueprintAsset[]> {
-        const assets = this.getOrderedAssets(AssetType.Blueprint);
-        const parsed: SharedBlueprintAsset[] = [];
-        for (const asset of assets) {
-            const result = await this.fetch(asset);
-            if (!result.success) {
-                continue;
-            }
-            parsed.push(result.data.data);
-        }
-        return parsed;
     }
 }

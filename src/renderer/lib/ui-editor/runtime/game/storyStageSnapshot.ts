@@ -10,13 +10,16 @@ import type {
     StoryScene,
     StorySavedVariableDefinition,
     StorySceneVariableDefinition,
+    StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
+import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import {
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
+    revealCreates,
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
@@ -26,7 +29,9 @@ import { buildMergedVariableView, type MergedPersistentView } from "@shared/vari
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
+import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import { translate } from "@/lib/i18n";
+import { authoredNameOrNull } from "@shared/utils/generatedId";
 import {
     getCharacterStageObjectName,
     getPresetPosition,
@@ -239,10 +244,20 @@ export function computeStoryStageSnapshot(input: {
      * disagreeing is a stage pre-posed down one branch and then played down another.
      *
      * Absent means no store to ask, and the walk falls back to reporting the guess it is making.
-     * `undefined` from the reader means the key is not stored yet: the declared default stands, the
-     * way it does at runtime.
+     * The reader answers a declared variable nothing has stored with its default, as the host's
+     * persistence scope does for every reader at runtime (`ScopeStoreBridge.persistenceGet`), so
+     * `undefined` from it means there is nothing to read - no value and no default.
      */
     readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
+    /**
+     * The cast, for the entrance defaults a character carries.
+     *
+     * This walk has to settle a character's props exactly as the compile does, or a launch from a
+     * mid-scene row pre-poses her at one size and the compiled tail plays her at another. Absent is
+     * legal and means no defaults are folded - correct only for a caller that reads the background
+     * or the variables and never a displayable's props.
+     */
+    characters?: readonly DevModeCharacterSummary[];
 }): StoryStageSnapshot {
     const scene = input.document.scenes[input.sceneId];
     if (!scene) {
@@ -261,6 +276,9 @@ export function computeStoryStageSnapshot(input: {
             Object.values(storyPersistentDefs(input.document)),
         )),
         input.readPersistent,
+        new Map((input.characters ?? []).flatMap(character => (
+            character.entranceTransform ? [[character.id, character.entranceTransform] as const] : []
+        ))),
     );
     return walker.run();
 }
@@ -305,6 +323,8 @@ class SnapshotWalker {
         private readonly persistentDefs: Record<string, StorySavedVariableDefinition>,
         /** The host's live persistent store, or undefined when there is none to ask. */
         private readonly readPersistent: ((storageKey: string) => StoryLiteralValue | null | undefined) | undefined,
+        /** characterId → the entrance defaults that character carries; only characters that set one. */
+        private readonly entranceDefaults: ReadonlyMap<string, StoryTransformProps>,
     ) {
         let cursor = targetBlockId ? scene.blocks[targetBlockId] : undefined;
         while (cursor && !this.pathBlockIds.has(cursor.id)) {
@@ -520,8 +540,8 @@ class SnapshotWalker {
      * store to ask (or the variable is not declared anywhere this walk can see).
      *
      * Wrapped in an object so "the store holds null" and "there is no store" stay apart: only the
-     * second is a guess worth a diagnostic. A key the store has never been written to falls back to
-     * the declared default, which is what the runtime reads there too.
+     * second is a guess worth a diagnostic. A key the store has never been written to reads as its
+     * declared default - the store's answer, the same one the runtime reads there.
      */
     private readStoredPersistent(variableId: string): { value: StoryLiteralValue | null } | undefined {
         if (!this.readPersistent) {
@@ -531,8 +551,7 @@ class SnapshotWalker {
         if (!def) {
             return undefined;
         }
-        const stored = this.readPersistent(def.storageKey);
-        return { value: stored === undefined ? def.defaultValue ?? null : stored };
+        return { value: this.readPersistent(def.storageKey) ?? null };
     }
 
     private evaluateCondition(condition: StoryConditionRef | undefined, blockId: string): boolean {
@@ -660,7 +679,6 @@ class SnapshotWalker {
         }
         const objectName = getCharacterStageObjectName(payload);
         const record = this.ensure("image", objectName, block.id);
-        record.autoFit = true;
         if (payload.operation === "exit") {
             record.visible = false;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, "hide", block.id));
@@ -685,7 +703,15 @@ class SnapshotWalker {
             };
         if (payload.operation === "enter") {
             record.visible = true;
-            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
+            // The character's own defaults under the row's bag, by the same merge the compile runs.
+            // A row-precise launch replays this record as the element's constructor pose, so a
+            // character entering here has to settle on the size and baseline she would have had if
+            // the scene had played from the top.
+            const entrance = withCharacterEntranceDefaults(
+                payload.characterId ? this.entranceDefaults.get(payload.characterId) : undefined,
+                payload.transform,
+            );
+            record.props = mergeTransformProps(record.props, this.finalProps(entrance, "show", block.id));
         }
     }
 
@@ -697,7 +723,10 @@ class SnapshotWalker {
         if (payload.layer) {
             record.layer = payload.layer;
         }
-        if ((payload.operation === "create" || payload.operation === "setSource")) {
+        // A `show` that names an asset creates the image it reveals, so it sources it here too -
+        // this walk and the compile must answer "what is on stage at this row" identically, or a
+        // launch from a later row plays a scene with a blank where the picture was.
+        if (payload.operation === "create" || payload.operation === "setSource" || revealCreates(payload)) {
             if (payload.assetId) {
                 record.source = { type: "asset", assetId: payload.assetId };
             } else if (payload.color) {
@@ -935,8 +964,12 @@ class SnapshotWalker {
         const key = this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name);
         const record = this.displayables.get(key);
         if (!record) {
+            // The label, then the key - and neither when it is an id (an unnamed character keys on its
+            // character id), because an id names nothing the author can find.
             this.diagnostic(blockId, translate("story.preview.diagnostics.displayableNotFound", {
-                target: resolved.label || resolved.name || translate("story.preview.diagnostics.displayableUnnamed"),
+                target: authoredNameOrNull(resolved.label)
+                    ?? authoredNameOrNull(resolved.name)
+                    ?? translate("story.preview.diagnostics.displayableUnnamed"),
             }));
             return null;
         }

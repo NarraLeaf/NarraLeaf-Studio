@@ -200,7 +200,7 @@ function clipboardBlueprintDocument(payload: UIEditorClipboardPayload): Blueprin
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints,
         ownerRecords: Object.fromEntries(
-            Object.keys(blueprints).map(id => [id, { activeBlueprintId: id, privateBlueprintIds: [] }]),
+            Object.keys(blueprints).map(id => [id, { blueprintId: id }]),
         ),
     };
 }

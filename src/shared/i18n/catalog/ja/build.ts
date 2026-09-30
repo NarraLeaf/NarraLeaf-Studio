@@ -164,6 +164,7 @@ export const build = {
                 output: "書き出し先を選択する",
                 reading: "ビルドフォルダーを読み取り中",
                 artifact: "このフォルダーにこのゲームのビルドはない",
+                artifactAccess: "「参照」でこのフォルダーを選択すると読み取れる",
                 dlcBaseline: "この DLC を追加するビルドを選択する",
                 dlcVariant: "このビルドは、この DLC の依存先バリアントではない",
             },
@@ -312,8 +313,8 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} の {sidecar} プログラムは、実行できない状態のまま {platform} の成果物に入る。"
             + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
-        "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
+        "mobile-unprotected": "Android と iOS のパッケージにアセットの保護は効かない",
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
@@ -403,6 +404,7 @@ export const build = {
         showAll: "{count} 件すべてを表示",
         failure: "失敗の理由",
     },
+    cancelled: "ビルドを中止した",
     invalidCommand: "{story} / {scene} に無効なコマンド：{source}",
     invalidCommandSummary: {
         other: "ビルドを中止：無効なコマンドが {count} 件ある。コンソールを見る",
@@ -444,7 +446,7 @@ export const build = {
      * 何かを取り除くバリアントにしか出ないので、どの行もバリアントを名指す。
      */
     contentBlockedStartStory: "{location} のゲーム開始ノードは、実行中にシーンを決める。インスペクタでシーンを選ぶか、{variant} のバリアントで開始しうるシーンを列挙する",
-    contentBlockedScript: "ブループリント {location} は TypeScript で書かれていて、どのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
+    contentBlockedScript: "スクリプト {location} はどのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
     contentBlockedPlugin: "{location} プラグインはどのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
     contentBlockedSummary: {
         other: "ビルドを中止：{variant} のビルドが読めないシーンを開始しうるものが {count} 件ある。コンソールを見る",
@@ -462,10 +464,31 @@ export const build = {
      * それで拒んでいたら、どのバリアントのビルドも誰も解決できない URL の後ろに置かれてしまう。
      */
     contentCoverageGap: "{location} を読めなかったので、{variant} のビルドが何を除外するかを決められない",
-    contentComputedPinGap: "{location} はアセットを計算結果から受け取るため、このビルドは必要なアセットを判別できない",
     contentComputedPinSummary: {
-        one: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。ピンでアセットを選択する。詳細はコンソール。",
-        other: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。各ピンでアセットを選択する。詳細はコンソール。",
+        other: "ビルドを中止した：実行時に組み立てられるアセット名が {count} 件ある。詳細はコンソール。",
+    },
+    contentUnloadedNodeSummary: {
+        other: "ビルドを中止した：読み込まれていないノード型から来るアセット名が {count} 件ある。詳細はコンソール。",
+    },
+    /**
+     * パッケージのビルドでスクリプトがコンパイルできなかったとき。メインプロセスが書く、ビルド失敗の
+     * 1 行目。その後にファイルごとのコンパイラ自身の行（ファイル・行・列つき）が続く。
+     */
+    scriptsNotCompiled: {
+        other: "コンパイルできないスクリプトが {count} 件ある",
+    },
+    assetSet: {
+        inCharacters: "キャラクター",
+        inInterface: "インターフェース",
+        inBlueprint: "ブループリント",
+        language: "言語「{name}」",
+        variant: "バリアント「{name}」",
+        unfilled: "アセットセット「{set}」（{location} で使用）に{value}のファイルがない",
+        noLanguage: "アセットセット「{set}」（{location} で使用）にプロジェクトの言語のファイルがない",
+        ambiguous: "アセットセット「{set}」（{location} で使用）に{value}のファイルが複数ある",
+        nested: "アセットセット「{set}」（{location} で使用）のいずれかの値の下に別のセットがある。ビルドは入れ子のセットを解決しない",
+        noValues: "アセットセット「{set}」（{location} で使用）はバリアントを宣言していない",
+        variantUnset: "アセットセット「{set}」（{location} で使用）はバリアントによって変わるが、{variant} は使う素材を指定していない。「プロジェクト ▸ アプリ ▸ ビルドバリアント」で選ぶ",
     },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",
@@ -493,6 +516,7 @@ export const build = {
      */
     networkNodeDisallowed: "{blueprint} はネットワーク要求を行うが、このプロジェクトはそれを許可していない",
     pointerNodeUnsupported: "{blueprint} はマウスカーソルを移動するが、{platforms} では動作しない",
+    screenshotNodeUnsupported: "{blueprint} はスクリーンショットを保存するが、{platforms} では動作しない",
     networkSummary: {
         other: "ビルドを中止：動かせないネットワークノードが {count} 件ある。プロジェクト設定で HTTP の許可を有効にするか、そのノードを取り除く",
     },

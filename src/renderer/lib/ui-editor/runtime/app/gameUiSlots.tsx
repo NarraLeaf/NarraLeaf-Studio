@@ -1,7 +1,8 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame } from "narraleaf-react";
+import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame, type PreloadStrategy } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { RUNTIME_PREFERENCE_DEFAULTS } from "@shared/types/preference";
+import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type {
     BlueprintGameHistoryEntry,
     BlueprintGameNotification,
@@ -16,8 +17,12 @@ import type { ChoiceMenus } from "./choiceMenus";
 import { createNvlSlotComponent } from "./NvlSlotSurface";
 import { createOnStageSlotNode } from "./OnStageSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
+import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
+import { needsRunningGame, refusal } from "./runtimeRefusals";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 
 /**
  * Project Game UI slot components resolved from the uidoc's stage surfaces. A missing entry means
@@ -111,11 +116,14 @@ export function createNlrGameWithGameUi(input: {
      */
     autoForwardDefaultPause?: number;
     /**
-     * How much of the opening scene has to be warm before the game is shown, from `.nlproj`
-     * `app.preload` (see @shared/types/preload). Omitted leaves the engine's own default, which is
-     * the first frame.
+     * Who decides what the player warms, and where it gets the bytes.
+     *
+     * Studio's own, built from the compiled story: it knows which row shows which asset and in what
+     * order, and that every url is already on local disk. Omitted - the story preview, which
+     * compiles no warm order - leaves the engine's built-in strategy, which guesses from a static
+     * walk of the action tree.
      */
-    preloadGate?: "firstFrame" | "scene";
+    preload?: PreloadStrategy;
 }): Game {
     const {
         width,
@@ -126,7 +134,7 @@ export function createNlrGameWithGameUi(input: {
         audioBuses,
         hostOwnsSkipKey,
         autoForwardDefaultPause,
-        preloadGate,
+        preload,
     } = input;
     const game = new Game({
         app: { debug: false },
@@ -143,7 +151,7 @@ export function createNlrGameWithGameUi(input: {
         // lands squarely on the path to the first painted frame. Wider batches, no waiting.
         preloadConcurrency: 8,
         preloadDelay: 0,
-        ...(preloadGate ? { preloadGate } : {}),
+        ...(preload ? { preload } : {}),
         ...(minStageSize ? { minWidth: minStageSize.width, minHeight: minStageSize.height } : {}),
         ...(slots.dialog ? { dialog: slots.dialog, dialogWidth: width, dialogHeight: height } : {}),
         ...(slots.notification ? { notification: slots.notification } : {}),
@@ -183,7 +191,7 @@ export const STUDIO_SKIP_KEY_BINDING = "studio.skipAction";
 
 export type LiveGameUiCallbackDeps = {
     /** Returns the active LiveGame or throws a `${operation}: game runtime is not available` error. */
-    requireLiveGame: (operation: string) => LiveGame;
+    requireLiveGame: (asker: TranslationKey | null) => LiveGame;
     /** Latest LiveGame or null; read lazily so callbacks stay stable across session churn. */
     getLiveGame: () => LiveGame | null;
     /** The choice menus on the stage (see `ChoiceMenus`); more than one can be. */
@@ -192,29 +200,51 @@ export type LiveGameUiCallbackDeps = {
     currentDialogNametagRef: MutableRefObject<string | null>;
     /** The engine dialog boxes the custom dialog surfaces have mounted (see `DialogClickTargets`). */
     dialogClickTargets: DialogClickTargets;
+    /**
+     * The picture that stands for a speaker, by the source name the engine records on a backlog line.
+     *
+     * Read lazily, like `getLiveGame`: the character table arrives with the bundle and these
+     * callbacks are built once per host, so a resolver captured by value would answer from whichever
+     * table happened to be mounted when the host was built. Absent on a host with no character table
+     * - the story preview, a bundle that carries none - and every backlog row then has no picture.
+     */
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
 };
 
-export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
-    | "getCurrentNametag"
-    | "getNotificationsInGame"
-    | "getHistoryInGame"
-    | "getFutureInGame"
-    | "restoreHistoryInGame"
-    | "redoHistoryInGame"
-    | "canUndoHistoryInGame"
-    | "canRedoHistoryInGame"
-    | "getChoiceCountInGame"
-    | "isNvlModeInGame"
-    | "selectChoiceInGame"
-    | "nextInGame"
-    | "skipInGame"
-    | "showDialogInGame"
-    | "hideDialogInGame"
-    | "toggleDialogDisplayInGame"
-    | "setSentenceSpeedInGame"
-    | "getGamePreferenceInGame"
-    | "setGamePreferenceInGame"
->;
+/**
+ * The part of a game's host capabilities that the running `LiveGame` answers.
+ *
+ * Named in the bridge's own vocabulary, and picked out of {@link GameHostCapabilities} rather than
+ * declared again, so a host builds its capabilities by spreading this in and TypeScript accounts
+ * for every key exactly once.
+ *
+ * `NonNullable` because these nineteen are the ones a running game always answers: a host declares
+ * a capability it lacks by writing `undefined`, and there is no such thing as a `LiveGame` that
+ * cannot be asked what the play head is on.
+ */
+export type LiveGameUiCallbacks = {
+    [K in
+    | "onGetNametag"
+    | "onGetNotifications"
+    | "onGetHistory"
+    | "onGetFuture"
+    | "onRestoreHistory"
+    | "onRedoHistory"
+    | "onCanUndoHistory"
+    | "onCanRedoHistory"
+    | "onGetChoiceCount"
+    | "onIsNvlMode"
+    | "onSelectChoice"
+    | "onNext"
+    | "onSkip"
+    | "onShowDialog"
+    | "onHideDialog"
+    | "onToggleDialogDisplay"
+    | "onSetSentenceSpeed"
+    | "onGetGamePreference"
+    | "onSetGamePreference"
+    ]: NonNullable<GameHostCapabilities[K]>;
+};
 
 /**
  * Restore the running game to a past backlog line by token.
@@ -260,8 +290,17 @@ function liveGameHistoryControls(liveGame: LiveGame): {
  * Shared by the two halves of the timeline - `getHistory()` behind the play head and `getFuture()`
  * ahead of it - because an entry is the same entry whichever side of the head it sits on, and a
  * backlog screen binds both lists to one item template.
+ *
+ * The avatar is resolved here rather than read off the entry: the engine records the speaker's name
+ * and nothing about their picture, and the name it records is the source name - the same one
+ * `resolveSpeakerCharacterId` joins the character table on for the live line. A host with no table
+ * to join against passes no resolver, and every row reads as having no picture, which is what a
+ * backlog showed before this field existed.
  */
-function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
+function toBlueprintHistoryEntries(
+    raw: unknown,
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
+): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
     }
@@ -273,11 +312,13 @@ function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
         const element = (record.element ?? {}) as Record<string, unknown>;
         const isMenu = element.type === "menu";
         const text = element.text == null ? "" : String(element.text);
+        const character = !isMenu && element.character != null ? String(element.character) : null;
         return [{
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
             text,
-            character: !isMenu && element.character != null ? String(element.character) : null,
+            character,
+            avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
             // The replayable handle. Present from engine 0.24.0 on; an entry from an older
             // save simply has none, and a backlog replay button hides itself for that line.
@@ -325,15 +366,22 @@ export async function fastForwardToNextChoice(
  * no React state — so hosts can build them once per session.
  */
 export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGameUiCallbacks {
-    const { requireLiveGame, getLiveGame, choiceMenus, currentDialogNametagRef, dialogClickTargets } = deps;
+    const {
+        requireLiveGame,
+        getLiveGame,
+        choiceMenus,
+        currentDialogNametagRef,
+        dialogClickTargets,
+        resolveSpeakerAvatar,
+    } = deps;
 
     return {
-        getCurrentNametag: (): string | null => {
+        onGetNametag: (): string | null => {
             const liveGameSpeaker = readNlrLastDialogSpeaker(getLiveGame());
             return liveGameSpeaker ?? currentDialogNametagRef.current;
         },
 
-        getNotificationsInGame: (): BlueprintGameNotification[] => {
+        onGetNotifications: (): BlueprintGameNotification[] => {
             const gameState = getLiveGame()?.getGameState?.();
             const manager = (gameState as { notificationMgr?: { toArray?: () => unknown } } | null | undefined)
                 ?.notificationMgr;
@@ -350,19 +398,22 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             });
         },
 
-        getHistoryInGame: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.());
+        onGetHistory: (): BlueprintGameHistoryEntry[] => {
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar);
         },
 
-        getFutureInGame: (): BlueprintGameHistoryEntry[] => {
+        onGetFuture: (): BlueprintGameHistoryEntry[] => {
             const liveGame = getLiveGame();
             const getFuture = liveGame ? liveGameHistoryControls(liveGame).getFuture : undefined;
-            return toBlueprintHistoryEntries(getFuture ? getFuture.call(liveGame) : undefined);
+            return toBlueprintHistoryEntries(
+                getFuture ? getFuture.call(liveGame) : undefined,
+                resolveSpeakerAvatar,
+            );
         },
 
-        restoreHistoryInGame: async (id?: string): Promise<void> => {
+        onRestoreHistory: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
-            const liveGame = requireLiveGame("Restore From History");
+            const liveGame = requireLiveGame("blueprint.node.restoreFromHistory");
             // Snapshot-based restore works both during live play and after loading a save (where the
             // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted;
             // "go back one line" falls through to undo.
@@ -377,44 +428,44 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             }
         },
 
-        redoHistoryInGame: async (): Promise<void> => {
-            const liveGame = requireLiveGame("Redo Next History Entry");
+        onRedoHistory: async (): Promise<void> => {
+            const liveGame = requireLiveGame("blueprint.node.redoNextHistoryEntry");
             liveGameHistoryControls(liveGame).redo?.call(liveGame);
         },
 
-        canUndoHistoryInGame: (): boolean => {
+        onCanUndoHistory: (): boolean => {
             const liveGame = getLiveGame();
             return liveGame ? liveGameHistoryControls(liveGame).canUndo?.call(liveGame) === true : false;
         },
 
-        canRedoHistoryInGame: (): boolean => {
+        onCanRedoHistory: (): boolean => {
             const liveGame = getLiveGame();
             return liveGame ? liveGameHistoryControls(liveGame).canRedo?.call(liveGame) === true : false;
         },
 
-        getChoiceCountInGame: (): number => {
+        onGetChoiceCount: (): number => {
             // The newest menu on the stage. A graph running inside one never reaches here - the
             // choice surface binds this call to its own menu - so this answers the callers that are
             // outside every menu.
             return choiceMenus.current()?.count ?? 0;
         },
 
-        isNvlModeInGame: (): boolean => {
+        onIsNvlMode: (): boolean => {
             const gameState = getLiveGame()?.getGameState?.();
             const nvlState = (gameState as { getNvlState?: () => { active?: unknown } } | null | undefined)
                 ?.getNvlState?.();
             return nvlState?.active === true;
         },
 
-        selectChoiceInGame: async (index: number): Promise<void> => {
+        onSelectChoice: async (index: number): Promise<void> => {
             const runtime = choiceMenus.current();
             if (!runtime) {
-                throw new Error("Select Choice: no active choice menu");
+                throw refusal("game.run.noChoiceMenu", "blueprint.node.selectChoice");
             }
             runtime.choose(index);
         },
 
-        nextInGame: async (): Promise<void> => {
+        onNext: async (): Promise<void> => {
             // The newest box still on the stage. A Game UI dialog surface covers the stage and takes
             // the click itself, so this is the whole of the advance path for a game that has one:
             // the click a player made reaches the line only by being made again here.
@@ -425,55 +476,55 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             }
             // No dialog surface of its own: the engine draws the box, and its stage announcer
             // answers a click anywhere on the player.
-            const liveGame = requireLiveGame("Next");
+            const liveGame = requireLiveGame("blueprint.node.next");
             const gameState = liveGame.getGameState();
             if (!gameState) {
-                throw new Error("Next: game state is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
             if (!clickTarget) {
-                throw new Error("Next: virtual click target is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             clickTarget.click();
         },
 
-        skipInGame: async (): Promise<void> => {
-            requireLiveGame("Skip").skipDialog();
+        onSkip: async (): Promise<void> => {
+            requireLiveGame("blueprint.node.skip").skipDialog();
         },
 
-        showDialogInGame: async (): Promise<void> => {
-            requireLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
+        onShowDialog: async (): Promise<void> => {
+            requireLiveGame("blueprint.node.showDialog").game.preference.setPreference("showDialog", true);
         },
 
-        hideDialogInGame: async (): Promise<void> => {
-            requireLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
+        onHideDialog: async (): Promise<void> => {
+            requireLiveGame("blueprint.node.hideDialog").game.preference.setPreference("showDialog", false);
         },
 
-        toggleDialogDisplayInGame: async (): Promise<void> => {
-            const preference = requireLiveGame("Toggle Dialog Display").game.preference;
+        onToggleDialogDisplay: async (): Promise<void> => {
+            const preference = requireLiveGame("blueprint.node.toggleDialogDisplay").game.preference;
             preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
         },
 
-        setSentenceSpeedInGame: async (cps: number): Promise<void> => {
+        onSetSentenceSpeed: async (cps: number): Promise<void> => {
             const value = typeof cps === "number" ? cps : Number(cps);
             if (!Number.isFinite(value) || value <= 0) {
-                throw new Error("Set Sentence Speed: CPS must be a positive number");
+                throw new Error(translate("blueprint.runtimeError.valueAbove", { name: "CPS", min: "0" }));
             }
-            requireLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
+            requireLiveGame("blueprint.node.setSentenceSpeed").game.preference.setPreference("cps", value);
         },
 
-        getGamePreferenceInGame: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
-            const preference = requireLiveGame(`Get ${key} Preference`).game.preference as {
+        onGetGamePreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+            const preference = requireLiveGame(null).game.preference as {
                 getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
             };
             return preference.getPreference(key) as BlueprintGamePreferenceValue;
         },
 
-        setGamePreferenceInGame: async (
+        onSetGamePreference: async (
             key: BlueprintGamePreferenceKey,
             value: BlueprintGamePreferenceValue,
         ): Promise<void> => {
-            const preference = requireLiveGame(`Set ${key} Preference`).game.preference as {
+            const preference = requireLiveGame(null).game.preference as {
                 setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
             };
             preference.setPreference(key, value);

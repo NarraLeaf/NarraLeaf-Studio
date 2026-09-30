@@ -43,10 +43,7 @@ export function resolveDefaultLaunchScene(bundle: DevModeBundle): DefaultLaunchS
 
 function* eachGraph(blueprints: BlueprintDocument | undefined): Generator<BlueprintGraphIr> {
     for (const blueprint of Object.values(blueprints?.blueprints ?? {})) {
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
-        const { events, functions, macros } = blueprint.program.graphs;
+        const { events, functions, macros } = blueprint.graphs;
         for (const holder of [
             ...Object.values(events ?? {}),
             ...Object.values(functions ?? {}),

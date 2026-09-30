@@ -385,13 +385,14 @@ export function AccordionItem({
                         style={{ paddingLeft: `${12 + indentation}px` }}
                     >
                         {/*
-                          * Expand/collapse icon.
+                          * Expand/collapse icon: a chevron pointing right when the section is
+                          * closed, turned a quarter turn down when it is open.
                           *
-                          * Rotated through the standalone `rotate` property instead of a `rotate-90`
-                          * utility: narraleaf-react injects its own Tailwind v4 stylesheet into this
-                          * document, and its `.transform` rule (`var(--tw-rotate-x,) ...`) lands after
-                          * ours and wins, so every v3 transform utility resolves to `none`. `rotate`
-                          * is a separate property and is unaffected by that collision.
+                          * The angle is written to the standalone `rotate` property rather than a
+                          * `rotate-90` transform utility, and `transition-[rotate]` animates that
+                          * same property. Keeping the turn on a property of its own means it stands
+                          * alone: nothing else has to share `transform` with it, here or in whatever
+                          * wraps the icon.
                           */}
                         <ChevronRight
                             className={cn(

@@ -1,0 +1,224 @@
+/**
+ * Compiling the author's script blueprints into modules a running game can import.
+ *
+ * A script blueprint names a file under `<project>/scripts/`. This bundles each named file with
+ * esbuild and hands back the module text, which the bundle carries to whichever runtime is going to
+ * run it. Nothing here executes the author's code - esbuild reads bytes, it does not run them - so
+ * the boundary that says the build runs no third-party code is intact, and it is the reason Studio
+ * never runs a package manager either: an install would run its dependencies' postinstall scripts.
+ * The author runs `npm install` themselves, and what is already on disk is what gets bundled.
+ *
+ * # A type error never stops anything; a file that does not compile stops a package
+ *
+ * The load-bearing rule of this whole feature is that **a build never depends on a type check**.
+ * esbuild strips types without reading them, so a script whose types are wrong still compiles and
+ * still runs. What can fail here is a syntax error, an import that does not resolve, a file that is
+ * not there, or a bundler that could not be started - and each of those leaves a script layer that
+ * does nothing at all.
+ *
+ * This function never throws for one. It reports the file and carries on with the others, because
+ * its callers need different answers: Dev Mode and a preview keep running and show the message,
+ * while a package refuses to be built (see `bundleAssembler.ts`), since a game that ships with a
+ * layer the author wrote and nobody runs is the build doing something other than what was asked.
+ */
+
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
+import path from "path";
+import { pathToFileURL } from "url";
+import type { BlueprintDocument, BlueprintDiagnostic } from "@shared/types/blueprint/document";
+import { isScriptSourcePath } from "@shared/project/scriptsDirectory";
+import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
+import { loadEsbuild as loadStudioEsbuild } from "../../../../../utils/esbuildLoader";
+
+type EsbuildModule = typeof import("esbuild");
+
+/**
+ * One compiled script, as the bundle carries it.
+ *
+ * A **URL rather than the text**, and that is not a preference. Every host that runs a game has a
+ * Content-Security-Policy, and none of them admits a script from a `blob:` or a `data:` URL - the
+ * shipped runtime's `script-src` is `'self' <scheme>: 'nonce-…'` and does not even carry
+ * `unsafe-eval`. What both hosts do admit is a URL they serve: a file for Dev Mode, whose policy
+ * allows `file:`, and the pack's own scheme for a packaged game. So a compiled script is written to
+ * disk and named, exactly as a plugin's entry is.
+ */
+export type CompiledScriptModule = {
+    /** The file it came from, for a message that names something the author can open. */
+    scriptRef: string;
+    /** Where the compiled module was written, as a URL the host can import. Absent when it failed. */
+    url?: string;
+    diagnostics?: BlueprintDiagnostic[];
+};
+
+/**
+ * Compiled scripts by script-layer key ({@link scriptLayerKey}).
+ *
+ * By layer rather than by blueprint, because a blueprint can hold several script layers and a
+ * layer id is only unique inside its own blueprint. Two layers naming one file each get their own
+ * entry pointing at one compiled module - see {@link compileProjectScripts}.
+ */
+export type CompiledScripts = Record<string, CompiledScriptModule>;
+
+/** The file each script layer in the document names, by script-layer key. */
+export function collectScriptRefs(document: BlueprintDocument | undefined): Map<string, string> {
+    const refs = new Map<string, string>();
+    for (const [blueprintId, blueprint] of Object.entries(document?.blueprints ?? {})) {
+        for (const { layerId, script } of listScriptLayers(blueprint?.graphs)) {
+            refs.set(scriptLayerKey(blueprintId, layerId), script.scriptRef);
+        }
+    }
+    return refs;
+}
+
+/**
+ * What went wrong compiling, one line per file whatever number of layers name it.
+ *
+ * Read from what a bundle carries, so every host that runs one - Dev Mode, a preview, a test run,
+ * a package build - reports the same lines for the same project.
+ */
+export function listScriptCompileFailures(
+    scripts: Readonly<Record<string, { diagnostics?: readonly BlueprintDiagnostic[] }>> | undefined,
+): string[] {
+    return [...new Set(
+        Object.values(scripts ?? {}).flatMap(script => (script.diagnostics ?? []).map(d => d.message)),
+    )];
+}
+
+function failure(scriptRef: string, message: string): CompiledScriptModule {
+    return {
+        scriptRef,
+        diagnostics: [{ severity: "error", message, code: "script.compile", location: { scriptRef } }],
+    };
+}
+
+/**
+ * Bundle every script the document names.
+ *
+ * Compiled once per distinct file rather than once per layer: two layers pointing at one script are
+ * the same module, and bundling it twice would give them separate copies of its module-level state,
+ * which is not what an author reading one file would expect.
+ */
+export async function compileProjectScripts(
+    projectPath: string,
+    document: BlueprintDocument | undefined,
+    /**
+     * Where the compiled modules are written, and how they are named to the host that imports them.
+     *
+     * Dev Mode writes into the project's own `.nlstudio/` - which version control and an export both
+     * exclude - and names them as `file:` URLs, which its policy admits. A packaged build writes
+     * them into the pack and names them by the pack's scheme.
+     */
+    output?: { directory: string; toUrl?: (filePath: string) => string },
+    // Injected so a test can compile without resolving the real bundler, matching how the puppet
+    // runtime build takes it. The default is the one loader that can start esbuild's binary in a
+    // packaged Studio; see `utils/esbuildLoader.ts`.
+    loadEsbuild: () => Promise<EsbuildModule> = loadStudioEsbuild,
+): Promise<CompiledScripts> {
+    const refs = collectScriptRefs(document);
+    if (refs.size === 0) {
+        return {};
+    }
+
+    // Every script fails the same way when there is nothing to compile them with or nowhere to put
+    // them, and each one is still named, because each is a layer that will not run.
+    const failEvery = (reason: string): CompiledScripts => Object.fromEntries(
+        [...refs].map(([layerKey, scriptRef]) => [layerKey, failure(scriptRef, `${scriptRef} could not be compiled: ${reason}`)]),
+    );
+
+    if (!output) {
+        return failEvery("this host cannot serve compiled scripts.");
+    }
+
+    let esbuild: EsbuildModule;
+    try {
+        esbuild = await loadEsbuild();
+    } catch (error) {
+        return failEvery(error instanceof Error ? error.message : String(error));
+    }
+    await fs.mkdir(output.directory, { recursive: true });
+    const toUrl = output.toUrl ?? (filePath => pathToFileURL(filePath).toString());
+    const byRef = new Map<string, CompiledScriptModule>();
+
+    for (const scriptRef of new Set(refs.values())) {
+        byRef.set(scriptRef, await compileOne(esbuild, projectPath, scriptRef, output.directory, toUrl));
+    }
+
+    const out: CompiledScripts = {};
+    for (const [layerKey, scriptRef] of refs) {
+        out[layerKey] = byRef.get(scriptRef) as CompiledScriptModule;
+    }
+    return out;
+}
+
+async function compileOne(
+    esbuild: EsbuildModule,
+    projectPath: string,
+    scriptRef: string,
+    outputDirectory: string,
+    toUrl: (filePath: string) => string,
+): Promise<CompiledScriptModule> {
+    // The document is the author's and its paths are theirs to write, so a path that is not a
+    // script in this project is refused here rather than handed to a bundler with a project root.
+    if (!isScriptSourcePath(scriptRef)) {
+        return failure(scriptRef, `"${scriptRef}" is not a script in this project.`);
+    }
+    const entry = path.join(projectPath, ...scriptRef.split("/"));
+
+    try {
+        const result = await esbuild.build({
+            entryPoints: [entry],
+            bundle: true,
+            write: false,
+            format: "esm",
+            platform: "browser",
+            target: "es2022",
+            // The author's dependencies are bundled in, which is what their own `npm install` is
+            // for. Nothing is external: a game has no module resolver at runtime.
+            //
+            // `@narraleaf/script` is never resolved because it is only ever imported with
+            // `import type`, which is erased before this runs. A value import of it reaches here as
+            // an unresolvable path and is reported - which is the right answer, since there is no
+            // runtime module behind that name.
+            logLevel: "silent",
+            sourcemap: "inline",
+            absWorkingDir: projectPath,
+        });
+        const code = result.outputFiles?.[0]?.text;
+        if (typeof code !== "string") {
+            return failure(scriptRef, `${scriptRef} produced no output.`);
+        }
+        // Named after the source rather than after a layer, so a stack trace in the game's console
+        // names something the author can open. Two layers on one file share it.
+        //
+        // `.js` rather than `.mjs`, although the file is an ES module: a module script is refused
+        // unless it is served with a JavaScript media type, and the web export and both mobile shells
+        // are served by whatever the author uploads them to. `.js` is the one extension every static
+        // host and every WebView maps to JavaScript; `.mjs` is still missing from some of their
+        // tables, which would leave the script dead on exactly the hosts nobody here can test.
+        const outputName = `${scriptRef.replace(/[\/]/g, "_").replace(/\.(ts|js)$/, "")}.js`;
+        const outputPath = path.join(outputDirectory, outputName);
+        await fs.writeFile(outputPath, code, "utf-8");
+        return { scriptRef, url: toUrl(outputPath) };
+    } catch (error) {
+        return failure(scriptRef, `${scriptRef} could not be compiled: ${describeCompileError(error)}`);
+    }
+}
+
+type EsbuildMessage = { text: string; location?: { file: string; line: number; column: number } | null };
+
+/**
+ * esbuild's own errors, one per line, each where it is: `scripts/title.ts:7:0: Expected ")"`.
+ *
+ * Read from the failure's structured list rather than its message, which wraps the same lines in a
+ * "Build failed with N errors" preamble - noise in a build's failure notice, where these lines are
+ * the whole of what the author reads. Anything that is not esbuild's failure keeps its message.
+ */
+function describeCompileError(error: unknown): string {
+    const errors = (error as { errors?: unknown } | null)?.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+        return (errors as EsbuildMessage[])
+            .map(({ text, location }) => (location ? `${location.file}:${location.line}:${location.column}: ${text}` : text))
+            .join("\n");
+    }
+    return error instanceof Error ? error.message : String(error);
+}

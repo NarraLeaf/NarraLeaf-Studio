@@ -56,6 +56,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Build Variant": "blueprint.node.getAppTag",
     "Get Auto Forward": "blueprint.node.getAutoForward",
     "Get Auto Forward Delay": "blueprint.node.getAutoForwardDelay",
+    "Get Text Fade In": "blueprint.node.getTextRevealDuration",
     "Get BGM Volume": "blueprint.node.getBgmVolume",
     "Get Button Enabled": "blueprint.node.getButtonEnabled",
     "Get Button Label": "blueprint.node.getButtonLabel",
@@ -87,6 +88,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Skip": "blueprint.node.getSkip",
     "Get Skip Delay": "blueprint.node.getSkipDelay",
     "Get Skip Interval": "blueprint.node.getSkipInterval",
+    "Get Mute When Unfocused": "blueprint.node.getMuteWhenUnfocused",
     "Get Skip Read Text": "blueprint.node.getSkipReadText",
     "Get Skipping": "blueprint.node.getSkipping",
     "Get Slider Enabled": "blueprint.node.getSliderEnabled",
@@ -104,6 +106,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Play Sound": "blueprint.node.playSound",
     "Set Auto Forward": "blueprint.node.setAutoForward",
     "Set Auto Forward Delay": "blueprint.node.setAutoForwardDelay",
+    "Set Text Fade In": "blueprint.node.setTextRevealDuration",
     "Set BGM Volume": "blueprint.node.setBgmVolume",
     "Set Button Enabled": "blueprint.node.setButtonEnabled",
     "Set Button Label": "blueprint.node.setButtonLabel",
@@ -133,6 +136,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Set Skip": "blueprint.node.setSkip",
     "Set Skip Delay": "blueprint.node.setSkipDelay",
     "Set Skip Interval": "blueprint.node.setSkipInterval",
+    "Set Mute When Unfocused": "blueprint.node.setMuteWhenUnfocused",
     "Set Skip Read Text": "blueprint.node.setSkipReadText",
     "Set Skipping": "blueprint.node.setSkipping",
     "Set Slider Enabled": "blueprint.node.setSliderEnabled",
@@ -406,7 +410,11 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "On Key Down": "blueprint.node.onKeyDown",
     "On Key Up": "blueprint.node.onKeyUp",
     "On Preference Changed": "blueprint.node.onPreferenceChanged",
+    "Is Window Focused": "blueprint.node.isWindowFocused",
+    "On Window Focus Changed": "blueprint.node.onWindowFocusChanged",
     "Open Link": "blueprint.node.openLink",
+    "Open Screenshots Folder": "blueprint.node.openScreenshotsFolder",
+    "Save Screenshot": "blueprint.node.saveScreenshot",
     "Open page": "blueprint.node.openPage",
     "Or": "blueprint.node.or",
     "Pad End": "blueprint.node.padEnd",
@@ -544,6 +552,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Time Zone": "blueprint.node.getTimeZone",
     "Get Save Time": "blueprint.node.getSaveTime",
     "Get Save Line": "blueprint.node.getSaveLine",
+    "Get Save Story": "blueprint.node.getSaveStory",
     "Get Save Playtime": "blueprint.node.getSavePlaytime",
     "Get Playtime": "blueprint.node.getPlaytime",
     "Get Total Playtime": "blueprint.node.getTotalPlaytime",
@@ -613,6 +622,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Asset Id": "blueprint.port.assetId",
     "Auto Forward": "blueprint.port.autoForward",
     "Auto Forward Delay": "blueprint.port.autoForwardDelay",
+    "Text Fade In": "blueprint.port.textRevealDuration",
     "Avatar": "blueprint.port.avatar",
     "BGM Volume": "blueprint.port.bgmVolume",
     "Body": "blueprint.port.body",
@@ -842,6 +852,8 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Skip": "blueprint.port.skip",
     "Skip Delay": "blueprint.port.skipDelay",
     "Skip Interval": "blueprint.port.skipInterval",
+    "Is Focused": "blueprint.port.isFocused",
+    "Mute When Unfocused": "blueprint.port.muteWhenUnfocused",
     "Skip Read Text": "blueprint.port.skipReadText",
     "Skipping": "blueprint.port.skipping",
     "Slider": "blueprint.port.slider",
@@ -850,6 +862,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Start": "blueprint.port.start",
     "Step": "blueprint.port.step",
     "Story": "blueprint.port.story",
+    "Story Name": "blueprint.port.storyName",
     "String": "blueprint.port.string",
     "Switch": "blueprint.port.switch",
     "Target element": "blueprint.port.targetElement",
@@ -934,6 +947,21 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
 export function resolveBlueprintNodeTitle(displayName: string, t: Translate): string {
     const key = NODE_TITLE_KEYS[displayName];
     return key ? t(key) : displayName;
+}
+
+/**
+ * The catalogue key a node title is drawn with, or undefined for a title drawn verbatim.
+ *
+ * For a reader that cannot translate where it runs - a project check rule may not build prose - and
+ * so hands the key on to whoever renders its finding.
+ */
+export function blueprintNodeTitleKey(displayName: string): TranslationKey | undefined {
+    return NODE_TITLE_KEYS[displayName];
+}
+
+/** The catalogue key a pin label is drawn with, when the whole label has one; see {@link blueprintNodeTitleKey}. */
+export function blueprintLabelKey(text: string): TranslationKey | undefined {
+    return PORT_LABEL_KEYS[text];
 }
 
 /** Localize a palette category name, falling back to the original English text when unmapped. */

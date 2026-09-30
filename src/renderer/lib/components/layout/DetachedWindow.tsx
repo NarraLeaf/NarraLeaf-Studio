@@ -293,7 +293,7 @@ function adoptStyles(doc: Document): () => void {
  * Keep the popup's root element wearing what the opener's wears.
  *
  * `class` and inline custom properties on `<html>` are how Studio publishes appearance - the
- * `nl-studio` light-theme opt-in, the accent colour, reduced motion, editor surface opacity (see
+ * `nl-studio` light-theme opt-in, the accent colour, reduced motion, the interface typeface (see
  * lib/appearance). They change while the app runs, so this mirrors rather than copies once.
  */
 function mirrorRootAttributes(doc: Document): () => void {

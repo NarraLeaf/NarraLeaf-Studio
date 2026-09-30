@@ -4,13 +4,23 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL,
+    GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
+    type GameCrashReportRequest,
+    type GameCrashReportResult,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameRuntimeSidecarBridge,
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
+import type { GameMenuModel } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
@@ -216,13 +226,62 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             ipcRenderer.off(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, handler);
         };
     },
+    // The window's own focus, asked of and pushed by the process that owns it. Deliberately not the
+    // page's `focus`/`blur`: those also fire for a window whose developer tools took the keyboard,
+    // which is a window the player is plainly still in.
+    isWindowFocused: () => ipcRenderer.invoke("runtime:window:isFocused") as Promise<boolean>,
+    onWindowFocusChanged: (listener: (isFocused: boolean) => void) => {
+        const handler = (_event: unknown, isFocused: boolean) => {
+            listener(isFocused === true);
+        };
+        ipcRenderer.on(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, handler);
+        return () => {
+            ipcRenderer.off(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, handler);
+        };
+    },
+    // The capture and the file are both the main process's; nothing about the path is decided here.
+    saveScreenshot: () =>
+        ipcRenderer.invoke("runtime:screenshot:save") as Promise<BlueprintScreenshotResult>,
+    openScreenshotsFolder: () =>
+        ipcRenderer.invoke("runtime:screenshot:openFolder") as Promise<BlueprintOpenScreenshotsResult>,
+    // The one file a player can send after a crash. The page contributes what only it knows; the
+    // log, the build, the machine, the path and what is left out of all of them are the main
+    // process's, which is also the only side that could write a file at all.
+    saveCrashReport: (request: GameCrashReportRequest) =>
+        ipcRenderer.invoke("runtime:crash:saveReport", request) as Promise<GameCrashReportResult>,
     onCloseRequested: (listener: () => boolean | Promise<boolean>) => {
         closeRequestedListeners.add(listener);
         return () => {
             closeRequestedListeners.delete(listener);
         };
     },
-    capabilities: { closeRequested: true, windowScale: true },
+    /**
+     * The window's menu bar. Present here and absent on the web export, which is the whole signal:
+     * a page has no bar of its own to own.
+     *
+     * Nothing is decided on this side - the model arrives resolved and leaves unchanged, and a pick
+     * comes back as the id it was drawn with. Same shape as `onFullscreenChanged`: subscribe, and
+     * the returned function is the only way off.
+     */
+    menu: {
+        set: (model: GameMenuModel) => ipcRenderer.invoke("runtime:menu:set", model) as Promise<void>,
+        onCommand: (listener: (itemId: string) => void) => {
+            const handler = (_event: unknown, payload: { itemId?: unknown }) => {
+                const itemId = typeof payload?.itemId === "string" ? payload.itemId : "";
+                if (itemId) {
+                    listener(itemId);
+                }
+            };
+            ipcRenderer.on(GAME_RUNTIME_MENU_COMMAND_CHANNEL, handler);
+            return () => {
+                ipcRenderer.off(GAME_RUNTIME_MENU_COMMAND_CHANNEL, handler);
+            };
+        },
+    },
+    // Asked of the main process on every call: it is the only side that can see the GPU process and
+    // itself, and a reading kept here would only go stale.
+    processMemory: () => ipcRenderer.invoke("runtime:processMemory:read") as Promise<GameProcessMemoryReading>,
+    capabilities: { closeRequested: true, windowScale: true, screenshot: true },
     /*
      * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no
      * eviction, no seven-day rule - which is the difference the web export has to report and this

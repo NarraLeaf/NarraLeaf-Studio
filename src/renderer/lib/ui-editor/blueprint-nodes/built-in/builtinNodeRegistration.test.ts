@@ -4,7 +4,7 @@
  * An array can be exported, imported by tests, and documented, yet never be spread into
  * `allBuiltinBlueprintNodes` - in which case `registerCoreBlueprintNodes()` skips it and the
  * nodes exist in neither the palette nor `behaviorNodeRegistry`. That failure is silent: the
- * only symptom is a saved graph throwing "Behavior node definition missing" at execution time.
+ * only symptom is a saved graph stopping at execution time with "This node is not available".
  *
  * Membership is checked by node `type`, not by array identity, because some arrays are
  * re-exported for tests while shipping nested inside another (e.g. `imageAssetBlueprintNodes`
@@ -40,6 +40,24 @@ function listExportedNodeArrays(): Array<[string, BlueprintNodeDef[]]> {
 describe("built-in blueprint node registration", () => {
     it("exports at least one node array (guard is wired to the real barrel)", () => {
         expect(listExportedNodeArrays().length).toBeGreaterThan(0);
+    });
+
+    it("declares no node that is both pure and latent", () => {
+        // `isPure` and `isLatent` are two booleans describing one three-state fact: a node computes
+        // a value (pure), does something (effectful), or does something and the caller waits
+        // (latent). The fourth state the pair can spell means nothing, and the two validators that
+        // read them would disagree about it - a function graph refuses latent nodes, a value graph
+        // wants pure ones, and a node claiming both would be admitted by one and refused by the
+        // other for the same reason.
+        //
+        // Measured across the catalogue: 338 pure, 231 latent, 74 plain effectful, and none both.
+        // Folding the pair into one field would touch every node definition in sixty-odd files and
+        // change nothing an author sees, so the illegal state is held off by this instead.
+        const both = allBuiltinBlueprintNodes
+            .filter(def => def.isPure && def.isLatent)
+            .map(def => def.type);
+
+        expect(both).toEqual([]);
     });
 
     it("includes every exported node array in allBuiltinBlueprintNodes", () => {
@@ -126,7 +144,7 @@ describe("function entry node", () => {
     it("resolves from behaviorNodeRegistry so the executor does not throw a missing definition", () => {
         registerCoreBlueprintNodes();
 
-        // GraphExecutor throws `Behavior node definition missing: <type>` when this lookup returns
+        // GraphExecutor stops with "This node is not available" when this lookup returns
         // undefined, which is exactly what an unregistered entry node caused.
         const behavior = behaviorNodeRegistry.get(BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY);
         expect(behavior).toBeDefined();

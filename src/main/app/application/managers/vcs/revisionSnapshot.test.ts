@@ -3,9 +3,9 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { shouldExcludeProjectPackagePath } from "@shared/utils/projectPackage";
 import { isVersioned } from "@shared/vcs/workingSet";
 import {
-    blueprintAssetContentPaths,
     materializeRevisionSnapshot,
     partitionSnapshotEntries,
     removeRevisionSnapshots,
@@ -26,9 +26,6 @@ import type { RevisionFileEntry } from "./revisionReader";
  */
 
 const REVISION = "d59feba37af3fbb9c0ffee0123456789abcdef0123456789abcdef0123456789";
-const BLUEPRINT_ID = "2d44332f-18b9-4892-b269-c6f02ad31d95";
-/** `assets/content/<2>/<2>/<rest>` for the id above, as `splitAssetStorageId` fans it out. */
-const BLUEPRINT_CONTENT = "assets/content/2d/44/332f18b94892b269c6f02ad31d95";
 
 let project: string;
 
@@ -62,6 +59,22 @@ describe("where a snapshot lives", () => {
         expect(relative.split(path.sep)[0]).toBe(".nlstudio");
     });
 
+    it("is outside an exported project package, by the writer's own path", () => {
+        // The two spellings this pins together drifted once already: snapshots are written to
+        // `.nlstudio/devmode` and the package exclusion listed `.nlstudio/dev-mode`, so every
+        // `.nlspkg` an author handed to somebody else carried a full copy of their documents at
+        // whatever revision they had last run in Dev Mode.
+        //
+        // The path comes from the writer rather than being typed out here, which is the whole point:
+        // a test with the directory name in it would have passed on both sides of that drift.
+        const relative = path
+            .relative(project, path.join(revisionSnapshotDirectory(project, REVISION), "editor", "ui", "uidoc.json"))
+            .split(path.sep)
+            .join("/");
+
+        expect(shouldExcludeProjectPackagePath(relative)).toBe(true);
+    });
+
     it("names the revision, so a stray directory says which one it is", () => {
         const directory = revisionSnapshotDirectory(project, REVISION);
         expect(path.basename(directory)).toBe(REVISION.slice(0, 16));
@@ -84,27 +97,12 @@ describe("what travels", () => {
         expect(documents.map((e) => e.path)).toEqual(["editor/story/index.json"]);
         expect(media.map((e) => e.path)).toEqual(["assets/content/aa/bb/cc"]);
     });
-
-    it("resolves blueprint content the same way the compile path does", () => {
-        const paths = blueprintAssetContentPaths(Buffer.from(JSON.stringify({
-            [BLUEPRINT_ID]: { id: BLUEPRINT_ID, name: "shared" },
-            "not-a-storage-id": {},
-        })));
-        expect([...paths]).toEqual([BLUEPRINT_CONTENT]);
-    });
-
-    it("treats a broken shard as no shared blueprints, which is what the bundle would hold", () => {
-        expect(blueprintAssetContentPaths(Buffer.from("{ truncated"))).toEqual(new Set());
-        expect(blueprintAssetContentPaths(undefined)).toEqual(new Set());
-    });
 });
 
 describe("materialising", () => {
     it("writes the documents and leaves the media in the repository", async () => {
         const files = new Map<string, Buffer>([
             ["editor/story/index.json", Buffer.from("{\"stories\":[]}")],
-            ["assets/assets.metadata.blueprint.json", Buffer.from(JSON.stringify({ [BLUEPRINT_ID]: {} }))],
-            [BLUEPRINT_CONTENT, Buffer.from("{\"blueprint\":true}")],
             ["assets/content/ff/ee/dddddddddddddddddddddddddddd", Buffer.alloc(4096, 7)],
         ]);
 
@@ -112,12 +110,9 @@ describe("materialising", () => {
 
         expect(fs.readFileSync(path.join(result.directory, "editor", "story", "index.json"), "utf-8"))
             .toBe("{\"stories\":[]}");
-        // The one exception to skipping `assets/content/`: `loadSharedBlueprints` reads these, and a
-        // snapshot without them assembles a bundle whose shared blueprints are silently empty.
-        expect(fs.existsSync(path.join(result.directory, ...BLUEPRINT_CONTENT.split("/")))).toBe(true);
         expect(fs.existsSync(path.join(result.directory, "assets", "content", "ff", "ee", "dddddddddddddddddddddddddddd")))
             .toBe(false);
-        expect(result.files).toBe(3);
+        expect(result.files).toBe(1);
         expect(result.skippedFiles).toBe(1);
         expect(result.skippedBytes).toBe(4096);
     });

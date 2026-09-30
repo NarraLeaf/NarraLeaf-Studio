@@ -56,13 +56,23 @@ export function WidgetRuntimeStateProvider(props: WidgetRuntimeStateProviderProp
     return <WidgetRuntimeStateContext.Provider value={store}>{children}</WidgetRuntimeStateContext.Provider>;
 }
 
+/**
+ * Marks its subtree as one surface's drawing, under that surface's runtime scope.
+ *
+ * It also starts the instance over. A surface is drawn from its root with no row and no placement of
+ * its own, and the runtime writes its widgets' state that way - so a page drawn by a frame that sits
+ * in a list row or a component placement must not read its state under the row's or the
+ * placement's key. It used to inherit that key from the frame around it, and read every value its
+ * own graphs wrote through the template fallback, which nothing subscribes to: a page's Set Variant
+ * on its own button changed nothing on screen until something else redrew the button.
+ */
 export function WidgetRuntimeScopeProvider(props: {
     runtimeScopeId?: string | null;
     children: React.ReactNode;
 }): React.ReactElement {
     return (
         <WidgetRuntimeScopeContext.Provider value={props.runtimeScopeId ?? null}>
-            {props.children}
+            <WidgetRuntimeInstanceContext.Provider value={null}>{props.children}</WidgetRuntimeInstanceContext.Provider>
         </WidgetRuntimeScopeContext.Provider>
     );
 }
@@ -104,6 +114,26 @@ export function useWidgetRuntimeSnapshot(): WidgetRuntimeSnapshot {
         store?.subscribe ?? (() => () => {}),
         () => (store ? store.getSnapshot() : STATIC_WIDGET_RUNTIME_SNAPSHOT),
         () => (store ? store.getSnapshot() : STATIC_WIDGET_RUNTIME_SNAPSHOT)
+    );
+}
+
+/**
+ * One value a widget keeps in the runtime store - a slider's value, a switch's check, a text field's
+ * text - handed back again only when that value itself moved.
+ *
+ * Those widgets used to subscribe to the whole snapshot just to be told to read their own value
+ * again, so every hover, press and focus anywhere on the page re-rendered every one of them and every
+ * part each one places: on a settings page with eighteen sliders, a single pointer moving onto the
+ * page cost about two hundred component renders per write, ten writes in a row. The store replaces
+ * such a value with a new object whenever it changes and never edits one in place, so its identity
+ * is the whole comparison.
+ */
+export function useWidgetRuntimeStoreValue<T>(read: (store: WidgetRuntimeStateStore) => T): T | undefined {
+    const store = useWidgetRuntimeStateStore();
+    return useSyncExternalStore(
+        store?.subscribe ?? EMPTY_UNSUBSCRIBE,
+        () => (store ? read(store) : undefined),
+        () => (store ? read(store) : undefined),
     );
 }
 

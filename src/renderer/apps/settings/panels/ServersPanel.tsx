@@ -13,9 +13,9 @@ import { AddServerModal } from "./AddServerModal";
  * Every server this installation is signed in to, and the way to add one.
  *
  * **This is the machine's record and nothing more.** Which servers it is signed in to,
- * as whom, and how to stop. A server is signed in to once and then serves every project
- * pointed at it, so it belongs to the machine; a project chooses from this list rather
- * than carrying an account of its own.
+ * as whom, which projects use each sign-in, and how to stop. A sign-in belongs to the
+ * machine, and a project uses one only once the author has said it does - so each row
+ * names the projects that did, which are the projects "Sign out" here signs out.
  *
  * **What a server holds is not this panel's business.** No project counts, no members,
  * nothing that would have to be read from the network to be right: the launcher's
@@ -27,7 +27,7 @@ import { AddServerModal } from "./AddServerModal";
  * to offer it can mount the same one.
  */
 export function ServersPanel() {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const { servers, loading, reload } = useServers();
     const [adding, setAdding] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -64,22 +64,37 @@ export function ServersPanel() {
             {servers.length > 0 && (
                 <div className="flex flex-col gap-1">
                     {servers.map(session => (
-                        <ServerRow
-                            key={session.remoteOrigin}
-                            session={session}
-                            data-servers-row={session.remoteOrigin}
-                            trailing={(
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="shrink-0"
-                                    disabled={busy}
-                                    onClick={() => void forget(session)}
-                                >
-                                    {t("settings.servers.signOut")}
-                                </Button>
-                            )}
-                        />
+                        <div key={session.remoteOrigin} className="flex flex-col">
+                            <ServerRow
+                                session={session}
+                                data-servers-row={session.remoteOrigin}
+                                trailing={(
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="shrink-0"
+                                        disabled={busy}
+                                        onClick={() => void forget(session)}
+                                    >
+                                        {t("settings.servers.signOut")}
+                                    </Button>
+                                )}
+                            />
+                            {/* Under the row rather than in it: the row is one control height, and
+                                this list is as long as the author made it. The full paths are on
+                                hover, the names are what the launcher calls them. */}
+                            <p
+                                className="truncate px-3 pb-1 text-2xs text-fg-subtle"
+                                data-servers-used-by={session.remoteOrigin}
+                                data-tip={session.usedBy?.map(project => project.path).join("\n") || undefined}
+                            >
+                                {session.usedBy && session.usedBy.length > 0
+                                    ? t("settings.servers.usedBy", {
+                                        projects: formatList(session.usedBy.map(project => project.name)),
+                                    })
+                                    : t("settings.servers.unused")}
+                            </p>
+                        </div>
                     ))}
                 </div>
             )}

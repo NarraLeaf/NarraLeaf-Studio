@@ -12,7 +12,7 @@ export interface StatusBarMenuEntry {
 
 interface StatusBarContextMenu {
     hiddenIds: ReadonlySet<string>;
-    /** Open the menu; pass an entryId to target a specific cell (adds "remove this item"). */
+    /** Open the menu; pass an entryId to target a specific cell (adds "hide this item"). */
     openMenu: (event: React.MouseEvent, entryId?: string) => void;
     /** The rendered menu element; drop it into the bar's JSX (it portals to the body). */
     menu: React.ReactNode;
@@ -23,7 +23,7 @@ interface StatusBarContextMenu {
  *
  * Right-clicking the bar — either empty space or a specific cell — opens a checklist of every
  * registered entry, checked when it is switched on. Clicking a row shows or hides that entry.
- * Opening the menu on a cell adds a trailing "remove this item" that hides just that one.
+ * Opening the menu on a cell adds a trailing "hide this item" that hides just that one.
  *
  * Unlike the sidebar rails there is no reordering here: status bar placement follows registration
  * order (see `orderStatusBarEntries`), and the menu deliberately offers no way to change it.
@@ -54,10 +54,10 @@ export function useStatusBarContextMenu(entries: StatusBarMenuEntry[]): StatusBa
 
     const target = targetId ? entries.find(entry => entry.id === targetId) : undefined;
     if (target) {
-        items.push({ separator: true as const, id: "sep-remove" });
+        items.push({ separator: true as const, id: "sep-hide" });
         items.push({
-            id: "remove-item",
-            label: t("workspace.shell.panelMenu.removeItem"),
+            id: "hide-item",
+            label: t("workspace.shell.panelMenu.hideItem"),
             onClick: () => setEntryHidden(target.id, true),
         });
     }

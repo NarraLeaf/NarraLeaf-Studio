@@ -92,6 +92,8 @@ async function build(stamp) {
             '@services': path.join(rootDir, 'src', 'renderer', 'lib', 'workspace', 'services'),
         },
         define: { __NLS_STUDIO_DEV__: 'true' },
+        // `--plugin` transpiles a plugin's entry with esbuild's own API, which cannot be bundled.
+        external: ['esbuild'],
         loader: {
             '.ts': 'ts',
             '.tsx': 'tsx',

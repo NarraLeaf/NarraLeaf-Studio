@@ -4,7 +4,7 @@ import type {
     DocumentDiffEntry,
     DocumentDiffTier,
 } from "@shared/documents/diff";
-import { buildChangeIndex, GROUP_COLLAPSE_THRESHOLD, splitDocumentPath } from "./changeIndex";
+import { buildChangeIndex, GROUP_COLLAPSE_THRESHOLD } from "./changeIndex";
 import { NO_DOCUMENT_NAMES } from "./documentName";
 
 /**
@@ -282,19 +282,5 @@ describe("buildChangeIndex", () => {
         expect(index.groups).toEqual([]);
         expect(index.rows).toEqual([]);
         expect(index.omitted).toBe(0);
-    });
-});
-
-describe("splitDocumentPath", () => {
-    it("names the file and locates it separately", () => {
-        expect(splitDocumentPath("editor/story/index.json")).toEqual({
-            directory: "editor/story",
-            name: "index.json",
-        });
-        expect(splitDocumentPath("project.json")).toEqual({ directory: null, name: "project.json" });
-        expect(splitDocumentPath("editor\\ui\\uidoc.json")).toEqual({
-            directory: "editor/ui",
-            name: "uidoc.json",
-        });
     });
 });

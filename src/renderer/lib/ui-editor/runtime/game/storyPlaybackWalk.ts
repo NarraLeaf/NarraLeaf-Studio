@@ -103,9 +103,20 @@ function isBranchEntry(block: StoryBlock): boolean {
         || (block.kind === "control" && block.payload.control === "conditionBranch");
 }
 
-/** Rows with no runtime behaviour at all; emitting them would only add compiler noise. */
+/**
+ * Rows the walk cannot act on: whatever the author does next, these produce no statement, so
+ * emitting them would only add compiler noise.
+ *
+ * `invalid` belongs here for the same reason `note` and `empty` do, and not because it is *wrong*.
+ * A line that has not resolved yet is a normal thing to have on screen while writing, and it
+ * compiles to nothing either way (see `compileBlockCore`) - so a plan that carries it is a plan
+ * with a step that does nothing in it. Whether the row is wrong is a separate question, answered
+ * where the author can act on it: the row itself is drawn in the reject colour with the reason
+ * beside it, `story/invalid-command` lists it in the lint report, and `BuildService` refuses the
+ * build on it before the packer runs.
+ */
 function isInertKind(block: StoryBlock): boolean {
-    return block.kind === "note" || block.kind === "empty";
+    return block.kind === "note" || block.kind === "empty" || block.kind === "invalid";
 }
 
 class PlanBuilder {

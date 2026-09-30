@@ -71,6 +71,14 @@ export type TextReadTracker = {
      * player is looking at it, so it stays "read" by the display-finished rule.
      */
     clearAll: () => void;
+    /**
+     * Send a write the debounce is still holding, now, and go on tracking.
+     *
+     * For a page about to go away. The debounce timer does not outlive the page, so without this a
+     * line that finished displaying in the last moments before the window closed is unread the next
+     * time - and skip-read-text stops on it.
+     */
+    flush: () => void;
     /** Cancel the subscription, flush pending writes, and reset the mirror. */
     detach: () => void;
 };
@@ -117,6 +125,14 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
             persistTimer = null;
             persistNow();
         }, persistDebounceMs);
+    };
+
+    const flushPending = () => {
+        if (persistTimer !== null) {
+            clearTimeout(persistTimer);
+            persistTimer = null;
+        }
+        persistNow();
     };
 
     const refresh = () => {
@@ -182,17 +198,14 @@ export function createTextReadTracker(options: TextReadTrackerOptions): TextRead
             setMirror(false);
             refresh();
         },
+        flush: flushPending,
         detach: () => {
             if (detached) {
                 return;
             }
             detached = true;
             token.cancel();
-            if (persistTimer !== null) {
-                clearTimeout(persistTimer);
-                persistTimer = null;
-            }
-            persistNow();
+            flushPending();
             currentTextRead = false;
             // A detached tracker answers "no line on screen" to both questions, so a skip run that
             // outlives the session it belongs to is not blocked by a stale reading.

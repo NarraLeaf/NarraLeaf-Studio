@@ -56,7 +56,7 @@ export function createChoiceVoicePlayer(deps: {
      */
     start: (unitId: string) => Promise<ChoiceVoiceToken | null>;
     /** Reports a failed start. A choice that will not speak must not take the menu down with it. */
-    onError?: (error: unknown) => void;
+    onError?: (error: unknown, unitId: string) => void;
 }): ChoiceVoicePlayer {
     const playbacks = new Map<string, ChoiceVoicePlayback>();
 
@@ -108,7 +108,7 @@ export function createChoiceVoicePlayer(deps: {
                 return true;
             } catch (error) {
                 forget(id, entry);
-                deps.onError?.(error);
+                deps.onError?.(error, id);
                 return false;
             }
         },

@@ -9,6 +9,7 @@ import type { Translator } from "@shared/i18n";
 import { CharacterAvatarField } from "../fields/CharacterAvatarField";
 import { CharacterColorField } from "../fields/CharacterColorField";
 import { CharacterVoiceTrackField } from "../fields/CharacterVoiceTrackField";
+import { CharacterEntranceField } from "../fields/CharacterEntranceField";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -124,6 +125,16 @@ export const characterPropertySchema = (t: TranslateFn) =>
             label: t("characters.properties.voiceTrack"),
             component: CharacterVoiceTrackField,
             order: 70,
+        },
+        {
+            // Last, and with the appearance rather than with identity: this is how the character is
+            // DRAWN when she comes on - the one part of that answer the character did not hold, so
+            // every entrance row restated it.
+            id: "entranceTransform",
+            type: "custom",
+            label: t("characters.properties.entrance"),
+            component: CharacterEntranceField,
+            order: 80,
         },
     ],
     showSavingIndicator: false,

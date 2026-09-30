@@ -39,6 +39,12 @@ export interface AssetEditorContext<T extends AssetType = AssetType> {
      * that rides with the asset rather than an observation about it.
      */
     onUpdate: (field: "name" | "tags" | "description" | "modelEntry", value: any) => Promise<void>;
+    /**
+     * A stored tag as the tag list prints it, or null for one it does not print - the set
+     * bookkeeping a member of an asset set carries (see `readAssetTag`). Absent: tags print as
+     * stored.
+     */
+    readTag?: (tag: string) => string | null;
 }
 
 /**
@@ -55,11 +61,12 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
             order: 50,
         },
         {
-            id: "remoteSource",
+            id: "assetSource",
             type: "custom",
-            // Beside `replaceContent` because they are the same kind of thing — "where do this
-            // record's bytes come from" — and exactly one of them ever renders: replacing points a
-            // local record at another file, refreshing re-takes a remote record's snapshot.
+            // Under `replaceContent` because they are the same kind of thing — "where do this
+            // record's bytes come from". A remote record shows its address and offers to re-take
+            // the snapshot; a local one states that the file it was imported from is not tracked,
+            // which is what the Replace File button above it is for.
             component: ({ data }) => <AssetSourceSection asset={data.asset} />,
             order: 60,
         },
@@ -88,6 +95,7 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
                 const newTags = ctx.asset.tags.filter((t) => t !== tag);
                 await ctx.onUpdate("tags", newTags);
             },
+            formatTag: (ctx, tag) => (ctx.readTag ? ctx.readTag(tag) : tag),
             order: 200,
         },
         {

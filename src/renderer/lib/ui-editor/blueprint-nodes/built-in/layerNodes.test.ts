@@ -221,14 +221,15 @@ describe("Layer blueprint nodes", () => {
         expect(host.stack.getState()[0]).toMatchObject({ modal: false, dismissible: true, group: null });
     });
 
-    it("Show Layer names the page it could not find", async () => {
+    it("Show Layer refuses a page that is no longer in the project, without naming its id", async () => {
         const host = createLayerHost();
         const failure = runGraph(
             captureOutputGraph(BLUEPRINT_NODE_TYPE_LAYER_SHOW, "layer", { surfaceId: "gone" }),
             host,
         );
         await expect(failure).rejects.toBeInstanceOf(BlueprintGraphExecutionError);
-        await expect(failure).rejects.toThrow(/gone/);
+        await expect(failure).rejects.toThrow("The page was not found in this project.");
+        await expect(failure).rejects.not.toThrow(/gone/);
         expect(host.stack.getState()).toEqual([]);
     });
 
@@ -573,11 +574,12 @@ describe("Show Confirm", () => {
         expect(await running).toMatchObject({ took: "dismissed", index: -1 });
     });
 
-    it("names the page it could not find", async () => {
+    it("refuses a page that is no longer in the project, without naming its id", async () => {
         const host = createLayerHost();
         const failure = runGraph(confirmGraph({ surfaceId: "gone", buttons: ["Ok"] }), host);
         await expect(failure).rejects.toBeInstanceOf(BlueprintGraphExecutionError);
-        await expect(failure).rejects.toThrow(/gone/);
+        await expect(failure).rejects.toThrow("The page was not found in this project.");
+        await expect(failure).rejects.not.toThrow(/gone/);
     });
 
     /**

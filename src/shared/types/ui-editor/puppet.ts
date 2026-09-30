@@ -35,7 +35,7 @@ export type UIPuppetWidgetProps = {
      * The model bundle asset (`AssetType.Model`) — a preserved directory tree, not a single file.
      *
      * Named `assetId` on purpose, not `modelAssetId`: both generic asset walks key on that literal
-     * property name (`surfaceResourcePreload.ts` and `referenceModel.ts`), so this reference is
+     * property name (`surfaceAssetWarmup.ts` and `referenceModel.ts`), so this reference is
      * preloaded by the shipped game and is visible in "what uses this asset" with no per-widget code.
      */
     assetId: string | null;

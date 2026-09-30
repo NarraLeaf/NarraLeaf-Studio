@@ -19,6 +19,10 @@ import {
     type UITouchGestureDetail,
 } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { resetSharedInputHoldTracker } from "@/lib/ui-editor/runtime/input/inputHoldState";
+import {
+    GlobalInputActionContext,
+    type GlobalInputActionAnswerer,
+} from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 
 afterEach(() => {
     cleanup();
@@ -144,6 +148,10 @@ function buildDocument(leaf: { type: string; props?: Record<string, unknown> }):
 function renderSurface(options: {
     leaf?: { type: string; props?: Record<string, unknown> };
     actions?: UISurfaceActionEnablement[];
+    /** The game's global blueprint, as a running game hands it to every lane it draws. */
+    answerGlobally?: GlobalInputActionAnswerer;
+    /** The runtime scope the surface is drawn under, which is what tells two lanes apart. */
+    runtimeScopeId?: string;
 }) {
     const document = buildDocument(options.leaf ?? { type: "nl.container" });
     const surface: UISurface = {
@@ -156,6 +164,7 @@ function renderSurface(options: {
         host: "player",
         blueprintRuntime: {
             surfaceId: surface.id,
+            ...(options.runtimeScopeId ? { runtimeScopeId: options.runtimeScopeId } : {}),
             setSurfaceState: () => undefined,
             getSurfaceState: () => undefined,
             emitDebug: () => undefined,
@@ -169,20 +178,22 @@ function renderSurface(options: {
     // carry on past itself" is the same question either way, and it is the one the mode decides.
     const onwards = vi.fn();
     const view = render(
-        <WidgetRuntimeStateProvider externalStore={new WidgetRuntimeStateStore()}>
-            <WidgetRuntimeScopeProvider runtimeScopeId="scope">
-                <div onClick={onwards} onWheel={onwards}>
-                    <GameSurfaceRenderer
-                        document={document}
-                        surface={surface}
-                        rendererRegistry={REGISTRY}
-                        scale={1}
-                        hostAdapter={hostAdapter}
-                        staticDocument
-                    />
-                </div>
-            </WidgetRuntimeScopeProvider>
-        </WidgetRuntimeStateProvider>,
+        <GlobalInputActionContext.Provider value={options.answerGlobally ?? null}>
+            <WidgetRuntimeStateProvider externalStore={new WidgetRuntimeStateStore()}>
+                <WidgetRuntimeScopeProvider runtimeScopeId="scope">
+                    <div onClick={onwards} onWheel={onwards}>
+                        <GameSurfaceRenderer
+                            document={document}
+                            surface={surface}
+                            rendererRegistry={REGISTRY}
+                            scale={1}
+                            hostAdapter={hostAdapter}
+                            staticDocument
+                        />
+                    </div>
+                </WidgetRuntimeScopeProvider>
+            </WidgetRuntimeStateProvider>
+        </GlobalInputActionContext.Provider>,
     );
     const shell = view.container.querySelector("[data-ui-surface-id=\"surface\"]");
     const leafNode = view.container.querySelector("[data-ui-element-id=\"leaf\"]");
@@ -459,5 +470,147 @@ describe("a wheel gesture something has answered", () => {
 
         fireWheelAt(leafNode!, 1_032 + WHEEL_GESTURE_SILENCE_MS + 1, { deltaY: 120 });
         expect(wheelHeadCalls()).toBeGreaterThan(answered);
+    });
+});
+
+/**
+ * The game's global blueprint takes its turn at the first lane an input lands on.
+ *
+ * It answers every action in the vocabulary rather than a list it switched on, before the lane's own
+ * actions and under the same rule for controls. What these pin is the part of that the key half
+ * cannot show: the lane's own actions wait for the global's answer, a global stop keeps the input
+ * from the lane, and a gesture the global answered is spent however the lane answered it.
+ */
+describe("the global blueprint's turn on a lane", () => {
+    /** A global blueprint whose answer the test releases, recording what it was asked. */
+    function heldGlobal(options: { stops?: boolean } = {}) {
+        const asked: string[][] = [];
+        let release: () => void = () => undefined;
+        const answered = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const answerGlobally: GlobalInputActionAnswerer = async (payloads, eventControl) => {
+            asked.push(payloads.map(payload => payload.actionId));
+            await answered;
+            if (options.stops) {
+                eventControl.stopPropagation();
+            }
+        };
+        return { answerGlobally, asked, release: () => release() };
+    }
+
+    /** Let the microtasks a released answer queued run out. */
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it("hears every action a gesture is bound to, on a surface that answers none of them", () => {
+        const global = heldGlobal();
+        const { leafNode } = renderSurface({ answerGlobally: global.answerGlobally });
+
+        fireEvent.click(leafNode!);
+
+        expect(global.asked).toEqual([["advance"]]);
+    });
+
+    it("stands down over a control, as the surface's own action does", () => {
+        const global = heldGlobal();
+        const { leafNode } = renderSurface({ leaf: { type: "nl.button" }, answerGlobally: global.answerGlobally });
+
+        fireEvent.click(leafNode!);
+
+        expect(global.asked).toEqual([]);
+    });
+
+    it("holds the surface's own action until it has answered", async () => {
+        const global = heldGlobal();
+        const { dispatchSurfaceInputAction, leafNode } = renderSurface({
+            actions: [{ actionId: "advance" }],
+            answerGlobally: global.answerGlobally,
+        });
+
+        fireEvent.click(leafNode!);
+        await flush();
+        expect(global.asked).toEqual([["advance"]]);
+        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual([]);
+
+        global.release();
+        await flush();
+        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual(["advance"]);
+    });
+
+    it("keeps the input from the surface when a global handler stops it", async () => {
+        const global = heldGlobal({ stops: true });
+        const { dispatchSurfaceInputAction, leafNode } = renderSurface({
+            actions: [{ actionId: "advance" }],
+            answerGlobally: global.answerGlobally,
+        });
+
+        fireEvent.click(leafNode!);
+        global.release();
+        await flush();
+
+        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual([]);
+    });
+
+    it("does not decide where the input goes: a surface that passes still passes it on", () => {
+        const global = heldGlobal();
+        const { onwards, leafNode } = renderSurface({
+            actions: [{ actionId: "advance", consume: false }],
+            answerGlobally: global.answerGlobally,
+        });
+
+        fireEvent.click(leafNode!);
+
+        expect(onwards).toHaveBeenCalledTimes(1);
+    });
+
+    it("spends a scroll it answered, so the tail fires nothing - even on a surface that passes", async () => {
+        const global = heldGlobal();
+        const { dispatchSurfaceInputAction, leafNode } = renderSurface({
+            actions: [{ actionId: "advance", consume: false }],
+            answerGlobally: global.answerGlobally,
+        });
+
+        fireWheelAt(leafNode!, 1_000, { deltaY: 120 });
+        fireWheelAt(leafNode!, 1_016, { deltaY: 120 });
+        fireWheelAt(leafNode!, 1_032, { deltaY: 120 });
+        global.release();
+        await flush();
+
+        expect(global.asked).toEqual([["advance"]]);
+        // The event in hand is still the surface's; the rest of the flick is nobody's.
+        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual(["advance"]);
+    });
+
+    it("is offered one physical input once, however many lanes it crosses", async () => {
+        const global = heldGlobal();
+        const front = renderSurface({
+            actions: [{ actionId: "advance", consume: false }],
+            answerGlobally: global.answerGlobally,
+            runtimeScopeId: "front",
+        });
+        const behind = renderSurface({
+            actions: [{ actionId: "advance" }],
+            answerGlobally: global.answerGlobally,
+            runtimeScopeId: "behind",
+        });
+        // jsdom paints nothing, so there is no hit test to find the lane behind: stand one in, as the
+        // browser's own answer for "what is under this point once the front lane is discounted".
+        const ownerDocument = front.leafNode!.ownerDocument as Document & { elementsFromPoint?: unknown };
+        const original = ownerDocument.elementsFromPoint;
+        ownerDocument.elementsFromPoint = () => [front.leafNode!, behind.leafNode!];
+        try {
+            fireEvent.click(front.leafNode!, { clientX: 10, clientY: 10 });
+        } finally {
+            ownerDocument.elementsFromPoint = original;
+        }
+        expect(global.asked).toEqual([["advance"]]);
+        expect(firedActionIds(front.dispatchSurfaceInputAction)).toEqual([]);
+        expect(firedActionIds(behind.dispatchSurfaceInputAction)).toEqual([]);
+
+        global.release();
+        await flush();
+        // Both lanes answer, and the lane behind waited for the global as the one in front did.
+        expect(firedActionIds(front.dispatchSurfaceInputAction)).toEqual(["advance"]);
+        expect(firedActionIds(behind.dispatchSurfaceInputAction)).toEqual(["advance"]);
     });
 });

@@ -17,19 +17,30 @@ const WORKING_DIRECTORY = path.join(ROOT, "jobs", "42");
 const BASE: BuildCommandLineOptions = {
     requested: true,
     selector: PROJECT,
-    variantId: null,
+    variant: null,
     platform: null,
     format: null,
     arch: null,
     outputDir: null,
     reportPath: null,
+    userDataDir: null,
+    signingPath: null,
+    settings: [],
+    plugins: [],
     allowUnsigned: false,
     error: null,
 };
 
-function plan(options: Partial<BuildCommandLineOptions>, host: "windows" | "macos" | "linux" = "windows") {
+const RELEASE = { id: "main", name: "main" };
+
+function plan(
+    options: Partial<BuildCommandLineOptions>,
+    host: "windows" | "macos" | "linux" = "windows",
+    variant: { id: string; name: string } = RELEASE,
+) {
     return planCommandLineBuild({
         options: { ...BASE, ...options },
+        variant,
         projectPath: PROJECT,
         hostPlatform: host,
         hostArch: "x64",
@@ -48,6 +59,7 @@ describe("planCommandLineBuild", () => {
                 format: "zip",
                 arch: "x64",
                 variantId: "main",
+                variantName: "main",
             }),
         });
     });
@@ -134,16 +146,64 @@ describe("planCommandLineBuild", () => {
         expect(result.ok && result.plan.request.targets[0]).toEqual({ platform: "web", formats: ["zip"] });
     });
 
-    it("takes the named variant", () => {
-        const result = plan({ variantId: "demo" });
+    it("builds the variant it was handed by its id, and names it by its name", () => {
+        const demo = { id: "0d9b5f6e-2a41-4f5e-9c1d-7e3a8b6c5d42", name: "Demo" };
+        const result = plan({ variant: "demo" }, "windows", demo);
 
-        expect(result.ok && result.plan.request.appTagId).toBe("demo");
+        expect(result.ok && result.plan.request.appTagId).toBe(demo.id);
+        expect(result.ok && result.plan.variantName).toBe("Demo");
     });
 
     it("cross-builds for x64 by default", () => {
         const result = plan({ platform: "windows" }, "linux");
 
         expect(result.ok && result.plan.arch).toBe("x64");
+    });
+
+    it("resolves the signing file against the working directory", () => {
+        const result = plan({ signingPath: path.join("keys", "signing.json") });
+
+        expect(result.ok && result.plan.signingPath)
+            .toBe(path.join(WORKING_DIRECTORY, "keys", "signing.json"));
+
+        const none = plan({});
+        expect(none.ok && none.plan.signingPath).toBe(null);
+    });
+
+    it("reads the settings a run was given, letting the last of a repeated key win", () => {
+        const result = plan({
+            settings: [
+                "build.electronMirror=https://first.example/",
+                "build.zigMirror=https://mirror.example/zig?token=abc",
+                "build.electronMirror=https://second.example/",
+            ],
+        });
+
+        expect(result.ok && result.plan.settings).toEqual({
+            // Only the first "=" separates: the value keeps its own.
+            "build.zigMirror": "https://mirror.example/zig?token=abc",
+            "build.electronMirror": "https://second.example/",
+        });
+    });
+
+    it("keeps an empty setting, which is how a run asks for the official source", () => {
+        const result = plan({ settings: ["build.electronMirror="] });
+
+        expect(result.ok && result.plan.settings).toEqual({ "build.electronMirror": "" });
+    });
+
+    it("refuses a setting outside the build namespace", () => {
+        expect(plan({ settings: ["workspace.theme=dark"] })).toEqual({
+            ok: false,
+            reason: expect.stringContaining("cannot change \"workspace.theme\""),
+        });
+    });
+
+    it("refuses a setting that is not key=value", () => {
+        expect(plan({ settings: ["build.electronMirror"] })).toEqual({
+            ok: false,
+            reason: expect.stringContaining("Expected key=value"),
+        });
     });
 });
 

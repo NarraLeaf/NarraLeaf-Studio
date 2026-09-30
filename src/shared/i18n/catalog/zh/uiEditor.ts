@@ -14,7 +14,6 @@ export const uiEditor = {
         surfaceMain: "页面逻辑",
         widgetMain: "控件逻辑",
         widgetValue: "控件取值",
-        sharedAsset: "共享蓝图",
         storyAction: "剧情动作",
     },
     stageSlot: {
@@ -58,6 +57,10 @@ export const uiEditor = {
         gameUi: "{slot} UI",
         component: "组件 {index}",
         inputAction: "操作 {index}",
+    },
+    // 这个面板留下的撤销步骤叫什么（"撤销 移动界面 标题"）。
+    history: {
+        moveSurface: "移动界面 {name}",
     },
     inputActions: {
         title: "输入意图",
@@ -147,7 +150,13 @@ export const uiEditor = {
             one: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
             other: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
         },
-        refs: "{count} 处引用",
+        refs: {
+            other: "{count} 处引用",
+        },
+    },
+    canvas: {
+        unknownWidget: "未知控件",
+        widgetRenderFailed: "控件绘制失败",
     },
     editor: {
         componentNotFound: "未找到组件",

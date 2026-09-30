@@ -38,6 +38,7 @@ import {
 import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import { sceneRuntimeName, uniqueSceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { LiveClaimStore } from "./claims";
 import { DeletedPositions, resolveInsertTarget } from "./deletedPositions";
 import { LiveEffectLog } from "./effectLog";
@@ -106,6 +107,16 @@ export type LiveHostDeps = {
     hasVariable(variableId: string): boolean;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
+    /**
+     * Whether a scene of that story other than `exceptSceneId` answers to this internal name right
+     * now - the name the engine stores the scene's variables under (`sceneRuntimeName`).
+     *
+     * Asked of every scene an operation brings into a story. Its sender chose the name against its
+     * own copy, where it was unique; two authors making a "Chapter 1" at the same moment each chose
+     * `chapter_1`, and whichever landed second would share the first one's variables. A boolean for
+     * {@link hasAsset}'s reason.
+     */
+    hasSceneRuntimeName(storyId: StoryId, runtimeName: string, exceptSceneId: StorySceneId): boolean;
     /**
      * The chapter as it stands right now - its id and the scenes it claims - or null when that story
      * has no such chapter.
@@ -626,7 +637,8 @@ export class LiveHost {
                     && !this.deps.readChapter(storyId, op.chapterId)) {
                     return { refuse: "chapter-gone" };
                 }
-                return { op };
+                const [scene] = this.withUniqueRuntimeNames(storyId, [op.scene]);
+                return { op: scene === op.scene ? op : { ...op, scene } };
             }
 
             case "delete-scene":
@@ -653,11 +665,17 @@ export class LiveHost {
                 return { op };
             }
 
-            case "create-chapter":
+            case "create-chapter": {
                 // Nothing to check, with `create-character`: the id was minted by whoever built the
                 // record. A chapter carrying scenes is an undo putting a deletion back, and the
-                // scenes in it are the ones that left with it.
-                return { op };
+                // scenes in it are the ones that left with it - under the internal names they had,
+                // unless somebody has made a scene with one of those names since.
+                if (!op.scenes || op.scenes.length === 0) {
+                    return { op };
+                }
+                const scenes = this.withUniqueRuntimeNames(storyId, op.scenes);
+                return { op: scenes.every((scene, i) => scene === op.scenes?.[i]) ? op : { ...op, scenes } };
+            }
 
             case "rename-chapter":
             case "delete-chapter": {
@@ -1130,6 +1148,32 @@ export class LiveHost {
      */
     private rowGone(scene: StoryScene, blockId: StoryBlockId): LivePlan | null {
         return scene.blocks[blockId] ? null : { refuse: "row-gone" };
+    }
+
+    /**
+     * The scenes an operation brings into a story, each under an internal name no other scene of that
+     * story answers to - and the same record, untouched, wherever the sender's name was already free.
+     *
+     * Settled here rather than by each machine as it applies, for `insert-block`'s reason: the effect
+     * carries the name that was used, and every machine writes what it is told. Deriving it on the
+     * way in would be one more rule every copy had to agree on without being able to check.
+     *
+     * Renaming here is safe in a way renaming anywhere else is not. The name is what saves store the
+     * scene's variables under, but none of these scenes is in the story yet - a new one has no saves,
+     * and one an undo is putting back has had its name taken by a scene made since, so it could not
+     * have kept it without sharing that scene's variables.
+     */
+    private withUniqueRuntimeNames(storyId: StoryId, scenes: readonly StoryScene[]): StoryScene[] {
+        // Names given out by this same operation, so two scenes put back together cannot be handed
+        // one name between them.
+        const given = new Set<string>();
+        return scenes.map(scene => {
+            const current = sceneRuntimeName(scene);
+            const unique = uniqueSceneRuntimeName(current, name =>
+                given.has(name) || this.deps.hasSceneRuntimeName(storyId, name, scene.id));
+            given.add(unique);
+            return unique === current ? scene : { ...scene, runtimeName: unique };
+        });
     }
 
     /**

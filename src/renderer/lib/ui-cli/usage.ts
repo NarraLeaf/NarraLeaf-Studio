@@ -3,7 +3,7 @@
  *
  * The catalogue answers what a prop is called and what its default is. It cannot answer what a real
  * list, a real save slot or a real dialogue box is made of, and no amount of prose beside the type
- * would stay true. So the answer comes from the shipped skeleton template - twelve surfaces, eleven
+ * would stay true. So the answer comes from the shipped skeleton template - eleven surfaces, eleven
  * components, a Title, a Config, a Save and Load pair, a Backlog and a Dialogue - printed in the same
  * format `ui apply` reads, so an example can be copied into a file and applied.
  *
@@ -15,6 +15,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { propAssignmentKey } from "./dsl/parse";
 import { printElementTree } from "./dsl/print";
 import { elementPath } from "./project";
 
@@ -168,6 +169,6 @@ export function formatPropValues(sites: readonly UsageSite[], propKey: string): 
     }
     return [...counts.entries()]
         .sort((a, b) => b[1].count - a[1].count)
-        .map(([value, entry]) => `${String(entry.count).padStart(3)}x  ${propKey} = ${value}\n       ${entry.where[0]}`)
+        .map(([value, entry]) => `${String(entry.count).padStart(3)}x  ${propAssignmentKey(propKey)} = ${value}\n       ${entry.where[0]}`)
         .join("\n");
 }

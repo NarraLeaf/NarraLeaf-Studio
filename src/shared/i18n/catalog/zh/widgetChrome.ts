@@ -5,6 +5,7 @@ export const widgetChrome = {
         insert: "插入 {name}",
         drawing: "正在绘制 {name}，在画布上拖动以创建",
         moreInsertElements: "更多插入元素",
+        fromPlugin: "来自 {plugin}",
         components: "组件",
         openComponentLibrary: "打开组件库",
         componentLibrary: "组件库",

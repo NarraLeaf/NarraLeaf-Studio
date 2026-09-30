@@ -1,3 +1,4 @@
+import type { LocalizedTextPack } from "./localizedText";
 import type { PluginInstallPermission } from "./pluginPermissions";
 
 /**
@@ -39,8 +40,17 @@ export type PluginRegistryEntry = {
      */
     icon?: string;
     homepage?: string;
-    /** Advisory semver range; Studio does not enforce it. */
+    /**
+     * The semver range of Studio builds the plugin runs on. The store offers no install outside
+     * it, and the main-process install handler refuses one.
+     */
     studioVersion?: string;
+    /**
+     * `name` and `description` in other languages, keyed by BCP-47 tag (`zh-CN`, `en`). The
+     * top-level pair is in whichever language the author wrote first, which is not always English.
+     * Read through `localizePluginRegistryEntry`, never directly.
+     */
+    locales?: LocalizedTextPack;
     /** Copied from the manifest; surfaced before install. */
     permissions: PluginInstallPermission[];
     release: PluginRegistryRelease;

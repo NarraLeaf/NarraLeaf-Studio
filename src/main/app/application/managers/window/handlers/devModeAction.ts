@@ -1,17 +1,29 @@
-import { AppHost, AppProtocol } from "@shared/types/constants";
+import path from "path";
+import { app, screen, shell, type BrowserWindow } from "electron";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
+import { AppHost, AppProtocol, UserDataNamespace } from "@shared/types/constants";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
+import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
+import { devModeProjectDirectoryName } from "./devModeSaveAction";
+import {
+    fitInside,
+    fittingWindowScales,
+    roomForStage,
+    type WindowBox,
+} from "@shared/utils/windowGeometry";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { AssetUrlDirectory, IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { WindowAppType } from "@shared/types/window";
-import path from "path";
-
-function pathsEqual(a: string, b: string): boolean {
-    return path.normalize(a) === path.normalize(b);
-}
+import { requireWindowProject } from "../../../utils/windowProject";
+import { requireWindowProjectStore, type ProjectStoreRef } from "../../../utils/windowProjectStore";
 
 export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch> {
     readonly name = IPCEventType.devModeLaunch;
@@ -22,7 +34,17 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
         { projectPath, entry }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().launch(projectPath, entry);
+            // The window's project, not the payload's. Dev Mode compiles and runs the named
+            // project's own code - its puppet runtimes, its `scripts/`, its plugins - and the
+            // window it opens holds a recursive grant over that tree, so which project it is may
+            // not be the caller's choice. A build, a preview and a test run all ask this already;
+            // this was the fourth way to start a project and the only one that did not.
+            //
+            // It also fixes the trust gate behind it, which reads the path it is handed: named
+            // somebody else's project that happens to be trusted, that gate said yes about a
+            // project this window was never opened on.
+            const status = await window.getApp().getDevModeManager()
+                .launch(requireWindowProject(window, projectPath), entry);
             return { status };
         });
     }
@@ -36,8 +58,14 @@ export class DevModeStopHandler extends IPCHandler<IPCEventType.devModeStop> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.devModeStop]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeStop]["response"]["status"] }>> {
-        const status = await window.getApp().getDevModeManager().stop(projectPath);
-        return this.success({ status });
+        // The window's project, not the payload's. Both windows that stop a session - the workspace
+        // and the Dev Mode window itself - are opened on the project they are stopping, so the
+        // payload never had a choice to make; without this, ending somebody else's test run was one
+        // message away.
+        return this.tryUse(async () => ({
+            status: await window.getApp().getDevModeManager()
+                .stop(requireWindowProject(window, projectPath)),
+        }));
     }
 }
 
@@ -71,6 +99,206 @@ export class DevModeFullscreenSetHandler extends IPCHandler<IPCEventType.devMode
     }
 }
 
+/**
+ * Whether the Dev Mode window has the author's attention.
+ *
+ * Asked here rather than in the page, and the difference is the point: `document.hasFocus()` says
+ * no while Studio's own developer tools hold the keyboard, and an author testing a blur handler
+ * with the console open would be testing it against a window they never left. The packaged game
+ * asks its own main process the same question.
+ */
+export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devModeWindowFocusGet> {
+    readonly name = IPCEventType.devModeWindowFocusGet;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<{ isFocused: boolean }> {
+        return this.success({ isFocused: window.win.isFocused() });
+    }
+}
+
+/**
+ * What the Dev Mode window's own renderer holds in memory, for `app.game.process.memory()`.
+ *
+ * Narrowed to the calling window's process, where the packaged game counts every process it has:
+ * the processes around this window are Studio's, shared with everything else Studio has open, and
+ * a reading that included them would be a reading of Studio. The window has to be a Dev Mode one -
+ * no other window runs a game - so a caller that is not is told no rather than handed its own size.
+ */
+export class DevModeProcessMemoryHandler extends IPCHandler<IPCEventType.devModeProcessMemory> {
+    readonly name = IPCEventType.devModeProcessMemory;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<IPCEvents[IPCEventType.devModeProcessMemory]["response"]> {
+        if (window.getWindowType() !== WindowAppType.DevMode || window.win.isDestroyed()) {
+            return this.failed("Process memory is only reported to a Dev Mode window.");
+        }
+        const pid = window.win.webContents.getOSProcessId();
+        return this.success({
+            reading: summarizeGameProcessMemory(app.getAppMetrics(), { currentPid: pid, onlyPid: pid }),
+        });
+    }
+}
+
+/**
+ * Where a Dev Mode window's screenshots go: the author's Dev Mode data, one folder per project.
+ *
+ * Not inside the project, for the reason the Dev Mode saves are not: this is the author's own
+ * testing output rather than content, and a project directory that grew a PNG every time a
+ * screenshot button was pressed is a project directory nobody could commit. Named by the same
+ * per-project function the saves use, so "reset this project's player data" reaches all of it.
+ */
+function screenshotsDirectory(window: AppWindow, projectRef: ProjectStoreRef): string {
+    return path.join(
+        window.app.storageManager.getNamespacePath(UserDataNamespace.DevModeScreenshots),
+        devModeProjectDirectoryName(projectRef),
+    );
+}
+
+/**
+ * The `Save Screenshot` node, against the Dev Mode window's own web contents.
+ *
+ * Written through the same helper the packaged game writes through, so an author who takes a
+ * screenshot here gets the same file, named the same way, in a folder laid out the same way as the
+ * one a player would get. What differs is the directory, and only the directory.
+ *
+ * Which project's folder is the window's own, found by the main process along with the identifier
+ * the folder is named by - see `requireWindowProjectStore` for why the caller names neither.
+ */
+export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devModeScreenshotSave> {
+    readonly name = IPCEventType.devModeScreenshotSave;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectRef }: IPCEvents[IPCEventType.devModeScreenshotSave]["data"],
+    ): Promise<RequestStatus<BlueprintScreenshotResult>> {
+        return this.tryUse(async () => writeScreenshotFile({
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
+            capture: async () => (await window.win.webContents.capturePage()).toPNG(),
+        }));
+    }
+}
+
+export class DevModeScreenshotOpenFolderHandler
+    extends IPCHandler<IPCEventType.devModeScreenshotOpenFolder> {
+    readonly name = IPCEventType.devModeScreenshotOpenFolder;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectRef }: IPCEvents[IPCEventType.devModeScreenshotOpenFolder]["data"],
+    ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>> {
+        return this.tryUse(async () => openScreenshotsFolder({
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
+            openPath: directory => shell.openPath(directory),
+        }));
+    }
+}
+
+/**
+ * How much bigger this window is than the page inside it: the platform's own frame.
+ *
+ * Measured rather than assumed, for the reason the shipped shell measures it: it is not small, it
+ * differs by platform, theme and display scaling, and a constant here would make a window that
+ * exactly filled the desktop one title bar too tall.
+ */
+function windowFrame(win: BrowserWindow): { width: number; height: number } {
+    const [outerWidth, outerHeight] = win.getSize();
+    const [contentWidth, contentHeight] = win.getContentSize();
+    return {
+        width: Math.max(0, outerWidth - contentWidth),
+        height: Math.max(0, outerHeight - contentHeight),
+    };
+}
+
+/**
+ * What a stage of this size would cost the display, once both frames are counted.
+ *
+ * Two of them here where a packaged game has one: the platform's around the window, and Studio's
+ * around the stage - the top bar, the debug drawer, whatever else this window draws. A game asks
+ * about the stage, so both have to come off the display before deciding what fits.
+ */
+function stageRoom(win: BrowserWindow, chrome: { width: number; height: number }): WindowBox {
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+    const frame = windowFrame(win);
+    return roomForStage(workArea, {
+        width: frame.width + Math.max(0, chrome.width),
+        height: frame.height + Math.max(0, chrome.height),
+    });
+}
+
+/**
+ * The stage sizes worth offering, measured against the display this window is on.
+ *
+ * The same question a packaged game's shell answers, answered with the same function: which
+ * multiples of the design size the screen has room for. An author reading the size row of their own
+ * configuration screen in Dev Mode reads the list a player would get on this machine.
+ */
+export class DevModeWindowScaleOptionsHandler extends IPCHandler<IPCEventType.devModeWindowScaleOptions> {
+    readonly name = IPCEventType.devModeWindowScaleOptions;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { design, chrome }: IPCEvents[IPCEventType.devModeWindowScaleOptions]["data"],
+    ): RequestStatus<{ scales: number[] }> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("The Dev Mode window can only be sized by itself");
+        }
+        return this.success({ scales: fittingWindowScales(design, stageRoom(window.win, chrome)) });
+    }
+}
+
+/**
+ * Put the stage at a size in pixels, by sizing the window around it.
+ *
+ * Full screen and maximised are left first, and the window is re-centred only when the new size
+ * would hang off the display: both are what the shipped shell does, and for the same reasons - a
+ * window sized underneath either would spring back the moment the player left it, and a position
+ * the author chose is worth keeping while it is still reachable.
+ */
+export class DevModeWindowSetStageSizeHandler extends IPCHandler<IPCEventType.devModeWindowSetStageSize> {
+    readonly name = IPCEventType.devModeWindowSetStageSize;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { width, height, chrome }: IPCEvents[IPCEventType.devModeWindowSetStageSize]["data"],
+    ): RequestStatus<void> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("The Dev Mode window can only be sized by itself");
+        }
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            return this.failed("A stage size has to be two positive numbers");
+        }
+        const win = window.win;
+        if (win.isDestroyed()) {
+            return this.success();
+        }
+        if (win.isFullScreen()) {
+            win.setFullScreen(false);
+        }
+        if (win.isMaximized()) {
+            win.unmaximize();
+        }
+        const stage = fitInside({ width, height }, stageRoom(win, chrome));
+        win.setContentSize(
+            stage.width + Math.max(0, Math.round(chrome.width)),
+            stage.height + Math.max(0, Math.round(chrome.height)),
+        );
+        const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+        const bounds = win.getBounds();
+        const fits = bounds.x >= workArea.x
+            && bounds.y >= workArea.y
+            && bounds.x + bounds.width <= workArea.x + workArea.width
+            && bounds.y + bounds.height <= workArea.y + workArea.height;
+        if (!fits) {
+            win.center();
+        }
+        return this.success();
+    }
+}
+
 export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload> {
     readonly name = IPCEventType.devModeReload;
     readonly type = IPCMessageType.request;
@@ -80,7 +308,10 @@ export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload>
         { projectPath }: IPCEvents[IPCEventType.devModeReload]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeReload]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().reload(projectPath);
+            // The window's project, not the payload's. A reload recompiles the project and swaps
+            // what the running session is executing, which is a launch by another name.
+            const status = await window.getApp().getDevModeManager()
+                .reload(requireWindowProject(window, projectPath));
             return { status };
         });
     }
@@ -94,8 +325,16 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.devModeGetStatus]["data"],
     ): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
-        const status = window.getApp().getDevModeManager().getStatus(projectPath);
-        return this.success({ status });
+        // The window's project, not the payload's. The status of another author's session is not
+        // much on its own, but this is the one channel that answers "is that project running", and
+        // it is polled - which is how a session is watched rather than merely glimpsed.
+        try {
+            const status = window.getApp().getDevModeManager()
+                .getStatus(requireWindowProject(window, projectPath));
+            return this.success({ status });
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }
 
@@ -147,7 +386,7 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
 
     public async handle(
         window: AppWindow<WindowAppType.DevMode>,
-    ): Promise<RequestStatus<{ urls: Record<string, string> }>> {
+    ): Promise<RequestStatus<AssetUrlDirectory>> {
         const workspaceWindow = findWorkspaceWindowFor(window);
         if (!workspaceWindow) {
             return { success: false, error: "Workspace window not available" };
@@ -172,26 +411,32 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
                     urls[assetId] = await promoteDevModeAssetGrant(window, url);
                 }
             }));
-            return { success: true, data: { urls } };
+            // The types travel untouched: promotion changes what a URL grants, not what the asset is.
+            return {
+                success: true,
+                data: resolved.data.types ? { urls, types: resolved.data.types } : { urls },
+            };
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     }
 }
 
-/** The workspace window showing the same project as `window`, which is where an asset id is resolved. */
+/**
+ * The workspace window showing the same project as `window`, which is where an asset id is resolved.
+ *
+ * Delegates rather than walking the window list itself. `App.findWorkspaceForProject` is the lookup
+ * the one-project-one-window rule is built on and it folds two spellings of a path the way the rest
+ * of the app does; a comparison written here would be a second opinion about what "the same project"
+ * is, and a second opinion eventually disagrees. This used to compare the two props with `===`,
+ * which is the strictest disagreement available: a workspace remembered under a differently-cased
+ * path would simply not be found, and every asset in the preview would fail to resolve with
+ * "Workspace window not available".
+ */
 function findWorkspaceWindowFor(
     window: AppWindow<WindowAppType.DevMode>,
 ): AppWindow<WindowAppType.Workspace> | undefined {
-    const props = window.getProps();
-    return window.getApp().windowManager
-        .getWindows()
-        .find(
-            w =>
-                w.getWindowType() === WindowAppType.Workspace &&
-                !w.isDestroyed() &&
-                w.getProps().projectPath === props.projectPath,
-        ) as AppWindow<WindowAppType.Workspace> | undefined;
+    return window.getApp().findWorkspaceForProject(window.getProps().projectPath);
 }
 
 async function resolveDevModeAssetUrl(
@@ -314,7 +559,7 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
             // back is the one sentence a compile diagnostic can carry.
             return { success: false, error: outcome.failures.get(key) ?? "The weather could not be produced" };
         }
-        const hash = window.app.storageManager.allocateHash(clipPath, true, "read");
+        const hash = window.app.storageManager.allocateHash(clipPath, true, "read", window.getWebContents().id);
         // A freshly allocated grant is `allocated`, and the protocol handler serves only `ready` -
         // every other allocator marks it after checking the file, and skipping it here yields a URL
         // that looks correct everywhere (the element carries it, the log shows the request arriving)
@@ -325,6 +570,41 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
     }
 }
 
+/**
+ * The workspace window a preview is asking Studio to act in.
+ *
+ * The four handlers below are one shape - a Dev Mode window asking the workspace that has the same
+ * project open to reveal something - so the three questions they share are asked here rather than
+ * four times over: is the caller a preview at all, is the project it names its own, and is that
+ * project open in a workspace.
+ *
+ * The middle one is {@link requireWindowProject}, which is the check the rest of the main process
+ * asks. This file used to answer it with a `path.normalize` comparison of its own - a private copy
+ * of the app's identity rule that does not fold case, so on Windows `D:\Game` and `d:\game` were
+ * two projects here and one project everywhere else. It never misbehaved, because the payload is
+ * the window's own props echoed back and the two sides were therefore the same string; that is luck
+ * rather than a property, and the failure it was risking is the worse of the two available. A guard
+ * that refuses the author's own project is worse than the hole it closes.
+ *
+ * The lookup is delegated for the same reason, and answers `undefined` rather than throwing: "no
+ * workspace is open on this project" is an ordinary situation, and the four below do not all give
+ * it the same answer.
+ *
+ * Throws rather than returning a refusal so the code {@link requireWindowProject} raises travels
+ * with it - each caller catches and hands it to `failed`, which reads `error.code`. The catching
+ * cannot be left to the registry: it discards what a message handler returns and does not catch
+ * what one throws.
+ */
+function requireWorkspaceForPreview(
+    window: AppWindow,
+    named: string,
+): AppWindow<WindowAppType.Workspace> | undefined {
+    if (window.getWindowType() !== WindowAppType.DevMode) {
+        throw new Error("Invalid window");
+    }
+    return window.getApp().findWorkspaceForProject(requireWindowProject(window, named));
+}
+
 export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenBlueprintInWorkspace> {
     readonly name = IPCEventType.devModeOpenBlueprintInWorkspace;
     readonly type = IPCMessageType.request;
@@ -333,29 +613,15 @@ export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventT
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeOpenBlueprintInWorkspace]["data"],
     ): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
-        }
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
         if (data.ownerKind !== "surfaceMain" && data.ownerKind !== "widgetMain" && data.ownerKind !== "widgetValue") {
             return this.failed("Unsupported owner");
         }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.failed("No workspace for project");
         }
@@ -377,27 +643,12 @@ export class DevModeForwardBlueprintDebugEventHandler extends IPCHandler<IPCEven
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeForwardBlueprintDebugEvent]["data"],
     ): RequestStatus<never> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.success(void 0 as never);
         }
@@ -415,27 +666,12 @@ export class DevModeForwardStoryRowHandler extends IPCHandler<IPCEventType.devMo
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeForwardStoryRow]["data"],
     ): RequestStatus<never> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.success(void 0 as never);
         }
@@ -467,25 +703,12 @@ export class DevModeOpenStoryRowInWorkspaceHandler extends IPCHandler<IPCEventTy
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeOpenStoryRowInWorkspace]["data"],
     ): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        if (!pathsEqual(devWindow.getProps().projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.failed("No workspace for project");
         }

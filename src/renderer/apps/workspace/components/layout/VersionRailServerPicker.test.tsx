@@ -106,6 +106,10 @@ function picker(remote: string | null, overrides: Partial<VersionSurface> = {}) 
         setRemote: vi.fn(() => Promise.resolve(true)),
         publish: vi.fn(() => Promise.resolve(true)),
         setAuthorName: vi.fn(() => Promise.resolve(true)),
+        // The author says yes to the sign-in question, so the cases that are about what a server
+        // holds read it. The cases about the question itself say otherwise.
+        askToUseServer: vi.fn(() => Promise.resolve(true)),
+        serverSession: null,
         ...overrides,
     } as unknown as VersionSurface;
     render(<ServerPickerDialog surface={surface} isOpen onClose={onClose} />);
@@ -416,6 +420,75 @@ describe("what Connect does", () => {
         await waitFor(() => expect(seam("picker-failure").textContent)
             .toContain("workspace.shell.versionControl.server.publish.refused"));
         expect(onClose).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * What a server holds is read over the account's sign-in, and a project's window reaches a server that
+ * way only for a project the author said uses the sign-in there - the main process refuses the rest.
+ * Choosing where a project goes is the moment that question is about, so it is put when a server is
+ * chosen, and the list follows the answer.
+ */
+describe("the sign-in question in the server picker", () => {
+    function seamOf(name: string): Element | null {
+        return document.querySelector(`[data-vcs-seam='${name}']`);
+    }
+
+    it("is put when a server the project does not use is chosen, and the list read after a yes", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { surface } = picker(null);
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+        expect(bridge.listServerProjects).not.toHaveBeenCalled();
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+        expect(surface.askToUseServer).toHaveBeenCalledWith(ONE);
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ONE));
+        expect(seamOf("picker-sign-in-unused")).toBeNull();
+    });
+
+    it("reads nothing after a no, says why, and still lets the author name the project", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { surface } = picker(null, { askToUseServer: vi.fn(() => Promise.resolve(false)) });
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+        await waitFor(() => expect(seamOf("picker-sign-in-unused")?.textContent)
+            .toContain("workspace.shell.team.signInUnused"));
+        expect(bridge.listServerProjects).not.toHaveBeenCalled();
+        // Create puts the question again - it is the author choosing this server a second time.
+        fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+            target: { value: "driftwood" },
+        });
+        fireEvent.click(connectButton());
+        expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
+    });
+
+    it("is not put about the server the project already uses, which is read straight away", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { surface } = picker(`${ONE}/my-game`, { serverSession: session(ONE, "ada") });
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ONE));
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+        expect(surface.askToUseServer).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The dialog opens on the project's own server. Opening it is not choosing that server, so no
+     * question goes up by itself - pressing the row is how the author asks for one.
+     */
+    it("is not put by opening the dialog on a server the project does not use", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { surface } = picker(`${ONE}/my-game`);
+
+        await waitFor(() => expect(seamOf("picker-sign-in-unused")).not.toBeNull());
+        expect(surface.askToUseServer).not.toHaveBeenCalled();
+        expect(bridge.listServerProjects).not.toHaveBeenCalled();
+
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+        expect(surface.askToUseServer).toHaveBeenCalledWith(ONE);
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ONE));
     });
 });
 

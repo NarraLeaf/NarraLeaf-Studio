@@ -45,7 +45,7 @@ const lore = vi.hoisted(() => {
                 repository: "019fda5ba4fe799096aaab7585aa4722",
                 branch: "main",
             }),
-            readRemote: async () => null,
+            readRemote: async () => lore.remote.value,
             readBranchIdentity: async () => ({ head: "r2", headNumber: 2, branch: "main" }),
             writeRemote: async (_root: string, url: string | null) =>
                 step(`writeRemote ${url ?? "null"}`, undefined),
@@ -53,6 +53,8 @@ const lore = vi.hoisted(() => {
                 step(`publishToRemote ${options.url} ${options.repositoryId}`, undefined),
             pushToRemote: async () => step("push", { branch: "main", alreadyPushed: false }),
         },
+        /** What `readRemote` answers, for the one case that has a server already. */
+        remote: { value: null as string | null },
     };
 });
 
@@ -113,9 +115,12 @@ const SESSION = {
     signedInAt: 0,
 };
 
+/** The global state a manager was given, so a test can read what it recorded. */
+let state: Map<string, unknown>;
+
 function fakeApp(policy?: { publishLineage: "merge" | "refuse" }): BaseApp {
     const noop = () => undefined;
-    const state = new Map<string, unknown>([
+    state = new Map<string, unknown>([
         // What the server said about itself when it was last asked, which is where a rule
         // it states is read from - see `VcsManager.publishLineageRule` for why it is read
         // here rather than probed at the moment it is needed.
@@ -128,8 +133,16 @@ function fakeApp(policy?: { publishLineage: "merge" | "refuse" }): BaseApp {
             set: (key: string, value: unknown) => { state.set(key, value); },
         }),
         getUserDataDir: () => "D:/userData",
+        projectTrustManager: { isTrusted: () => true },
     } as unknown as BaseApp;
 }
+
+/**
+ * The sign-in question, answered yes unless a test says otherwise. Publishing from a project's own
+ * window asks it, because choosing a server to put the project on is choosing which account the
+ * project acts as there.
+ */
+const asker = vi.fn(async (_request: unknown): Promise<boolean | null> => true);
 
 /** The wire's answer to `projects.list`: the rows under their own key. */
 function listed(projects: unknown[] = []) {
@@ -152,9 +165,11 @@ beforeEach(() => {
     lore.calls.length = 0;
     lore.failures.clear();
     repositoryId.value = REPOSITORY;
+    lore.remote.value = null;
     server.list.mockReset().mockResolvedValue(listed());
     server.create.mockReset().mockResolvedValue(recorded());
-    manager = new VcsManager(fakeApp(), undefined, teamSessionCall);
+    asker.mockReset().mockResolvedValue(true);
+    manager = new VcsManager(fakeApp(), undefined, teamSessionCall, asker);
 });
 
 describe("publishing a project to a server", () => {
@@ -194,6 +209,7 @@ describe("publishing a project to a server", () => {
             logger: { info: () => undefined, warn: () => undefined, error: () => undefined, debug: () => undefined },
             getGlobalState: () => ({ get: () => undefined, set: () => undefined }),
             getUserDataDir: () => "D:/userData",
+            projectTrustManager: { isTrusted: () => true },
         } as unknown as BaseApp);
 
         await expect(nobody.publishProject(PROJECT, ORIGIN, "driftwood"))
@@ -242,7 +258,7 @@ describe("publishing a project to a server", () => {
     it("refuses a repeat publish where the server says a project gets one name", async () => {
         // The operator's rule rather than Studio's judgement. `merge` is what every server
         // older than the rule behaved like, so the strict one has to be asked for.
-        const strict = new VcsManager(fakeApp({ publishLineage: "refuse" }), undefined, teamSessionCall);
+        const strict = new VcsManager(fakeApp({ publishLineage: "refuse" }), undefined, teamSessionCall, asker);
         server.list.mockResolvedValue(listed([projectRow(REPOSITORY, "seagrass")]));
 
         await expect(strict.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({
@@ -321,5 +337,86 @@ describe("publishing a project to a server", () => {
         await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
             .resolves.toEqual({ ok: false, problem: { kind: "unreachable" } });
         expect(lore.calls).toEqual(["list"]);
+    });
+});
+
+/**
+ * Whose sign-in a publish spends, and where it may send the project.
+ *
+ * Publishing ends by rewriting the project's own `.lore/config.toml`, and every send and get after
+ * it goes wherever that says - so it is the request that most needs the author to have said which
+ * account the project acts as. From a project's window that is the sign-in question; from the
+ * launcher it is the act of making a project for the server picked there, which is only good for a
+ * project with no server yet.
+ */
+describe("whose sign-in publishing uses", () => {
+    function sessionUses(): Array<{ userId: string | null }> {
+        return (state.get("versionControl.serverSessionProjects") as Array<{ userId: string | null }>) ?? [];
+    }
+
+    it("asks, from a project's own window, and records the yes for this project and server", async () => {
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({ ok: true });
+
+        expect(asker).toHaveBeenCalledTimes(1);
+        expect(asker.mock.calls[0]![0]).toMatchObject({ session: { remoteOrigin: ORIGIN } });
+        expect(sessionUses()).toEqual([expect.objectContaining({ remoteOrigin: ORIGIN, userId: "u1" })]);
+    });
+
+    it("sends nothing and writes nothing when the author says the project does not use it", async () => {
+        asker.mockResolvedValue(false);
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "declined" } });
+        // Not even the list: the server is asked over the sign-in the author just refused.
+        expect(lore.calls).toEqual([]);
+        expect(sessionUses()).toEqual([expect.objectContaining({ userId: null })]);
+    });
+
+    it("records nothing for a question closed without an answer, and publishes nothing", async () => {
+        asker.mockResolvedValue(null);
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "declined" } });
+        expect(lore.calls).toEqual([]);
+        expect(sessionUses()).toEqual([]);
+    });
+
+    it("asks again after an earlier no, because choosing a server is asking again", async () => {
+        asker.mockResolvedValueOnce(false);
+        await manager.publishProject(PROJECT, ORIGIN, "driftwood");
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({ ok: true });
+        expect(asker).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not ask for a project the launcher has just made for the server picked there", async () => {
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", { newProject: true }))
+            .resolves.toEqual({ ok: true });
+
+        expect(asker).not.toHaveBeenCalled();
+        // The project uses that sign-in from now on: its first send is not asked about again.
+        expect(sessionUses()).toEqual([expect.objectContaining({ remoteOrigin: ORIGIN, userId: "u1" })]);
+    });
+
+    it("will not move a project that already has a server from a window that is not its own", async () => {
+        lore.remote.value = "lore://elsewhere.example.lan:41337/driftwood";
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood", { newProject: true }))
+            .rejects.toThrow("already connected to a server");
+        expect(lore.calls).toEqual([]);
+        expect(sessionUses()).toEqual([]);
+    });
+
+    it("will not publish an untrusted project at all", async () => {
+        const app = fakeApp();
+        (app as unknown as { projectTrustManager: { isTrusted: () => boolean } }).projectTrustManager = {
+            isTrusted: () => false,
+        };
+        const guarded = new VcsManager(app, undefined, teamSessionCall, asker);
+
+        await expect(guarded.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .rejects.toMatchObject({ code: "vcs/project-distrusted" });
+        expect(asker).not.toHaveBeenCalled();
+        expect(lore.calls).toEqual([]);
     });
 });

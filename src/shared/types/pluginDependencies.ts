@@ -9,6 +9,8 @@
  * by scanning the project's actual plugin usage, never hand-authored.
  */
 
+import type { PluginStatus } from "./plugins";
+
 export const PROJECT_DEPENDENCY_SCHEMA_VERSION = 1;
 
 /** The extension points a project can depend on a plugin through. */
@@ -22,7 +24,14 @@ export interface ProjectPluginDependency {
     publisher?: string;
     /** True when the plugin ships with Studio (its version is tied to the app version). */
     builtIn: boolean;
-    /** Exact plugin version installed when the table was last recorded. */
+    /**
+     * The plugin version the project is made with, as the scans record it. For a plugin Studio
+     * holds back because the installed version is a different major, only the author's Rescan moves
+     * it - to the installed version, which releases the hold. Otherwise a scan that finds the plugin
+     * only by the names of its types - it is not loaded there: absent or switched off - leaves the
+     * recorded version alone, and any other use it finds records the installed version (see
+     * `buildDependencyTable`).
+     */
     authoredVersion: string;
     /**
      * True when the project references a *type* owned by the plugin (blueprint
@@ -51,6 +60,12 @@ export interface DependencyResolutionEntry {
     installedVersion?: string;
     /** True when the installed plugin is enabled and eligible to load. */
     installedEnabled?: boolean;
+    /**
+     * The installed plugin's own state, where the resolver was told it. The two states in which a
+     * plugin is installed, switched on and at a usable version and still contributes nothing -
+     * waiting for its permissions to be approved, and failed to load - are only visible here.
+     */
+    installedStatus?: PluginStatus;
     status: DependencyStatus;
     /** True when this dependency causes the plugin to be suppressed for the project. */
     suppressed: boolean;

@@ -19,7 +19,7 @@
  * value that costs more and shows nothing. See `@shared/types/vfx`.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -31,6 +31,7 @@ import {
     type VfxFrameRate,
 } from "@/lib/workspace/project/configuration";
 import { SettingShell } from "./settingRows";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -42,27 +43,13 @@ export function ProjectScreenEffectsSection({
 }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const [vfx, setVfx] = useState<VfxConfiguration>(() => normalizeVfxConfiguration(config.app?.vfx));
-    const [saving, setSaving] = useState(false);
-
-    const commit = useCallback(async (patch: Partial<VfxConfiguration>) => {
-        if (saving) {
-            return;
-        }
-        const previous = vfx;
-        setSaving(true);
-        setVfx(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateVfxConfiguration(patch);
-            setVfx(normalizeVfxConfiguration(updated.app?.vfx));
-            onConfigChange(updated);
-        } catch (error) {
-            setVfx(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(false);
-        }
-    }, [onConfigChange, projectService, saving, uiService, vfx]);
+    const stored = useMemo(() => normalizeVfxConfiguration(config.app?.vfx), [config.app?.vfx]);
+    const { value: vfx, commit } = useConfigSlice<VfxConfiguration>({
+        stored,
+        write: patch => projectService.updateVfxConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     // Derived from the list rather than written out, so a rate added there appears here without this
     // file changing - and so the two can never offer different sets.
@@ -83,7 +70,7 @@ export function ProjectScreenEffectsSection({
             <SettingShell
                 title={t("project.screenEffects.frameRateTitle")}
                 description={t("project.screenEffects.frameRateDescription")}
-                tooltip={freeze.writes(saving)["data-tip"]}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <Select
                     size="sm"
@@ -91,7 +78,7 @@ export function ProjectScreenEffectsSection({
                     className="w-24 shrink-0"
                     options={options}
                     value={String(vfx.frameRate)}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.screenEffects.frameRateTitle")}
                     onChange={value => void commit({ frameRate: Number(value) as VfxFrameRate })}
                 />

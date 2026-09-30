@@ -30,7 +30,7 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 - **Story editor.** A scene is a list of rows. Typing writes dialogue, a slash at the start of a row writes one of fifty-one commands, and every value is checked as the row is typed. The flow view draws the paths the story can take. Chinese spellings of every command parse.
 - **Screens and blueprints.** The game's own screens are built by placing widgets on a surface, and over six hundred blueprint nodes decide what they do. Widgets can be saved as reusable components, and their properties bound to values that change while the game runs.
 - **Version control.** History is kept inside the project folder, and differences are reported as content rather than as files: which scenes, rows, characters and assets changed. Built on [Lore](https://github.com/EpicGames/lore), with Studio's own difference view and conflict interface.
-- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container, holding the projects a team works on together. Nothing is sent or fetched except by an explicit action. Real-time collaboration is in development.
+- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container, holding the projects a team works on together, with their versions and discussion. In a live session one author hosts a project and the others join it from the launcher; stories, characters, translations, voice lines, assets, screens and blueprints are edited together, and each line or node shows who is working on it. Whatever a session does not carry stays read-only until it ends.
 - **Asset sets.** One library entry standing for several files that differ by language or by build variant. A story row names the set, and the game uses the file that matches.
 - **Build variants.** One project, several editions. A cut point row ends a variant's story there, and everything written after it, including the assets only those rows used, is left out of that variant's package.
 - **Patches.** Later changes to the story, the pages, the translations, the voice lines and the assets, delivered to an installed game without reinstalling it.
@@ -57,7 +57,7 @@ variant for one platform, in one format. The window never appears and never take
 | Flag | Default |
 | --- | --- |
 | `--build <project>` | required |
-| `--build-variant <id>` | `main`, the release variant |
+| `--build-variant <name>` | `main`, the release variant |
 | `--build-target <platform>` | the host platform |
 | `--build-format <format>` | the platform's first format |
 | `--build-arch <arch>` | the host's architecture for a host build, `x64` for a cross build |

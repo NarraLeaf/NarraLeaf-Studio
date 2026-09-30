@@ -44,7 +44,7 @@
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Preference Changed | `blueprint.event.head.preferenceChanged` | **已实现**。监听当前 `LiveGame` 指定 Game Preference（如 BGM Volume）变化；Inspector `Preference` 选择偏好键；输出 `then` / `value` / `previousValue`；订阅 NarraLeaf React `game.preference.onPreferenceChange`；Global 与 Surface 蓝图可用。 |
 | On Any Preference Changed | `blueprint.event.head.anyPreferenceChanged` | **已实现**。监听当前 `LiveGame` 任意 Game Preference 变化；输出 `then` / `key` / `value` / `previousValue`；Global 与 Surface 蓝图可用。 |
-| On Action | `blueprint.event.head.action` | **已实现**。工程声明的输入操作被触发时执行；Inspector `Action` 从工程的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
+| On Action | `blueprint.event.head.action` | **已实现**。项目声明的输入操作被触发时执行；Inspector `Action` 从项目的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
@@ -224,7 +224,7 @@
 
 ## Input
 
-工程给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
+项目给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -307,8 +307,8 @@
 | Set Text | `blueprint.text.setText` | **已实现**。设置文本内容。 |
 | Append Text | `blueprint.text.appendText` | **已实现**。在文本末尾追加内容。 |
 | Clear Text | `blueprint.text.clearText` | **已实现**。清空文本内容。 |
-| Get Font | `blueprint.text.getFont` | **已实现**。获取字体资源 ID。 |
-| Set Font | `blueprint.text.setFont` | **已实现**。设置字体资源 ID。 |
+| Get Font | `blueprint.text.getFont` | **已实现**。获取字体资产 ID。 |
+| Set Font | `blueprint.text.setFont` | **已实现**。设置字体资产 ID。 |
 | Get Font Size | `blueprint.text.getFontSize` | **已实现**。获取字号。 |
 | Set Font Size | `blueprint.text.setFontSize` | **已实现**。设置字号。 |
 | Get Font Weight | `blueprint.text.getFontWeight` | **已实现**。获取字重。 |
@@ -395,8 +395,8 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Set Crop Rect | `blueprint.image.setCropRect` | 设置图片裁切矩形。 |
 | Set Nine Slice | `blueprint.image.setNineSlice` | 设置九宫格切片参数。 |
 | Get Natural Size | `blueprint.image.getNaturalSize` | 获取图片原始尺寸。 |
-| Set Image By Key | `blueprint.image.setByKey` | 按业务 key 设置图片资源。 |
-| Preload Image | `blueprint.image.preload` | 预加载图片资源。 |
+| Set Image By Key | `blueprint.image.setByKey` | 按业务 key 设置图片资产。 |
+| Preload Image | `blueprint.image.preload` | 预加载图片资产。 |
 
 ## Button
 
@@ -558,7 +558,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | --- | --- | --- |
 | Fetch | `blueprint.network.fetch` | 通过 Host API 发起 HTTP 请求并按结果分支。 |
 
-## Function / Macro / Shared Blueprint
+## Function / Macro
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -568,17 +568,16 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Macro Output | `blueprint.macro.output` | 宏图出口。 |
 | Call Function | `blueprint.function.call` | 调用当前 blueprint 内函数。 |
 | Call Macro | `blueprint.macro.call` | 调用当前 blueprint 内宏。 |
-| Call Shared Blueprint | `blueprint.shared.call` | 调用共享 blueprint asset。 |
 
 ## Asset / Resource
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| Preload Asset | `blueprint.asset.preload` | 预加载指定资源。 |
-| Release Asset | `blueprint.asset.release` | 释放指定资源引用。 |
-| Is Asset Loaded | `blueprint.asset.isLoaded` | 判断指定资源是否已加载。 |
-| Get Asset Url | `blueprint.asset.getUrl` | 获取资源运行时 URL。 |
-| Cache Asset | `blueprint.asset.cache` | 将资源加入运行时缓存。 |
+| Preload Asset | `blueprint.asset.preload` | 预加载指定资产。 |
+| Release Asset | `blueprint.asset.release` | 释放指定资产引用。 |
+| Is Asset Loaded | `blueprint.asset.isLoaded` | 判断指定资产是否已加载。 |
+| Get Asset Url | `blueprint.asset.getUrl` | 获取资产运行时 URL。 |
+| Cache Asset | `blueprint.asset.cache` | 将资产加入运行时缓存。 |
 
 ## Localization
 

@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
-import type { ReferenceIndexGap } from "../references/referenceModel";
+import { assetNameGapToIndexGap, type ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
+import type { LintRunOptions } from "@/lib/lint/engine";
 import type { LintingConfiguration } from "../../project/configuration";
 import {
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -56,7 +57,7 @@ vi.mock("@/lib/app/bridge", () => ({
 vi.mock("@/lib/i18n", () => ({
     translate: (key: string, params?: Record<string, unknown>) =>
         (params ? `${key}(${JSON.stringify(params)})` : key),
-    translateN: (key: string) => key,
+    translateN: (key: string, count: number) => `${key}(${JSON.stringify({ count })})`,
 }));
 
 const PROJECT_PATH = "D:/projects/demo";
@@ -120,7 +121,7 @@ type ConsoleLine = { channel: string; level: string; message: string };
  */
 function mount(options: {
     linting?: Partial<LintingConfiguration>;
-    run?: () => Promise<LintReport>;
+    run?: (options?: LintRunOptions) => Promise<LintReport>;
     storyHasInvalidBlock?: boolean;
     /** Defaults to allowing HTTP, so the network gate stays out of the way of this file's subject. */
     allowHttp?: boolean;
@@ -131,8 +132,8 @@ function mount(options: {
     storyDocument?: StoryDocument;
     /** What the reference index says it could not read. Empty by default. */
     referenceGaps?: readonly ReferenceIndexGap[];
-    /** The project's shared blueprint assets. None by default. */
-    sharedBlueprints?: unknown[];
+    /** Make one gate throw where it does not catch for itself, to test the escape path. */
+    throwFromNetworkGate?: boolean;
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -177,11 +178,16 @@ function mount(options: {
                     case Services.Project:
                         return {
                             getLintingConfiguration: () => linting,
-                            getNetworkConfiguration: () => ({
-                                allowHttp: options.allowHttp ?? true,
-                                allowRemoteResource: false,
-                                allowRemoteScript: false,
-                            }),
+                            getNetworkConfiguration: () => {
+                                if (options.throwFromNetworkGate) {
+                                    throw new Error("the network configuration could not be read");
+                                }
+                                return {
+                                    allowHttp: options.allowHttp ?? true,
+                                    allowRemoteResource: false,
+                                    allowRemoteScript: false,
+                                };
+                            },
                         };
                     case Services.Lint:
                         return { run };
@@ -190,9 +196,6 @@ function mount(options: {
                     case Services.Story:
                         return story;
                     // Every project has the release variant, so the AppTag gate always resolves a name.
-                    // The variant gate reads the project's shared blueprint assets too.
-                    case Services.Assets:
-                        return { listSharedBlueprints: async () => options.sharedBlueprints ?? [] };
                     case Services.AppTags:
                         return {
                             resolveTag: () => options.appTag ?? RELEASE_APP_TAG,
@@ -363,7 +366,7 @@ describe("BuildService lint gate", () => {
 
         expect(gameBuild.start).toHaveBeenCalledTimes(1);
         expect(state.status).toBe("done");
-        expect(lines.some(line => line.level === "success" && line.message.includes("lint.console.finished")))
+        expect(lines.some(line => line.level === "success" && line.message.includes("lint.console.finishedCounts(")))
             .toBe(true);
     });
 
@@ -394,6 +397,123 @@ describe("BuildService lint gate", () => {
         expect(state.platforms).toEqual(["windows", "web"]);
         expect(lines.some(line => line.level === "error")).toBe(true);
         consoleError.mockRestore();
+    });
+});
+
+/**
+ * What the window says while the checks run.
+ *
+ * The gates are the longest stretch of a build that has not started yet, and until the run had a
+ * phase of its own the answer to all three questions below was the same as for a project nobody had
+ * touched: no build running, no bar, and a Production Build row still offering to start one.
+ */
+describe("BuildService pre-build checks, as a visible phase", () => {
+    it("reports the run as under way while the sweep it is waiting on is still running", async () => {
+        let seen: { status: string; building: boolean } | null = null;
+        const { service } = mount({
+            run: async () => {
+                seen = { status: service.getStatus(), building: service.isBuilding() };
+                return report([]);
+            },
+        });
+
+        await service.start(REQUEST);
+
+        expect(seen).toEqual({ status: "checking", building: true });
+    });
+
+    it("fills the build channel's own bar from the sweep's rule count", async () => {
+        const progress: (number | undefined)[] = [];
+        const { service, ctx } = mount({
+            run: async options => {
+                options?.onProgress?.({ done: 1, total: 2, ruleId: "text/empty" });
+                options?.onProgress?.({ done: 2, total: 2, ruleId: "text/overlong" });
+                return report([]);
+            },
+        });
+        const consoleService = ctx.services.get(Services.Console) as unknown as {
+            setProgress: (channel: string, value: { value?: number } | null) => void;
+        };
+        consoleService.setProgress = (channel, value) => {
+            if (channel === BUILD_CONSOLE_CHANNEL) {
+                progress.push(value?.value);
+            }
+        };
+
+        await service.start(REQUEST);
+
+        expect(progress).toContain(0.5);
+        expect(progress).toContain(1);
+    });
+
+    it("stops the run when the author cancels during the checks, without asking the pipeline", async () => {
+        const { service, lines } = mount({
+            run: async () => {
+                await service.cancel();
+                return report([]);
+            },
+        });
+
+        const state = await service.start(REQUEST);
+
+        // The pipeline has not been given a run, so there is nothing there to stop; asking it to
+        // would have left these checks running on to start the build that was just stopped.
+        expect(gameBuild.cancel).not.toHaveBeenCalled();
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toBe("build.cancelled");
+        expect(lines.some(line => line.message === "build.cancelled")).toBe(true);
+    });
+
+    /**
+     * The phase this window owns is the one it has to be able to leave.
+     *
+     * The poller is stopped during `checking` and `refreshState` refuses to overwrite it - both
+     * deliberate, because the pipeline's honest answer during the checks is `idle` - so an exception
+     * escaping the gates would strand the window on "checking the project" with the build control
+     * disabled and nothing left running to correct it. Before the phase existed the same exception
+     * left the state alone and the poll kept the window honest, so this path is new.
+     */
+    it("lands a run in a terminal state when a gate throws", async () => {
+        const { service, lines } = mount({ throwFromNetworkGate: true });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const state = await service.start(REQUEST);
+
+        expect(state.status).toBe("error");
+        expect(service.getStatus()).not.toBe("checking");
+        expect(service.isBuilding()).toBe(false);
+        expect(state.startedAt).toBeTypeOf("number");
+        expect(state.platforms).toEqual(["windows", "web"]);
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(lines.some(line => line.level === "error")).toBe(true);
+        consoleError.mockRestore();
+    });
+
+    it("lands a patch export in a terminal state when a gate throws", async () => {
+        const { service } = mount({ throwFromNetworkGate: true });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const state = await service.exportPatch({ outputFile: "D:/projects/demo/dist/demo.nlpatch" } as never);
+
+        expect(state.status).toBe("error");
+        expect(service.isBuilding()).toBe(false);
+        consoleError.mockRestore();
+    });
+
+    it("hands the sweep the signal that a cancel aborts", async () => {
+        let signal: AbortSignal | undefined;
+        const { service } = mount({
+            run: async options => {
+                signal = options?.signal;
+                return report([]);
+            },
+        });
+
+        await service.start(REQUEST);
+
+        expect(signal).toBeInstanceOf(AbortSignal);
+        expect(signal?.aborted).toBe(false);
     });
 });
 
@@ -429,21 +549,144 @@ describe("BuildService invalid-block gate (ruling R4)", () => {
     });
 });
 
+describe("BuildService asset-name gate", () => {
+    /** The gallery gesture: a row click sets a picture from the row's field. */
+    const ROW_PICTURE = assetNameGapToIndexGap({
+        assetKind: "image",
+        sink: {
+            kind: "pin",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "showTile",
+            nodeType: "blueprint.element.image.setImageAsset",
+            nodeTitle: "Set Image Asset",
+            pinId: "asset",
+            pinLabel: "Asset",
+        },
+        origin: {
+            kind: "node",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "tileImage",
+            nodeType: "blueprint.list.getItemField",
+            nodeTitle: "Get Item Field",
+        },
+    });
+
+    it("refuses every package, release included, ahead of lint", async () => {
+        const { service, run } = mount({ referenceGaps: [ROW_PICTURE] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.error).toContain("build.contentComputedPinSummary");
+        expect(run).not.toHaveBeenCalled();
+    });
+
+    it("prints the project check's own sentence for it, naming the node", async () => {
+        const { service, lines } = mount({ referenceGaps: [ROW_PICTURE] });
+
+        await service.start(REQUEST);
+
+        expect(lines.some(line =>
+            line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("lint.rule.blueprintAssembledAssetName.message")
+            // The node and the pin arrive as catalogue entries, so the reader sees them in the
+            // language the canvas draws them in.
+            && line.message.includes("blueprint.node.setImageAsset")
+            && line.message.includes("blueprint.node.getItemField"))).toBe(true);
+    });
+
+    it("builds once nothing picks an asset by a computed value", async () => {
+        const { service } = mount({ referenceGaps: [] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
+    });
+
+    /**
+     * The same refusal, where the name comes out of a node type nothing here can load: a project
+     * built on a plugin's nodes, opened where that plugin is not installed or is switched off. The
+     * shipped starter is one - its EXTRA screen is built on the Gallery plugin - and it refused with
+     * six sentences naming the author's own widgets and a remedy (pick the asset in the picker) that
+     * cannot be carried out on a node drawn as a stub.
+     */
+    const TILE_FROM_UNLOADED_PLUGIN = assetNameGapToIndexGap({
+        assetKind: "image",
+        sink: {
+            kind: "pin",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "showTile",
+            nodeType: "blueprint.element.image.setImageAsset",
+            nodeTitle: "Set Image Asset",
+            pinId: "asset",
+            pinLabel: "Asset",
+        },
+        origin: {
+            kind: "node",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "rows",
+            nodeType: "narraleaf.gallery.getEntries",
+            nodeTitle: "narraleaf.gallery.getEntries",
+            unknownType: true,
+        },
+    });
+
+    it("says a node type is not loaded, and names the type rather than a card title", async () => {
+        const { service, lines, run } = mount({ referenceGaps: [TILE_FROM_UNLOADED_PLUGIN] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(run).not.toHaveBeenCalled();
+        expect(state.error).toContain("build.contentUnloadedNodeSummary");
+        expect(lines.some(line =>
+            line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("lint.rule.blueprintAssembledAssetName.messageUnloadedNode")
+            && line.message.includes("narraleaf.gallery.getEntries"))).toBe(true);
+    });
+
+    it("keeps the assembled headline when one of them really is assembled", async () => {
+        // Strictly true of every line beneath it or it is not the headline: a run that has both
+        // says the one the author can act on in the project.
+        const { service } = mount({ referenceGaps: [TILE_FROM_UNLOADED_PLUGIN, ROW_PICTURE] });
+
+        const state = await service.start(REQUEST);
+
+        expect(state.error).toContain("build.contentComputedPinSummary");
+    });
+});
+
 describe("BuildService network gate", () => {
     /** One Fetch on one event of one blueprint. */
     const DOCUMENT_WITH_FETCH = {
-        ownerRecords: { "surface:main": { activeBlueprintId: "bp1", privateBlueprintIds: [] } },
+        ownerRecords: { "surface:main": { blueprintId: "bp1" } },
         blueprints: {
             bp1: {
                 id: "bp1",
                 name: "Title Screen",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: { ev1: { graph: { nodes: { n1: { id: "n1", type: "blueprint.network.fetch" } } } } },
-                        functions: {},
-                        macros: {},
-                    },
+                graphs: {
+                    events: { ev1: { graph: { nodes: { n1: { id: "n1", type: "blueprint.network.fetch" } } } } },
+                    functions: {},
+                    macros: {},
                 },
             },
         },
@@ -734,80 +977,6 @@ describe("BuildService trim coverage gate", () => {
             storyDocument: STORY_WITH_A_CUT,
             referenceGaps: [{ reason: "indexNotBuilt" }],
         });
-
-        const state = await service.start(REQUEST);
-
-        expect(gameBuild.start).toHaveBeenCalledTimes(1);
-        expect(state.status).toBe("done");
-    });
-});
-
-/**
- * A graph whose `Get App Tag` reaches a comparison the fold cannot decide, so the edition question
- * would be answered on the player's machine. Refused under every variant, release included.
- */
-function unfoldableGraph() {
-    return {
-        nodes: {
-            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-            tag: { id: "tag", type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG },
-            eq: { id: "eq", type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL },
-            label: { id: "label", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT },
-        },
-        edges: [
-            { from: { nodeId: "head", port: "then" }, to: { nodeId: "label", port: "in" } },
-            { from: { nodeId: "tag", port: "appTag" }, to: { nodeId: "eq", port: "a" } },
-            { from: { nodeId: "head", port: "then" }, to: { nodeId: "eq", port: "b" } },
-            { from: { nodeId: "eq", port: "result" }, to: { nodeId: "label", port: "text" } },
-        ],
-    };
-}
-
-function sharedBlueprintAsset(assetName: string) {
-    return {
-        assetId: "asset-1",
-        name: assetName,
-        frontend: "visual",
-        blueprint: {
-            id: "bp-shared",
-            // Deliberately different from the asset's name: the console must show the name the
-            // author sees in the asset browser.
-            name: "inner name nobody sees",
-            owner: { kind: "sharedAsset", assetId: "asset-1" },
-            frontend: "visual",
-            programKind: "graph",
-            program: {
-                kind: "graph",
-                graphs: { events: { onCall: { id: "onCall", name: "On Call", graph: unfoldableGraph() } } },
-            },
-        },
-    };
-}
-
-/**
- * The shared-asset half of the variant gate.
- *
- * These graphs live in `.nlbp` asset files rather than in the blueprint document, so until
- * `AssetsService.listSharedBlueprints` existed nothing on this side could see them: the build went
- * to the main process, assembled, and threw there. What is asserted is the same thing every gate in
- * this file asserts - the refused build never reaches `gameBuild.start`.
- */
-describe("BuildService variant gate over shared blueprints", () => {
-    it("refuses a shared blueprint that still asks which edition it is", async () => {
-        const { service, lines } = mount({ sharedBlueprints: [sharedBlueprintAsset("Continue")] });
-
-        const state = await service.start(REQUEST);
-
-        expect(gameBuild.start).not.toHaveBeenCalled();
-        expect(state.status).toBe("error");
-        expect(state.error).toContain("build.appTagGraphSummary");
-        expect(lines.some(line => line.level === "error"
-            && line.message.includes("build.appTagGraphUnresolved")
-            && line.message.includes("Continue"))).toBe(true);
-    });
-
-    it("builds when the shared blueprints all fold", async () => {
-        const { service } = mount({ sharedBlueprints: [] });
 
         const state = await service.start(REQUEST);
 

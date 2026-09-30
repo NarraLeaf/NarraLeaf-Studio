@@ -109,7 +109,7 @@ already read — declares it. Studio draws one control per declaration in the pi
 answers to `run` as `ctx.parameters`.
 
 ```ts
-export type TestParameterOption = { value: string; label: TestText };
+export type TestParameterOption = { value: string; label: TestText; name?: string };
 
 export type TestParameterDefinition =
     | {
@@ -131,6 +131,13 @@ export type TestParameterDefinition =
 - `value` is what the test reads and what Studio remembers; `label` is what the author sees. Values
   MUST stay stable across releases and MUST NOT be derived from a display string, which follows the
   editor's language.
+- `name` is what a command line calls the option, and a list whose values are generated ids SHOULD
+  give one. `--test-list` prints the name in the value's place and `--test-parameter` accepts it
+  (without regard to case); the value never leaves the workspace, because no id belongs in front of a
+  person — see [command-line checks](command-line-checks.md). Names MUST be unique within one list
+  and SHOULD be words the author already knows the row by, not a translated string. A list whose
+  values are already words needs none: an option without a name is written on the line as its value.
+  Optional and additive, so it did not bump the protocol (§10).
 - `defaultValue` is where a control starts. A `select` falls back to the first option when it is
   absent, and also when it names an option that is no longer in the list.
 - Ids MUST be unique within one definition. A repeated id is one parameter: the first declaration

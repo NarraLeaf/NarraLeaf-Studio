@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef } from "react";
 import type { UIComponentId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { releaseBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
-import type { SurfaceLifecycleSignals } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import { useSurfaceTreeLifecycleSignals } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
 type Props = {
     surfaceId: string;
@@ -25,7 +25,6 @@ type Props = {
     componentParams?: Record<string, string> | null;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
-    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
 };
 
 function enqueuePrepaintTask(task: () => void): void {
@@ -39,8 +38,14 @@ function enqueuePrepaintTask(task: () => void): void {
 /**
  * Dispatches the widget `init` blueprint UI event once when the element mounts (Dev Mode when blueprintRuntime is present).
  * Releases per-widget blueprint execution locals when the element unmounts or blueprint wiring changes.
+ *
+ * Memoised on its props: it draws nothing, and every effect below is keyed on values those props
+ * carry, so a render with the same props does nothing at all. The tree hands it a new element each
+ * time an element's wrapper is rebuilt, which on a page switch is several times per element - a
+ * render apiece that could not change anything. The surface's lifecycle signals come from context
+ * (see `surfaceTreeContext`), so they still reach it when its props are unchanged.
  */
-export function BlueprintWidgetInitLifecycle({
+export const BlueprintWidgetInitLifecycle = memo(function BlueprintWidgetInitLifecycle({
     surfaceId,
     elementId,
     elementType,
@@ -50,8 +55,8 @@ export function BlueprintWidgetInitLifecycle({
     componentParams,
     listItemScope,
     instanceKey,
-    surfaceLifecycleSignals,
 }: Props) {
+    const surfaceLifecycleSignals = useSurfaceTreeLifecycleSignals();
     const rt = hostAdapter.blueprintRuntime;
     const runtimeScopeId = rt?.runtimeScopeId ?? surfaceId;
     const latestDispatchRef = useRef<{
@@ -188,4 +193,4 @@ export function BlueprintWidgetInitLifecycle({
     }, [componentId, elementId, elementType, instanceKey, listItemScopeSig, runtimeScopeId]);
 
     return null;
-}
+});

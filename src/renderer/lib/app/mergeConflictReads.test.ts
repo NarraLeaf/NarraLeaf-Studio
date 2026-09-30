@@ -38,9 +38,16 @@ const vcs = vi.hoisted(() => ({
     getAvailability: vi.fn(),
     getMergeState: vi.fn(),
 }));
+/** The claim the preflight makes before it reads anything. Granted here; refusing it is its own test. */
+const sessionLock = vi.hoisted(() => ({
+    acquireSessionLock: vi.fn(),
+}));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ vcs, workspace: { reportWriteFreeze: vi.fn() } }),
+    getInterface: () => ({
+        vcs,
+        workspace: { reportWriteFreeze: vi.fn(), acquireSessionLock: sessionLock.acquireSessionLock },
+    }),
     getPrivilegedInterface: () => ({ fs: privilegedFs }),
 }));
 vi.mock("@/lib/app/privilegedFacade", () => ({
@@ -63,6 +70,7 @@ beforeEach(() => {
         success: true,
         data: { ok: true, data: [{ name: "game", ext: ".nlproj", type: "file" }] },
     });
+    sessionLock.acquireSessionLock.mockResolvedValue({ success: true, data: { ok: true } });
     vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
     vcs.getMergeState.mockResolvedValue({
         success: true,

@@ -26,6 +26,8 @@ export type PatchExportBlocker =
     | "reading"
     /** The chosen build folder holds no build of this game. */
     | "artifact"
+    /** The chosen build folder has not been picked in this window, so nothing has read it. */
+    | "artifactAccess"
     /** A DLC was chosen, and the build it adds to was not. */
     | "dlcBaseline"
     /** The chosen build is a different edition from the one this DLC attaches to. */
@@ -40,8 +42,18 @@ export interface PatchExportSelection {
     baselineAppDir: string;
     /** True while that folder is being read. */
     readingBaseline: boolean;
-    /** True when reading it failed. */
+    /** True when reading it failed for any reason other than {@link baselineNotGranted}. */
     baselineUnreadable: boolean;
+    /**
+     * True when the folder was refused before it was looked at, because this window has not been
+     * granted it.
+     *
+     * Separate from {@link baselineUnreadable} because the two are different facts about the folder
+     * and have different remedies. Collapsed into one, an author who typed a path - or came back to
+     * a remembered one - is told their own build is not there, with the build plainly in front of
+     * them. What is missing is the picking, not the build.
+     */
+    baselineNotGranted: boolean;
     /** The variant the folder says it is, or null where it says nothing or none was read. */
     baselineAppTagId: string | null;
     /** The variant a chosen DLC attaches to, or null when no DLC was chosen. */
@@ -65,6 +77,11 @@ export function patchExportBlocker(selection: PatchExportSelection): PatchExport
     if (selection.baselineAppDir) {
         if (selection.readingBaseline) {
             return "reading";
+        }
+        // Before the unreadable arm: a folder nothing was allowed to open is not a folder anything
+        // has found empty, and the more specific answer is the one worth showing.
+        if (selection.baselineNotGranted) {
+            return "artifactAccess";
         }
         if (selection.baselineUnreadable) {
             return "artifact";

@@ -231,7 +231,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 ### 存档字段
 
-工程可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个工程共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
+项目可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个项目共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
 
 - 引脚按**字段 id** 寻址，改字段名只换标签，不会断线。
 - 字段声明的类型**就是**引脚的类型，中间没有映射表。
@@ -286,7 +286,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
 
-工程声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
+项目声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
 
 字段输出**永远有值**：存档里没有这个 key 时给的是该字段配置的默认值。这正是"给已发布的游戏加一个存档字段"安全的原因——老存档照常显示，不会变成一片空白。
 
@@ -330,11 +330,32 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 存档里的 `storyHash` **刻意没有开放给图**。它唯一的用途是拒绝加载存档，而按 hash 拒绝正是本项目否决过的做法——改一行正文它就会变，会拦下大量本来能正常读取的存档。
 
+## Get Save Story
+
+`blueprint.game.save.getStory` - Get Save Story
+
+读取指定本地存档写在哪个故事里。故事是本产品的编译单位：一份存档是**某一个**故事里的一个位置，两条线路的存档除了并排放在一起以外毫无关系。存档库一直在给每条记录盖故事戳（`Load Save` 也一直在按它决定拒绝还是回退），但图问不出来，于是一个读档界面可能画着三条线路的六个槽位、行上却没有任何东西能把它们区分开。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `storyName` - **故事名称**，这是唯一可以显示给玩家看的一项（传出引脚）
+- `storyId` - **故事 Id**，生成的不透明引用，只用于分组、比较，或接进 `Start Game` 的同名引脚；**不要接进任何会显示出来的地方**（传出引脚）
+- `exists` - 该存档是否存在（传出引脚）
+- `next` - 读取完成后的执行出口
+
+两个引脚不能互相替代，一个界面两样都要：名称是作者写的、玩家认得的那个词；Id 在重命名后不变，所以分组和比较要按它做。**把 `storyId` 接进文本控件就会把一串生成的 id 摆在玩家面前**，引脚名就是在接线之前提醒这件事的。
+
+名称是拿 Id 在**本次构建装载的故事库**里查出来的，不是存进记录里的：存档写完之后改了故事名，读出来是**改过之后**的名字——那才是作者眼前的名字，也是唯一能被认出来的那个。
+
+三种"没有"要靠 `exists` 分开：没有这个槽位时两个引脚都是空串且 `exists` 为 `false`；一个在存档还不带故事戳之前（或没有挂载任何故事时）保存的真实槽位，两个引脚同样是空串但 `exists` 为 `true`；一个指向本次构建**没有装载**的故事（已删除的线路，或本包不含的 DLC）的真实槽位，`storyId` 有值而 `storyName` 为空串。三者在读档界面上要画成三样，所以谁也不从谁身上推。
+
+与 `Get Save Metadata`、`Get Save Preview`、`Get Save Time`、`Get Save Line` 一样按 id 取值，因此对 `List Saves` 的玩家槽位和 `List Auto Saves` 的自动存档环同样适用。
+
 ## Get Save Preview
 
 `blueprint.game.save.getPreview` - Get Save Preview
 
-读取指定本地存档 metadata 中的截图预览，并在当前 Dev Mode 会话内生成临时 `ImageAsset`。该图片不会导入项目资源库；可直接传给 `nl.image` 的 `Set Image Asset` 或图片相关 Blueprint Value。
+读取指定本地存档 metadata 中的截图预览，并在当前 Dev Mode 会话内生成临时 `ImageAsset`。该图片不会导入项目资产库；可直接传给 `nl.image` 的 `Set Image Asset` 或图片相关 Blueprint Value。
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖

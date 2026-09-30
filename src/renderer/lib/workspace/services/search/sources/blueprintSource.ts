@@ -1,14 +1,16 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
+import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { Services, type WorkspaceContext } from "../../services";
 import { LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import { UIGraphService } from "../../ui-editor/UIGraphService";
 import { UIDocumentService } from "../../ui-editor/UIDocumentService";
 import { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
-import { parseBlueprintOwnerKey } from "../blueprintOwnerKey";
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { anchorComponentId, anchorElementId, anchorSurfaceId, blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchSource } from "../searchSource";
 
@@ -19,14 +21,34 @@ const MAX_NODE_LITERALS = 6;
 /** Depth the walker descends into nested param objects/arrays. */
 const MAX_NODE_LITERAL_DEPTH = 2;
 
-const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A uuid anywhere in a string: on its own, or inside a reference such as `fn:<uuid>:<name>`. */
+const CONTAINS_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** A function reference as a call node stores it: `fn:<the blueprint's id>:<the function's name>`. */
+const FUNCTION_REFERENCE = /^fn:[^:]+:(.+)$/;
+/** Studio's own built-in ids - `narraleaf-studio:main-surface` - which name nothing the author wrote. */
+const BUILT_IN_ID = /^narraleaf-studio:/;
+
+/**
+ * The part of a param string an author would recognise, or null when there is none.
+ *
+ * A function reference keeps the function's own name and drops the blueprint id in front of it;
+ * anything else that carries an id, or is one of Studio's built-in ids, has nothing to show.
+ */
+function readableLiteral(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > MAX_NODE_LITERAL_LENGTH) {
+        return null;
+    }
+    const text = FUNCTION_REFERENCE.exec(trimmed)?.[1] ?? trimmed;
+    return CONTAINS_UUID.test(text) || BUILT_IN_ID.test(text) ? null : text;
+}
 
 /**
  * The authored strings inside a node's params, in declaration order - a comment's text, a variable
  * name, a literal line of dialogue.
  *
- * Deliberately narrow: numbers and booleans carry no identity, and ids (UUID-shaped strings) are
- * the thing the author never types. What is left is what one `Set Image Asset` node has that the
+ * Deliberately narrow: numbers and booleans carry no identity, and ids - a uuid, a reference built
+ * around one, Studio's own built-in ids - are the thing the author never types. What is left is what one `Set Image Asset` node has that the
  * seven beside it do not, which is the entire point of collecting them.
  */
 function collectNodeLiterals(params: Record<string, unknown> | undefined): string[] {
@@ -36,9 +58,9 @@ function collectNodeLiterals(params: Record<string, unknown> | undefined): strin
             return;
         }
         if (typeof value === "string") {
-            const trimmed = value.trim();
-            if (trimmed && trimmed.length <= MAX_NODE_LITERAL_LENGTH && !UUID_SHAPED.test(trimmed)) {
-                out.push(trimmed);
+            const literal = readableLiteral(value);
+            if (literal) {
+                out.push(literal);
             }
             return;
         }
@@ -62,8 +84,19 @@ export interface BlueprintEntryLabels {
 }
 
 export interface BlueprintExtractionOptions {
-    /** Catalog display name for a node type (`Set Image Asset`), falling back to the raw type. */
+    /**
+     * A node type's title as the blueprint editor draws it on the node - `Set Image Asset`, in the
+     * interface language - falling back to the raw type.
+     */
     resolveNodeLabel: (nodeType: string) => string | undefined;
+    /**
+     * The name a node type is catalogued under, when its label is a translation of it.
+     *
+     * Kept searchable without being shown (it goes to `aux`), because the blueprint editor's own
+     * add-node menu answers to both: an author who knows a node by its English name, from the
+     * documentation or from a template, finds it here under that name too.
+     */
+    resolveNodeAlias?: (nodeType: string) => string | undefined;
     /**
      * Human name for an owner slot key - the surface or element the blueprint hangs on. Without it a
      * node hit says only which blueprint it is in, and blueprints are named after their element
@@ -114,16 +147,14 @@ export function extractBlueprintEntries(
     document: BlueprintDocument,
     options: BlueprintExtractionOptions,
 ): SearchIndexEntry[] {
-    const { resolveNodeLabel, resolveOwnerLabel, registryVariables = [], labels } = options;
+    const { resolveNodeLabel, resolveNodeAlias, resolveOwnerLabel, registryVariables = [], labels } = options;
     const entries: SearchIndexEntry[] = [];
 
-    // blueprintId → ownerKey (active blueprint first so it wins over historical siblings).
+    // blueprintId → ownerKey. A slot names one blueprint, so this is one entry per slot.
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-        for (const blueprintId of [record.activeBlueprintId, ...record.privateBlueprintIds]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
+        if (record.blueprintId) {
+            ownerKeyByBlueprintId.set(record.blueprintId, ownerKey);
         }
     }
 
@@ -142,7 +173,7 @@ export function extractBlueprintEntries(
                 text: definition.name,
                 target: {
                     kind: "blueprint",
-                    blueprintId: globalRecord.activeBlueprintId,
+                    blueprintId: globalRecord.blueprintId,
                     ownerKey: "globalMain",
                 },
             });
@@ -181,9 +212,6 @@ export function extractBlueprintEntries(
             });
         }
 
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
         type GraphSlot = {
             focus: "event" | "function";
             graphId: string;
@@ -191,13 +219,13 @@ export function extractBlueprintEntries(
             ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
         };
         const graphSlots: GraphSlot[] = [
-            ...Object.entries(blueprint.program.graphs.events).map(([graphId, slot]) => ({
+            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => ({
                 focus: "event" as const,
                 graphId,
                 name: slot.name || labels.unnamedEvent,
                 ir: slot.graph,
             })),
-            ...Object.entries(blueprint.program.graphs.functions).map(([graphId, slot]) => ({
+            ...Object.entries(blueprint.graphs.functions).map(([graphId, slot]) => ({
                 focus: "function" as const,
                 graphId,
                 name: slot.name || labels.unnamedFunction,
@@ -214,12 +242,14 @@ export function extractBlueprintEntries(
                 }
                 const literals = collectNodeLiterals(node.params);
                 const [distinguishing, ...rest] = literals;
+                const alias = resolveNodeAlias?.(node.type);
+                const hidden = alias && alias !== label ? [...rest, alias] : rest;
                 nodeEntries.push({
                     id: `bpnode:${blueprint.id}:${graphId}:${node.id}`,
                     group: "blueprintNode",
                     text: label,
                     detail: distinguishing ? `${distinguishing} · ${where}` : where,
-                    aux: rest.length > 0 ? rest.join(" ") : undefined,
+                    aux: hidden.length > 0 ? hidden.join(" ") : undefined,
                     target: {
                         kind: "blueprint",
                         blueprintId: blueprint.id,
@@ -244,14 +274,17 @@ export function extractBlueprintEntries(
  * actually locates it.
  */
 function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): string | undefined {
-    const owner = parseBlueprintOwnerKey(ownerKey);
+    const owner = decodeBlueprintOwnerKey(ownerKey);
     if (!owner) {
         return undefined;
     }
-    if (owner.ownerKind === "globalMain") {
+    // The two positions that are their own label: neither has a surface, a component or an element
+    // to name, so nothing below would find anything to print.
+    const anchor = blueprintAnchor(owner);
+    if (anchor.kind === "project") {
         return translate("blueprint.owner.global" as TranslationKey);
     }
-    if (owner.ownerKind === "storyAction") {
+    if (anchor.kind === "storyRow") {
         return translate("blueprint.owner.storyAction" as TranslationKey);
     }
     let document;
@@ -261,20 +294,23 @@ function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): st
         return undefined;
     }
     const parts: string[] = [];
-    if (owner.surfaceId) {
-        const surface = document.surfaces.find(candidate => candidate.id === owner.surfaceId);
+    const surfaceId = anchorSurfaceId(owner);
+    if (surfaceId) {
+        const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
         if (surface?.name) {
             parts.push(surface.name);
         }
     }
-    if (owner.componentId) {
-        const component = (document.components ?? []).find(candidate => candidate.id === owner.componentId);
+    const componentId = anchorComponentId(owner);
+    if (componentId) {
+        const component = (document.components ?? []).find(candidate => candidate.id === componentId);
         if (component?.name) {
             parts.push(component.name);
         }
     }
-    if (owner.elementId) {
-        const element = document.elements[owner.elementId];
+    const elementId = anchorElementId(owner);
+    if (elementId) {
+        const element = document.elements[elementId];
         const name = element?.name || element?.type;
         if (name) {
             parts.push(name);
@@ -300,14 +336,30 @@ export const blueprintSource: SearchSource = {
     extract: ctx => {
         const blueprintService = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
-            resolveNodeLabel: type => {
+        // One catalog lookup per node type rather than per node: a project repeats a few dozen types
+        // across hundreds of nodes, and every lookup builds a catalog entry, pins included.
+        const catalogNames = new Map<string, string | undefined>();
+        const catalogName = (type: string): string | undefined => {
+            if (!catalogNames.has(type)) {
+                let name: string | undefined;
                 try {
-                    return catalog.resolveCatalogEntry(type).displayName;
+                    name = catalog.resolveCatalogEntry(type).displayName;
                 } catch {
-                    return undefined;
+                    name = undefined;
                 }
+                catalogNames.set(type, name);
+            }
+            return catalogNames.get(type);
+        };
+        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
+            // Translated by the map the node cards are drawn with, so a row names a node the way the
+            // canvas does. It is read at extraction time, which is why `watch` rebuilds the slice when
+            // the interface language changes.
+            resolveNodeLabel: type => {
+                const name = catalogName(type);
+                return name === undefined ? undefined : resolveBlueprintNodeTitle(name, translate);
             },
+            resolveNodeAlias: catalogName,
             resolveOwnerLabel: ownerKey => resolveBlueprintOwnerLabel(ctx, ownerKey),
             registryVariables: [...blueprintService.listPersistentVariables(), ...blueprintService.listSavedVariables()],
             labels: {
@@ -321,6 +373,9 @@ export const blueprintSource: SearchSource = {
     // own file, and a registry edit does NOT bump the graph revision. Watching only the graph left a
     // variable renamed in the variables panel showing its old name in search until something
     // unrelated happened to touch a blueprint.
+    //
+    // The interface language is the third input: node titles, unnamed-graph names and owner names
+    // are translated into the entries, so a slice built in one language is stale in the next.
     watch: (ctx, signal) => {
         const graphs = ctx.services
             .get<UIGraphService>(Services.UIGraph)
@@ -328,9 +383,11 @@ export const blueprintSource: SearchSource = {
         const registry = ctx.services
             .get<VariableRegistryService>(Services.VariableRegistry)
             .onRegistryChanged(() => signal.invalidate());
+        const locale = i18nStore.subscribe(() => signal.invalidate());
         return () => {
             graphs();
             registry();
+            locale();
         };
     },
     dedupKey: entry => (entry.group === "blueprintNode" ? nodeRowKey(entry) : null),

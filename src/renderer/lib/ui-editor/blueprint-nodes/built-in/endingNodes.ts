@@ -108,6 +108,7 @@ export const endingBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
+        assetNames: "written",
         displayName: "Get Endings",
         category: "Game",
         keywords: [

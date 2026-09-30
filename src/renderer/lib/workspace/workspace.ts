@@ -15,6 +15,7 @@ export class Workspace {
         return {
             project,
             services: new ServiceRegistry(),
+            commandLineRun: props.commandLineRun != null,
         };
     }
 

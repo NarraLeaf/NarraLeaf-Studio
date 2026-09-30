@@ -63,9 +63,14 @@ export function planIconDraw(input: {
 }
 
 /**
- * The edge below which a master cannot fill the biggest output cleanly. Matches
- * the packager's own floor for converting a PNG into .icns/.ico, so a source
- * that passes here passes there too.
+ * The edge below which a master is shown upscaled somewhere: 512 is the square
+ * macOS draws an app icon at when it draws one large, and the largest any
+ * platform's icon container is always filled to.
+ *
+ * Nothing refuses a smaller source. The build writes the `.ico` and `.icns`
+ * itself and upscales to fill what the source cannot reach, so this separates
+ * "sharp" from "blurry", not "ships" from "fails". The build preflight reads
+ * this same constant for its own warning, so the panel and the build agree.
  */
 export const MIN_ICON_SOURCE_EDGE = 512;
 

@@ -67,6 +67,9 @@ export type UIDisplayableMotionOverride = {
     resetOnComplete?: boolean;
 };
 
+/** Why a wait on a motion ended: it ran its length, or someone stopped it. */
+export type UIDisplayableMotionWaitReason = "completed" | "stopped";
+
 /**
  * Persistent transform pose layered between the authored layout and the one-shot motion slot.
  * Displayable offsets (and held scale commits) live here instead of inside a motion so that a
@@ -157,6 +160,17 @@ export class WidgetRuntimeStateStore {
      */
     private readonly listScrollMetrics = new Map<string, UIListScrollMetrics>();
     private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
+    /**
+     * Who is waiting on each motion, by motion id.
+     *
+     * Kept beside the motions rather than in the host API that started the wait, because the wait
+     * and the stop need not come through the same one. A motion id is the store's (or a token the
+     * graphs mint), a `Stop Animation` reaches the motion by id from any graph of the game, and a
+     * page's host API is rebuilt under a graph that is still waiting whenever the game's
+     * capabilities are. A table per host API left such a wait asleep until its timer ran out, and
+     * reported the animation as having finished when it had been stopped.
+     */
+    private readonly displayableMotionWaiters = new Map<string, Set<(reason: UIDisplayableMotionWaitReason) => void>>();
     private readonly displayableBaseTransforms = new Map<string, UIDisplayableBaseTransform>();
     private readonly listeners = new Set<() => void>();
     private readonly runtimePatchListeners = new Set<() => void>();
@@ -517,6 +531,53 @@ export class WidgetRuntimeStateStore {
             return { elementId, motion };
         }
         return null;
+    }
+
+    /**
+     * Wait for a motion to run its length (`waitMs`), or for {@link settleDisplayableMotionWaits} to
+     * end it early, whichever comes first.
+     *
+     * Only the wait lives here, not the timing: `waitMs` is the caller's reading of the transition,
+     * and this does not look at the motion slot at all - a motion replaced by a newer one on the
+     * same element still ends its wait on its own clock, and the caller checks the slot afterwards.
+     */
+    waitForDisplayableMotion(motionId: string, waitMs: number): Promise<UIDisplayableMotionWaitReason> {
+        if (waitMs <= 0) {
+            return Promise.resolve("completed");
+        }
+        return new Promise<UIDisplayableMotionWaitReason>(resolve => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            const finish = (reason: UIDisplayableMotionWaitReason) => {
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+                const waiters = this.displayableMotionWaiters.get(motionId);
+                waiters?.delete(finish);
+                if (waiters?.size === 0) {
+                    this.displayableMotionWaiters.delete(motionId);
+                }
+                resolve(reason);
+            };
+            let waiters = this.displayableMotionWaiters.get(motionId);
+            if (!waiters) {
+                waiters = new Set();
+                this.displayableMotionWaiters.set(motionId, waiters);
+            }
+            waiters.add(finish);
+            timeoutId = setTimeout(() => finish("completed"), waitMs);
+        });
+    }
+
+    /** End every wait on this motion now, with `reason`. Nothing waiting is not an error. */
+    settleDisplayableMotionWaits(motionId: string, reason: UIDisplayableMotionWaitReason): void {
+        const waiters = this.displayableMotionWaiters.get(motionId);
+        if (!waiters || waiters.size === 0) {
+            return;
+        }
+        this.displayableMotionWaiters.delete(motionId);
+        for (const finish of Array.from(waiters)) {
+            finish(reason);
+        }
     }
 
     completeDisplayableMotion(elementId: string, motionId: string): void {

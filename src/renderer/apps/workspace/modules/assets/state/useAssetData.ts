@@ -49,7 +49,11 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
     const [groups, setGroups] = useState<Record<AssetCategory, AssetGroup[]>>(() => cachedSnapshot ? cloneGroups(cachedSnapshot.groups) : createEmptyGroups());
     const [loading, setLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(Boolean(cachedSnapshot));
-    const [error, setError] = useState<string | null>(null);
+    /**
+     * Whether the last read of the library threw. A flag, not the message: what throws here is the
+     * library saying it is not up ("Assets metadata manager not initialized"), which is the log's.
+     */
+    const [loadFailed, setLoadFailed] = useState(false);
 
     const loadAssets = useCallback(async () => {
         if (!context) {
@@ -57,7 +61,7 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
         }
 
         setLoading(true);
-        setError(null);
+        setLoadFailed(false);
 
         try {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
@@ -87,7 +91,7 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
             }
         } catch (err) {
             console.error("Failed to load assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
+            setLoadFailed(true);
         } finally {
             setLoading(false);
         }
@@ -144,5 +148,5 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
         };
     }, [context, isInitialized, loadAssets]);
 
-    return { assets, groups, loading, hasLoaded, error, loadAssets };
+    return { assets, groups, loading, hasLoaded, loadFailed, loadAssets };
 }

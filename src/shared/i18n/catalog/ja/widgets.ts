@@ -7,7 +7,7 @@ export const widgets = {
         interaction: "操作",
     },
     blueprint: {
-        controlLabel: "コントロールのブループリント",
+        controlLabel: "コンポーネントロジック",
     },
     appearance: {
         title: "外観",
@@ -19,6 +19,7 @@ export const widgets = {
     horizontal: "横",
     vertical: "縦",
     gap: "間隔",
+    wrap: "折り返し",
     perSidePx: "辺ごと（px）",
     sides: {
         top: "上",
@@ -186,6 +187,15 @@ export const widgets = {
         title: "テキスト",
         localizeText: "テキストをローカライズ",
     },
+    /**
+     * ラベルの文字に付く装飾。上のテキストボックスで選んだ文字に対して設定する。ボタンの名前は
+     * ストーリー側のキーをそのまま使う——ラベルの装飾と台詞の装飾は同じもので、別々の言い方を
+     * すると二つの機能に見えてしまう。
+     */
+    textMarks: {
+        title: "文字装飾",
+        selectHint: "装飾する文字を選ぶ",
+    },
     frame: {
         title: "ページ",
         page: "ページ",
@@ -198,6 +208,7 @@ export const widgets = {
         missingPage: "ページが見つからない",
         targetNotPage: "対象がページではない",
         pageLoopBlocked: "ページの循環を止めた",
+        leadsBackHere: "ここに戻ってくる",
         previewUnavailable: "ページのプレビューを出せない",
         pageRootMissing: "ページのルートがない",
     },
@@ -303,6 +314,7 @@ export const widgets = {
         describeNoModel: "名前を一覧するにはモデルのバンドルを選ぶ",
         describeNoBackend: "モデルの名前を一覧するにはランタイムを選ぶ",
         describeBackendMissing: "そのランタイムはこのプロジェクトに入っていないので、名前は手入力する",
+        describeDistrusted: "このプロジェクトは信頼されていないため、ランタイムは読み込まれない。ステータスバーから信頼できる。",
         describeNotSupported: "このランタイムはモデルの内容を返さない。名前は手入力する",
         describeFailed: "モデルを読み込めなかった。名前は手入力する",
         redescribe: "読み直す",
@@ -313,6 +325,8 @@ export const widgets = {
         placeholderUnconfigured: "モデルのバンドルとランタイムを選ぶ",
         placeholderNoModel: "ここではそのモデルのバンドルを使えない",
         placeholderBackendMissing: "「{backend}」というランタイムはこのプロジェクトに入っていない",
+        // ファイルが無いのでも壊れているのでもない。ランタイムはあり、Studio が読み込まない。
+        placeholderDistrusted: "描画していない。このプロジェクトは信頼されていないため、ランタイムを読み込まない",
         placeholderLoading: "モデルを読み込んでいる…",
         placeholderError: "ランタイムが失敗した：{error}",
         placeholderBudget: "描画していない。このウィンドウではすでに {drawn} 体を描いている",

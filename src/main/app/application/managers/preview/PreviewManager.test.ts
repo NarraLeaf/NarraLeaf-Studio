@@ -8,6 +8,9 @@ import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { formatPreviewProcessOutput, PreviewManager, resolvePreviewRunnerBinaryForApp } from "./PreviewManager";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
 import { spawn } from "child_process";
 
 // The freeze refusal reports itself on the workspace console; keep it away from the window plumbing.
@@ -85,6 +88,10 @@ describe("PreviewManager.launch while the workspace is frozen", () => {
     // Enough app for the guard and for launchNow to fail on its own terms; see below.
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
     const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-preview-project");
@@ -159,6 +166,10 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
 
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         pluginManager: {
             listPlugins: async () => [],
             listRuntimePluginPackSources: async () => [],
@@ -303,6 +314,10 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
 
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],
@@ -354,4 +369,223 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
         // It quit on request. A kill here would mean the retry never landed.
         expect(child.kill).not.toHaveBeenCalled();
     });
+});
+
+describe("PreviewManager.resetPlayerData", () => {
+    const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
+    const makeManager = () => new PreviewManager({
+        logger: { error: () => undefined },
+        pluginManager: {
+            listPlugins: async () => [],
+            listRuntimePluginPackSources: async () => [],
+        },
+        getDistDir: () => path.join(os.tmpdir(), "dist"),
+        getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
+        getGlobalState: () => ({ get: () => undefined }),
+        getAppInfo: () => ({ version: "0.0.0-test" }),
+        // A launch asks whether the project may run at all, and the gate refuses when it cannot
+        // find out - absence of a ledger is not permission. These cases reach `launch` only to put
+        // a session into the state they are really about, so the answer here is simply yes.
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
+    } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
+
+    /** A compile that never resolves on its own, so its session stays in "compiling" until stopped. */
+    function stallingCompile() {
+        const worker = { kill: vi.fn() };
+        const started = new Promise<void>(resolve => {
+            vi.mocked(compileGameRuntimeArtifactInWorker).mockImplementation((_app, _input, hooks) => {
+                hooks?.onStart?.(worker as never);
+                resolve();
+                // The real worker turns kill() into an exit the helper reports as a rejection; mirror
+                // that so a stop actually unwinds this launch.
+                return new Promise((_res, rej) => {
+                    worker.kill.mockImplementation(() => rej(new Error("Build cancelled")));
+                });
+            });
+        });
+        return { started };
+    }
+
+    let projectDir = "";
+    let userDataDir = "";
+
+    beforeEach(async () => {
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preview-reset-"));
+        userDataDir = path.join(projectDir, ".nlstudio", "preview", "userData");
+        await fs.mkdir(path.join(userDataDir, "saves"), { recursive: true });
+        await fs.writeFile(path.join(userDataDir, "saves", "slot.json"), "{}", "utf-8");
+        await fs.writeFile(path.join(userDataDir, "persistence.json"), "{}", "utf-8");
+        // A file that is neither a save nor persistence stands in for the Chromium profile, to prove
+        // the reset leaves it alone.
+        await fs.writeFile(path.join(userDataDir, "geometry.json"), "{}", "utf-8");
+    });
+
+    afterEach(async () => {
+        await fs.rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("removes the saves and persistence but nothing else, and is a no-op when they are gone", async () => {
+        const manager = makeManager();
+
+        await manager.resetPlayerData(projectDir);
+
+        await expect(fs.access(path.join(userDataDir, "saves"))).rejects.toThrow();
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).rejects.toThrow();
+        // The rest of the runtime profile survives - it is a cache the next launch rebuilds, not the
+        // author's game state.
+        await expect(fs.access(path.join(userDataDir, "geometry.json"))).resolves.toBeUndefined();
+
+        // Clearing an already-clear project is success, not an error: nothing was there to remove.
+        await expect(manager.resetPlayerData(projectDir)).resolves.toBeUndefined();
+    });
+
+    it("clears even after a failed launch left an errored session - that session writes nothing", async () => {
+        const manager = makeManager();
+        // The compile mock resolves undefined, so launchNow throws reaching for the artifact and the
+        // session lands in "error". The reset is exactly what an author reaches for at that point.
+        await expect(manager.launch(projectDir, entry)).resolves.toBe("error");
+
+        await expect(manager.resetPlayerData(projectDir)).resolves.toBeUndefined();
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).rejects.toThrow();
+    });
+
+    it("refuses while a preview for the project is genuinely running", async () => {
+        const manager = makeManager();
+        const compile = stallingCompile();
+        const launch = manager.launch(projectDir, entry);
+        await compile.started;
+
+        // The session is stuck in "compiling" - a live launch with a process on the way.
+        await expect(manager.resetPlayerData(projectDir)).rejects.toThrow(/Stop the preview/);
+        // The refusal touched nothing.
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).resolves.toBeUndefined();
+
+        await manager.stop(projectDir);
+        await expect(launch).resolves.toBe("idle");
+    });
+});
+/**
+ * Whether a preview holds its content as loose files or in the sealed store a protected build ships.
+ *
+ * Sealing costs several seconds on every launch, because the store is written whole and a story edit
+ * changes the pack - so an everyday preview of a protected project runs loose files, and rehearsing
+ * the shipped form is something this machine asks for. What the two must not become is two different
+ * compiles: the sealed one has to be the artifact a protected build produces, or rehearsing it proves
+ * nothing. That is the assertion below - one field apart, the compiler is handed the same thing.
+ */
+describe("PreviewManager and the shipped form of a protected project", () => {
+    const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
+    let projectDir = "";
+    let globalState: Record<string, unknown> = {};
+
+    const makeManager = () => new PreviewManager({
+        logger: { error: () => undefined },
+        projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
+        isPackaged: () => false,
+        pluginManager: {
+            listPlugins: async () => [],
+            listRuntimePluginPackSources: async () => [],
+        },
+        getDistDir: () => path.join(os.tmpdir(), "dist"),
+        getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
+        getGlobalState: () => ({ get: (key: string) => globalState[key] }),
+        getAppInfo: () => ({ version: "0.0.0-test" }),
+    } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
+
+    /** Stands in for the spawned Electron, alive and doing nothing. */
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        return child;
+    }
+
+    async function writeProjectConfig(encryptAssets: boolean): Promise<void> {
+        await fs.writeFile(
+            path.join(projectDir, "Tiny Shadows.nlproj"),
+            encodeProjectConfig({
+                name: "Tiny Shadows",
+                app: { security: { encryptAssets } },
+            } as never),
+        );
+    }
+
+    /**
+     * Launch once and hand back what the compiler was asked to build.
+     *
+     * Never stopped: the stand-in process below answers no control socket, so a stop would spend the
+     * shutdown deadline before killing something that was never alive.
+     */
+    async function compileInputOfOneLaunch(): Promise<Record<string, unknown>> {
+        await makeManager().launch(projectDir, entry);
+        const call = vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls.at(-1);
+        expect(call).toBeDefined();
+        return call![1] as unknown as Record<string, unknown>;
+    }
+
+    beforeEach(async () => {
+        globalState = {};
+        projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preview-shipped-"));
+        await writeProjectConfig(true);
+        vi.mocked(spawn).mockReset();
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue({
+            appDir: path.join(projectDir, ".nlstudio", "preview", "app"),
+            copiedAssetCount: 0,
+        } as never);
+    });
+
+    afterEach(async () => {
+        await fs.rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("runs loose files by default, protected project or not", async () => {
+        // The everyday preview. Sealing the store on every launch would be paid on every story edit,
+        // for an artifact nobody receives.
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
+    });
+
+    it("seals once this machine asks for it, and changes nothing else about the compile", async () => {
+        const loose = await compileInputOfOneLaunch();
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
+        const sealed = await compileInputOfOneLaunch();
+
+        expect(sealed.protectAssets).toBe(true);
+        // Everything else is what it was, because "as shipped" has to mean the artifact a protected
+        // build produces rather than a third kind of artifact only preview can make. The control
+        // channel is exempt: a port and a token are minted per launch.
+        expect(withoutPerLaunchFields(sealed)).toEqual(withoutPerLaunchFields(loose));
+    });
+
+    it("has nothing to seal where the project does not protect its assets", async () => {
+        await writeProjectConfig(false);
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
+
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
+    });
+
+    it("belongs to one project, not to the machine", async () => {
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = {
+            [normalizeProjectPath(path.join(os.tmpdir(), "some-other-project"))]: true,
+        };
+
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
+    });
+
+    function withoutPerLaunchFields(input: Record<string, unknown>): Record<string, unknown> {
+        const rest = { ...input };
+        delete rest.protectAssets;
+        delete rest.preview;
+        return rest;
+    }
 });

@@ -12,8 +12,7 @@ import { useWorkspace } from "../../../context";
 import type { StoryCommandContext } from "../scene-editor/storyCommandValues";
 import { expressionScope } from "../scene-editor/storyCommandResolution";
 import { NARRALANG_HISTORY_MERGE_WINDOW_MS, narralangHistoryMergeKey, narralangSceneMoved } from "./narralangEdit";
-import { narralangLookups } from "./narralangLookups";
-import { narralangParseLookups } from "./narralangParseLookups";
+import { narralangReferences } from "./narralangLookups";
 
 /**
  * What happened to a buffer that was offered to the document.
@@ -142,7 +141,9 @@ export function useNarralangCommit(
 
         const storyService = services.get<StoryService>(Services.Story);
         const historyService = services.get<HistoryService>(Services.History);
-        const lookups = narralangLookups(services, state.document);
+        // Both directions off one pass: the names this commit prints and the names it reads back are
+        // the same list, so a reference the scene can be shown with is one it can be re-read with.
+        const { lookups, parseLookups } = narralangReferences(services, state.document);
 
         // The gate, checked here and not only where the view was told about it.
         //
@@ -159,7 +160,7 @@ export function useNarralangCommit(
             scene: state.scene,
             nextText: text,
             lookups,
-            parseLookups: narralangParseLookups(services, state.document),
+            parseLookups,
             // Not optional in practice. `visited(…)`, `picked(…)` and a blueprint call have no other
             // source, and a name that does not resolve is a diagnostic - which refuses the whole
             // buffer, lines the author never touched included. Omitting this would mean a scene with

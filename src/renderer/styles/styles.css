@@ -26,6 +26,24 @@
     --nl-on-primary: 255 255 255;
 
     /*
+     * Ink for the accent written ON a surface, as opposed to under one — Tailwind's
+     * `text-primary`, `border-primary`, `divide-primary` and `decoration-primary` all resolve
+     * through it, while `bg-`, `ring-`, `outline-`, `fill-` and `stroke-primary` keep
+     * `--nl-primary`. The split is what a colour is doing: a shape filled with the accent is
+     * seen at whatever contrast it happens to have, a glyph drawn in it has to be read.
+     *
+     * The accent may be any hex the user picks and the same hex is not equally readable on both
+     * ladders, so `accentInk` (@shared/constants/accent) derives one value per ladder and the
+     * appearance bootstrap publishes both. The theme picks between them here rather than in JS,
+     * for the reason spelled out under the token block below: the theme is a media query whose
+     * change event Electron never fires. Both default to the accent itself, which is what the
+     * five presets resolve to anyway, and what a shipped game and the first frame get.
+     */
+    --nl-primary-ink-on-dark: var(--nl-primary);
+    --nl-primary-ink-on-light: var(--nl-primary);
+    --nl-primary-ink: var(--nl-primary-ink-on-dark);
+
+    /*
      * Story editor reading density: the height of a row's single-line content box. The scene editor
      * root overrides it per density from STORY_DENSITY_METRICS; this baseline is the compact value, so
      * a row rendered outside that root (tests, isolated previews) still has a sane box.
@@ -39,13 +57,6 @@
      * outside that root (tests, isolated previews) on the same grid.
      */
     --nl-story-mark: 26px;
-
-    /*
-     * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
-     * it on the root element from the `editor.surfaceOpacity` setting (src/renderer/lib/appearance);
-     * 1 here is that setting's default and what a surface rendered outside the bootstrap gets.
-     */
-    --nl-editor-surface-opacity: 1;
 
     /*
      * The Studio interface typeface.
@@ -184,6 +195,13 @@
 @media (prefers-color-scheme: light) {
     :root.nl-studio {
         color-scheme: light;
+
+        /*
+         * Accent text and hairlines take the ink derived for this ladder. `--nl-primary` itself is
+         * absent here on purpose (see the note above) — a filled accent is the user's colour on
+         * both ladders; only what has to be read is moved.
+         */
+        --nl-primary-ink: var(--nl-primary-ink-on-light);
 
         --nl-surface-canvas: 215 219 226; /* #d7dbe2 */
         --nl-surface-sunken: 227 230 236; /* #e3e6ec */
@@ -508,6 +526,38 @@ select:focus {
 }
 
 /*
+ * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
+ * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
+ *
+ * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
+ * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
+ * for the keyboard - `:focus-visible`, and a click does not focus these at all - so a player who
+ * never touches Tab never sees it.
+ *
+ * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
+ * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
+ * outline: a choice row is one container filling the row from edge to edge, and an outline on the
+ * row was measured present and never seen. Inside, because a list clips its rows at its own edge. A
+ * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
+ * the focus; its widgets are laid out inside their own boxes and do not move.
+ */
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible {
+    position: relative;
+}
+
+.ui-editor-surface [role="button"][tabindex]:focus-visible::after,
+.ui-editor-surface [role="switch"][tabindex]:focus-visible::after,
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    outline: -webkit-focus-ring-color auto 2px;
+    outline-offset: -2px;
+}
+
+/*
  * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
  * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
  * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill
@@ -542,19 +592,42 @@ select:focus {
 }
 
 /*
- * The editor's reading surfaces: the story editor's prose area, the inspector's field area and the
- * Dev Mode debug panel body. Same sunken paint they were pinned to, with its alpha taken from the
- * `editor.surfaceOpacity` setting instead of from the token.
+ * The editor's reading surfaces: the story editor's prose area, the inspector, the text editor and
+ * the Dev Mode debug panel body. Without a wallpaper this is plain `bg-surface-sunken`.
  *
- * Why it is adjustable at all: the rule above deliberately clears every base `bg-surface` so a
- * wallpaper reads as one picture, which left the text you actually read sitting on the photograph.
- * Making these three opaque fixed the reading but cut a hard rectangle out of an otherwise
- * translucent app — and the wallpaper is opt-in, so the plate under the words has to be too.
- * At 100% this is exactly `bg-surface-sunken`; at 0% the surface is gone and the wallpaper runs
- * behind the prose again.
+ * Under a wallpaper the plate is the author's choice, made in the background dialog: on and opaque
+ * by default, so the text the author reads and writes never sits on the photograph unasked, or
+ * thinner, or off so the picture runs behind the prose like behind the rest of the editor area. The
+ * workspace root publishes the resulting alpha as `--nl-editor-surface-alpha` beside
+ * `.nl-has-workspace-bg`; the fallback is that default, for a frame where the class is set and the
+ * property is not yet. Two rules rather than one alpha that defaults to 1, so a window with no
+ * wallpaper (Dev Mode, the launcher's previews) has nothing to read and cannot come out translucent.
  */
 .nl-editor-surface {
-    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-opacity));
+    background-color: rgb(var(--nl-surface-sunken));
+}
+
+.nl-has-workspace-bg .nl-editor-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 1));
+}
+
+/*
+ * The docks under a wallpaper: the left and right sidebars and the bottom panel carry this beside
+ * their `bg-surface`, and it gives them back the base paint at the dock plate's alpha
+ * (`--nl-sidebar-surface-alpha`, published like the editor's). Solid by default, which is what they
+ * are without a wallpaper; the author can thin them from the background dialog. Later than the
+ * wallpaper rule and of the same weight, so it wins over the cleared `bg-surface`.
+ *
+ * A reading surface inside a dock (the inspector) adds no plate of its own there: the dock already
+ * decided how much of the picture reaches it, and a second alpha on top would make the inspector
+ * more solid than the dock around it.
+ */
+.nl-has-workspace-bg .nl-sidebar-surface {
+    background-color: rgb(var(--nl-surface) / var(--nl-sidebar-surface-alpha, 1));
+}
+
+.nl-has-workspace-bg .nl-sidebar-surface .nl-editor-surface {
+    background-color: transparent;
 }
 
 /*
@@ -1185,6 +1258,26 @@ input[type="radio"]:focus {
 .story-rt-emphasis[data-emphasis="under-dot"] {
     text-emphasis: filled dot;
     text-emphasis-position: under right;
+}
+
+/*
+ * A text label's marked runs, drawn by the engine's own word renderer.
+ *
+ * The engine sets each word `display: inline-block`, which is right for a line being typed out:
+ * every word is an atomic box, so the reveal can size and place them one at a time. A label is a
+ * paragraph rather than a line, and an atomic box wide enough to need wrapping claims the whole
+ * width of the box it is in - so the first run long enough to wrap would push every run after it
+ * onto a line of its own, with the paragraph ragged where it should read as one flow.
+ *
+ * Inline puts the runs back into one line-breaking context, which is the whole of what a paragraph
+ * needs from them. Nothing else about a word depends on the box: the emphasis marks, the reading
+ * and the upright short runs are all set on or inside the text.
+ *
+ * Direct children only. A reading is a `<ruby>` inside the word, and it is inline-block for its own
+ * reasons.
+ */
+.nl-text-runs > span {
+    display: inline;
 }
 
 /*

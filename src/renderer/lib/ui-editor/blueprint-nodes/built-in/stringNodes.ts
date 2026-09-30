@@ -43,6 +43,7 @@ import {
     type BlueprintNodeDef,
     type BlueprintNodePinDef,
 } from "../types";
+import type { BlueprintAssetNameFlow } from "../types";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 
@@ -90,9 +91,12 @@ function stringNode(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     dynamic?: BlueprintNodeDef["dynamicInputPins"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Data",
         keywords: input.keywords,
@@ -107,12 +111,14 @@ function stringNode(input: {
 export const stringBlueprintNodes: BlueprintNodeDef[] = [
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
+        assetNames: "forward",
         displayName: "To String",
         keywords: ["string", "toString", "convert", "text"],
         pins: [anyIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_CONCAT,
+        assetNames: "assembled",
         displayName: "Concat",
         keywords: ["concat", "join", "append", "+", "string"],
         pins: [stringIn("a", "A"), stringIn("b", "B"), out("result", "Result", "string")],
@@ -126,6 +132,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_FORMAT,
+        assetNames: "assembled",
         displayName: "Format",
         keywords: ["format", "template", "placeholder", "string"],
         pins: [stringIn("template", "Template"), jsonIn("values", "Values"), out("result", "Result", "string")],
@@ -150,36 +157,42 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TRIM,
+        assetNames: "assembled",
         displayName: "Trim",
         keywords: ["trim", "strip", "whitespace", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
+        assetNames: "assembled",
         displayName: "Trim Start",
         keywords: ["trim", "start", "left", "whitespace", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TRIM_END,
+        assetNames: "assembled",
         displayName: "Trim End",
         keywords: ["trim", "end", "right", "whitespace", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TO_UPPER,
+        assetNames: "assembled",
         displayName: "To Upper Case",
         keywords: ["uppercase", "upper", "toUpperCase", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_TO_LOWER,
+        assetNames: "assembled",
         displayName: "To Lower Case",
         keywords: ["lowercase", "lower", "toLowerCase", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
+        assetNames: "assembled",
         displayName: "Capitalize",
         keywords: ["capitalize", "title", "first", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],
@@ -239,12 +252,14 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
+        assetNames: "assembled",
         displayName: "Char At",
         keywords: ["char", "character", "index", "string"],
         pins: [stringIn("value", "Value"), integerIn("index", "Index"), out("char", "Char", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_SUBSTRING,
+        assetNames: "assembled",
         displayName: "Substring",
         keywords: ["substring", "slice", "range", "string"],
         pins: [
@@ -256,6 +271,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_INSERT,
+        assetNames: "assembled",
         displayName: "Insert",
         keywords: ["insert", "splice", "string"],
         pins: [
@@ -267,6 +283,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_REPLACE,
+        assetNames: "assembled",
         displayName: "Replace",
         keywords: ["replace", "search", "first", "string"],
         pins: [
@@ -278,6 +295,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_REPLACE_ALL,
+        assetNames: "assembled",
         displayName: "Replace All",
         keywords: ["replace", "all", "search", "string"],
         pins: [
@@ -289,24 +307,28 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_SPLIT,
+        assetNames: "assembled",
         displayName: "Split",
         keywords: ["split", "array", "separator", "string"],
         pins: [stringIn("value", "Value"), stringIn("separator", "Separator"), out("result", "Result", "json")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_JOIN,
+        assetNames: "assembled",
         displayName: "Join",
         keywords: ["join", "array", "separator", "string"],
         pins: [jsonIn("values", "Values"), stringIn("separator", "Separator"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_REPEAT,
+        assetNames: "assembled",
         displayName: "Repeat",
         keywords: ["repeat", "multiply", "string"],
         pins: [stringIn("value", "Value"), integerIn("count", "Count"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_PAD_START,
+        assetNames: "assembled",
         displayName: "Pad Start",
         keywords: ["pad", "start", "left", "string"],
         pins: [
@@ -318,6 +340,7 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_PAD_END,
+        assetNames: "assembled",
         displayName: "Pad End",
         keywords: ["pad", "end", "right", "string"],
         pins: [
@@ -335,12 +358,14 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_EXTRACT_REGEX,
+        assetNames: "assembled",
         displayName: "Extract Regex",
         keywords: ["regex", "extract", "match", "pattern", "string"],
         pins: [stringIn("value", "Value"), stringIn("pattern", "Pattern"), out("result", "Result", "string")],
     }),
     stringNode({
         type: BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS,
+        assetNames: "assembled",
         displayName: "Normalize Line Breaks",
         keywords: ["line", "break", "newline", "normalize", "string"],
         pins: [stringIn("value", "Value"), out("result", "Result", "string")],

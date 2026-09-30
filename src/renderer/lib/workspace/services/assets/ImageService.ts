@@ -2,6 +2,7 @@ import { AssetData, AssetType, ImageAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
+import { ASSET_UNDECODABLE } from "./assetReadFailure";
 
 export class ImageService extends AssetServiceBase {
 
@@ -12,6 +13,7 @@ export class ImageService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read image file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
         return this.readImageFromBuffer(asset, fileResult.data);
@@ -37,6 +39,7 @@ export class ImageService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to parse image metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                code: ASSET_UNDECODABLE,
             };
         }
     }

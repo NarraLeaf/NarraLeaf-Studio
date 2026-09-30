@@ -21,6 +21,7 @@
  * Comments in English per project convention.
  */
 
+import type { ExchangeProblem } from "./exchangeProblem";
 import type {
     ParsedTranslationExchange,
     TranslationExchangeDocument,
@@ -160,7 +161,7 @@ function isEmptyEntry(entry: PoEntry): boolean {
 
 export function parseTranslationPo(text: string): ParsedTranslationExchange {
     const rows: TranslationExchangeRow[] = [];
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
     let sourceLocale: string | undefined;
     let targetLocale: string | undefined;
 
@@ -209,7 +210,7 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
         }
         const unitId = values.msgctxt ?? entry.references[0] ?? values.msgid ?? "";
         if (!unitId) {
-            errors.push("An entry has no msgctxt and no msgid, and was skipped");
+            problems.push({ code: "missingId" });
             entry = emptyEntry();
             currentKey = null;
             return;
@@ -232,7 +233,7 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
         currentKey = null;
     };
 
-    for (const rawLine of text.split(/\r?\n/)) {
+    for (const [lineIndex, rawLine] of text.split(/\r?\n/).entries()) {
         const line = rawLine.trim();
         if (!line) {
             flush();
@@ -296,9 +297,11 @@ export function parseTranslationPo(text: string): ParsedTranslationExchange {
             entry.values[currentKey] = (entry.values[currentKey] ?? "") + readPoString(line);
             continue;
         }
-        errors.push(`Unreadable line: ${line.slice(0, 40)}`);
+        // By its line number rather than by its text: the line is the translator's to find in their
+        // editor, and quoting it would put a fragment of an unknown file on the interface.
+        problems.push({ code: "unreadableLine", at: { line: lineIndex + 1 } });
     }
     flush();
 
-    return { rows, sourceLocale, targetLocale, errors };
+    return { rows, sourceLocale, targetLocale, problems };
 }

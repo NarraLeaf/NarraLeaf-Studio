@@ -25,10 +25,13 @@ import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRe
  * content is the defect this cache exists to prevent. `project` and `thumbnail` are separate cache
  * entries on purpose: they hold different bytes at different sizes, and a detail pane asking for the
  * full image must not be handed the tile's downscale.
+ *
+ * A clip is a `thumbnail` source too, and only that one: its thumbnail is its first frame, and its
+ * own bytes are not a picture at all, so there is nothing for the other two kinds to mean.
  */
 export type BadgeImageSource =
     | { kind: "project"; asset: Asset<AssetType.Image> }
-    | { kind: "thumbnail"; asset: Asset<AssetType.Image> }
+    | { kind: "thumbnail"; asset: Asset<AssetType.Image> | Asset<AssetType.Video> }
     | { kind: "editor"; fileId: string };
 
 /**
@@ -353,7 +356,12 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
                 }
             }
             // The downscale could not be produced or read (unsupported codec, cache directory gone).
-            // Fall through to the full bytes: a heavier decode still shows the asset, an icon does not.
+            // An image falls through to its full bytes: a heavier decode still shows the asset, an
+            // icon does not. A CLIP does not - its bytes are not a picture, so handing them on would
+            // pin a whole film in the pool to draw nothing. It keeps its glyph instead.
+            if (source.asset.type === AssetTypeEnum.Video) {
+                return null;
+            }
         }
         const result = await services.assets.fetch(source.asset);
         return result.success ? new Uint8Array(result.data.data) : null;

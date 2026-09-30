@@ -20,6 +20,15 @@ import type { ApkSigningIdentity } from "./signingIdentity";
  * entries are never re-encoded). resources.arsc must ship stored and 4-byte
  * aligned (API 30+), which the writer enforces.
  *
+ * Every payload entry under wwwRoot is written stored as well, whatever its
+ * extension. The shell learns a file's length from `AssetManager.openFd`,
+ * which only works on an entry kept uncompressed in the APK: on a deflated
+ * one it throws ("it is probably compressed"), the shell answers that request
+ * with a 404, and a game whose index.html is deflated never starts. Storing
+ * costs nothing in size - the payload is sealed, and ciphertext does not
+ * deflate - and the writer 4-byte aligns stored entries before the APK is
+ * v2-signed, which is the order zipalign and apksigner require.
+ *
  * Buffer in → signed Buffer out. Large games are bounded by Node's Buffer
  * limit; the manager guards that with a preflight size check (an APK past
  * ~2 GiB, or the 4 GiB Android install ceiling, is a clear error, not a
@@ -32,7 +41,11 @@ const RESOURCES_ARSC_PATH = "resources.arsc";
 export type ApkWwwEntry = {
     /** Path relative to the manifest's wwwRoot (forward slashes, no leading "/"). */
     relativePath: string;
-    source: NonNullable<ZipWriteEntry["source"]>;
+    /**
+     * Bytes the writer encodes, never a raw passthrough: a raw entry keeps the
+     * encoding it arrived with, and a payload entry must be written stored.
+     */
+    source: Exclude<NonNullable<ZipWriteEntry["source"]>, { kind: "raw" }>;
 };
 
 export type RepackApkInput = {
@@ -164,7 +177,9 @@ export async function repackApk(input: RepackApkInput): Promise<Buffer> {
             throw new Error(`Duplicate www path: "${file.relativePath}"`);
         }
         seenWww.add(file.relativePath);
-        entries.push({ name: `${wwwRoot}/${file.relativePath}`, source: file.source });
+        // Stored, not left to the extension table: the shell opens every one
+        // of these with openFd (see the header).
+        entries.push({ name: `${wwwRoot}/${file.relativePath}`, source: file.source, method: "store" });
     }
 
     // Build the unsigned APK: 4-byte stored-entry alignment (zipalign), no

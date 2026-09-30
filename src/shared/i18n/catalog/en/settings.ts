@@ -121,11 +121,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "Window icon",
-            description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+            label: "App icon",
+            description: "The icon Studio shows on the taskbar and in the notification area. Desktop and Start menu shortcuts keep the installed icon.",
+            descriptionMac: "The icon in the Dock while Studio is running. Finder and Launchpad keep the installed icon.",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "Leaf on white",
+                leaf: "Leaf",
             },
             unsupportedPlatform: "Not available on this operating system.",
         },
@@ -172,10 +174,6 @@ export const settings = {
                 serif: "Serif",
                 monospace: "Monospace",
             },
-        },
-        editorSurfaceOpacity: {
-            label: "Editor surface opacity",
-            description: "Opacity of the surfaces behind story text and inspector fields.",
         },
         maxActiveEditors: {
             label: "Maximum active editors",
@@ -347,6 +345,10 @@ export const settings = {
         keybindings: {
             label: "Keyboard shortcuts",
         },
+        projectTrust: {
+            label: "Trusted projects",
+            description: "Projects that Studio did not create, and whether they may run.",
+        },
         cacheInventory: {
             label: "Cached files",
         },
@@ -425,6 +427,10 @@ export const settings = {
         checking: "Checking…",
         done: "Done",
         signOut: "Sign out",
+        // Under each server: the projects that use its sign-in, which are the ones signing out
+        // here signs out of that server.
+        usedBy: "Used by {projects}",
+        unused: "No project uses this sign-in.",
         signIn: "Sign in",
         signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
@@ -487,6 +493,23 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "Reading…",
+            empty: "Every project opened so far was created by Studio.",
+            waiting: "Waiting for a decision",
+            granted: "Trusted",
+            trust: "Trust",
+            remove: "Remove",
+            reloadNote: "A project that is open reloads when its trust changes.",
+            origin: {
+                package: "From a package",
+                remote: "From a remote source",
+                opened: "Opened from a folder",
+                created: "Created by Studio",
+                recent: "Opened before",
+                commandLine: "From the command line",
+            },
+        },
         cache: {
             measuring: "Measuring…",
             unavailable: "Not available",
@@ -552,7 +575,10 @@ export const settings = {
         apply: "Apply",
         exportHint: "Writes the settings to a plain JSON file. The workspace background, the name recorded on commits, recent projects, statistics and window layout stay on this machine.",
         exported: "Saved to {path}",
-        imported: "Applied {count} settings.",
+        imported: {
+            one: "Applied {count} setting.",
+            other: "Applied {count} settings.",
+        },
         exportFailed: "The settings could not be saved.",
         importFailed: "The file could not be read.",
         planSummary: "{change} to change, {same} already the same, {skipped} skipped.",

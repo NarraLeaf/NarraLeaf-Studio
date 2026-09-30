@@ -150,9 +150,67 @@ export function readSignInToken(token: string): VcsSignInToken {
     return {
         account,
         authUrl: authUrls[0] ?? "",
+        authUrls,
         remotes,
         authorityFingerprint: fingerprint,
     };
+}
+
+/**
+ * One spelling for a sign-in address, for comparing two of them.
+ *
+ * Scheme and host folded to lower case, a default port dropped, a trailing slash gone - the
+ * differences a token's audience and a discovery answer are known to disagree on while naming the
+ * same endpoint. `protocol` and `host` rather than `origin`, because `ucs-auth` is not a scheme the
+ * URL parser knows, and for one of those `origin` is the string "null".
+ */
+function signInAddressKey(address: string): string | null {
+    try {
+        const parsed = new URL(address.trim());
+        return `${parsed.protocol}//${parsed.host}`.toLowerCase();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Where a token is presented: the address it names for itself, and only that.
+ *
+ * **A typed or discovered address may not overrule the token.** It used to - "a way to correct one
+ * that names the wrong one" - and that made the destination of a bearer token a field in a request
+ * rather than a claim in the token: whoever filled it in chose the host the token was sent to, and
+ * the answer from that host decided which session was written down. A token that names its endpoint
+ * is now sent there or nowhere, and an address that disagrees is refused before anything is opened,
+ * as a token that is not for this server - which is what it is.
+ *
+ * The typed address still matters for the one case it was always for: a token that names no
+ * endpoint, which is what a plain `loreserver` mints. There is nothing to check it against then,
+ * and the author's own address is the only one there is.
+ */
+export function signInAddressFor(read: Pick<VcsSignInToken, "authUrl" | "authUrls">, typed: string): string {
+    const named = read.authUrls.length > 0 ? read.authUrls : read.authUrl ? [read.authUrl] : [];
+    const asked = typed.trim();
+    if (named.length === 0) {
+        if (!asked) {
+            throw new VcsSignInError(
+                { kind: "address" },
+                "This token does not say where to sign in, so the address has to be typed.",
+            );
+        }
+        return asked;
+    }
+    if (!asked) return named[0]!;
+    const key = signInAddressKey(asked);
+    const match = named.find((address) => key !== null && signInAddressKey(address) === key);
+    if (match === undefined) {
+        throw new VcsSignInError(
+            { kind: "token" },
+            `This token is for ${named[0]}, not ${asked}, so it was not sent there.`,
+        );
+    }
+    // The token's own spelling rather than the one typed: it is what the backend compares against
+    // the audience, and the two agreeing is the point.
+    return match;
 }
 
 /** What the endpoint's certificate chain came to, or why there was no chain to look at. */
@@ -265,18 +323,10 @@ export async function signInToServer(
     globals: LoreGlobals,
     options: { remoteUrl: string; authUrl: string; token: string; userDataDir: string },
 ): Promise<VcsServerSession> {
-    // The token is read first now, because it is what says where to go. A typed address
-    // still wins - it is the way to reach a server whose tokens name no endpoint, and a
-    // way to correct one that names the wrong one.
+    // The token is read first, because it is what says where to go - and, where it names an
+    // endpoint, the only thing that may. See `signInAddressFor`.
     const read = readSignInToken(options.token);
-    const typed = options.authUrl.trim();
-    const authUrl = typed || read.authUrl;
-    if (!authUrl) {
-        throw new VcsSignInError(
-            { kind: "address" },
-            "This token does not say where to sign in, so the address has to be typed.",
-        );
-    }
+    const authUrl = signInAddressFor(read, options.authUrl);
     if (!isVcsSignInAddress(authUrl)) {
         throw new VcsSignInError(
             { kind: "scheme" },

@@ -167,22 +167,17 @@ function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu"): UIG
         id: "bp-1",
         name: blueprintName,
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                eventIds: ["ev-1"],
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        name: "On click",
-                        graph: { nodes: Object.fromEntries(nodes.map(node => [node.id, node])), edges: [] },
-                    },
+        graphs: {
+            eventIds: ["ev-1"],
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    name: "On click",
+                    graph: { nodes: Object.fromEntries(nodes.map(node => [node.id, node])), edges: [] },
                 },
-                functionIds: [],
-                functions: {},
             },
+            functionIds: [],
+            functions: {},
         },
     };
     return {

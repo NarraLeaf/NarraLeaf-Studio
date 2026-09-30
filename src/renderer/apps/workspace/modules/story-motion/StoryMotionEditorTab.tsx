@@ -25,7 +25,8 @@ import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { StoryAnimationReadError, StoryService } from "@/lib/workspace/services/story/StoryService";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 import { Button } from "@/lib/components/elements/Button";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -182,7 +183,18 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
             .catch(error => {
                 if (!disposed) {
                     setAsset(null);
-                    setLoadError(error instanceof Error ? error.message : String(error));
+                    // Said by the motion's name and what the read answered. The error's own message
+                    // is English and names the file by the motion's id.
+                    console.warn(`[motion] could not load ${payload.animationId}`, error);
+                    const entry = storyService.getAnimationIndex().animations.find(item => item.id === payload.animationId);
+                    setLoadError(entry
+                        ? describeAssetReadFailure(
+                            payload.animationId,
+                            entry.name,
+                            error instanceof StoryAnimationReadError ? error.code : undefined,
+                            translate,
+                        )
+                        : translate("motion.editor.assetDeleted"));
                 }
             });
         return () => {

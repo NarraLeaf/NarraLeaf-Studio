@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 2,
+  "id": "narraleaf.menu-bar",
+  "name": "Menu Bar",
+  "version": "1.0.0",
+  "description": "Author the desktop game's menu bar - File, Game, View, Language, Help - and bind each row to a built-in action or a function in the global blueprint.",
+  "publisher": "NarraLeaf Studio",
+  "entries": {
+    "studio": "main.js",
+    "runtime": "runtime.js"
+  },
+  "contributes": {
+    "runtimeData": [
+      "narraleaf.menu-bar.menu"
+    ],
+    "runtimeCapabilities": [
+      "menu"
+    ]
+  },
+  "permissions": []
+}

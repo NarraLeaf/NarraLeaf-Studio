@@ -104,3 +104,36 @@ describe("ScopeStoreBridge persistence", () => {
         await vi.waitFor(() => expect(writes).toEqual([]));
     });
 });
+
+/**
+ * The global half, which has the wider blast radius of the two scopes: every surface currently
+ * mounted rebuilds its element tree when this announces.
+ */
+describe("ScopeStoreBridge global state", () => {
+    it("says nothing when a primitive is written over itself", () => {
+        const bridge = new ScopeStoreBridge();
+        bridge.globalSet("difficulty", "normal");
+        let announced = 0;
+        bridge.subscribeGlobals(() => {
+            announced += 1;
+        });
+
+        bridge.globalSet("difficulty", "normal");
+
+        expect(announced).toBe(0);
+        expect(bridge.globalGet("difficulty")).toBe("normal");
+    });
+
+    it("announces a value that really moved, and the first write of a key", () => {
+        const bridge = new ScopeStoreBridge();
+        let announced = 0;
+        bridge.subscribeGlobals(() => {
+            announced += 1;
+        });
+
+        bridge.globalSet("difficulty", "normal");
+        bridge.globalSet("difficulty", "hard");
+
+        expect(announced).toBe(2);
+    });
+});

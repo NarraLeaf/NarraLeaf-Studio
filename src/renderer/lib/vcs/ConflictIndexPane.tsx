@@ -4,6 +4,7 @@ import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { renderDocumentName } from "./documentName";
+import { readableStoragePath } from "./identifierDisplay";
 import type { ConflictRowView } from "./mergeDecisionView";
 
 /**
@@ -48,7 +49,7 @@ export function ConflictIndexPane({
     className,
     style,
 }: ConflictIndexPaneProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     return (
         <nav
@@ -69,7 +70,7 @@ export function ConflictIndexPane({
             ))}
             {omitted > 0 && (
                 <p className="px-2 pt-2 text-2xs text-fg-subtle">
-                    {t("documentDiff.resolve.rowsOmitted", { count: String(omitted) })}
+                    {tn("documentDiff.resolve.rowsOmitted", omitted)}
                 </p>
             )}
         </nav>
@@ -120,7 +121,7 @@ function ConflictIndexRow({
             <button
                 type="button"
                 onClick={onSelect}
-                data-tip={row.path}
+                data-tip={readableStoragePath(row.path) ?? undefined}
                 // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops `box-shadow` on
                 // every native control, so a ring on a `<button>` is dead code (design-system §5).
                 className="nl-focus-ring flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden py-1 pl-2 text-left cursor-default"

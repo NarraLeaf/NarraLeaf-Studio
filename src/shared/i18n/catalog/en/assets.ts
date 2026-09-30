@@ -26,6 +26,11 @@ export const assets = {
         // was read but holds a picture Studio could not trace back to an asset. Naming which of
         // the two it was would be wrong half the time.
         unverifiedMessage: "Their usage could not be determined. Delete them anyway?",
+        // The places the answer stops at, under whichever of these two applies. What makes the
+        // question answerable: an author told which node picks its asset by a name assembled at run
+        // time can go and look, where one told only "could not be determined" can do nothing.
+        unverifiedComputed: "These places pick their asset by a name assembled at run time:",
+        unverifiedUnreadable: "These could not be read:",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",
@@ -33,18 +38,16 @@ export const assets = {
         confirmMessage: "Everything inside a selected group is deleted too.",
         /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
         action: "Delete",
-        /** A delete the service refused after the author had already confirmed it. */
-        failedTitle: "Failed to delete",
         /**
-         * The delete that fell over as a whole rather than per row, so there is no list to read and
-         * one line is the entire answer. The per-row refusals go to `failedTitle` above.
+         * A delete the service refused after the author had already confirmed it, over the rows it
+         * refused - and alone when the whole run fell over. A folder whose only failure was writing
+         * the folder list is not among the rows: the save-status surface has said so.
          */
-        failed: "Could not delete: {error}",
+        failedTitle: "Failed to delete",
     },
     /**
-     * Renaming one row. Names the row and stops, for the reason `createGroup.failed` below carries
-     * no reason either: a rename is only refused when the write fails, which already puts the
-     * workspace's own save failure on screen with the file and a retry.
+     * Renaming one row. A folder's rename reports its own write, as a new folder does (see
+     * `createGroup.failed`): this is the one notice, with what the disk said under it.
      *
      * The old name is the right one to say. The record is put back when the write fails, so that is
      * the name still on the row, and the one the author can look for.
@@ -54,13 +57,11 @@ export const assets = {
     },
     /**
      * A new group that was not kept. Names are not checked against each other, so the only way here
-     * is the group list failing to reach the disk.
+     * is the group list failing to reach the disk - and the group is then not in the list.
      *
-     * Carries no reason on purpose. That write also raises the workspace's own save failure, which
-     * is already on screen naming the file and offering a retry, and repeating its sentence in a
-     * second toast says the same thing twice. What that one cannot say is which action was lost,
-     * and the row is drawn either way, so this is the only place the author is told the group in
-     * front of them is not real.
+     * The one notice for that failure. The write is declared as this action's to report, so the
+     * save-status surface only logs it: this can say which change was lost, and the disk's reason
+     * goes under it (`workspace.shell.save.reason`).
      */
     createGroup: {
         failed: "Could not create the group",
@@ -89,7 +90,6 @@ export const assets = {
         audio: "Audio",
         video: "Videos",
         json: "JSON Files",
-        blueprint: "Blueprints",
         font: "Fonts",
         model: "Models",
         other: "Other",
@@ -106,6 +106,44 @@ export const assets = {
     itemCount: {
         one: "{count} item",
         other: "{count} items",
+    },
+    /**
+     * A category whose metadata file is on disk and could not be read.
+     *
+     * Both strings exist because such a section would otherwise be indistinguishable from an empty
+     * one, and the two are opposites: the section is empty because the file could not be read, and
+     * the file still holds every asset in it. `category` is what the section draws in place of its
+     * rows. `notSaved` is the notice raised when an edit reaches that section, whose write is
+     * refused for as long as the file cannot be read - the wording follows the status bar's own
+     * refusal notices, which say the same thing about a frozen workspace.
+     */
+    unreadable: {
+        category: "This category could not be read. Its file is unchanged.",
+        notSaved: "Changes are not being saved",
+        // `{category}` is the section's label (`categories`), never the file behind it.
+        notSavedDetail: "The {category} category could not be read. Nothing is written over it.",
+    },
+    /**
+     * The line under a field that names an asset (an image fill, a background, a font) when that
+     * asset did not come. The same three kinds as Dev Mode's issue list (`devMode.issues.asset*`),
+     * without the element and the property it spells out - the field this sits under is both. Never
+     * the id: for an asset that is no longer in the project it names nothing the author can find.
+     */
+    reference: {
+        missing: "This asset is no longer in this project.",
+        unreadable: "This asset could not be read.",
+        unreadableNamed: "“{asset}” could not be read.",
+        notAsset: "This value is not an asset.",
+        // An editor that opened an asset and could not read it says one of the lines above, then
+        // - when the project still has the asset - what the read answered, for the answers an author
+        // can act on. Never the read's own message, which names the asset's storage path.
+        withReason: "{headline} {reason}",
+        reason: {
+            fileMissing: "Its file is missing from the project folder.",
+            accessDenied: "Studio is not allowed to read its file.",
+            undecodable: "Its file is damaged or is not in a format Studio can open.",
+            newerVersion: "Its file was saved by a newer version of NarraLeaf Studio.",
+        },
     },
     /**
      * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
@@ -324,7 +362,10 @@ export const assets = {
         noneFoundHint: "Check the kind selected above, then the folder. It must be the folder the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
-        fileSummary: "{count} files · {size}",
+        fileSummary: {
+            one: "{count} file · {size}",
+            other: "{count} files · {size}",
+        },
         selectAll: "Select all",
         selectNone: "Select none",
         importAction: "Import",
@@ -389,6 +430,8 @@ export const assets = {
             locale: "Language",
             release: "Variant",
         },
+        /** A variant a set still names after it was deleted from the project. Its id is never shown. */
+        deletedVariant: "Deleted variant",
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",
@@ -499,9 +542,22 @@ export const assets = {
             one: "Exported {count} file.",
             other: "Exported {count} files.",
         },
-        partial: "Exported {exported} files, {failed} could not be exported.",
+        // `{exported}` is a whole count with its noun, from `fileCount`.
+        partialCounts: "Exported {exported}, {failed} could not be exported.",
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         partialTitle: "Some files were not exported",
         failed: "Export failed: {error}",
+        // What the disk said when a copy failed, worded from its error code: the system's message
+        // quotes the path the file was read from, which is the asset's id split into folders.
+        reason: {
+            permissionDenied: "Access was denied.",
+            sourceMissing: "The file is missing from the project folder.",
+            diskFull: "The disk is full.",
+            copyFailed: "The file could not be copied.",
+        },
     },
     selector: {
         selectType: "Select {type}",
@@ -525,8 +581,20 @@ export const assets = {
         categoryMapping: "Tag Category Mapping",
         exampleFilename: "Example Filename: {filename}",
         categoryPlaceholder: "Tag Category (e.g.: char, emo)",
-        moreFiles: "… and {count} more files",
-        summary: "Will add a total of {tags} tags to {files} files",
+        moreFiles: {
+            one: "… and {count} more file",
+            other: "… and {count} more files",
+        },
+        // Both slots are whole counts with their nouns, from `tagCount` and `fileCount`.
+        tagCounts: "Will add a total of {tags} to {files}",
+        tagCount: {
+            one: "{count} tag",
+            other: "{count} tags",
+        },
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         applying: "Applying…",
         applyTags: "Apply Tags",
         parseFailedTitle: "Magic Tags parsing failed",
@@ -560,6 +628,35 @@ export const assets = {
             markLoop: "Set loop point at playhead",
             markOut: "Set out point at playhead",
             channels: "{count} ch",
+            seam: "Loop seam",
+            auditionSeam: "Audition seam",
+            auditionSeamTip: "Plays {seconds} seconds either side of the seam.",
+            clearMarkers: "Clear all markers",
+            gain: "Gain",
+            gainTip: "Lowers this clip's volume in the game. It cannot raise it.",
+            align: "Align loudness",
+            alignTip: "Sets the gain from the measured loudness, so every aligned clip plays at the same level. A clip that is already quieter keeps its level.",
+            seamEnd: {
+                out: "Out point",
+                clipEnd: "End of clip",
+            },
+            seamStart: {
+                loop: "Loop point",
+                in: "In point",
+                clipStart: "Start of clip",
+            },
+            levels: "Levels",
+            peak: "Peak",
+            loudness: "Loudness",
+            leadingSilence: "Leading silence",
+            trailingSilence: "Trailing silence",
+            clipping: "Clipping",
+            clippingNone: "None",
+            clippingCount: {
+                one: "{count} place",
+                other: "{count} places",
+            },
+            seconds: "{value} s",
         },
         // Shown in the keybinding settings table and the "?" cheat sheet.
         keybindings: {
@@ -580,6 +677,7 @@ export const assets = {
             clearIn: "Clear in point",
             clearLoop: "Clear loop point",
             clearOut: "Clear out point",
+            clearMarkers: "Clear all markers",
             undo: "Undo marker change",
             redo: "Redo marker change",
             selectAll: "Select whole clip",
@@ -587,6 +685,43 @@ export const assets = {
             zoomIn: "Zoom in",
             zoomOut: "Zoom out",
             zoomFit: "Fit whole clip",
+            auditionSeam: "Audition loop seam",
+        },
+    },
+    // The video preview's transport, view and status bar. It writes nothing to the clip or its
+    // record; saving a frame creates a new image asset.
+    video: {
+        loading: "Loading video…",
+        loadError: "Failed to load video",
+        editor: {
+            previousFrame: "Previous frame",
+            nextFrame: "Next frame",
+            speed: "Playback speed",
+            zoom: "Zoom",
+            zoomFit: "Fit",
+            saveFrame: "Save frame as image",
+            frameSaved: "Frame saved as {name}",
+            frameSaveFailed: "The frame could not be saved",
+            open: "Open",
+            frame: "Frame {frame} of {total}",
+            transparent: "Transparent",
+        },
+        // Shown in the keybinding settings table and the "?" cheat sheet.
+        keybindings: {
+            playPause: "Play or pause",
+            auditionSeam: "Preview loop seam",
+            toStart: "Go to start",
+            toEnd: "Go to end",
+            previousFrame: "Previous frame",
+            nextFrame: "Next frame",
+            backSecond: "Back one second",
+            forwardSecond: "Forward one second",
+            loop: "Toggle loop",
+            selectAll: "Select whole clip",
+            clearSelection: "Clear selection",
+            zoomIn: "Zoom timeline in",
+            zoomOut: "Zoom timeline out",
+            zoomFit: "Fit whole clip in timeline",
         },
     },
     image: {
@@ -601,12 +736,6 @@ export const assets = {
         cut: "Cut selected assets",
         paste: "Paste assets",
         rename: "Rename selected asset or group",
-    },
-    // Human-readable reasons an asset is locked against deletion (keyed by AssetLockReason).
-    lockReason: {
-        character: "Asset is used by a character",
-        scene: "Asset is used by a scene",
-        editor: "Asset is used by the Editor",
     },
     previewEditor: {
         loadFailed: "Failed to load this asset.",

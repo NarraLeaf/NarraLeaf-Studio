@@ -6,7 +6,7 @@
  * changes what the player experiences rather than how the project is built.
  */
 
-import { useCallback, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SettingRow, SettingShell } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -26,32 +27,13 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
     const { t } = useTranslation();
     // SettingRow reads the freeze itself; the two number fields sit in bare shells and need their own.
     const freeze = useFreezeGuard();
-    const [autoSave, setAutoSave] = useState<AutoSaveConfiguration>(
-        () => normalizeAutoSaveConfiguration(config.app?.autoSave),
-    );
-    const [saving, setSaving] = useState<keyof AutoSaveConfiguration | null>(null);
-
-    const commit = useCallback(async (
-        field: keyof AutoSaveConfiguration,
-        patch: Partial<AutoSaveConfiguration>,
-    ) => {
-        if (saving) {
-            return;
-        }
-        const previous = autoSave;
-        setSaving(field);
-        setAutoSave(current => ({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateAutoSaveConfiguration(patch);
-            setAutoSave(normalizeAutoSaveConfiguration(updated.app?.autoSave));
-            onConfigChange(updated);
-        } catch (error) {
-            setAutoSave(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [autoSave, onConfigChange, projectService, saving, uiService]);
+    const stored = useMemo(() => normalizeAutoSaveConfiguration(config.app?.autoSave), [config.app?.autoSave]);
+    const { value: autoSave, commit } = useConfigSlice<AutoSaveConfiguration>({
+        stored,
+        write: patch => projectService.updateAutoSaveConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     return (
         <SettingsGroup title={t("project.group.saving")}>
@@ -59,8 +41,7 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
                 title={t("project.game.autoSaveTitle")}
                 description={t("project.game.autoSaveDescription")}
                 checked={autoSave.enabled}
-                loading={saving === "enabled"}
-                onChange={value => void commit("enabled", { enabled: value })}
+                onChange={value => void commit({ enabled: value })}
             />
             <SettingShell
                 title={t("project.game.autoSaveIntervalTitle")}
@@ -72,9 +53,9 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
                     min={AUTO_SAVE_INTERVAL_SECONDS_MIN}
                     max={AUTO_SAVE_INTERVAL_SECONDS_MAX}
                     unit={t("project.game.autoSaveIntervalUnit")}
-                    disabled={freeze.writes(!autoSave.enabled || saving === "intervalSeconds").disabled}
+                    disabled={freeze.writes(!autoSave.enabled).disabled}
                     ariaLabel={t("project.game.autoSaveIntervalTitle")}
-                    onCommit={value => void commit("intervalSeconds", { intervalSeconds: value })}
+                    onCommit={value => void commit({ intervalSeconds: value })}
                 />
             </SettingShell>
             <SettingShell
@@ -86,9 +67,9 @@ export function ProjectGameSection({ projectService, uiService, config, onConfig
                     value={autoSave.slots}
                     min={AUTO_SAVE_SLOTS_MIN}
                     max={AUTO_SAVE_SLOTS_MAX}
-                    disabled={freeze.writes(saving === "slots").disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.game.autoSaveSlotsTitle")}
-                    onCommit={value => void commit("slots", { slots: value })}
+                    onCommit={value => void commit({ slots: value })}
                 />
             </SettingShell>
         </SettingsGroup>

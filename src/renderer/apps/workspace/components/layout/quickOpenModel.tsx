@@ -150,7 +150,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
     try {
         const document = blueprintService.getBlueprintDocument();
         for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-            const blueprint = document.blueprints[record.activeBlueprintId];
+            const blueprint = document.blueprints[record.blueprintId];
             const owner = blueprint ? parseBlueprintOwnerKey(ownerKey) : null;
             if (!blueprint || !owner) {
                 continue;

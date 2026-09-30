@@ -5,8 +5,8 @@ import type {
     BlueprintGraphIr,
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
-import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
@@ -36,7 +36,8 @@ import {
     resolveBlueprintFnCallTarget,
     type BlueprintFnDeclaration,
 } from "./fnCatalog";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
@@ -51,12 +52,26 @@ import {
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import {
+    BLUEPRINT_INPUT_MISSING_MESSAGE_KEY,
+    listUnwiredRequiredInputPins,
+} from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
+// Node titles and pin labels are English literals in the definitions, translated at render time by
+// this map (see `blueprintNodeI18n`). A diagnostic that named a node in English beside a card that
+// names it in the author's language would read as being about some other node.
+import {
+    resolveBlueprintLabel,
+    resolveBlueprintNodeTitle,
+} from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import { collectLiveBlueprintGraphNodeIds } from "./graphLiveness";
 import type {
     BlueprintNodeDef,
     BlueprintPaletteContext,
     BlueprintWidgetEventCapabilityRef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintNodeCatalogService } from "../BlueprintNodeCatalogService";
+import type { AssetNameGap } from "../../references/assetNameGaps";
+import { describeAssetNameGap } from "../../references/assetNameGapText";
 
 export type BlueprintGraphDiagnosticTarget =
     | { kind: "graph"; graphKind: "event" | "function"; graphId: string }
@@ -74,6 +89,15 @@ export type BlueprintGraphEditorDiagnostic = {
 /** Optional UI document context when validating a widgetMain blueprint from the graph editor. */
 export type ValidateBlueprintDocumentGraphsOptions = {
     widgetElement?: UIElement | null;
+    /**
+     * The interface document `widgetElement` belongs to.
+     *
+     * Some node scopes are a fact about where an element sits rather than about what it is, and the
+     * add-node palette answers those by walking this document. Without it the same walk is not
+     * merely skipped, it is *unavailable* - so `buildBlueprintGraphContext` treats such a scope as
+     * reachable rather than refusing a graph on a fact nothing established.
+     */
+    uiDocument?: Pick<UIDocument, "elements"> | null;
     /** Surface id for the widget; used with widgetElement to match blueprint owner. */
     widgetSurfaceId?: string;
     /** Runtime widget event catalog used to validate scoped event-head nodes. */
@@ -84,6 +108,16 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     persistentVariables?: readonly VariableRegistryEntry[];
     /** M-VAR: saved variable definitions - the `saved` scope of the same project-level registry. */
     savedVariables?: readonly VariableRegistryEntry[];
+    /**
+     * The project's asset-name gaps (`findAssetNameGaps`), for the ones in this blueprint to be
+     * reported against their nodes.
+     *
+     * Handed in rather than worked out here, because the question is about the whole project, not
+     * the graph in front of the validator: the canvas passes the reference index's own pass - the
+     * one the build refuses on - and `blueprint check` passes the one it computes from the project
+     * on disk. Absent, nothing is said about asset names at all.
+     */
+    assetNameGaps?: readonly AssetNameGap[];
 };
 
 function reportDuplicatePinConnection(
@@ -134,58 +168,59 @@ function isExecInputEdge(
 }
 
 /**
- * Owners whose "On Call" graph produces a value via a Return Value node: widget value bindings and
- * synchronous story blueprints (inline value interpolations + control-flow conditions).
+ * True for a blueprint whose Return Value must be typed boolean.
+ *
+ * Asked as a contract rather than as "storyAction with mode condition", because what the check is
+ * about is what the caller does with the value - a condition is the one slot whose return is tested
+ * as a branch.
  */
-function isBlueprintValueGraphOwner(owner: BlueprintOwnerRef | undefined): boolean {
-    if (!owner) {
-        return false;
-    }
-    if (owner.kind === "widgetValue") {
-        return true;
-    }
-    return owner.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
-}
-
-/** True for a story condition blueprint whose Return Value must be typed boolean. */
 function isStoryConditionOwner(owner: BlueprintOwnerRef | undefined): boolean {
-    return owner?.kind === "storyAction" && owner.mode === "condition";
+    return owner !== undefined && blueprintContract(owner).returns === "boolean";
 }
 
+/**
+ * The context this graph's nodes are judged against - built by the same function the add-node
+ * palette builds its own from, so that a node offered on the canvas is a node this accepts.
+ */
 function buildNodeValidationPaletteContext(ctx: {
     graphKind: "event" | "function";
     blueprintOwner?: BlueprintOwnerRef;
+    widgetElement?: UIElement | null;
     widgetElementType?: string;
+    uiDocument?: Pick<UIDocument, "elements"> | null;
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
-    isBlueprintValueGraph?: boolean;
     isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
     if (!ctx.blueprintOwner) {
         return null;
     }
-    return {
+    return buildBlueprintGraphContext({
         graphKind: ctx.graphKind,
         owner: ctx.blueprintOwner,
+        widgetElement: ctx.widgetElement,
         widgetElementType: ctx.widgetElementType,
+        uiDocument: ctx.uiDocument,
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
-        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? isBlueprintValueGraphOwner(ctx.blueprintOwner),
-        isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
+        // What the canvas holds is the canvas's business; a graph already written is judged on its
+        // nodes, not on which one of them was dropped first.
         hasEventHead: false,
         hasFunctionEntry: false,
-    };
+    });
 }
 
 function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteContext): string {
-    const valueGraphHint =
-        def.role === "valueReturn"
-            ? translate("blueprint.diagnostics.node.contextValueReturnHint")
-            : "";
+    let hint = "";
+    if (def.role === "valueReturn") {
+        hint = translate("blueprint.diagnostics.node.contextValueReturnHint");
+    } else if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
+        hint = translate("blueprint.diagnostics.node.contextListItemHint");
+    }
     return translate("blueprint.diagnostics.node.contextInvalid", {
         name: def.displayName,
         ownerKind: ctx.owner.kind,
         graphKind: ctx.graphKind,
-        hint: valueGraphHint,
+        hint,
     });
 }
 
@@ -400,10 +435,12 @@ export function validateBlueprintGraphIr(
         validSavedVariableIds?: ReadonlySet<string>;
         variableValueTypes?: readonly BlueprintVariableTypeOption[];
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
+        widgetElement?: UIElement | null;
         widgetElementType?: string;
+        /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
+        uiDocument?: Pick<UIDocument, "elements"> | null;
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
-        isBlueprintValueGraph?: boolean;
         isComponentDefinitionGraph?: boolean;
         /** Whole document; enables cross-blueprint checks such as Fn call target resolution. */
         blueprintDocument?: BlueprintDocument;
@@ -551,6 +588,10 @@ export function validateBlueprintGraphIr(
             const outPin = ok.pins.find(p => p.id === edge.from.port && p.kind === "output");
             const inPin = itk.pins.find(p => p.id === edge.to.port && p.kind === "input");
             if (!outPin || !inPin) {
+                // Anchor on the node that is actually missing the pin. When the source lacks the
+                // output it is the from node; otherwise the target lacks the input, and blaming the
+                // from node leaves the ring on a healthy upstream neighbour - which is exactly what
+                // an unknown stub downstream produces, its real input pins gone.
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
@@ -558,7 +599,12 @@ export function validateBlueprintGraphIr(
                         from: `${edge.from.nodeId}.${edge.from.port}`,
                         to: `${edge.to.nodeId}.${edge.to.port}`,
                     }),
-                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
+                    target: {
+                        kind: "node",
+                        graphKind: ctx.graphKind,
+                        graphId: ctx.graphId,
+                        nodeId: outPin ? edge.to.nodeId : edge.from.nodeId,
+                    },
                 });
             } else if (
                 !isValidBlueprintExecConnection({
@@ -616,6 +662,15 @@ export function validateBlueprintGraphIr(
 
     const nodeValidationContext = buildNodeValidationPaletteContext(ctx);
     const nodeCatalog = BlueprintNodeCatalogService.getInstance();
+    // Which pins have an edge, and which nodes anything will ask to work. Both are walks over the
+    // whole graph, so they are done once here rather than per node.
+    const wiredInputPorts = new Map<string, Set<string>>();
+    for (const edge of edges) {
+        const ports = wiredInputPorts.get(edge.to.nodeId) ?? new Set<string>();
+        ports.add(edge.to.port);
+        wiredInputPorts.set(edge.to.nodeId, ports);
+    }
+    const liveNodeIds = collectLiveBlueprintGraphNodeIds(ir);
     for (const [nid, n] of Object.entries(nodes)) {
         const def = nodeCatalog.get(n.type);
         const validationDef = def?.magicElementTarget ? { ...def, scope: undefined } : def;
@@ -632,13 +687,43 @@ export function validateBlueprintGraphIr(
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
-        if (!behaviorNodeRegistry.get(n.type)) {
+        if (!def) {
+            // The editor has no definition for this type: the plugin that contributed it is
+            // uninstalled, disabled, or failed to load. The card is a placeholder stub, so name the
+            // node here - a stub with no edges is otherwise silent, and one with edges reports only a
+            // pin mismatch that reads as a fault of its neighbours.
+            out.push({
+                severity: "warning",
+                code: "node.unknown_type",
+                message: translate("blueprint.diagnostics.node.unknownType", { node: nid, type: n.type }),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+            });
+        } else if (!behaviorNodeRegistry.get(n.type)) {
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",
                 message: translate("blueprint.diagnostics.node.noRuntime", { node: nid, type: n.type }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
+        }
+        // A required data input with no edge and no value on the card. The node still runs, reads
+        // `undefined` and does nothing, which is the commonest form of "my button does nothing".
+        // Only on nodes something will actually ask to work: an unwired draft is already
+        // `blueprint/unreachable-node`'s to report, and saying it twice helps nobody.
+        if (def && liveNodeIds.has(nid)) {
+            const wired = wiredInputPorts.get(nid);
+            const missing = listUnwiredRequiredInputPins(n.type, n.params, pinId => wired?.has(pinId) === true);
+            for (const pin of missing) {
+                out.push({
+                    severity: "warning",
+                    code: "node.input_missing",
+                    message: translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                        node: resolveBlueprintNodeTitle(def.displayName, translate),
+                        pin: resolveBlueprintLabel(pin.label, translate),
+                    }),
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+                });
+            }
         }
         if (
             (n.type === BLUEPRINT_NODE_TYPE_LOCAL_SET || n.type === BLUEPRINT_NODE_TYPE_LOCAL_GET) &&
@@ -794,7 +879,7 @@ export function validateBlueprintDocumentGraphs(
     options?: ValidateBlueprintDocumentGraphsOptions,
 ): BlueprintGraphEditorDiagnostic[] {
     const bp = doc.blueprints[blueprintId];
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return bp ? validateBlueprintBindingsForBlueprint(doc, blueprintId) : [];
     }
     const accessibleVariables = buildAccessibleBlueprintVariableOptions({
@@ -815,7 +900,12 @@ export function validateBlueprintDocumentGraphs(
     }));
     const validSavedVariableIds = new Set((options?.savedVariables ?? []).map(variable => variable.id));
     const out: BlueprintGraphEditorDiagnostic[] = [];
-    for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
+    for (const [eventId, eg] of Object.entries(bp.graphs.events ?? {})) {
+        // A script layer has no graph, and every check below is about one: reading it as an empty
+        // graph reported "no nodes yet" against a file that is full of them.
+        if (eg.script) {
+            continue;
+        }
         out.push(
             ...validateBlueprintGraphIr(ensureIr(eg.graph), {
                 blueprintId,
@@ -826,16 +916,17 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
+                uiDocument: options?.uiDocument,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
                 blueprintDocument: doc,
             }),
         );
     }
-    for (const [fnId, fg] of Object.entries(bp.program.graphs.functions ?? {})) {
+    for (const [fnId, fg] of Object.entries(bp.graphs.functions ?? {})) {
         out.push(
             ...validateBlueprintGraphIr(ensureIr(fg.graph), {
                 blueprintId,
@@ -846,15 +937,64 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
+                uiDocument: options?.uiDocument,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
+    out.push(...assetNameGapDiagnostics(options?.assetNameGaps ?? [], blueprintId));
+    return out;
+}
+
+/**
+ * An asset picked by a name assembled at run time, at the node where the author can see it.
+ *
+ * An error, the standing the build gives it: the build refuses the project, and the canvas saying so
+ * as the wire lands is the point - an author who only learns it from the build has already watched it
+ * work in Dev Mode, which carries the whole library. The sentence is the one every surface prints
+ * (`describeAssetNameGap`).
+ *
+ * Which node carries the mark: the one that takes the name, when it is in this blueprint. When it is
+ * not - a bound property, or a variable read somewhere else - the node that puts the name together
+ * carries it instead, so the graph the author has to change is the one that says so. A value
+ * blueprint whose name is put together elsewhere still says it, with nothing to point at.
+ */
+function assetNameGapDiagnostics(
+    gaps: readonly AssetNameGap[],
+    blueprintId: string,
+): BlueprintGraphEditorDiagnostic[] {
+    const out: BlueprintGraphEditorDiagnostic[] = [];
+    const nodeTarget = (site: { graphKind: "event" | "function" | "macro"; graphId: string; nodeId: string }) =>
+        // A macro has no canvas of its own to point into; the message still names the node.
+        site.graphKind === "macro"
+            ? {}
+            : { target: { kind: "node" as const, graphKind: site.graphKind, graphId: site.graphId, nodeId: site.nodeId } };
+    for (const gap of gaps) {
+        const sink = gap.sink;
+        const origin = gap.origin;
+        let placement: object | null = null;
+        if (sink.kind === "pin" && sink.blueprintId === blueprintId) {
+            placement = nodeTarget(sink);
+        } else if (origin.kind === "node" && origin.blueprintId === blueprintId) {
+            placement = nodeTarget(origin);
+        } else if (sink.kind === "binding" && sink.blueprintId === blueprintId) {
+            placement = {};
+        }
+        if (!placement) {
+            continue;
+        }
+        out.push({
+            severity: "error",
+            code: "node.asset_name_assembled",
+            message: describeAssetNameGap(gap, translate),
+            ...placement,
+        });
+    }
     return out;
 }
 

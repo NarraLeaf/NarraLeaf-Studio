@@ -260,16 +260,27 @@ export const createDefaultFilters = (t: FilterTranslator): FilterConfig[] => [
 ];
 
 /**
- * Utility function to get all unique tags from assets
+ * Every distinct tag in a library, as the Tags group offers it.
+ *
+ * `readTag` says what an option is called, and null leaves a tag out - the asset set bookkeeping
+ * a member carries (see `readAssetTag`), which is an id rather than anything an author tagged. The
+ * option's id and value stay the stored tag, because that is what the filter matches against.
+ *
+ * `active` are tags a filter is already narrowing by. They stay on offer even once no file carries
+ * them any more, so the filter they started can still be seen and turned off here, under its name.
  */
-export const getUniqueTags = (assets: any[]): FilterOption[] => {
+export const getUniqueTags = (
+    assets: readonly { tags?: readonly string[] }[],
+    readTag: (tag: string) => string | null = tag => tag,
+    active: readonly string[] = [],
+): FilterOption[] => {
     const tagSet = new Set<string>();
     assets.forEach(asset => {
         asset.tags?.forEach((tag: string) => tagSet.add(tag));
     });
-    return Array.from(tagSet).map(tag => ({
-        id: tag,
-        label: tag,
-        value: tag,
-    }));
+    active.forEach(tag => tagSet.add(tag));
+    return Array.from(tagSet).flatMap(tag => {
+        const label = readTag(tag);
+        return label === null ? [] : [{ id: tag, label, value: tag }];
+    });
 };

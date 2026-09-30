@@ -111,6 +111,11 @@ export function ImportStep({
                                         ? t("wizard.import.error.notAProject", { path: importFailure.destination })
                                         : importFailure.message}
                                 </p>
+                                {importFailure.kind === "failed" && importFailure.leftBehind && (
+                                    <p className="break-words text-xs text-danger">
+                                        {t("wizard.import.error.leftBehind")}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>

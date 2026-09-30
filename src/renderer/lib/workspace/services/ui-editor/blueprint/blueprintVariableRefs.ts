@@ -7,6 +7,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
+import { anchorSurfaceId, blueprintContract } from "@shared/blueprint/ownerShape";
 import { translate } from "@/lib/i18n";
 import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "./ownerKeys";
 
@@ -70,18 +71,22 @@ function normalizeLiteralValue(value: unknown): LiteralValue | undefined {
     }
 }
 
+/**
+ * Whether this blueprint may declare member variables.
+ *
+ * A property of how the graph is entered, not of which slot it sits in: a Blueprint Value graph is
+ * re-run whenever a binding's dependency changes, so it has no run to carry state across and its
+ * palette omits the declare node entirely.
+ */
 function blueprintSupportsDeclaredVariables(blueprint: Blueprint): boolean {
-    return blueprint.owner.kind !== "widgetValue";
+    return blueprintContract(blueprint.owner).invocation !== "valueBinding";
 }
 
 function listBlueprintGraphNodes(blueprint: Blueprint): BlueprintGraphNode[] {
-    if (blueprint.program.kind !== "graph") {
-        return [];
-    }
     const slots = [
-        ...Object.values(blueprint.program.graphs.events ?? {}),
-        ...Object.values(blueprint.program.graphs.functions ?? {}),
-        ...Object.values(blueprint.program.graphs.macros ?? {}),
+        ...Object.values(blueprint.graphs.events ?? {}),
+        ...Object.values(blueprint.graphs.functions ?? {}),
+        ...Object.values(blueprint.graphs.macros ?? {}),
     ];
     return slots.flatMap(slot => Object.values(slot.graph?.nodes ?? {}));
 }
@@ -195,11 +200,11 @@ function sortedVariables(group: VariableGroupInput): BlueprintVariable[] {
 }
 
 function getSurfaceMainBlueprintId(doc: BlueprintDocument, surfaceId: string | undefined): string | undefined {
-    return surfaceId ? doc.ownerRecords[surfaceMainOwnerKey(surfaceId)]?.activeBlueprintId : undefined;
+    return surfaceId ? doc.ownerRecords[surfaceMainOwnerKey(surfaceId)]?.blueprintId : undefined;
 }
 
 function getGlobalMainBlueprintId(doc: BlueprintDocument): string | undefined {
-    return doc.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+    return doc.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
 }
 
 function pushGroup(out: VariableGroupInput[], used: Set<string>, group: VariableGroupInput | null): void {
@@ -210,15 +215,15 @@ function pushGroup(out: VariableGroupInput[], used: Set<string>, group: Variable
     out.push(group);
 }
 
+/**
+ * The surface whose page variables this blueprint can see, falling back to the caller's.
+ *
+ * The fallback carries the owners that are not anchored on a surface at all - the project blueprint,
+ * a component definition's, a story row's - for which the editor supplies the surface it is being
+ * viewed from, if any.
+ */
 function resolveCurrentSurfaceId(blueprint: Blueprint, fallback?: string): string | undefined {
-    if (
-        blueprint.owner.kind === "surfaceMain" ||
-        blueprint.owner.kind === "widgetMain" ||
-        blueprint.owner.kind === "widgetValue"
-    ) {
-        return blueprint.owner.surfaceId;
-    }
-    return fallback;
+    return anchorSurfaceId(blueprint.owner) ?? fallback;
 }
 
 function currentBlueprintScope(blueprint: Blueprint): { kind: BlueprintVariableScopeKind; label: string } {

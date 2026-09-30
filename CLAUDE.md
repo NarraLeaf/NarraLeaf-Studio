@@ -2,11 +2,11 @@
 
 ## Ask the tools before you grep
 
-`project/app/` holds command-line tools that answer questions a search answers badly. The four that
-answer questions - `blueprint.js`, `ui.js`, `debug.js`, `cdp.js` - each have a `.md` beside them;
-read that file before working in the area it covers. The rest (`dev-electron.js`, `stop-dev.js`,
-`pack-electron.js`) are what `yarn dev` and the packaging scripts run, and are documented by their
-own header comments.
+`project/app/` holds command-line tools that answer questions a search answers badly. The five that
+answer questions - `blueprint.js`, `ui.js`, `story.js`, `debug.js`, `cdp.js` - each have a `.md`
+beside them; read that file before working in the area it covers. The rest (`dev-electron.js`,
+`stop-dev.js`, `pack-electron.js`) are what `yarn dev` and the packaging scripts run, and are
+documented by their own header comments.
 
 ### Blueprints — `project/app/blueprint.js` (`blueprint.md`)
 
@@ -56,6 +56,32 @@ the elements it does not mention. `.ui` files use the same `.ignored/` scratch d
 `ui` owns `uidoc.json` and `blueprint` owns `uigraphs.json`; the seam between them is the element id,
 which a `.ui` file names for itself. `ui check` is also the thing that catches a value binding
 pointing at a blueprint some other element owns - a prop that silently shows nothing.
+
+### Stories — `project/app/story.js` (`story.md`)
+
+Fifty-odd slash commands whose params are only stated inside their specs, and scenes stored as
+thousands of blocks in one JSON file. Same answer again:
+
+```sh
+node project/app/story.js command say                          # params, types, what it builds
+node project/app/story.js commands --category flow
+node project/app/story.js targets --project <dir>              # every name a line can use
+node project/app/story.js show  --project <dir> --scene "The corridor" --out ch1.story
+node project/app/story.js check ch1.story --project <dir>
+node project/app/story.js apply ch1.story --project <dir> --write
+```
+
+It parses, resolves and builds through the same three calls Enter makes in the row editor, so a line
+that commits in Studio lands the same row here. `check` adds the project linter's story rules - the
+ones the lint panel runs - so **finding out whether a scene is well-formed no longer needs Studio
+open**. **Do not drive the story editor over CDP to type rows.**
+
+Two things are specific to this one. **The `.story` format is for the tool, not for authors**: Studio
+deliberately offers no text-based way to write a story, and nothing here appears in its interface -
+it is not a feature to point anyone at. And **about a row in four has no spelling** (mostly transform
+and transition shapes the command line cannot state); those print as `» label` lines, come back
+verbatim, and must not be edited in the file. `show` names them. A green `check` still says nothing
+about whether the scene plays right - that is Dev Mode's answer, and it has not moved.
 
 ### A running dev app — `project/app/debug.js` (`debug.md`), `project/app/cdp.js` (`cdp.md`)
 

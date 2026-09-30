@@ -1,4 +1,5 @@
-import type { BlueprintAssetPin, BlueprintAssetPinResolver } from "@/lib/workspace/services/references/referenceModel";
+import type { BlueprintAssetPinResolver } from "@/lib/workspace/services/references/referenceModel";
+import { catalogAssetPins } from "@/lib/workspace/services/references/assetNameCatalog";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 
 /**
@@ -6,7 +7,7 @@ import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-ed
  *
  * Shared by every clipboard that carries graphs, so a widget's blueprint and a bare graph fragment
  * are swept exactly as the reference index sweeps them - one answer to "which pins hold a file",
- * whichever gesture is asking.
+ * whichever gesture is asking. The projection itself is `catalogAssetPins`, which the index reads too.
  *
  * Null and "declares none" are different answers, and `referenceModel` acts on the difference: a
  * node left behind by a plugin this project does not have could be holding anything, and treating
@@ -15,25 +16,5 @@ import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-ed
 export function createCatalogAssetPinResolver(
     catalog: BlueprintNodeCatalogService | null,
 ): BlueprintAssetPinResolver {
-    return (nodeType: string): readonly BlueprintAssetPin[] | null => {
-        if (!catalog) {
-            return null;
-        }
-        try {
-            if (!catalog.get(nodeType)) {
-                return null;
-            }
-            return catalog.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
-                ? [{
-                    pinId: pin.id,
-                    kind: pin.assetRef.kind,
-                    paramKey: pin.assetRef.paramKey ?? pin.id,
-                    input: pin.kind === "input",
-                    origin: pin.assetRef.origin,
-                }]
-                : []));
-        } catch {
-            return null;
-        }
-    };
+    return nodeType => (catalog ? catalogAssetPins(catalog, nodeType) : null);
 }

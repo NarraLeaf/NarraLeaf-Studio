@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import { compileBlueprintDocument } from "./compile";
+import { printBlueprint } from "./print";
 import { parseBlueprintText } from "./parse";
 
 registerCoreBlueprintNodes();
@@ -28,8 +30,8 @@ function compile(source: string, existing?: BlueprintDocument) {
     });
     return {
         blueprint: result.blueprints[0],
-        graph: result.blueprints[0]?.program.kind === "graph"
-            ? Object.values(result.blueprints[0].program.graphs.events)[0]?.graph
+        graph: result.blueprints[0]
+            ? Object.values(result.blueprints[0].graphs.events)[0]?.graph
             : undefined,
         diagnostics: [...parsed.diagnostics, ...result.diagnostics],
         errors: [...parsed.diagnostics, ...result.diagnostics].filter(item => item.severity === "error"),
@@ -93,7 +95,7 @@ event E id=ev
         const document: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
             blueprints: {},
-            ownerRecords: { globalMain: { activeBlueprintId: "kept", privateBlueprintIds: ["kept"] } },
+            ownerRecords: { globalMain: { blueprintId: "kept" } },
         };
         document.blueprints.kept = compile(HELLO).blueprint;
         document.blueprints.kept.id = "kept";
@@ -238,7 +240,6 @@ event E
                 "owner=widgetValue surface=s element=e prop=label",
                 { kind: "widgetValue", surfaceId: "s", elementId: "e", propPath: "label" },
             ],
-            ["owner=sharedAsset asset=a", { kind: "sharedAsset", assetId: "a" }],
             [
                 "owner=storyAction blueprint=b mode=value",
                 { kind: "storyAction", blueprintId: "b", mode: "value" },
@@ -259,5 +260,55 @@ event E
         expect(blueprint.members?.variables).toEqual({
             v1: { id: "v1", name: "Score", valueType: "number", defaultValue: 3 },
         });
+    });
+});
+
+describe("script layers in a .bp file", () => {
+    it("round-trips a script layer instead of flattening it to an empty graph", () => {
+        const blueprint: Blueprint = {
+            id: "bp-script",
+            name: "Quit",
+            owner: { kind: "globalMain" },
+            graphs: {
+                eventIds: ["layer-script"],
+                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/quit.ts" } } },
+                functions: {},
+            },
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+        };
+
+        const printed = printBlueprint(blueprint);
+        // Before the `script` block existed the printer emitted nothing for this layer, so the file
+        // said "a blueprint without it" - and applying that file dropped the author's reference to
+        // their own file, silently.
+        expect(printed).toContain("script scripts/quit.ts id=layer-script");
+
+        const compiled = compile(printed);
+        expect(compiled.errors).toEqual([]);
+        expect(compiled.blueprint.graphs.events["layer-script"]?.script).toEqual({ scriptRef: "scripts/quit.ts" });
+    });
+
+    it("keeps a script layer beside a graph layer in one blueprint", () => {
+        const source = [
+            'blueprint "Both" owner=globalMain',
+            '    script "scripts/both.ts" id=layer-script',
+            "",
+            '    event "Layer 1" id=layer-graph',
+            "        head: blueprint.event.head.appBoot",
+            "",
+        ].join("\n");
+
+        const compiled = compile(source);
+        expect(compiled.errors).toEqual([]);
+        expect(compiled.blueprint.graphs.events["layer-script"]?.script?.scriptRef).toBe("scripts/both.ts");
+        expect(compiled.blueprint.graphs.events["layer-graph"]?.graph?.nodes).toBeDefined();
+    });
+
+    it("refuses a path that is not one of this project's scripts", () => {
+        for (const bad of ["editor/story/notes.ts", "scripts/node_modules/pkg/index.js", "scripts/notes.md"]) {
+            const source = ['blueprint "Bad" owner=globalMain', `    script ${JSON.stringify(bad)}`, ""].join("\n");
+            expect(compile(source).diagnostics.map(d => d.code), bad).toContain("dsl.script_not_a_script_path");
+        }
     });
 });

@@ -121,7 +121,14 @@ function subjectWord(subject: TransformSubject, target: StoryCommandTargetValue 
     if (!target) {
         return "target";
     }
-    return target.type === "character" ? "character" : target.type === "reserved" ? "layer" : target.objectKind;
+    if (target.type === "character") {
+        return "character";
+    }
+    if (target.type === "reserved") {
+        return "layer";
+    }
+    // `/transform` reads no library, so the asset arm is unreachable from here; it keeps the read total.
+    return target.type === "asset" ? target.assetType : target.objectKind;
 }
 
 // ---------------------------------------------------------------------------------------------

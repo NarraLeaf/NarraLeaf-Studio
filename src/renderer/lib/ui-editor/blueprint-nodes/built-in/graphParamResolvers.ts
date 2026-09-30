@@ -5,6 +5,8 @@
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
@@ -132,6 +134,9 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+    BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
@@ -144,6 +149,7 @@ import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
@@ -162,6 +168,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
@@ -193,6 +200,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -346,6 +354,7 @@ import {
     BLUEPRINT_TIME_PARAM_DATE_STYLE,
     BLUEPRINT_TIME_PARAM_TIME_STYLE,
     isBlueprintEventDispatchHeadType,
+    isBuiltinBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
 import {
     addBlueprintTime,
@@ -380,7 +389,7 @@ import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/charac
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BlueprintInputActionHostApi } from "./inputActionNodes";
-import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
+import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -485,6 +494,65 @@ export type DataPinResolveRuntime = {
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
+
+/** The part of an executing node's context a data-pin read needs: where it is, and what it is running in. */
+export type DataPinReadingContext = Pick<
+    BehaviorNodeExecutionContext,
+    "graph" | "node" | "params" | "blueprintLocals" | "hostAdapter" | "eventPayload" | "listItemScope" | "instanceKey" | "executionOwner" | "valueExecution"
+>;
+
+/**
+ * The runtime half of a data-pin read, taken whole from the context of the node doing the reading.
+ *
+ * The one place that copies it. The node modules used to spell this object out for themselves -
+ * thirty-nine copies - and the copies had already drifted twice: `If` read a row's field as nothing
+ * because its copy predated `listItemScope`, and twenty-five copies predated `valueExecution`, so a
+ * widget getter wired into one of those nodes inside a value binding never told the binding to
+ * re-run. Each field is a thing some resolver below reads, and a field left off one copy is a pin
+ * that reads wrong in exactly the graphs that need it.
+ *
+ * Typed as every key of {@link DataPinResolveRuntime}, so a field added there does not compile until
+ * it is carried here too. `dataPinRuntimeIsBuiltOnce.test.ts` keeps this the only place it is built.
+ */
+export function dataPinRuntimeOf(ctx: DataPinReadingContext): DataPinResolveRuntime {
+    const runtime: { [K in keyof Required<DataPinResolveRuntime>]: DataPinResolveRuntime[K] } = {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+        valueExecution: ctx.valueExecution,
+    };
+    return runtime;
+}
+
+/**
+ * The value feeding one of the executing node's own input pins - the wired edge, or the literal
+ * typed into the node when nothing is wired.
+ *
+ * What a node module calls to read its inputs, and what the executor installs as `ctx.resolveInput`,
+ * so a built-in node and a plugin node read a pin the same way.
+ */
+export function resolveNodeInput(ctx: DataPinReadingContext, pinId: string): unknown {
+    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, dataPinRuntimeOf(ctx));
+}
+
+/**
+ * The address every widget getter below reads from: the element, in the drawing asking about it.
+ *
+ * A bare element id names the template - the record a list row and a component placement are each
+ * drawn from, and that none of them *is*. The write side has carried the drawing since
+ * `widgetAddress.ts`; a getter that does not returns the value the author typed however many times
+ * the running graph has changed it, which reads on screen as a write that never happened.
+ *
+ * One helper rather than the same expression at seven call sites, because these were seven separate
+ * omissions of the same thing and would be again. It asks the same question the setters ask
+ * (`widgetTarget.ts`), so a getter reads back exactly the drawing its setter wrote: a row's own
+ * label in that row, a panel outside the list as the panel.
+ */
+function widgetReadAddress(elementId: string | undefined, runtime?: DataPinResolveRuntime): string | undefined {
+    return elementId === undefined ? undefined : addressWidgetFromExecution(runtime ?? {}, elementId);
+}
 
 function isElementBindingOutput(type: string, portId: string): boolean {
     return (
@@ -1549,9 +1617,11 @@ function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime):
 const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string }> = {
     [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD]: { portId: "autoForward", key: "autoForward" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY]: { portId: "autoForwardDelay", key: "autoForwardDelay" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION]: { portId: "textRevealDuration", key: "textRevealDuration" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING]: { portId: "skipping", key: "skipping" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT]: { portId: "skipReadText", key: "skipReadText" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR]: { portId: "muteOnWindowBlur", key: "muteOnWindowBlur" },
     // The one row whose port is not named after its preference: the node reads `Is Dialog Shown`,
     // and the three nodes that write the same value are named for the act rather than the key.
     [BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN]: { portId: "isShown", key: "showDialog" },
@@ -1953,15 +2023,19 @@ function trackElementDependency(
     });
 }
 
+/**
+ * The reference, when this execution may read the element it names.
+ *
+ * The same predicate the setters throw on (`isUIElementRefInScope`). This used to compare surfaces
+ * itself, which refused every reference a component definition's graph makes to its own tree - those
+ * name the definition's virtual surface, not the page the placement is on - so inside a component
+ * the Element getters answered nothing while the setters beside them worked.
+ */
 function sameSurfaceElementRef(ref: BlueprintElementRef | undefined, runtime?: DataPinResolveRuntime): BlueprintElementRef | undefined {
     if (!ref) {
         return undefined;
     }
-    const ownerSurfaceId = runtime?.executionOwner?.surfaceId;
-    if (ownerSurfaceId && ref.surfaceId !== ownerSurfaceId) {
-        return undefined;
-    }
-    return ref;
+    return isUIElementRefInScope(ref.surfaceId, runtime?.executionOwner) ? ref : undefined;
 }
 
 function resolveElementInputRef(
@@ -2012,9 +2086,12 @@ function resolveElementTextNodeOutput(
     if (!ref || !api || ref.elementType !== "nl.text") {
         return undefined;
     }
+    // The drawing, as the Element setters address it - reading the template here answered with what
+    // the author typed however often a graph in a row had since written that row's copy.
+    const address = addressWidgetFromExecution(runtime ?? {}, ref.elementId);
     let props: ReturnType<typeof api.widget.getTextProperties>;
     try {
-        props = api.widget.getTextProperties(ref.elementId);
+        props = api.widget.getTextProperties(address);
     } catch {
         return undefined;
     }
@@ -2084,9 +2161,10 @@ function resolveElementDisplayableNodeOutput(
     if (!ref || !api) {
         return undefined;
     }
+    const address = addressWidgetFromExecution(runtime ?? {}, ref.elementId);
     let props: ReturnType<typeof api.widget.getDisplayableProperties>;
     try {
-        props = api.widget.getDisplayableProperties(ref.elementId);
+        props = api.widget.getDisplayableProperties(address);
     } catch {
         return undefined;
     }
@@ -2118,10 +2196,10 @@ function resolveElementDisplayableNodeOutput(
     // browser lays out, which no document write announces. Registering a field here would claim a
     // relationship that is not there and would still not make the value refresh on its own.
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT && portId === "rect") {
-        return api.widget.getMeasuredRect(ref.elementId);
+        return api.widget.getMeasuredRect(address);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER && portId === "center") {
-        const measured = api.widget.getMeasuredRect(ref.elementId);
+        const measured = api.widget.getMeasuredRect(address);
         return measured ? blueprintRectCenter(measured) : null;
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION && portId === "rotation") {
@@ -2137,7 +2215,7 @@ function resolveElementDisplayableNodeOutput(
         return read("runtime.display", props.display);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
-        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(ref.elementId).variantId ?? "");
+        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(address).variantId ?? "");
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY && portId === "value") {
         const property = toBlueprintString(params.property || "position");
@@ -2202,7 +2280,7 @@ function resolveSelfDisplayableNodeOutput(
     if (!isDisplayableNode) {
         return undefined;
     }
-    const elementId = runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2283,7 +2361,7 @@ function resolveSelfDisplayableNodeOutput(
 }
 
 function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
-    const elementId = runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2364,7 +2442,7 @@ function resolveTextInputNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.textInput") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2410,7 +2488,7 @@ function resolveSliderNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.slider") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2485,7 +2563,7 @@ function resolveSwitchNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.switch") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2523,14 +2601,17 @@ function resolveListNodeOutput(
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD;
-    const elementId = resolveListElementIdInput(
-        graph,
-        nodeId,
-        params,
-        blueprintLocals,
-        depth,
+    const elementId = widgetReadAddress(
+        resolveListElementIdInput(
+            graph,
+            nodeId,
+            params,
+            blueprintLocals,
+            depth,
+            runtime,
+            isElementTarget ? "element" : "self",
+        ),
         runtime,
-        isElementTarget ? "element" : "self",
     );
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
@@ -2673,6 +2754,7 @@ function resolveWidgetPropertyNodeOutput(
     } else {
         elementId = runtime?.executionOwner?.elementId;
     }
+    elementId = widgetReadAddress(elementId, runtime);
     if (!elementId) {
         return undefined;
     }
@@ -3306,7 +3388,7 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_DATA_MEMO && portId === "result") {
         return readBlueprintMemoValue(blueprintLocals, nodeId);
     }
-    if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
+    if (isBuiltinBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId] ?? null;
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY && portId === BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID) {
@@ -3426,6 +3508,15 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Get Save Story, separate for the same reason as the two above: `storyId` is an inspector
+    // param and an *input* pin name on `Start Game`, and `exists` belongs to three save nodes
+    // already - folding this into either list would answer those names for every node in it.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY &&
+        (portId === "storyName" || portId === "storyId" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
@@ -3444,6 +3535,21 @@ function resolveSelfOutput(
     // network family below is: `error` is not a port name that list carries, and joining it would
     // hand `error` to every node type in it.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The screenshot pair, kept out of the cross-product list for Open Link's reason and for one of
+    // its own: `path` is where the picture went, which is the whole point of the node - unregistered
+    // it reads as `undefined` on a screen that was going to tell the player where to look.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT
+            || selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER)
+        && (portId === "path" || portId === "error")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // `Is Window Focused`, beside them rather than in the list above: `isFocused` is a new port name
+    // there, and joining it would hand `isFocused` to every node type that list covers.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED && portId === "isFocused") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // The progress pair, kept out of the cross-product list for the reason Open Link is: `error` is
@@ -3805,10 +3911,18 @@ function resolveNonBuiltInNodeOutput(
     nodeId: string,
     portId: string,
     blueprintLocals: Record<string, unknown> | undefined,
+    runtime: DataPinResolveRuntime | undefined,
 ): unknown {
     const type = graph.nodes?.[nodeId]?.type;
     if (!type || blueprintNodeRegistry.isBuiltIn(type)) {
         return undefined;
+    }
+    // A plugin's event head is never executed - the dispatcher starts on its `then` - so it publishes
+    // nothing, and a game does not even know its pins. Its outputs are the event's payload, read by
+    // pin id: the rule the built-in heads follow in `resolveSelfOutput`, which a plugin head can only
+    // reach in the editor, where its pins are catalogued.
+    if (isBlueprintEventDispatchHeadType(type)) {
+        return portId === "then" ? undefined : (runtime?.eventPayload?.[portId] ?? null);
     }
     return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
 }
@@ -3850,7 +3964,7 @@ export function resolveDataPinValue(
 
     const edge = graph.edges?.find(e => e.to.nodeId === consumerNodeId && e.to.port === consumerPortId);
     if (!edge) {
-        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals);
+        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals, runtime);
         if (nonBuiltInOutput !== undefined) {
             return nonBuiltInOutput;
         }

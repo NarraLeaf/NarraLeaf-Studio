@@ -1,0 +1,153 @@
+/**
+ * Whether a run seals its content, from the project's own setting and the run's choice.
+ *
+ * Both hosts that launch a game outside a build - the preview and a test's game - answer this here,
+ * and the case that matters is the one the test run used not to have: a project with asset
+ * protection on, on a run that has not asked for the shipped form. It has to come out loose,
+ * because a store is written whole and sealing it again on every launch is seconds paid per run for
+ * an artifact nobody receives.
+ *
+ * The run's choice has two sources. A run an author starts reads the machine's "Preview as shipped"
+ * setting; a headless `--test` run reads `--test-as-shipped` and nothing else, so a job gets the
+ * same path from the same line on every machine.
+ *
+ * A real `.nlproj` on disk rather than a stubbed reader: what is being checked includes reading the
+ * flag out of the file the author's project actually holds.
+ */
+
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
+import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "./previewAsShipped";
+import { resolveRunSealing, runSealingLogLine } from "./runSealing";
+
+const PROJECT_NAME = "Tiny Shadows";
+
+let projectPath = "";
+
+/** A project directory whose config says whether its assets are protected. */
+async function writeProject(encryptAssets: boolean | undefined): Promise<void> {
+    const config = {
+        name: PROJECT_NAME,
+        app: encryptAssets === undefined ? {} : { security: { encryptAssets } },
+    };
+    await fs.writeFile(
+        path.join(projectPath, getProjectConfigFileName(PROJECT_NAME)),
+        encodeProjectConfig(config as never),
+    );
+}
+
+function settings(previewAsShipped: boolean) {
+    const stored = previewAsShipped ? { [normalizeProjectPath(projectPath)]: true } : {};
+    return { get: (key: string) => (key === PREVIEW_AS_SHIPPED_SETTINGS_KEY ? stored : undefined) };
+}
+
+/** A run an author started, asking the machine's setting. */
+function sealing(previewAsShipped: boolean) {
+    return resolveRunSealing({
+        projectPath,
+        choice: { by: "preview-setting", settings: settings(previewAsShipped) },
+    });
+}
+
+/** A headless `--test` run, asking its own line. */
+function headlessSealing(asShipped: boolean) {
+    return resolveRunSealing({
+        projectPath,
+        choice: { by: "command-line", asShipped },
+    });
+}
+
+beforeEach(async () => {
+    projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-run-sealing-"));
+});
+
+afterEach(async () => {
+    await fs.rm(projectPath, { recursive: true, force: true });
+});
+
+describe("a project that protects its assets", () => {
+    beforeEach(async () => {
+        await writeProject(true);
+    });
+
+    it("runs loose files while this machine has not asked for the shipped form", async () => {
+        const result = await sealing(false);
+
+        expect(result).toEqual({ by: "preview-setting", asked: false, kind: "loose-by-choice" });
+        expect(runSealingLogLine(result)).toContain("Preview as shipped is off");
+    });
+
+    it("seals when this machine has asked for it, and says so", async () => {
+        const result = await sealing(true);
+
+        expect(result).toEqual({ by: "preview-setting", asked: true, kind: "sealed" });
+        expect(runSealingLogLine(result)).toContain("encrypting pack");
+    });
+});
+
+describe("a headless run of a project that protects its assets", () => {
+    beforeEach(async () => {
+        await writeProject(true);
+    });
+
+    it("runs loose files by default, and names the flag that would change it", async () => {
+        const result = await headlessSealing(false);
+
+        expect(result).toEqual({ by: "command-line", asked: false, kind: "loose-by-choice" });
+        expect(runSealingLogLine(result)).toBe(
+            "assets: loose files; this project's release build seals them, which --test-as-shipped would test",
+        );
+    });
+
+    it("seals when the line asks for the shipped form, and says so", async () => {
+        const result = await headlessSealing(true);
+
+        expect(result).toEqual({ by: "command-line", asked: true, kind: "sealed" });
+        expect(runSealingLogLine(result)).toBe(
+            "assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)",
+        );
+    });
+});
+
+describe("a project that does not protect its assets", () => {
+    it("has nothing to seal, whatever the machine asked for", async () => {
+        await writeProject(false);
+
+        for (const asShipped of [false, true]) {
+            const result = await sealing(asShipped);
+            expect(result).toEqual({ by: "preview-setting", asked: asShipped, kind: "unprotected" });
+            // No line: a project that never turned protection on has no second state to be in, and
+            // a sentence about it on every launch would be noise.
+            expect(runSealingLogLine(result)).toBeNull();
+        }
+    });
+
+    it("has nothing to seal on a headless run either, and says which path it took", async () => {
+        await writeProject(false);
+
+        // A headless run always says: its log is the only record a job keeps of which path ran.
+        const loose = await headlessSealing(false);
+        expect(loose).toEqual({ by: "command-line", asked: false, kind: "unprotected" });
+        expect(runSealingLogLine(loose)).toBe("assets: loose files, as this project ships (asset protection is off)");
+
+        // And a line that asked for the shipped form is told why it made no difference, rather
+        // than left believing the sealed path was exercised.
+        const asked = await headlessSealing(true);
+        expect(asked).toEqual({ by: "command-line", asked: true, kind: "unprotected" });
+        expect(runSealingLogLine(asked)).toContain("--test-as-shipped has nothing to seal");
+    });
+
+    it("is the answer for a config that says nothing about protection, and for no config at all", async () => {
+        await writeProject(undefined);
+        expect((await sealing(true)).kind).toBe("unprotected");
+        expect((await headlessSealing(true)).kind).toBe("unprotected");
+
+        await fs.rm(path.join(projectPath, getProjectConfigFileName(PROJECT_NAME)));
+        expect((await sealing(true)).kind).toBe("unprotected");
+        expect((await headlessSealing(true)).kind).toBe("unprotected");
+    });
+});

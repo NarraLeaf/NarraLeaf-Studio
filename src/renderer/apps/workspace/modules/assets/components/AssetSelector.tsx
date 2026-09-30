@@ -5,7 +5,6 @@ import {
     Music,
     Video,
     FileJson,
-    Workflow,
     Type,
     Boxes,
     File,
@@ -17,25 +16,36 @@ import {
     FolderOpen,
 } from "lucide-react";
 import { useEscapeToClose } from "@/lib/components/elements/Modal";
+import { getInterface } from "@/lib/app/bridge";
+import { collectImportFailures } from "@/lib/workspace/assets/importFailure";
 import { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetType, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
+import {
+    AssetExtensions,
+    AssetType,
+    categoryOfAssetType,
+    isBundleAssetType,
+} from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem, type ActiveFilter } from "./FilterSystem";
+import { ImportQueueStrip } from "./ImportQueueStrip";
 import { useAssetData } from "../state/useAssetData";
 import { useAssetFilters } from "../state/useAssetFilters";
+import { useAssetSetNaming } from "../state/useAssetSetNaming";
+import { useImportQueue } from "../state/useImportQueue";
+import { readAssetTag, readAssetTags } from "@shared/types/assetSetLabels";
 
 const ASSET_TYPE_ICONS = {
     [AssetType.Image]: Image,
     [AssetType.Audio]: Music,
     [AssetType.Video]: Video,
     [AssetType.JSON]: FileJson,
-    [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
     [AssetType.Model]: Boxes,
     [AssetType.Other]: File,
@@ -107,10 +117,14 @@ export function AssetSelector({
     // a portal on `document.body`, so every `fieldset disabled` clamp an inspector puts around its
     // trigger stops at the panel's edge and never reaches the controls inside.
     const freeze = useFreezeGuard();
-    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
+    const { assets, groups, loading, hasLoaded, loadFailed, loadAssets } = useAssetData({ context, isInitialized });
     // The selector keeps its own search (it matches against virtual groups the library does not
     // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    // A member of an asset set carries the set's bookkeeping among its tags. The line under a file's
+    // name and the Tags filter both print tags the way the library does. See `readAssetTag`.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({
         assets,
         groups,
@@ -118,11 +132,22 @@ export function AssetSelector({
         query: "",
         bytesByAssetId: null,
         referencedAssetIds: null,
+        readTag,
     });
     const assetsService = useMemo(() => {
         if (!context) return null;
         return context.services.get<AssetsService>(Services.Assets);
     }, [context]);
+
+    /** The picker's own import strip: the asset panel's, fed by the imports started from here. */
+    const { importQueue, importState, dismissImportFailures } = useImportQueue();
+    // A failure list belongs to the import that produced it. Opening the picker again is a new visit
+    // and starts without the last one's.
+    useEffect(() => {
+        if (visible) {
+            dismissImportFailures();
+        }
+    }, [visible, dismissImportFailures]);
 
     const [searchQuery, setSearchQuery] = useState("");
     const [selection, setSelection] = useState<Set<string>>(new Set(selectedIds));
@@ -545,6 +570,7 @@ export function AssetSelector({
     const renderAssetRow = (asset: Asset, level: number) => {
         const isSelected = selection.has(asset.id);
         const ItemIcon = ASSET_TYPE_ICONS[asset.type] ?? File;
+        const tagLabels = readAssetTags(asset.tags ?? [], assetSetNaming).map(entry => entry.label);
         return (
             <button
                 key={asset.id}
@@ -561,7 +587,7 @@ export function AssetSelector({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{asset.name}</div>
                     <div className="text-2xs text-fg-subtle truncate">
-                        {asset.tags?.length ? asset.tags.join(", ") : t("assets.noTags")}
+                        {tagLabels.length ? tagLabels.join(", ") : t("assets.noTags")}
                     </div>
                 </div>
                 {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
@@ -626,40 +652,77 @@ export function AssetSelector({
         onClose();
     };
 
+    /**
+     * Copy picked files into the library, reporting through the same strip the asset panel uses:
+     * progress while it runs, then each file that did not make it, by name and why, with a retry.
+     *
+     * This used to report nothing at all. A file that was refused left the picker exactly as it was,
+     * and the only record of why was a line in the console - an import gesture that simply vanished.
+     */
+    const runPickerImport = useCallback(async (paths: string[]) => {
+        if (!assetsService || paths.length === 0) return;
+        importQueue.start({ category: assetCategory, total: paths.length });
+        // Whether the strip has the per-file verdicts, so a throw after them cannot blame every file.
+        let reported = false;
+        try {
+            const result = await assetsService.importFromPaths(assetType, paths, {
+                onProgress: progress => importQueue.progress(progress),
+            });
+            if (!result.success) {
+                // The run fell over as a whole; its sentence is the importer's, for the log.
+                console.warn("[assets] the picker's import failed", result.error);
+                importQueue.finish(paths.map(path => ({ path })));
+                reported = true;
+                return;
+            }
+            importQueue.finish(collectImportFailures(paths, result.data, t)
+                .map(failure => ({ path: failure.path, ...(failure.reason ? { error: failure.reason } : {}) })));
+            reported = true;
+
+            await loadAssets();
+            // Selected as well as imported: the author opened this picker to choose one, and the
+            // file they just brought in is the answer.
+            const newAssetIds = result.data.flatMap(entry => (entry.success ? [entry.data.id] : []));
+            if (newAssetIds.length > 0) {
+                setSelection(prev => {
+                    const next = new Set(prev);
+                    newAssetIds.forEach(id => next.add(id));
+                    return next;
+                });
+            }
+        } catch (error) {
+            console.error("[assets] the picker's import threw", error);
+            if (!reported) {
+                importQueue.finish(paths.map(path => ({ path })));
+            }
+        }
+    }, [assetsService, assetCategory, assetType, importQueue, loadAssets, t]);
+
     const handleImportAssets = useCallback(async () => {
         if (!assetsService) return;
         // Refused here and not only on the button, because the button is not the last thing that
-        // happens before bytes move: `importLocalAssets` opens the file dialog itself and then copies
-        // every file the author picked into the library. A refusal that arrives after the copy is a
-        // frozen project that has already written; and this picker is a portal on `document.body`, so
-        // a freeze that arms while it is open reaches nothing that would have closed it.
+        // happens before bytes move: the file dialog opens next and then every file the author picked
+        // is copied into the library. A refusal that arrives after the copy is a frozen project that
+        // has already written; and this picker is a portal on `document.body`, so a freeze that arms
+        // while it is open reaches nothing that would have closed it.
         if (freeze.frozen) return;
 
-        try {
-            const result = await assetsService.importLocalAssets(assetType);
-            if (result.success && result.data) {
-                // Reload assets to show the newly imported ones
-                await loadAssets();
-
-                // Auto-select the newly imported assets
-                const newAssetIds = result.data
-                    .filter(assetResult => assetResult.success && assetResult.data)
-                    .map(assetResult => assetResult.data!.id);
-
-                if (newAssetIds.length > 0) {
-                    setSelection(prev => {
-                        const next = new Set(prev);
-                        newAssetIds.forEach(id => next.add(id));
-                        return next;
-                    });
-                }
-            } else {
-                console.error('Failed to import assets:', result.error);
-            }
-        } catch (error) {
-            console.error('Error importing assets:', error);
+        // A bundle is authored as a folder, so it is picked as one. Going through `selectFile` with an
+        // extension filter is exactly what would import a model as eighteen loose assets.
+        const selection = isBundleAssetType(assetType)
+            ? await getInterface().fs.selectDirectory(true)
+            : await getInterface().fs.selectFile(AssetExtensions[assetType], true);
+        if (!selection.success || !selection.data.ok) {
+            console.warn("[assets] the picker's file dialog failed", selection);
+            context?.services.get<UIService>(Services.UI).showNotification(t("workspace.shell.fileDialogFailed"), "error");
+            return;
         }
-    }, [assetsService, assetType, freeze.frozen, loadAssets]);
+        await runPickerImport(selection.data.data);
+    }, [assetsService, assetType, context, freeze.frozen, runPickerImport, t]);
+
+    const retryPickerImport = useCallback(() => {
+        void runPickerImport(importState.failures.map(failure => failure.path));
+    }, [importState.failures, runPickerImport]);
 
     if (!visible) {
         return null;
@@ -726,18 +789,17 @@ export function AssetSelector({
                     />
                 </div>
 
+                <ImportQueueStrip state={importState} onRetry={retryPickerImport} onDismiss={dismissImportFailures} />
+
                 {loading && !hasLoaded ? (
                     <div className="flex items-center justify-center py-8 text-fg-muted gap-2">
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         <span>{t("assets.loading")}</span>
                     </div>
-                ) : error ? (
+                ) : loadFailed ? (
                     <div className="flex items-start gap-2 px-4 py-6 text-danger">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
-                        <div className="text-sm">
-                            <div>{t("assets.loadError")}</div>
-                            <div className="text-xs text-danger/80">{error}</div>
-                        </div>
+                        <div className="text-sm">{t("assets.loadError")}</div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
                     <div className="px-4 py-8 text-center text-sm text-fg-subtle">

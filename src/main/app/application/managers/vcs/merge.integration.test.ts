@@ -25,7 +25,7 @@ import {
 import { abortMerge, readMergeState, resolveConflicts, restartConflicts, unresolveConflicts } from "./merge";
 import { commitWorkingTree } from "./repository";
 import { setRevisionMetadata } from "./lore";
-import { LORE_TEST_SERVER, loreTestIdentity, loreTestSession, signInLoreTestAccount } from "./loreTestAccount";
+import { LORE_TEST_SERVER, loreTestIdentity, loreTestSession, loreTestSessionUse, signInLoreTestAccount } from "./loreTestAccount";
 import { readRevisionKind } from "./repository";
 import { blobAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, syncFromRemote, writeRemote } from "./remote";
@@ -245,15 +245,21 @@ async function twoSidedPair(prefix: string): Promise<Fixture> {
  */
 function fakeApp(): BaseApp {
     const noop = () => undefined;
+    // What the manager records - which project uses the test sign-in, chiefly - kept for the life
+    // of this app, over the one setting it is seeded with.
+    const written = new Map<string, unknown>();
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
+        projectTrustManager: { isTrusted: () => true, recordArrival: noop, forgetArrival: noop },
         // The one setting a manager reads here: the sign-in it makes its online calls as. Empty
         // for the local block, which never goes online.
         getGlobalState: () => ({
             get: (key: string) => {
+                if (written.has(key)) return written.get(key);
                 const session = loreTestSession();
                 return key === "versionControl.serverSessions" && session ? [session] : undefined;
             },
+            set: (key: string, value: unknown) => { written.set(key, value); },
         }),
     } as unknown as BaseApp;
 }
@@ -539,7 +545,7 @@ describe.skipIf(!supported)("closing a merge", () => {
         await flushRepository(fixture.globals);
         await releaseRepository(fixture.globals);
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
         } finally {
@@ -564,7 +570,7 @@ describe.skipIf(!supported)("closing a merge", () => {
         // manager opens a store of its own.
         await releaseRepository(fixture.globals);
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             const done = await manager.completeMerge(fixture.root, [
                 { path: DOCUMENT, choice: "mine" },
@@ -615,7 +621,7 @@ describe.skipIf(!supported)("closing a merge", () => {
         await flushRepository(fixture.globals);
         await releaseRepository(fixture.globals);
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             await expect(manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }]))
                 .rejects.toThrow(new RegExp(`${OTHER}.*conflict`, "i"));
@@ -794,7 +800,7 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         await releaseRepository(online(fixture.root));
         expect(remoteTip).not.toBe("");
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
         } finally {
@@ -885,7 +891,7 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         // The manager opens a store of its own, and the lock blocks within one process (§4.28).
         await releaseRepository(fixture.globals);
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             const synced = await manager.sync(fixture.root);
             expect(synced.conflicts).toEqual([DOCUMENT]);
@@ -939,7 +945,7 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         });
         await releaseRepository(fixture.globals);
 
-        const manager = new VcsManager(fakeApp());
+        const manager = new VcsManager(fakeApp(), undefined, undefined, loreTestSessionUse);
         try {
             const synced = await manager.sync(fixture.root);
             expect(synced.conflicts).toEqual([LOCALE_DOCUMENT]);

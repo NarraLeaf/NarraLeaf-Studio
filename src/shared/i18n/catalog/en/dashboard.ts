@@ -103,7 +103,10 @@ export const dashboard = {
         empty: "No builds recorded",
         emptyHint: "Builds run for this project are listed here.",
         logEmpty: "This build recorded no output.",
-        logOmitted: "The first {count} lines were dropped to keep the record small.",
+        logOmitted: {
+            one: "The first {count} line was dropped to keep the record small.",
+            other: "The first {count} lines were dropped to keep the record small.",
+        },
     },
 
     structure: {

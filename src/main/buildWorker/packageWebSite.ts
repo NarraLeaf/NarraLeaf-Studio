@@ -3,8 +3,8 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { promisify } from "util";
-import { path7za } from "7zip-bin";
 import { precompressWebSite } from "./precompressWebSite";
+import { sevenZipPath } from "./sevenZipBinary";
 import type { GameBuildWorkerWebJob } from "./protocol";
 
 /**
@@ -66,7 +66,7 @@ export async function packageWebSite(
 
 async function addToZip(zipPath: string, cwd: string): Promise<void> {
     await promisify(execFile)(
-        path7za,
+        sevenZipPath(),
         ["a", "-tzip", "-y", zipPath, "."],
         { cwd, maxBuffer: 64 * 1024 * 1024 },
     );
@@ -123,5 +123,5 @@ async function ensure7zaExecutable(): Promise<void> {
     if (process.platform === "win32") {
         return;
     }
-    await fs.chmod(path7za, 0o755).catch(() => undefined);
+    await fs.chmod(sevenZipPath(), 0o755).catch(() => undefined);
 }

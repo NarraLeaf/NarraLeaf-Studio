@@ -72,7 +72,7 @@ function useProjectStats(statsService: ProjectStatsService | null, live: boolean
  */
 function BuildRow({ build, now }: { build: BuildActivityRecord; now: number }) {
     const translator = useTranslation();
-    const { t, formatNumber } = translator;
+    const { t, tn, formatNumber } = translator;
     const [open, setOpen] = useState(false);
 
     return (
@@ -111,7 +111,9 @@ function BuildRow({ build, now }: { build: BuildActivityRecord; now: number }) {
                 <div className="flex flex-col gap-1 border-t border-edge px-3 py-2">
                     {build.logOmittedLines ? (
                         <span className="text-2xs text-fg-subtle">
-                            {t("dashboard.builds.logOmitted", { count: formatNumber(build.logOmittedLines) })}
+                            {tn("dashboard.builds.logOmitted", build.logOmittedLines, {
+                                count: formatNumber(build.logOmittedLines),
+                            })}
                         </span>
                     ) : null}
                     {build.log?.length ? (

@@ -12,9 +12,10 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import { blueprintJumpOpenTarget } from "./blueprintJumpTarget";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { requestAssetSetReveal } from "../assets/assetSetReveal";
-import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
+import { createComponentEditorTab, createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
 import { STORY_VARIABLES_PANEL_ID } from "../story-variables/storyVariablesPanelId";
@@ -105,24 +106,28 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             deps.openEditorTab(createSurfaceEditorTab(surface));
             return true;
         }
+        case "uiComponent": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            const component = context.services
+                .get<UIDocumentService>(Services.UIDocument)
+                .getComponent(target.componentId);
+            if (!component) {
+                return false;
+            }
+            deps.openEditorTab(createComponentEditorTab(component));
+            return true;
+        }
         case "blueprint": {
             const owner = parseBlueprintOwnerKey(target.ownerKey);
             if (!owner) {
                 return false;
             }
-            deps.openEditorTab(
-                createBlueprintEntryEditorTab({
-                    blueprintId: target.blueprintId,
-                    ownerKind: owner.ownerKind,
-                    surfaceId: owner.surfaceId,
-                    componentId: owner.componentId,
-                    elementId: owner.elementId,
-                    propPath: owner.propPath,
-                    focusEventId: target.focusEventId,
-                    focusFunctionId: target.focusFunctionId,
-                    focusNodeId: target.focusNodeId,
-                }),
-            );
+            // Keyed and named as every other way into the blueprint does it, so a hit lands on the
+            // tab that is already open, under the name it already has. See `blueprintJumpOpenTarget`.
+            deps.openEditorTab(createBlueprintEntryEditorTab(blueprintJumpOpenTarget(target, owner, deps.context)));
             return true;
         }
         case "localizationKey":

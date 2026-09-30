@@ -385,6 +385,10 @@ async function showTestPicker(workspace: Workspace): Promise<void> {
         // A `select` evaluates its options synchronously, so what it can offer is whatever is in
         // memory by now. See `TestRunService.prepareParameterSources`.
         testRun.prepareParameterSources(),
+        // `getAvailability` is synchronous too, and one of the gates behind it - whether this
+        // project is trusted - is the main process's answer. Settled here rather than read from a
+        // condition of this file's own: the rows below state what the service says and nothing else.
+        testRun.prepareAvailability(),
     ]);
 
     const dialogId = uiService.dialogs.show({

@@ -15,6 +15,7 @@ import {
     summarisePlan,
 } from "@/lib/workspace/services/character/psdImportBuilder";
 import type { BlendResolution, PsdDocument } from "@shared/types/psdImport";
+import { describePsdFailure } from "./psdImportFailure";
 import {
     canMergeBlendMode,
     estimateImportCost,
@@ -62,7 +63,7 @@ export function PsdImportWizard(props: {
     appearance: CharacterAppearance;
     characterName: string;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const [filePath, setFilePath] = useState<string | null>(null);
@@ -96,7 +97,8 @@ export function PsdImportWizard(props: {
         try {
             const result = await getInterface().openPsd();
             if (!result.success) {
-                setError(result.error || t("characters.editor.psd.failed"));
+                console.warn("[psd] could not read the PSD", result.error);
+                setError(describePsdFailure(t("characters.editor.psd.readFailed"), result.code, t));
                 return;
             }
             if (!result.data.filePath || !result.data.document) {
@@ -119,7 +121,10 @@ export function PsdImportWizard(props: {
             const targets = nameBakeTargets(toBakeTargets(plan), plan, props.characterName);
             const baked = await getInterface().bakePsd({ filePath, layers: targets });
             if (!baked.success) {
-                setError(baked.error || t("characters.editor.psd.failed"));
+                // The title alone: the file was read a moment ago when the tree was drawn, so what
+                // failed here is the bake itself, and its message is the worker's.
+                console.warn("[psd] could not bake the layers", baked.error);
+                setError(t("characters.editor.psd.failed"));
                 return;
             }
             const layers = baked.data.layers;
@@ -128,7 +133,9 @@ export function PsdImportWizard(props: {
                 layers.map(layer => layer.filePath),
             );
             if (!imported.success) {
-                setError(imported.error || t("characters.editor.psd.failed"));
+                // The library's refusal is the log's; the title is what the author can read.
+                console.warn("[psd] could not import the baked layers", imported.error);
+                setError(t("characters.editor.psd.failed"));
                 return;
             }
             // `importFromPaths` answers one result per path, in order, which is what lets a baked
@@ -159,7 +166,8 @@ export function PsdImportWizard(props: {
             });
             close();
         } catch (thrown: unknown) {
-            setError(thrown instanceof Error ? thrown.message : String(thrown));
+            console.warn("[psd] import failed", thrown);
+            setError(t("characters.editor.psd.failed"));
         } finally {
             setBusy(null);
         }
@@ -234,11 +242,13 @@ export function PsdImportWizard(props: {
                         <span className="min-w-0 flex-1 truncate font-medium">{document.fileName}</span>
                         {cost && (
                             <span
-                                aria-label={t("characters.editor.psd.cost")}
                                 data-psd-heavy={cost.heavy ? "true" : "false"}
                                 className={cost.heavy ? "text-warning" : "text-fg-subtle"}
                             >
-                                {t("characters.editor.psd.cost", { layers: cost.layers, megabytes: cost.megabytes })}
+                                {t("characters.editor.psd.costCounts", {
+                                    layers: tn("characters.editor.psd.layerCount", cost.layers),
+                                    megabytes: cost.megabytes,
+                                })}
                             </span>
                         )}
                         <span
@@ -317,7 +327,7 @@ export function PsdImportWizard(props: {
                                     <Layers className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                     <span className="min-w-0 flex-1 truncate">{slot.axis}</span>
                                     <span className="text-2xs text-fg-subtle">
-                                        {t("characters.editor.psd.axis", { count: slot.options.length })}
+                                        {tn("characters.editor.psd.axis", slot.options.length)}
                                     </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1 pl-5">

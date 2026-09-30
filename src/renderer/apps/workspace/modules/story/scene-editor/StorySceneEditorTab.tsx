@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Camera, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -15,13 +15,13 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { StoryActionCreatorPanel } from "./StoryActionCreatorPanel";
@@ -32,7 +32,8 @@ import {
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
-import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
+import { STORY_SNAPSHOT_PANEL_ID, type StorySnapshotPanelPayload } from "../../story-snapshots";
+import { launchStoryRowInDevMode } from "./storyRowLaunch";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
@@ -46,6 +47,7 @@ import {
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
+import { useProjectDistrusted } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { StoryRowClaimsProvider } from "./storyRowClaims";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
@@ -86,7 +88,7 @@ import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
-import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
+import { narralangUiEnabled } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
@@ -220,6 +222,7 @@ export function StorySceneOverviewBlock(props: {
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+    const backgroundNotice = useAssetFieldNotice(backgroundAssetId, Boolean(error));
     const workspace = useWorkspace();
     // The same field the scene inspector edits, so it offers the same choices. It was the one
     // surface of `defaultBackgroundAssetId` that did not, which read as the panel and the card
@@ -451,9 +454,9 @@ export function StorySceneOverviewBlock(props: {
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        {backgroundAssetId && error ? (
+                        {backgroundNotice ? (
                             <div className="mt-1 text-2xs text-warning/90">
-                                {t("story.sceneEditor.backgroundResolveError", { error })}
+                                {backgroundNotice}
                             </div>
                         ) : null}
                     </div>
@@ -502,6 +505,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Scene Snapshot inside it - and every one of them would leave this machine holding a scene the
     // room has never seen.
     const liveSession = useStoryLiveSessionGuard(payload?.storyId);
+    // A third refusal, and neither of the two above stands in for it: a project that arrived from a
+    // package or a remote source stays fully readable and fully editable, and only its EXECUTION
+    // waits on the author vouching for it in Settings. The one thing in this editor that executes is
+    // "play from here", which is why this is read here and nowhere else in the file.
+    const distrusted = useProjectDistrusted();
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
@@ -796,31 +804,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_SNAPSHOT_PANEL_ID,
-            title: t("story.sceneEditor.snapshotsPanel"),
-            icon: <Camera className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StorySnapshotPanel,
-            defaultVisible: false,
-            order: 12,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_SNAPSHOT_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
+    /**
+     * The Scene Snapshot panel is a static module too (see `modules/story-snapshots`), for a reason
+     * of its own: the panel is where an author manages snapshots, and it used to be registered here,
+     * so the only way to reach it was to open a scene and focus its tab. All this tab owns is which
+     * scene the panel is showing.
+     *
+     * Cleared conditionally on the same argument as the Variables payload above.
+     */
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
@@ -833,6 +824,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
+        return () => {
+            const current = uiService.panels.getPayload<StorySnapshotPanelPayload>(STORY_SNAPSHOT_PANEL_ID);
+            if (current?.tabId === tabId) {
+                uiService.panels.updatePayload(STORY_SNAPSHOT_PANEL_ID, undefined);
+            }
+        };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
@@ -1626,51 +1623,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     });
 
     // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
-    // interactive "play from here" lives now (the live preview stays a frozen state view). It carries
-    // the scene's selected Scene Snapshot so conditions on non-static variables (e.g. global flags)
-    // launch with concrete values; with no snapshot yet, it opens the panel and prompts instead.
+    // interactive "play from here" lives now (the live preview stays a frozen state view). The
+    // decision of what the launch carries is in `storyRowLaunch`.
     const playFromRow = useCallback((blockId: StoryBlockId) => {
         const storyId = payload?.storyId;
         const sceneId = payload?.sceneId;
         if (!editor.context || !storyId || !sceneId) {
             return;
         }
-        const services = editor.context.services;
-        const storyService = services.get<StoryService>(Services.Story);
-        const uiService = services.get<UIService>(Services.UI);
-        const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
-        if (snapshots.length === 0) {
-            uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
-            // A Scene Snapshot is stored inside the scene, and minting one is not an operation a
-            // session carries - so inside a session the offer is replaced by the reason it cannot be
-            // taken. Nothing is hidden by that: the panel this has just revealed holds the same
-            // "Add" control, greyed, which is where an author looks for it in the first place.
-            uiService.notifications.warning(
-                t("storySnapshot.launch.needSnapshot"),
-                liveSession.frozen ? liveSession.reason : t("storySnapshot.launch.needSnapshotDetail"),
-                liveSession.frozen ? undefined : [{
-                    label: t("storySnapshot.launch.createAction"),
-                    primary: true,
-                    onClick: () => {
-                        const created = storyService.createSceneSnapshot(storyId, sceneId, `${t("storySnapshot.defaultName")} 1`);
-                        if (created && panelStateService) {
-                            setSelectedSnapshotId(panelStateService, storyId, sceneId, created);
-                        }
-                    },
-                }],
+        // Said here rather than left to the main process. Main refuses the launch on its own
+        // account, but this control is a play arrow that appears on the row under the pointer -
+        // there is no persistent affordance to grey, and nothing to hover - so a refusal that
+        // reaches nobody looks to the author like an arrow that does nothing.
+        if (distrusted) {
+            editor.context.services.get<UIService>(Services.UI).notifications.warning(
+                t("workspace.shell.distrust.refusedTitle"),
+                t("workspace.shell.distrust.unavailable"),
             );
             return;
         }
-        const saved = panelStateService ? getSelectedSnapshotId(panelStateService, storyId, sceneId) : undefined;
-        const snapshotId = saved && snapshots.some(snapshot => snapshot.id === saved) ? saved : snapshots[0].id;
-        services.get<DevModeService>(Services.DevMode).launch({
-            kind: "story",
-            storyId,
-            sceneId,
-            blockId,
-            snapshotId,
-        });
-    }, [editor.context, liveSession, payload?.storyId, payload?.sceneId, panelStateService, t]);
+        launchStoryRowInDevMode({ context: editor.context, storyId, sceneId, blockId });
+    }, [distrusted, editor.context, payload?.storyId, payload?.sceneId, t]);
 
     // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
@@ -2061,6 +2034,36 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             }]
             : []))
         : [];
+    // Every other scene this story has. The rows keep their ids on the way over, so the submenu is
+    // the whole gesture: no dialog, and nothing to confirm afterwards.
+    const menuSceneTargets = menuTarget
+        ? listScenesInDocumentOrder(document)
+            .filter(target => target.id !== scene.id)
+            .map(target => ({
+                id: `move-to-scene-${target.id}`,
+                label: target.name,
+                onClick: () => editor.moveSelectionToScene(target.id),
+            }))
+        : [];
+    // Who the selected lines could speak as: the cast, and the bare names already in this story.
+    // A name that is not in the document yet is not offered here - inventing one is what the `#`
+    // chooser on a single line is for, and a bulk change is not the place to name somebody new.
+    const menuSpeakerChoices = menuTarget
+        ? [
+            ...getSpeakerCandidates(editor.characters, [], "").flatMap(candidate => (candidate.kind === "character"
+                ? [{
+                    id: `set-speaker-${candidate.key}`,
+                    label: candidate.name,
+                    onClick: () => editor.setSpeakerForRows(menuSelectionIds, { characterId: candidate.key }),
+                }]
+                : [])),
+            ...editor.tempSpeakers.map(speaker => ({
+                id: `set-speaker-name-${speaker.name}`,
+                label: t("story.rowMenu.speakerNameOnly", { name: speaker.name }),
+                onClick: () => editor.setSpeakerForRows(menuSelectionIds, { speakerName: speaker.name }),
+            })),
+        ]
+        : [];
     const rowMenuItems: ContextMenuDef = menuTarget ? [
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
         { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
@@ -2074,6 +2077,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             label: tn("story.rowMenu.bindSpeaker", menuSpeakerRowIds.length),
             ...freeze.menuRow(),
             submenu: menuSpeakerTargets,
+        }] : []),
+        // Absent rather than greyed when the story has one scene, for the same reason "Link speaker"
+        // is: this is a rung the author reaches for, not a standing property of a row.
+        ...(menuSceneTargets.length > 0 ? [{
+            id: "move-to-scene",
+            label: t("story.rowMenu.moveToScene"),
+            ...freeze.menuRow(),
+            submenu: menuSceneTargets,
+        }] : []),
+        ...(menuSpeakerChoices.length > 0 ? [{
+            id: "change-speaker",
+            label: t("story.rowMenu.changeSpeaker"),
+            ...freeze.menuRow(),
+            submenu: menuSpeakerChoices,
+        }] : []),
+        { id: "sep-scene", separator: true },
+        // Only at a top-level row: a row inside a container belongs to that container's structure,
+        // and half a condition is not a scene.
+        ...(scene.rootBlockIds.includes(menuTarget) ? [{
+            id: "split-scene",
+            label: t("story.rowMenu.splitScene"),
+            ...freeze.menuRow(),
+            onClick: () => void editor.splitSceneAtRow(menuTarget),
         }] : []),
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
@@ -2131,6 +2157,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             // passage out of the script yield the rows behind it instead of the text on screen.
             onKeyDown={scriptOpen ? undefined : freeze.run(editor.handleKeyDown)}
             onCopy={scriptOpen ? undefined : editor.copySelectionToClipboard}
+            onCut={scriptOpen ? undefined : freeze.run(editor.cutSelectionToClipboard)}
             onPaste={scriptOpen ? undefined : freeze.run(editor.handlePaste)}
         >
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
@@ -2192,9 +2219,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The same scene, read as a script. It is tinted the way the other view controls
                         are when they are on, because that is what it is — a way of looking at the
                         page, not a pane that opens beside it. Icon-only for the same reason they are:
-                        one glyph nothing else here can be. The only way into the script view, so with
-                        NarraLang hidden the scene stays rows. */}
-                    {NARRALANG_UI_ENABLED ? (
+                        one glyph nothing else here can be. The only way into the script view, so a
+                        launch without the NarraLang condition leaves the scene as rows. */}
+                    {narralangUiEnabled() ? (
                         <button
                             type="button"
                             onClick={() => setScriptOpen(open => !open)}
@@ -2267,10 +2294,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 sitting under a `hidden` that overrides them, so the column has no size to contribute
                 while the script has the body. */}
             <div className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}>
-            {/* The prose surface. A custom workspace background clears every base `bg-surface` fill
-                (see styles.css), which is right for chrome and wrong for the text you are reading,
-                so this one paints its own — at the `editor.surfaceOpacity` the author chose. Opaque
-                by default; `.nl-editor-surface` is the one rule the three reading surfaces share. */}
+            {/* The prose surface. Sunken without a wallpaper; with one, it keeps a plate only if the
+                author turned on the editor background in the background dialog, at the opacity set
+                there. `.nl-editor-surface` is the one rule the reading surfaces share. */}
             <div
                 ref={editor.scrollContainerRef}
                 className="nl-editor-surface min-h-0 flex-1 overflow-auto py-2"

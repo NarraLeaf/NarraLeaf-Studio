@@ -1,0 +1,280 @@
+# Command-line builds
+
+`narraleaf-studio --build <project>` produces one build of one project with no interface at all and
+exits with a code. It exists for a machine with nobody at the keyboard: a build agent, a Mac reached
+over SSH, a scheduled release job.
+
+It is an entry point, not a second build system. Everything that decides whether a project may ship
+already runs in the workspace, and this reuses it where it is — a check that answered differently
+depending on whether a person or a script started the build would be worse than having no script at
+all. What belongs to this entry point alone is the command line, the exit codes and the report.
+
+The implementation is `src/main/app/application/commandLineBuild.ts`; the flags are parsed in
+`commandLine.ts` and turned into one request by `commandLineBuildPlan.ts`.
+
+Two other entry points share this one's shape, its exit codes and its profile flag —
+`--test` and `--lint`, in [command-line checks](command-line-checks.md). A launch answers one
+question, so a build and a check on one line are refused.
+
+## One invocation, one artifact set
+
+`--build` is deliberately not a matrix. A run that produced several targets would have to answer
+"what does the exit code mean when two of five failed", and every answer to that is worse than
+running the command twice. One variant, one platform, one format, one exit code.
+
+## The flags
+
+| Flag | What it takes | Default |
+| --- | --- | --- |
+| `--build` | A project folder, or the name of a recently-opened project | — (required) |
+| `--build-variant` | A build variant's name | `main`, the release variant |
+| `--build-target` | `windows`, `macos`, `linux`, `web`, `android`, `ios` | the host's own platform |
+| `--build-format` | One format of that platform | the platform's first (`zip` for the desktops and the web, `apk`, `ipa`) |
+| `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `x64` otherwise |
+| `--build-output` | Where the artifacts land; relative to the working directory | `<project>/dist` |
+| `--build-report` | Where to write the JSON report | no report file |
+| `--build-allow-unsigned` | — | the run stops rather than shipping unsigned |
+| `--build-user-data-dir` | A profile folder for this run | the machine's own profile |
+| `--build-signing` | A JSON file naming this run's signing credentials | the project's own selection, from the machine's vault |
+| `--build-setting` | `key=value`, repeatable; `build.*` keys only | the profile's settings |
+| `--build-plugin=` | A plugin to switch on for this run, by name or id; repeatable | the profile's own plugins; see [below](#plugins-a-scratch-profile-has-switched-off) |
+
+Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--build-plugin`, which
+takes only `--build-plugin=value`: a plugin's name is free text, like the names the
+[check flags](command-line-checks.md#the-flags) take only that way.
+
+> **On Windows, write a value containing a colon as `--flag=value`.** A launch dies before Studio
+> writes anything when a bare argument looks like `scheme:rest`: `--build-variant a:b` exits with no
+> output and no report, while `--build-variant=a:b` is read normally. A variant called
+> `Next Fest: Demo` is `--build-variant="Next Fest: Demo"`.
+
+A companion flag given without `--build` is refused rather than ignored: the alternative is a launch
+that opens the editor while the script that wrote the line believes it is building.
+
+### Naming the variant
+
+`--build-variant` takes the variant's **name** — `main` for the release build, or whatever the
+author called theirs in **Project ▸ App** — matched without regard to case, exactly as
+`--test-variant` does in [command-line checks](command-line-checks.md). A name the project does not
+have is refused before anything is opened, and the refusal lists the ones it has:
+
+```text
+[error] Build: The project has no build variant "Dmeo". It has: main, Demo, Steam.
+[error] Build: invocation (exit 2)
+```
+
+The id a variant is stored under is a generated uuid that no part of Studio shows, and it is not a
+second spelling: given one, the run is refused with the name to write instead. Nothing Studio shipped
+ever wrote the id form down — the documented value was always `main` — so there is no old line for
+this to keep working.
+
+```text
+[error] Build: --build-variant names a variant by its name, not by the id it is stored under. That one is called "Demo": write --build-variant=Demo.
+```
+
+The log and the report say which variant was built by the same name: `building My Game as variant
+"Demo"`, and `request.variant` is `"Demo"`.
+
+## Exit codes
+
+| Code | Outcome | What it means |
+| --- | --- | --- |
+| 0 | `success` | The build ran and wrote its artifacts. |
+| 1 | `build-failed` | The checks passed and the build did not finish. |
+| 2 | `invocation` | The command line could not be acted on. Nothing was opened. |
+| 3 | `gate-refused` | A check refused the project. Retrying changes nothing until the project does. |
+| 4 | `studio-failed` | Studio could not get far enough to answer. Says nothing about the project. |
+
+`studio-failed` also covers a profile that cannot run the project — a plugin the project declares
+that this profile has not got, has switched off or cannot start — and a run in which something asked
+a question nobody was there to answer. A build loads the project's plugins exactly as a check does;
+both are set out in [command-line checks](command-line-checks.md#plugins). And it covers Studio
+itself failing, from the moment the process starts: a profile folder it cannot use, an internal
+error, a build that stops making progress for the fifteen-minute silence deadline plus a minute.
+None of them puts a box on screen; each ends the build with a line saying what the box would have
+said, and a report. They are set out in
+[command-line checks](command-line-checks.md#when-studio-itself-fails), and a build meets them the
+same way.
+
+The distinction that matters most is between `gate-refused` and `studio-failed`. A project whose
+story has an unresolved command is a project someone has to change; Studio failing to open the
+project is a machine someone has to look at. Collapsing them would make "retry the job" the right
+answer half the time and a waste of ten minutes the other half.
+
+## The report
+
+`--build-report <file>` writes a JSON document for **every** outcome, including the ones that never
+opened a window, so a job that reads the report always finds one. It carries the request as it was
+resolved, every preflight finding, the artifacts and their sizes, the whole build console with
+timestamps, and two blocks a job would otherwise have to grep English for:
+
+- `signing` — whether this platform *can* carry a signature, whether this build did, whether
+  `--build-allow-unsigned` was passed, and (when it was signed) whether the credential came from the
+  machine's vault or from `--build-signing`.
+- `experimental` — what experimental mode did to this run. A debuggable build looks like any other
+  build on disk, so this is the only place a job that archived one can find out.
+
+`plugins` lists what `--build-plugin` named, each by the name the plugin gives itself, with its
+manifest id, its version and `enabledForRun` — false for one the profile already ran.
+
+The shape is `CommandLineBuildReport` in `src/shared/types/commandLineBuild.ts`. Fields are added
+without a schema bump; `schema` changes only when one changes meaning.
+
+## Running on a machine somebody else is using
+
+Electron keys its single-instance lock on the profile directory, so a second Studio on the same
+profile is refused and exits. That is right for a launch that wants a window — the running Studio
+opens it — and useless for one that wants an exit code, so a build refuses instead, with
+`studio-failed` and a report, rather than running inside somebody's session.
+
+`--build-user-data-dir <folder>` gives the run a profile of its own and, with it, a lock of its own.
+A dedicated agent does not need it. A machine that is both an agent and somebody's computer does.
+
+**A different profile is a different everything.** The signing vault lives under it, and so do the
+machine's build settings — a scratch profile has neither. That is what the next three sections are
+for. So does the plugin list: a scratch profile has the plugins Studio ships with **Gallery** and
+**Menu Bar** switched off, and a project that declares one of them exits `studio-failed` there unless
+the run switches it on ([below](#plugins-a-scratch-profile-has-switched-off)).
+
+Whether the *download* caches come with it depends on the install. `resolveCacheRoot` puts them
+beside the executable where the platform allows that, and under the profile where it does not:
+macOS never allows it (writing into the bundle breaks its ad-hoc signature), nor does an AppImage,
+nor does a per-machine Windows install the user cannot write to. So a throwaway profile on a Mac
+re-downloads the Electron distribution it needs, and one on an ordinary Windows install does not.
+
+## Signing
+
+Two routes, and a build agent will use one of them.
+
+**The machine's vault.** Import the credential once through the Build dialog's Signing section; the
+project stores its id and every later build on that machine picks it up. Nothing on the command line
+is needed. This is per profile, so it does not survive `--build-user-data-dir`.
+
+**`--build-signing <file>`.** A JSON document naming the credentials for this run only. Nothing is
+imported, so a machine that built once is no closer to being able to sign than it was before — which
+is the point, because a credential a job carried in should leave with it. What the file names
+overrides the project's selection for those platforms.
+
+```json
+{
+  "windows": { "kind": "windows-pfx", "file": "certs/app.pfx", "passwordEnv": "PFX_PASSWORD" },
+  "macos": {
+    "kind": "macos-apple",
+    "p12File": "certs/developer-id.p12",
+    "p12PasswordEnv": "P12_PASSWORD",
+    "notaryKeyFile": "certs/notary.p8",
+    "notaryKeyId": "ABCD1234",
+    "notaryIssuerId": "6a0e1111-2222-3333-4444-555566667777"
+  },
+  "linux": { "kind": "linux-gpg", "keyId": "8A1C0000" }
+}
+```
+
+One entry per signing platform, each naming a credential kind and that kind's own fields — the same
+fields the vault stores. File fields are resolved against the file's own directory, so a credentials
+bundle can be copied onto an agent whole and still work wherever it lands.
+
+Every secret may be given inline or, better, as `<field>Env` naming an environment variable to read
+it from. Both spellings exist because both jobs exist: a file assembled by a secret manager already
+holds the value, and a file checked into a pipeline's own configuration must not. Giving both is
+refused rather than resolved by precedence.
+
+A file that holds secrets inline is a file with the same weight as the key beside it. Studio never
+logs it, never copies it, and writes no part of it into the report — but it cannot enforce its
+permissions, so that is the job's business.
+
+Whichever route it came from, a target that could carry a signature and has no credential reports an
+`unsigned` finding, and the run stops on it. The Build dialog shows that to an author before they
+commit; a command line has nobody to show, so the acceptance has to be stated with
+`--build-allow-unsigned`.
+
+## Trust
+
+A project Studio did not create cannot run until it is trusted, and a build runs the project's
+code. Naming a project to `--build` counts as trusting it: the folder is recorded on this machine's
+profile as trusted by the operator, and it appears under Trusted projects in Settings like a project
+trusted there by hand. A project already waiting on that page is trusted by the same invocation;
+remove it there to return it to waiting.
+
+## Settings a build reads
+
+A build reads a few machine-level settings — which Electron mirror to download from, where the
+packager's own binaries come from, the Zig mirror. A run in a scratch profile has none of them.
+
+```sh
+--build-setting build.electronMirror=https://mirror.example/electron/
+```
+
+Repeatable. Restricted to the `build.` namespace: the flag exists to make a throwaway profile usable
+for a build, not to be a general way of writing over whatever a person configured. The values are
+read for the run and written nowhere. An empty value (`build.electronMirror=`) means the official
+source, which is how a run overrides a mirror the profile has set.
+
+The build console names the settings a run was given by key only, and the report carries none of
+them. Their values are URLs a job assembled, and a mirror URL carrying an access token is a token in
+a file somebody archives.
+
+## Plugins a scratch profile has switched off
+
+A build loads the plugins the profile runs, as a check does
+([command-line checks](command-line-checks.md#plugins)), and a project made from the starter template
+declares Gallery — which a fresh profile has switched off. `--build-plugin` switches a plugin on for
+this run:
+
+```sh
+--build-plugin=Gallery
+```
+
+Repeatable, one plugin per flag, named by the name the plugin list shows or by its manifest id.
+**Nothing is written to the profile**: the plugin is loaded, counted by the checks and packed into
+the game as if it had been switched on, and the profile's plugin list is left as it was. A plugin
+whose permissions the profile has never granted is refused rather than granted on the run's behalf;
+the plugins Studio ships are granted when it installs them, so Gallery and Menu Bar never are. Every
+refusal, and a named plugin that fails to start, is `studio-failed`. The rules are the checks' own,
+set out in [command-line checks](command-line-checks.md#switching-a-plugin-on-for-one-run).
+
+## Nothing appears on screen, and nothing needs a display
+
+The operator may be using this machine, and an agent has no screen at all. Four separate things had
+to be told: the workspace window is created hidden and never focused; a failed load does not reveal
+the home screen; the output folder is never opened in the file manager; and the window may not put
+up a native dialog when its page crashes, which would otherwise block the run on an answer nobody is
+there to give. Nothing else may ask a question either — a file picker, a plugin's permission prompt,
+a workspace dialog — and the first one asked ends the run with `studio-failed`, naming what asked
+([command-line checks](command-line-checks.md#nothing-is-asked)). Nor does Studio's own failure: a
+profile it cannot start in, or an internal error, ends the build with `studio-failed` instead of
+an error box ([command-line checks](command-line-checks.md#when-studio-itself-fails)).
+
+Two more things make a headless host work at all:
+
+- **The GPU is off for a build.** A machine reached over SSH has no window server for a GPU process
+  to attach to; on macOS that is `GPU process isn't usable. Goodbye.` and a launch that never
+  becomes ready. Software rendering costs a hidden window nothing worth measuring, so this is
+  unconditional for `--build` rather than a flag somebody has to know to pass.
+- **Icons are converted in-process.** Handed a PNG, electron-builder converts it to `.icns`/`.ico`
+  by running its converter with `process.execPath` — which inside Studio starts a *second* Electron,
+  and on a machine with no window server that Electron dies and takes the build with it
+  (`ERR_ELECTRON_BUILDER_CANNOT_EXECUTE`). Studio writes the containers itself before the packager
+  starts, from the project's icon, and caches them under `.nlstudio/build/desktop-icons/`. Handed a
+  file that already carries the target extension, electron-builder skips its converter entirely.
+
+## What a host can build
+
+macOS builds require a Mac; Linux builds require a Unix host. `--build-target` refuses anything else
+before opening the project, with the same sentence the Build dialog uses — it is the same fact.
+
+## Worked example
+
+```sh
+narraleaf-studio \
+  --build /srv/projects/my-game \
+  --build-target macos --build-format dmg --build-arch universal \
+  --build-output /srv/artifacts/my-game \
+  --build-report /srv/artifacts/my-game/report.json \
+  --build-user-data-dir /var/lib/narraleaf-agent/profile \
+  --build-signing /run/secrets/signing.json \
+  --build-setting build.electronMirror=https://mirror.example/electron/ \
+  --build-plugin=Gallery
+```
+
+How that line is delivered to the machine — SSH, a CI runner, a scheduler — is outside Studio.

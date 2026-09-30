@@ -42,7 +42,13 @@ export type MiniPreviewNodeData = {
 
 export type BlueprintLayerPreviewModel = {
     graphName: string | null;
-    emptyReason?: "noLayer" | "emptyLayer";
+    /**
+     * Why there is nothing to draw. `script` is not an absence: the slot has logic, written as a
+     * file rather than as a graph, and {@link scriptFileName} names it.
+     */
+    emptyReason?: "noLayer" | "emptyLayer" | "script";
+    /** The file a script slot runs, without its directory. Set only when `emptyReason` is `script`. */
+    scriptFileName?: string;
     nodes: Node<MiniPreviewNodeData>[];
     edges: Edge[];
 };
@@ -258,13 +264,25 @@ export function resolveFirstBlueprintLayerPreview(
         return null;
     }
     const blueprint = localBp.getBlueprintDocument().blueprints[blueprintId];
-    if (!blueprint || blueprint.program.kind !== "graph") {
+    if (!blueprint) {
         return null;
     }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
 
     const eventId = listBlueprintEventIds(graphs)[0];
     const eventLayer = eventId ? graphs.events[eventId] : undefined;
+    // A script layer has no graph, and answering "nothing" for it drew the same card as a slot with
+    // no logic at all - the first place an author looks to ask whether a control does anything.
+    if (eventLayer?.script) {
+        const { scriptRef } = eventLayer.script;
+        return {
+            graphName: null,
+            emptyReason: "script",
+            scriptFileName: scriptRef.split("/").pop() ?? scriptRef,
+            nodes: [],
+            edges: [],
+        };
+    }
     if (eventLayer) {
         return buildPreviewModel(eventLayer.graph, eventLayer.name, nodeCatalog);
     }

@@ -15,7 +15,7 @@
  * live project, and the pack compiler inlines the same data into the bundle.
  */
 
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { pluginStoreNamespace } from "@shared/utils/pluginStorage";

@@ -1,4 +1,4 @@
-import { promises as fs } from "fs";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { readFontCoverage } from "@shared/typography/fontCoverage";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";

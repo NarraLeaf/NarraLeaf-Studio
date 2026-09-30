@@ -8,6 +8,7 @@ import {
     type MutableRefObject,
     type ReactNode,
 } from "react";
+import { useIsPresent } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
@@ -38,6 +39,7 @@ import {
     type SurfaceLifecycleOrchestrator,
 } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
+import { useReportLeavingSurface } from "./SurfaceStackBox";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { HostAdapterBundle, PageProps } from "./types";
 
@@ -68,6 +70,11 @@ type AppSurfaceLayerCommonProps = {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    /**
+     * Whether the host has seen this entry's hidden prepaint finish - the moment it is revealed and
+     * its enter animation starts. The surface's blueprint lifecycle, its keys and its pointer input
+     * all start here.
+     */
     blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
     /**
@@ -84,7 +91,6 @@ type AppSurfaceLayerCommonProps = {
     keyboardOwner: boolean;
     /** Paint a dimming sheet behind this entry's own background. */
     scrim?: boolean;
-    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
 };
@@ -114,31 +120,54 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         active,
         keyboardOwner,
         scrim = false,
-        onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
     } = props;
-    /**
-     * The entry whose arrival has finished, if it is this one.
-     *
-     * Deliberately not "is this entry interactive": arriving happens once per entry, while `active`
-     * goes both ways for as long as the entry lives - a modal layer opening over it takes input
-     * away, and that layer closing hands it back. Folding the two together left the second half
-     * unreachable, because the only thing that could set it was a callback that had already fired.
-     *
-     * Stored as the key it was observed for, in the same shape as the subscription flag below, so a
-     * new entry in this slot starts over without a reset step to forget.
-     */
-    const [enteredEntryKey, setEnteredEntryKey] = useState<string | null>(null);
     const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
-    const enteredThisEntry = enteredEntryKey === entry.key;
-    const effectiveInteractive = active && enteredThisEntry;
-    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady;
+    /**
+     * Whether the presence group still holds this entry, rather than playing it out. An entry that
+     * has been removed is drawn with the last props it was given - `active` included, frozen at
+     * whatever it was the moment it left - so this is the only reliable word that it is leaving.
+     */
+    const isPresent = useIsPresent();
+    /**
+     * Whether this entry takes pointer input: it is the one input goes to, it is on screen, and it
+     * is not on its way out.
+     *
+     * On screen, not finished arriving. Pointer input used to wait for the page's enter animation to
+     * report complete, and for all of that time a press on the page was lost without a trace: the
+     * elements are hit (they take `pointer-events` back from the layer so a click stops where the
+     * picture is), but no handler is attached to them yet. A title screen fading in is exactly when a
+     * player presses Start, and under a Dev Mode boot the wait stretched to 0.2-0.6 s after the
+     * title's first frame - so the first press, for anyone quick, did nothing at all.
+     *
+     * Nothing else on the page ever waited: its keys, its switches, sliders and list rows, and every
+     * Game UI slot answer as soon as they are on screen, and this now opens with the reveal too.
+     * An author who wants a page to ignore input while it is still arriving has `Is Surface Entering`
+     * for that; the runtime deciding it for every page, and for the mouse alone, is what was wrong.
+     *
+     * Deliberately still separate from `active`, which goes both ways for as long as the entry lives -
+     * a modal layer opening over it takes input away, and that layer closing hands it back.
+     */
+    const effectiveInteractive = active && blueprintLifecycleReady && isPresent;
+    /**
+     * Whether this entry's elements hear keys: the same rule, with keyboard ownership for `active`.
+     *
+     * Ownership is frozen with the other props when the entry leaves, at what it was in the last
+     * render that still had the entry on the stack. An exit that begins after the keys have moved on
+     * leaves it false, but an entry removed in the same render that took the stack from it - Back
+     * to a running game, a layer being hidden - left still owning them, and every key handler on its
+     * elements went on answering for as long as the page faded out.
+     */
+    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady && isPresent;
+    // While this entry fades out, nothing on it can be pressed, so a press falls through to whatever
+    // is under it; the box around the stack keeps that from being the game stage.
+    useReportLeavingSurface(entry.key, !isPresent);
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
     const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
     // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
@@ -257,10 +286,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             if (entryKey !== entry.key) {
                 return;
             }
-            // Leaving un-arrives the entry, which drops it out of the readiness report below. An
-            // entry that never finished arriving is already out of it, and React skips the
-            // re-render, so there is nothing to report either way.
-            setEnteredEntryKey(null);
+            // Input needs nothing from here: the presence group has already said this entry is
+            // leaving, which takes it out of `effectiveInteractive` and out of hit testing.
             runTransitionCommands(lifecycleRef.current.beforeExit(hostAdapterBundle.runtimeScopeId, surface.id));
         },
         [
@@ -272,11 +299,19 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         ],
     );
 
+    const handleReturn = useCallback(
+        (entryKey: string) => {
+            if (entryKey === entry.key) {
+                runTransitionCommands(lifecycleRef.current.returned(hostAdapterBundle.runtimeScopeId));
+            }
+        },
+        [entry.key, hostAdapterBundle.runtimeScopeId, lifecycleRef, runTransitionCommands],
+    );
+
     const handleEnterComplete = useCallback(
         (entryKey: string) => {
             if (entryKey === entry.key) {
                 runTransitionCommands(lifecycleRef.current.enterComplete(hostAdapterBundle.runtimeScopeId, surface.id));
-                setEnteredEntryKey(entry.key);
             }
             onEnterComplete(entryKey);
         },
@@ -291,33 +326,19 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     );
 
     /**
-     * Tell the host whether this entry takes input, in both directions, from the same expression the
-     * layer is rendered with - so what the host believes cannot drift from what is on screen. Split
-     * across the transition callbacks it used to be, only the losing direction had anywhere to fire
-     * from: going inert had an owner, coming back did not. (Unmount is the exception, below: there
-     * is no render left to derive it from.)
-     *
-     * Pointer state is dropped on the way out only. An entry that is arriving has none to drop, and
-     * one being handed input back has none left from when it lost it.
+     * Drop the entry's pointer state - hover, press - when input is taken away from it, and when it
+     * unmounts. On the way out only: an entry that is arriving has none to drop, and one being handed
+     * input back has none left from when it lost it.
      */
     useEffect(() => {
         if (!active) {
             widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         }
-        onInteractionReadyChange(entry.key, active && enteredThisEntry);
-    }, [
-        active,
-        enteredThisEntry,
-        entry.key,
-        hostAdapterBundle.runtimeScopeId,
-        onInteractionReadyChange,
-        widgetRuntimeStore,
-    ]);
+    }, [active, hostAdapterBundle.runtimeScopeId, widgetRuntimeStore]);
 
     useEffect(() => () => {
         widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
-        onInteractionReadyChange(entry.key, false);
-    }, [entry.key, hostAdapterBundle.runtimeScopeId, onInteractionReadyChange, widgetRuntimeStore]);
+    }, [hostAdapterBundle.runtimeScopeId, widgetRuntimeStore]);
 
     return (
         <SurfaceAnimationLayer
@@ -337,8 +358,10 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             surfaceKind={surface.kind}
             resolveExit={resolveExit}
             interactive={effectiveInteractive}
+            inertWhileLeaving
             onPrepaintReady={onPrepaintReady}
             onBeforeExit={handleBeforeExit}
+            onReturn={handleReturn}
             onEnterComplete={handleEnterComplete}
         >
             <SurfaceLifecycleBoundary
@@ -389,17 +412,22 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
 
 export function AppSurfaceLayerWithAdapter(props: AppSurfaceLayerCommonProps & {
     core: BlueprintRuntimeCore | null;
-    createHostAdapterBundle: (entry: AppSurfaceLayerNavEntry, surface: UISurface) => HostAdapterBundle | null;
+    /**
+     * The host this entry is drawn with. Looked up rather than built here, because the app reaches
+     * the same entry from outside the layer - a key press, the menu bar, a window event - and has
+     * to reach the host the page's own graphs run on, not a second one beside it.
+     */
+    hostAdapterBundleFor: (entry: AppSurfaceLayerNavEntry, surface: UISurface) => HostAdapterBundle | null;
 }) {
     const {
         core,
         entry,
         surface,
-        createHostAdapterBundle,
+        hostAdapterBundleFor,
     } = props;
     const hostAdapterBundle = useMemo(
-        () => createHostAdapterBundle(entry, surface),
-        [createHostAdapterBundle, entry, surface],
+        () => hostAdapterBundleFor(entry, surface),
+        [hostAdapterBundleFor, entry, surface],
     );
     if (!hostAdapterBundle || !core) {
         return null;

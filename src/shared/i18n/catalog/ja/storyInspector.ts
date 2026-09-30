@@ -554,6 +554,7 @@ export const storyInspector = {
         xOffset: "X のずれ",
         yOffset: "Y のずれ",
         params: "パラメータ",
+        fromCharacter: "キャラクターから",
     },
 
     background: {
@@ -564,7 +565,6 @@ export const storyInspector = {
         change: "変更",
         select: "選択",
         clearImage: "画像を外す",
-        assetError: "画像アセットを解決できなかった：{error}",
         selectImageTitle: "背景画像を選択",
     },
 

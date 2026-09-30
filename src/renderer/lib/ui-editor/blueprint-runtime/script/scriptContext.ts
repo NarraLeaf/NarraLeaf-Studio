@@ -1,0 +1,275 @@
+/**
+ * What a script blueprint is handed when it runs: the `ctx` of each of the three tiers.
+ *
+ * A script blueprint is the TypeScript frontend of the same slot a visual graph fills. It does not
+ * get a capability surface of its own; it gets the one the slot already has, because the runtime
+ * that serves the slot is the same either way. So nothing here is designed. Every member is the
+ * type of something an adapter already hands a graph, taken verbatim, and the file's job is to say
+ * which adapter serves which tier and to put a name on the parts of the execution context that a
+ * graph reads through its nodes.
+ *
+ * # Two tiers, by contract
+ *
+ * The tier follows from `blueprintContract(owner).invocation` and nothing else:
+ *
+ *  - `uiEvent`      -> {@link GameScriptContext}. The whole host API, the surface-bound extras
+ *                      that live on the adapter beside it, and per-drawing locals.
+ *  - `storyCall`    -> {@link StoryScriptContext}. What `buildStoryActionHostAdapter` gives a story
+ *                      row: the story's own variable stores and app persistence. No navigation, no
+ *                      game, no widget, no sound - a row that navigated would be a second way to
+ *                      leave a scene. The synchronous modes (`value`, `condition`) get
+ *                      {@link StorySyncScriptContext}, which drops the one asynchronous member.
+ *
+ * There is no third tier: a value binding is written as a blueprint and not as a script, refused
+ * by the service, the command line and the dialog alike. One was designed - a whitelist of reads
+ * the value runtime could re-run - and it is deliberately not here. The value runtime re-runs a
+ * binding when something it read changes, and it learns what was read from the graph's own node
+ * resolvers calling `trackDependency`; a script has no nodes, so every read would have to report
+ * its own dependency, and getting that wrong is a binding that quietly stops updating. Weighed
+ * against one more surface for an author to hold, the answer was no. See `BlueprintValueEvaluator`.
+ *
+ * # Where the anchor goes
+ *
+ * The anchor - project, surface, element, component element, story row - does not change which
+ * host serves the script, so it does not change the tier. It changes what the script is *about*,
+ * and that is {@link ScriptSelf}: the drawing this run belongs to, with the list row and component
+ * params it was drawn with. The few adapter members that only exist for surface-bound owners
+ * (`broadcast`, the surface transition readers) are typed against the self, so a project script
+ * sees them as `undefined` rather than as a method that throws.
+ *
+ * # Smallest surface first
+ *
+ * Where the draft had a choice, it chose the smaller surface. Adding a member later costs an
+ * author nothing; removing one is the rework this file exists to avoid.
+ */
+
+import type { StoryLiteralValue } from "@shared/types/story";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { StoryVariableRuntimeAccess, UIHostAdapterBlueprintRuntime } from "@/lib/ui-editor/runtime/types";
+
+// ---------------------------------------------------------------------------
+// Self: which drawing this run belongs to
+// ---------------------------------------------------------------------------
+
+/**
+ * The widget types an element script can be written for: every built-in type whose logic table
+ * says it supports a private blueprint. Held to that table by `scriptContext.test.ts`.
+ *
+ * A list rather than `string` because the events a widget script may export follow from its type,
+ * and the generated half of the declarations (the project's own element ids) narrows further.
+ */
+export const SCRIPT_WIDGET_TYPES = [
+    "nl.container",
+    "nl.text",
+    "nl.image",
+    "nl.video",
+    "nl.puppet",
+    "nl.button",
+    "nl.textInput",
+    "nl.slider",
+    "nl.switch",
+    "nl.list",
+    "nl.frame",
+    "nl.dialog.sentence",
+    "nl.notification.list",
+    "nl.choice.list",
+    "nl.nvl.list",
+    "nl.nvl.texts",
+] as const;
+
+export type BuiltinScriptWidgetType = (typeof SCRIPT_WIDGET_TYPES)[number];
+
+/**
+ * The widgets loaded plugins contribute, each with the events a script on it may export - event id
+ * to the `event` argument it is called with.
+ *
+ * Empty here, on purpose: a plugin's widget is not Studio's to declare. The project half of the
+ * declarations (`scripts/.narraleaf/project.d.ts`) fills it in from the plugins loaded when it was
+ * written, by declaring this same interface again inside the module, which TypeScript merges. So
+ * `WidgetCtx<"acme.rating.stars">` and `WidgetHandler<"acme.rating.stars", "rated">` type-check in a
+ * project that uses that plugin's widget, and in no other.
+ */
+export interface PluginScriptWidgets {}
+
+/** A widget type a loaded plugin contributes, as {@link PluginScriptWidgets} names it. */
+export type PluginScriptWidgetType = Extract<keyof PluginScriptWidgets, string>;
+
+export type ScriptWidgetType = BuiltinScriptWidgetType | PluginScriptWidgetType;
+
+/**
+ * The list row this drawing was drawn for, when it was drawn by a list.
+ *
+ * The same record the graph's `Get List Item` family reads (`ctx.listItemScope`), minus the list's
+ * declared item shape, which the generated declarations carry instead.
+ */
+export type ScriptListRow = Pick<UIListItemScope, "item" | "index" | "count" | "key" | "selected">;
+
+/**
+ * Where the running script lives, and what it was drawn with.
+ *
+ * Mirrors `BlueprintAnchor` position for position, carrying the runtime facts a graph reads off
+ * `ctx.executionOwner`, `ctx.listItemScope` and `ctx.instanceKey`:
+ *
+ *  - an element is one *drawing* of its record - a list draws it once per row, a component once per
+ *    placement - and `row` says which row this is, or `null` when nothing drew it per row;
+ *  - a component element carries the placement's resolved `params`, by param id, which is what
+ *    `Get Component Param` reads.
+ *
+ * `elementId` is the element's own id, never the drawing address the runtime keys widget writes by.
+ * A script addresses widgets by element id and the runtime binds the drawing: `ctx.host` reads every
+ * id it is handed from the drawing the handler runs in, through the same `addressWidgetFromExecution`
+ * the widget nodes use (`bindHostApiToDrawing` in `scriptRuntime.ts`). So from a row's Item Click the
+ * row's own label is that row's, a panel beside the list is the panel, and the list is the list.
+ */
+export type ScriptSelf =
+    | { kind: "project" }
+    | { kind: "surface"; surfaceId: string }
+    | {
+          kind: "element";
+          surfaceId: string;
+          elementId: string;
+          widgetType: ScriptWidgetType;
+          row: ScriptListRow | null;
+      }
+    | {
+          kind: "componentElement";
+          componentId: string;
+          elementId: string;
+          widgetType: ScriptWidgetType;
+          params: Readonly<Record<string, string>>;
+          row: ScriptListRow | null;
+      };
+
+export type ScriptElementSelf = Extract<ScriptSelf, { kind: "element" | "componentElement" }>;
+
+// ---------------------------------------------------------------------------
+// Game tier: uiEvent invocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Sending broadcasts, and asking who is listening.
+ *
+ * On the adapter rather than in the host API (`dispatchBroadcastEvent`, `getBroadcastListenerCount`),
+ * which is why it is a member of its own here. The sender is this script's element, filled in by
+ * the runtime the way `Send Broadcast` fills it from `executionOwner`.
+ */
+export type ScriptBroadcast = {
+    send: (event: string, data?: unknown) => Promise<void>;
+    listenerCount: NonNullable<UIHostAdapterBlueprintRuntime["getBroadcastListenerCount"]>;
+};
+
+/**
+ * Whether the surface this script is on is animating in or out.
+ *
+ * The three readers `Is Surface Entering` / `Exiting` / `Transitioning` expose, off the adapter's
+ * one `getSurfaceTransitionState`.
+ */
+export type ScriptSurfaceTransition = {
+    isEntering: () => boolean;
+    isExiting: () => boolean;
+    isTransitioning: () => boolean;
+};
+
+/**
+ * Members that exist only for a script on a surface or on one of its elements.
+ *
+ * Distributive on purpose: a handler typed against the whole {@link ScriptSelf} union sees
+ * `T | undefined` and has to check, which is the honest answer for a script that does not know
+ * where it was placed.
+ */
+type SurfaceBound<Self extends ScriptSelf, T> = Self extends { kind: "surface" | "element" } ? T : undefined;
+
+/**
+ * The context of a UI event handler: everything a graph on the same slot could reach.
+ *
+ * `host` is the blueprint host API verbatim - all sixteen families, each method honest about what
+ * the host cannot do (it throws, or answers false, the way the nodes report it). It is the same
+ * object for every self, including a component definition's: the visual palette keeps page and
+ * frame nodes out of a definition's graph, but that is a palette decision with no runtime guard
+ * behind it, and a type that hid what the runtime will serve would be lying in the other direction.
+ *
+ * `vars` is this drawing's own store, with the lifetime a graph `Var` has: one per drawing of the
+ * widget the script sits on, dropped when the widget unmounts. For a list that is the list's drawing
+ * even while it answers Item Click in one of its rows - the list is not inside its rows. A module-level `let` is one per *module*, shared by every row of a list
+ * and every placement of a component, which is the wrong answer for almost everything a widget
+ * script wants to remember. `stopPropagation` is the graph's `eventControl`: on a pointer event it
+ * keeps the parent from hearing it, on `windowCloseRequested` it is `Keep Window Open`.
+ */
+export type GameScriptContext<Self extends ScriptSelf = ScriptSelf> = {
+    self: Self;
+    /**
+     * The blueprint host API. Name a widget by its element id - `ctx.self.elementId`, or any id on
+     * the page - and it is read from the drawing this handler runs in, as a widget node reads it:
+     * inside a list row or a component placement, an element of that row or placement means this
+     * one's copy of it, and anything outside means the one on the page.
+     */
+    host: BlueprintHostApiRuntime;
+    broadcast: SurfaceBound<Self, ScriptBroadcast>;
+    surface: SurfaceBound<Self, ScriptSurfaceTransition>;
+    vars: Record<string, unknown>;
+    signal: AbortSignal;
+    stopPropagation: () => void;
+};
+
+// ---------------------------------------------------------------------------
+// Story tier: storyCall invocation
+// ---------------------------------------------------------------------------
+
+export type StoryScriptSelf = { kind: "storyRow" };
+
+/**
+ * The synchronous half of a story row's context, and the whole of it for `value` and `condition`.
+ *
+ * `scene` and `saved` are the adapter's own access pair, by variable id. Both may be written from a
+ * synchronous mode, as `Set Scene Var` and `Set Saved Var` may be placed in one: the sync rule
+ * forbids waiting, not writing.
+ */
+export type StorySyncScriptContext = {
+    self: StoryScriptSelf;
+    scene: StoryVariableRuntimeAccess;
+    saved: StoryVariableRuntimeAccess;
+    /**
+     * Log a line where the author is already looking: Dev Mode's Output panel, beside the lines a
+     * `Log` node writes.
+     *
+     * The one member of the host API a story row reaches, and it is here rather than under a `host`
+     * because this tier has no `host`: a row's context is a short flat list of what it may touch,
+     * and adding a namespace holding a single member would ask an author to learn one for nothing.
+     */
+    devtools: BlueprintHostApiRuntime["devtools"];
+};
+
+/**
+ * A story action's context.
+ *
+ * `persistent` is keyed by persistent-variable id, the way `Get Persistent` is: the runtime looks
+ * the storage key up in the project's variable table before it reaches the app persistence bridge,
+ * and refuses a value that cannot be serialised, as the bridge does. Its two calls are asynchronous,
+ * which is the whole reason the synchronous modes above do not have it - the graph's `Get
+ * Persistent` is a latent node, and a value rendered inline cannot wait.
+ */
+export type StoryScriptContext = StorySyncScriptContext & {
+    persistent: BlueprintHostApiRuntime["persistence"];
+    signal: AbortSignal;
+};
+
+// ---------------------------------------------------------------------------
+// Handlers: what each tier's entry point returns
+// ---------------------------------------------------------------------------
+
+/** A story action's return is ignored, as the `action` mode ignores a Return Value. */
+export type StoryActionHandler = (ctx: StoryScriptContext) => void | Promise<void>;
+
+/**
+ * A story value is rendered inline in the same tick as the word that shows it.
+ *
+ * The return type is a concrete literal rather than `unknown` on purpose: an `async` handler
+ * returns a `Promise`, and a `Promise` is not a {@link StoryLiteralValue}, so declaring one is a
+ * type error where the graph's `isSyncOnlyGraph` would refuse a latent node.
+ */
+export type StoryValueHandler = (ctx: StorySyncScriptContext) => StoryLiteralValue;
+
+/** A condition is tested each time its branch is reached, and coerced with `Boolean(...)`. */
+export type StoryConditionHandler = (ctx: StorySyncScriptContext) => boolean;
+

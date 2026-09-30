@@ -10,6 +10,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ActionDefinition, useRegistry } from "../../../registry";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { useTranslation } from "@/lib/i18n";
+import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 import {
     ImagePixelPreview,
     type ImagePixelPreviewControls,
@@ -139,14 +140,15 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
     const [state, setState] = useState<{
         imageData: AssetData<AssetType.Image> | null;
         loading: boolean;
-        error: string | null;
+        failure: AssetReadFailure | null;
         url: string | null;
     }>({
         imageData: null,
         loading: true,
-        error: null,
+        failure: null,
         url: null,
     });
+    const notice = useAssetReadNotice(asset?.id, state.failure);
 
     // Declared before the registration effect so that on unmount this tab is out of the map by the
     // time the group's cleanup asks whether any preview is left.
@@ -233,7 +235,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         let cancelled = false;
 
         const loadImage = async () => {
-            setState(prev => ({ ...prev, loading: true, error: null }));
+            setState(prev => ({ ...prev, loading: true, failure: null }));
 
             try {
                 const assetsService = context.services.get<AssetsService>(Services.Assets);
@@ -244,10 +246,11 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                 }
 
                 if (!result.success) {
+                    console.warn(`[assets] could not read ${asset.id}: ${result.error ?? ""}`);
                     setState({
                         imageData: null,
                         loading: false,
-                        error: result.error || t("assets.image.loadError"),
+                        failure: { code: result.code },
                         url: null,
                     });
                     return;
@@ -261,7 +264,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                 setState({
                     imageData: result.data,
                     loading: false,
-                    error: null,
+                    failure: null,
                     url: imageUrl.current,
                 });
             } catch (err) {
@@ -272,7 +275,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                 setState({
                     imageData: null,
                     loading: false,
-                    error: err instanceof Error ? err.message : String(err),
+                    failure: {},
                     url: null,
                 });
             }
@@ -293,8 +296,8 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         return <LoadingState />;
     }
 
-    if (state.error) {
-        return <ErrorState error={state.error} />;
+    if (notice) {
+        return <ErrorState error={notice} />;
     }
 
     if (!state.imageData || !state.url) {

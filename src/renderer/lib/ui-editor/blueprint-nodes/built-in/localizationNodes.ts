@@ -16,21 +16,16 @@ import {
 } from "@shared/types/blueprint/graph";
 import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
-    const raw = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const raw = resolveNodeInput(ctx, pinId);
     return raw === null || raw === undefined ? "" : String(raw);
 }
 
@@ -53,6 +48,7 @@ async function resolveNamedKeyText(ctx: NodeExecuteContext, keyName: string): Pr
 export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
+        assetNames: "assembled",
         displayName: "Get Current Language",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "get"],
@@ -103,18 +99,26 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const config = api.localization.getConfig();
             if (!config) {
-                throw new BlueprintGraphExecutionError("This project has no languages configured", ctx.node.id);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noLanguages"), ctx.node.id);
             }
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "language", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "language");
             const code = String(raw ?? "").trim();
-            if (!code || !config.locales.some(locale => locale.code === code)) {
-                throw new BlueprintGraphExecutionError(`Unknown language: ${code || "(empty)"}`, ctx.node.id);
+            if (!code) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.setLanguage"),
+                        pin: translate("blueprint.port.language"),
+                    }),
+                    ctx.node.id,
+                );
+            }
+            if (!config.locales.some(locale => locale.code === code)) {
+                // The code as the author wired it: it names no language, so there is no
+                // display name to show instead.
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.unknownLanguage", { language: code }),
+                    ctx.node.id,
+                );
             }
             await api.localization.setLocale(code);
             return { nextPort: "next" };
@@ -122,6 +126,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
+        assetNames: "written",
         displayName: "Get Text",
         category: "Localization",
         keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup"],
@@ -152,7 +157,13 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const keyName = resolvePinString(ctx, "key").trim();
             if (!keyName) {
-                throw new BlueprintGraphExecutionError("Provide a text key", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.getText"),
+                        pin: translate("blueprint.port.key"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const text = await resolveNamedKeyText(ctx, keyName);
             return {
@@ -206,6 +217,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
+        assetNames: "assembled",
         displayName: "Format Text",
         category: "Localization",
         keywords: ["localization", "format", "placeholder", "interpolate", "template", "text"],
@@ -239,13 +251,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         ],
         async execute(ctx) {
             const template = resolvePinString(ctx, "text");
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "values", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "values");
             const values = Array.isArray(raw) ? raw : raw === null || raw === undefined ? [] : [raw];
             const result = parseTranslatedText(template)
                 .map(part => {
@@ -266,6 +272,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES,
+        assetNames: "assembled",
         displayName: "Get Available Languages",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "list", "selector"],

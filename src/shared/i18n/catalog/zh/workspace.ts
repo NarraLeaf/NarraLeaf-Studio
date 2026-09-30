@@ -19,7 +19,14 @@ export const workspace = {
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
-            importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            importCounts: "已导入 {applied}（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            translationCount: {
+                other: "{count} 条翻译",
+            },
+            readFailed: "{name} 的译文无法读取",
+            alreadyAdded: "{name} 已在语言列表中",
+            sourceLocked: "{name} 是源语言；请先移除其他语言，或将其他语言设为源语言",
+            languageGone: "该语言已不在语言列表中",
         },
         settings: {
             menu: "语言设置…",
@@ -28,6 +35,9 @@ export const workspace = {
             fallbackLabel: "回退语言",
             fallbackHint: "此处缺少译文的条目将改使用该语言；该语言亦无译文时使用源语言",
             fallbackLoops: "会绕回本语言",
+            fallbackSelf: "回退语言不能是该语言本身",
+            fallbackGone: "该回退语言已不在语言列表中",
+            fallbackLoop: "{fallback} 会绕回 {name}",
         },
         exchange: {
             exportMenu: "导出翻译…",
@@ -47,12 +57,14 @@ export const workspace = {
             scopeAll: "全部",
             scopePending: "未翻译与待校对",
             exportAction: "导出",
-            exportDone: "已导出 {count} 条到 {path}",
+            exportDone: {
+                other: "已导出 {count} 条到 {path}",
+            },
             exportEmpty: "没有可导出的条目",
-            importFailed: "无法读取该文件",
             importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
-            importNoRows: "该文件中没有翻译条目",
-            importWarnings: "有 {count} 条被跳过，第一条：{first}",
+            importWarnings: {
+                other: "有 {count} 条被跳过，第一条：{first}",
+            },
             localeMismatch: "该文件标注的语言是 {declared}，导入目标为 {name}",
             localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
         },
@@ -76,6 +88,7 @@ export const workspace = {
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",
             invalidKeyName: "键名只能由字母、数字组成，中间可用点、下划线或连字符分隔",
+            keyExists: "已存在名为“{name}”的键",
             removeKey: "移除键",
             removeKeyConfirm: "移除 {name}？",
             removeKeyConfirmDetail: "该键的已有译文仍保留在语言文件中",
@@ -134,11 +147,23 @@ export const workspace = {
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
             pickupEmpty: "没有需要补录的对白",
-            importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
+            importCounts: "已关联 {linked}（{unmatched} 条未匹配，{failed} 条失败）",
+            takeCount: {
+                other: "{count} 条",
+            },
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
-            importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
-            importScriptFailed: "无法读取该录音本",
+            importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
+            scriptRowCount: {
+                other: "{count} 行",
+            },
+            importScriptSkipped: {
+                one: "有 {count} 行被跳过",
+                other: "有 {count} 行被跳过",
+            },
+            readFailed: "{name} 的配音指派无法读取",
+            alreadyAdded: "{name} 已在配音语言列表中",
+            languageGone: "该配音语言已不在列表中",
             namingTitle: "录音文件名规则",
             namingHint: "可用占位符：{tokens}；导入的音频按此名称与对白匹配",
             namingReset: "恢复默认",
@@ -280,7 +305,7 @@ export const workspace = {
         scope: {
             storyScene: "场景",
             storyMotion: "运动",
-            audioLoop: "音频标记",
+            audioLoop: "音频标记与增益",
             uiSurface: "界面",
             blueprint: "蓝图",
             project: "项目",
@@ -292,8 +317,13 @@ export const workspace = {
         entry: {
             edit: "编辑",
             storyEdit: "故事编辑",
+            storyMoveRowsToScene: "移动到其他场景",
+            storySplitScene: "场景拆分",
+            storyMergeScenes: "场景合并",
+            storySpeakerChange: "说话人变更",
             storyMotionEdit: "运动编辑",
             audioMarkers: "标记变更",
+            audioGain: "增益变更",
             surfaceEdit: "界面编辑",
             blueprintEdit: "蓝图编辑",
             replaceText: "文本替换",
@@ -316,6 +346,9 @@ export const workspace = {
         destination: "服务器",
         projectOnServer: "项目名：{name}",
         noAccountHere: "本机在该服务器上没有账号",
+        signInUnused: "该项目未使用此服务器的登录",
+        useSignIn: "使用 {name} 的登录…",
+        signOutHint: "仅该项目退出登录，使用此登录的其他项目不受影响",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
         // 向服务器问到的结果，只在有事可做时才画出来。一切正常的项目什么都不写：
@@ -342,6 +375,7 @@ export const workspace = {
         liveBlockedMerge: "完成合并后才能开始或加入实时会话",
         liveBlockedRecovery: "恢复模式下无法使用实时会话",
         liveBlockedSession: "该工作区已在一场实时会话中",
+        liveBlockedTakenOver: "该项目现已在另一个 NarraLeaf Studio 中打开",
         // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
         liveHost: "主持",
         liveGuest: "参与",
@@ -469,6 +503,19 @@ export const workspace = {
         errorOpenFailed: "无法打开该文件夹：{error}",
         notAProjectTitle: "此文件夹不是 NarraLeaf 项目",
         notAProjectDetail: "未找到 .nlproj 文件",
+        // 项目归先打开它的那个 NarraLeaf Studio 所有，直到它放开为止。关于另一个会话只写设备与时间，
+        // 因为只有这两项是作者能据以行动的。
+        projectLockedTitle: "该项目已在另一个 NarraLeaf Studio 中打开",
+        projectLockedHere: "本机自 {time} 起打开，关闭后可重试",
+        projectLockedElsewhere: "{host} 自 {time} 起打开，在该设备上关闭后可重试",
+        // 同一个项目，在本窗口打开期间被另一个 Studio 接管：此后在这里做的任何更改都不会写入。时间是对方接管的时刻。
+        projectTakenOverTitle: "该项目现已在另一个 NarraLeaf Studio 中打开",
+        projectTakenOverHere: "本机自 {time} 起打开，此窗口中的更改不再保存，关闭后可重试",
+        projectTakenOverElsewhere: "{host} 自 {time} 起打开，此窗口中的更改不再保存，在该设备上关闭后可重试",
+        // 同样被接管，但发现时对方已经关闭了该项目。时间是对方打开的时刻。
+        projectDisplacedTitle: "该项目曾在另一个 NarraLeaf Studio 中打开",
+        projectDisplacedHere: "本机于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
+        projectDisplacedElsewhere: "{host} 于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
@@ -503,8 +550,10 @@ export const workspace = {
             },
         },
         panelMenu: {
-            removeItem: "移除此项目",
+            hideItem: "隐藏此项目",
             collapseItem: "折叠到折叠项",
+            resetLayout: "恢复默认布局",
+            resetLayoutDisabled: "当前已是默认布局",
         },
         // 左侧导轨的折叠项：一个图标代表被折叠进去的面板，点击后在导轨旁展开列表。
         panelGroup: {
@@ -567,6 +616,10 @@ export const workspace = {
             blurOff: "关闭",
             fillMode: "填充方式",
             anchor: "位置",
+            editorPlate: "编辑器底色",
+            editorPlateOpacity: "编辑器底色不透明度",
+            sidebarPlate: "侧边栏底色",
+            sidebarPlateOpacity: "侧边栏底色不透明度",
             fill: {
                 cover: "缩放填满",
                 contain: "适应",
@@ -592,6 +645,10 @@ export const workspace = {
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
+            distrusted: {
+                label: "未受信任",
+                tooltip: "此项目受信任后方可运行。点击以信任。",
+            },
             // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",
             preview: "预览",
@@ -599,6 +656,7 @@ export const workspace = {
             // 分隔符之后的阶段文案。并非每个阶段都适用于每种模式。
             phase: {
                 starting: "启动中…",
+                checking: "检查中…",
                 preparing: "准备中…",
                 compiling: "编译中…",
                 launching: "启动中…",
@@ -627,8 +685,12 @@ export const workspace = {
             retrySave: "立即重试保存",
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
-            words: "{count} 字",
-            lines: "{count} 行",
+            words: {
+                other: "{count} 字",
+            },
+            lines: {
+                other: "{count} 行",
+            },
             noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             openCurrentScene: "打开当前场景",
@@ -638,6 +700,7 @@ export const workspace = {
                 // name of the thing their project is shared through.
                 team: "NarraLeaf Team",
                 runStatus: "运行状态",
+                projectTrust: "项目信任",
         studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
@@ -655,17 +718,47 @@ export const workspace = {
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
         // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
         save: {
-            failedTitle: "无法保存 {file}",
-            failedDetailTransient: "正在后台继续重试；{error}",
-            failedDetailPermanent: "在此问题修复之前重试无效；{error}",
+            // 按作者认得的名字称呼文件，永不用路径：`{name}` 是下面的存储名；`failedTitleNamed`
+            // 带的是作者起的名字（资产、故事）；写入方没说明是什么的，就不点名任何文件。
+            failedTitle: "无法保存{name}",
+            failedTitleNamed: "无法保存“{name}”",
+            failedTitleUnnamed: "无法保存文件",
+            // 前两句用于自动保存会继续重试的文件；第三句用于不会再次写入的文件，不提供重试。
+            failedDetailTransient: "正在后台继续重试",
+            failedDetailPermanent: "在此问题修复之前重试无效",
+            failedDetailNotSaved: "本次改动未保存",
+            failedDetailWithReason: "{reason}；{retry}",
+            // 作者主动发起的写入，由发起的界面自己报告：导出、文本文件、缩略图。
+            // 项目打开时无法读取的存储：拒绝写入，因为内存里是空的，写下去会把文件清空。
+            refusedUnreadable: "无法读取{name}，改动不会保存",
+            fileFailed: {
+                plain: "无法保存“{name}”",
+                withReason: "无法保存“{name}”；{reason}",
+            },
+            storeFailed: {
+                plain: "无法保存{name}",
+                withReason: "无法保存{name}；{reason}",
+            },
+            reason: {
+                permissionDenied: "文件为只读，或 Studio 没有写入权限",
+                folderMissing: "所在的文件夹已不存在",
+                diskFull: "磁盘已满",
+            },
             retry: "立即重试",
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
+            consoleFailedNotRetried: "写入失败（{code}，不重试）：{path} · {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
-            unreadableTitle: "无法读取 {file}",
-            unreadableDetail: "{reason} 文件保持原样，没有内容被覆盖",
-            unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}",
+            // `{reason}` 是下面 `unreadableReason` 之一，永远不是解析器自己的消息；另存的副本只说存在，
+            // 位置写在控制台那一行里，不写在这里。
+            unreadableTitle: "无法读取{name}",
+            unreadableDetail: "{reason}；文件保持原样，没有内容被覆盖",
+            unreadableDetailQuarantined: "{reason}；文件保持原样，并已另存一份副本",
+            unreadableReason: {
+                damaged: "文件已损坏，或不是 Studio 能读取的格式",
+                newerVersion: "该文件由更新版本的 NarraLeaf Studio 保存",
+            },
             consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
             consoleQuarantined: "已保留无法读取的文件副本：{path}",
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，
@@ -699,8 +792,80 @@ export const workspace = {
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
+                // Studio 自身的状态，不属于作者的项目；用于「无法保存」的提示。
+                projectIcon: "项目图标",
+                panelLayout: "面板布局",
+                recentColors: "最近使用的颜色",
+                pluginData: "插件数据",
+                // 不是文档存储：作者正打开编辑的那一行，其内容尚未写入文档。
+                openEditors: "正在编辑的行",
             },
         },
+        // 带入项目却未成功的文件：资产、翻译文件、录音本、故事脚本。{name} 是文件本身的名称，
+        // 不是路径；原因取自下面的 reason，只列作者能处理的。永不显示读取器或导入器自带的消息。
+        import: {
+            failed: "无法导入“{name}”",
+            withReason: "{headline}；{reason}",
+            reason: {
+                missing: "该文件已不存在",
+                accessDenied: "Studio 没有读取该文件的权限",
+                empty: "文件为空",
+                // unit_id 是导出文件中该列的列名，照译者看到的写法保留。
+                noIdColumn: "文件缺少 unit_id 列",
+                notFormat: "该文件不是可读取的 {format} 文件",
+                noRows: "文件中没有可导入的条目",
+                wrongType: "此处不能导入 .{ext} 文件",
+                cannotDisplay: "NarraLeaf 无法显示 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                cannotPlay: "NarraLeaf 无法播放 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                cannotUse: "NarraLeaf 无法使用 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                mismatch: "文件扩展名为 .{ext}，但内容是 {actual} 格式",
+                copyFailed: "无法复制到项目文件夹",
+                projectReadOnly: "Studio 没有写入项目文件夹的权限",
+                notAFolder: "模型需以文件夹导入",
+                emptyFolder: "文件夹为空",
+                copyIncomplete: "文件夹中有文件未能复制到项目中",
+                projectNotAccepting: "项目当前不接受改动",
+            },
+            // 网址未能成为资产、或远程资产的来源无法检查时的原因。只说服务器与地址，不引用状态行或网址本身。
+            remote: {
+                invalidUrl: "该地址不是有效的 URL",
+                unsupportedScheme: "只能下载 http 与 https 地址",
+                unreachable: "无法连接到该服务器",
+                timeout: "服务器在 {seconds} 秒内没有响应",
+                notFound: "服务器上没有该地址的文件",
+                accessDenied: "服务器不允许下载该文件",
+                serverError: "服务器出错，请稍后重试",
+                refused: "服务器未接受该请求",
+                tooLarge: "文件超过远程资产的上限 {limit} MB",
+                noContent: "服务器没有返回内容",
+                bundle: "模型不能从 URL 导入",
+                // {codecs} 与 {container} 是文件自己声明的格式名（HEVC、AVI）。下载的文件无法原地转换，
+                // 出路是转换后从本地导入。
+                unplayableCodecs: "NarraLeaf 无法播放 {codecs}；请转换文件后从本地导入",
+                unplayableContainer: "NarraLeaf 无法打开 {container} 文件；请转换文件后从本地导入",
+                unplayableFormat: "NarraLeaf 无法打开该文件的格式；请转换文件后从本地导入",
+                unplayableNoStreams: "文件中没有 NarraLeaf 可播放的声音或画面",
+                // 登录页、同意页，或以成功状态返回的错误页。
+                webPage: "该地址返回的是网页，而不是文件",
+                // 文本或文档，或与导入分类中任何格式都不符的字节。
+                unrecognizedImage: "该地址返回的内容不是 NarraLeaf 可识别的图片格式",
+                unrecognizedMedia: "该地址返回的内容不是 NarraLeaf 可识别的音频或视频格式",
+                unrecognizedFont: "该地址返回的内容不是 NarraLeaf 可识别的字体格式",
+            },
+            // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
+            // JSON 数组的项、PO 文件的行。
+            skipped: {
+                missingId: "有条目缺少 ID",
+                missingIdAtRow: "第 {n} 行缺少 ID",
+                missingIdAtEntry: "第 {n} 项缺少 ID",
+                notEntry: "有条目不是译文",
+                notEntryAtEntry: "第 {n} 项不是译文",
+                unreadableLine: "第 {n} 行无法读取",
+                noTake: "有行对应的对白尚未配音，其备注与状态未应用",
+                noTakeAtRow: "第 {n} 行对应的对白尚未配音，其备注与状态未应用",
+            },
+        },
+        fileDialogFailed: "无法打开文件对话框",
         // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
         // 什么都不该看到——只有某一部分读不回来时才出声，因为那时面板里是旧内容。
         reload: {
@@ -723,6 +888,12 @@ export const workspace = {
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
             unavailable: "项目冻结期间不可用，解除冻结后恢复使用",
             unavailableLive: "实时会话期间不可用，离开会话后恢复使用",
+        },
+        distrust: {
+            unavailable: "此项目受信任后方可使用，点击状态栏的「未受信任」以信任",
+            // 少数控件没法置灰——比如指针悬停时才在故事行上出现的播放箭头——按下去就说这句。
+            // 正文仍用上面那一句，作者无论从哪条路遇到「不受信任」，读到的都是同一套说法。
+            refusedTitle: "此项目未受信任",
         },
         // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
@@ -829,6 +1000,9 @@ export const workspace = {
             // 这个界面绝不自己发起。
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
+            // 另一个程序打开着该项目的版本历史，通常是第二个 Studio，或终端里未退出的 lore 命令。
+            // 编辑不受影响，只有版本历史暂时不可用。
+            repositoryLocked: "另一个程序打开着该项目的版本历史，关闭后才能在此使用版本",
             commitBeforeSync: "从服务器获取之前先提交版本",
             branchDiverged: "本项目与服务器都有新的版本，先获取服务器的版本再发送",
             changesUnknown: "未检查",
@@ -847,8 +1021,8 @@ export const workspace = {
                 moved: "移动",
                 copied: "复制",
             },
-            // 移动或复制的来源。`{path}` 和行本身一样是仓库相对路径。
-            changeFromPath: "来自 {path}",
+            // 移动或复制的来源（行的提示）。`{name}` 是来源的名称，与行本身的命名方式相同，不是路径。
+            changeFrom: "来自 {name}",
             // 唯一一种会挡住「提交版本」的变更——所以它被单独标出来，也因此排在清单最前面，
             // 而不是按路径落在它本来的位置上。
             changeConflict: "未解决的冲突",
@@ -863,7 +1037,9 @@ export const workspace = {
                 compareChanges: "与上一个版本比较变更",
             },
             filterPlaceholder: "按名称或编号查找版本",
-            filterNoMatch: "已读取的 {count} 个版本里没有匹配",
+            filterNoMatch: {
+                other: "已读取的 {count} 个版本里没有匹配",
+            },
             today: "今天",
             yesterday: "昨天",
             compareBase: {
@@ -872,7 +1048,9 @@ export const workspace = {
                 current: "正在与 {version} 比较",
                 compare: "与 {version} 比较",
             },
-            showCheckpoints: "显示 {count} 个检查点",
+            showCheckpoints: {
+                other: "显示 {count} 个检查点",
+            },
             hideCheckpoints: "隐藏检查点",
             systemMessage: {
                 unnamed: "未命名的版本",
@@ -980,6 +1158,7 @@ export const workspace = {
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
                     alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
                     unknown: "该服务器未注册此项目。",
+                    declined: "该项目未使用此服务器的登录，项目未被注册。",
                     // 不是拒绝：这个项目以前就在那台服务器上（复制过来的项目目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
                     connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",

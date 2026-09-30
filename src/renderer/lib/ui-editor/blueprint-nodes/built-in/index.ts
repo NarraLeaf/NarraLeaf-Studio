@@ -86,8 +86,8 @@ export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widget
 
 /**
  * Mark a whole family as needing the blueprint host API, which keeps it out of the one owner that
- * cannot serve one - a Story Action Blueprint. See {@link HOST_API_OWNER_KINDS} for why, and for
- * why the restriction is a flag of its own rather than a scope.
+ * cannot serve one - a Story Action Blueprint. See `BlueprintNodeDef.requiresHostApi` for why, and
+ * for why the restriction is a flag of its own rather than a scope.
  *
  * Applied here rather than on each definition because the reason is a property of the family, and
  * writing it out a hundred times is a hundred chances to forget it on the next node.

@@ -81,6 +81,24 @@ describe("patch payload", () => {
         }
     });
 
+    /*
+     * The author's compiled scripts are page code the runtime serves by path, like a plugin's. A
+     * patch that left them out applied cleanly and left the installed game running the script it
+     * shipped with - or with no module at all for a layer the patch added.
+     */
+    it("carries the author's compiled scripts in a loose payload", async () => {
+        const appDir = await writeLooseApp("loose-scripts", { "asset-1": "one" });
+        await fs.mkdir(path.join(appDir, "scripts"), { recursive: true });
+        await fs.writeFile(path.join(appDir, "scripts", "scripts_boot.js"), "export function onAppBoot() {}");
+        const payload = await openPayload(appDir);
+        try {
+            expect(payload.names).toContain("scripts/scripts_boot.js");
+            expect((await payload.read("scripts/scripts_boot.js")).toString()).toContain("onAppBoot");
+        } finally {
+            await payload.close();
+        }
+    });
+
     it("reads a sealed payload through its own item table", async () => {
         const material = createProjectToken();
         const appDir = path.join(root, "sealed");

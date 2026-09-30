@@ -14,7 +14,7 @@ export enum SettingScope {
  * so this module - which the workspace imports too - stays free of React: the Settings window
  * resolves the id against its own panel registry.
  */
-export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate" | "servers" | "dictionaries";
+export type SettingPanelId = "keybindings" | "downloadSources" | "cacheInventory" | "settingsTransfer" | "softwareUpdate" | "servers" | "dictionaries" | "projectTrust";
 
 /**
  * Lightweight descriptor that the shared UI layer understands.
@@ -36,6 +36,11 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
      * Font row meant before there was a second one.
      */
     optionFontStacks?: Record<string, string>;
+    /**
+     * Enum only: a small picture per option value, drawn beside its label in the dropdown and in the
+     * closed control - for a choice between images, where the label alone cannot say which is which.
+     */
+    optionImages?: Record<string, string>;
     /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision
@@ -85,6 +90,14 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Interpolation params for `descriptionKey` (e.g. dynamic min/max ranges). */
     descriptionParams?: Record<string, string | number>;
     defaultValue: TypeofSettingSchema<T>;
+    /**
+     * What a stored value stands for, for a setting whose reader accepts more than the options it
+     * offers - an id an older Studio stored, or one a later one dropped - and settles it on one of
+     * them. The row shows, and compares against the default, what this returns rather than the raw
+     * value, so it displays the option the product actually applies and never an id no option
+     * carries. The stored value itself is left as it is.
+     */
+    resolveStoredValue?: (stored: unknown) => TypeofSettingSchema<T>;
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;
@@ -98,6 +111,11 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
      * Font row meant before there was a second one.
      */
     optionFontStacks?: Record<string, string>;
+    /**
+     * Enum only: a small picture per option value, drawn beside its label in the dropdown and in the
+     * closed control - for a choice between images, where the label alone cannot say which is which.
+     */
+    optionImages?: Record<string, string>;
     /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision

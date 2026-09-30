@@ -1,4 +1,3 @@
-import { path7za } from "7zip-bin";
 import { execFile } from "child_process";
 import { createHash } from "crypto";
 import fs from "fs/promises";
@@ -7,6 +6,7 @@ import path from "path";
 import { promisify } from "util";
 import { readBodyWithProgress } from "@shared/types/downloadProgress";
 import { reportDownload } from "./downloadReporting";
+import { sevenZipPath } from "./sevenZipBinary";
 
 /**
  * Pre-provisions electron-builder's winCodeSign cache on Windows hosts that
@@ -145,7 +145,7 @@ export async function ensureWinCodeSignCache(log: Log, binariesMirrorUrl?: strin
             // no longer happening, and the reason goes to the log below where it can be read.
             reportDownload({ phase: "end", id: WIN_CODE_SIGN_TRANSFER_ID });
         }
-        await execFileAsync(path7za, ["x", "-bd", "-y", `-o${stagingDir}`, "-xr!darwin", archivePath]);
+        await execFileAsync(sevenZipPath(), ["x", "-bd", "-y", `-o${stagingDir}`, "-xr!darwin", archivePath]);
         // rcedit is what the packaging step actually needs from the bundle.
         await fs.access(path.join(stagingDir, "rcedit-x64.exe"));
         try {

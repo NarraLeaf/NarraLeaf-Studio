@@ -182,7 +182,7 @@ describe("a picker row", () => {
  * a remembered value, a remembered value whose option is gone, a value the author just changed.
  */
 describe("the picker's parameters", () => {
-    const CONTEXT: TestAvailabilityContext = { projectPath: "D:/project", frozen: false };
+    const CONTEXT: TestAvailabilityContext = { projectPath: "D:/project", frozen: false, distrusted: false };
 
     const WALK: TestDefinition = definition({
         id: "acme.pack:walk",

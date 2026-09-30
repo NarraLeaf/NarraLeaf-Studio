@@ -3,8 +3,6 @@ export enum AssetType {
     Audio = "audio",
     Video = "video",
     JSON = "json",
-    /** Shared blueprint asset (M2); content is {@link import("@shared/types/blueprint/document").SharedBlueprintAsset} JSON */
-    Blueprint = "blueprint",
     Font = "font",
     /**
      * A **model bundle**: many files that form one authored thing (a Live2D or Spine character),
@@ -58,7 +56,7 @@ export const ASSET_CATEGORY_ORDER: readonly AssetCategory[] = [
 export const ASSET_CATEGORY_TYPES: Record<AssetCategory, AssetType[]> = {
     [AssetCategory.Image]: [AssetType.Image],
     [AssetCategory.Media]: [AssetType.Audio, AssetType.Video],
-    [AssetCategory.Data]: [AssetType.JSON, AssetType.Blueprint],
+    [AssetCategory.Data]: [AssetType.JSON],
     [AssetCategory.Font]: [AssetType.Font],
     [AssetCategory.Model]: [AssetType.Model],
     [AssetCategory.Other]: [AssetType.Other],
@@ -69,7 +67,6 @@ const ASSET_TYPE_CATEGORY: Record<AssetType, AssetCategory> = {
     [AssetType.Audio]: AssetCategory.Media,
     [AssetType.Video]: AssetCategory.Media,
     [AssetType.JSON]: AssetCategory.Data,
-    [AssetType.Blueprint]: AssetCategory.Data,
     [AssetType.Font]: AssetCategory.Font,
     [AssetType.Model]: AssetCategory.Model,
     [AssetType.Other]: AssetCategory.Other,
@@ -108,13 +105,6 @@ export type JSONAssetMetadata = {
     size: number;
     isValid: boolean;
     schema?: string;
-};
-
-export type BlueprintAssetMetadata = {
-    size: number;
-    isValid: boolean;
-    /** Logical schema version of the on-disk JSON wrapper; not the instance BlueprintDocument schema */
-    schemaVersion?: number;
 };
 
 export type FontAssetMetadata = {
@@ -183,9 +173,6 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
 } : Type extends AssetType.JSON ? {
     data: Record<string, any>;
     metadata: JSONAssetMetadata;
-} : Type extends AssetType.Blueprint ? {
-    data: import("@shared/types/blueprint/document").SharedBlueprintAsset;
-    metadata: BlueprintAssetMetadata;
 } : Type extends AssetType.Font ? {
     data: Uint8Array;
     metadata: FontAssetMetadata;
@@ -237,7 +224,6 @@ export const AssetExtensions = {
         // Standard JSON and JSON with comments (supported by many editors)
         "json", "jsonc"
     ],
-    [AssetType.Blueprint]: ["json", "nlbp"],
     [AssetType.Font]: [
         // Font formats loadable in Chromium
         "ttf", "otf", "ttc", // TrueType / OpenType collections

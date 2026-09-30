@@ -5,6 +5,7 @@ import {
     MAX_CONSOLE_ENTRY_CHARS,
 } from "./ConsoleService";
 import { Services, type WorkspaceContext } from "../services";
+import { i18nStore } from "@/lib/i18n";
 
 const bridgeMock = vi.hoisted(() => ({
     onConsoleLog: vi.fn((_handler: (payload: unknown) => void) => ({ cancel: () => undefined })),
@@ -124,6 +125,32 @@ describe("ConsoleService", () => {
         const [entry] = service.getEntries("build");
         expect(entry.level).toBe("info");
         expect(entry.source).toBe("Dev Mode");
+    });
+
+    it("names the state Dev Mode entered in the interface language, not by its status value", async () => {
+        const service = new ConsoleService();
+        let statusHandler: (status: string) => void = () => undefined;
+        const ctx = {
+            project: {} as WorkspaceContext["project"],
+            services: {
+                get: () => ({
+                    onStatusChanged: (handler: (status: string) => void) => {
+                        statusHandler = handler;
+                        return () => undefined;
+                    },
+                }),
+            },
+        } as unknown as WorkspaceContext;
+        await service.initialize(ctx, async () => undefined);
+
+        i18nStore.setLocale("zh");
+        statusHandler("compiling");
+        statusHandler("error");
+        i18nStore.setLocale("en");
+        statusHandler("idle");
+
+        const lines = service.getEntries("build").map(entry => entry.segments.map(segment => segment.text).join(""));
+        expect(lines).toEqual(["编译中…", "因错误停止", "Stopped"]);
     });
 
     it("routes Dev Mode console IPC payloads into the build channel", async () => {

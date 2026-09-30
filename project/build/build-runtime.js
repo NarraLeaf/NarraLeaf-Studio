@@ -8,6 +8,8 @@ const { postcssPlugin } = require('./postCss-plugin');
 // The runtime's import boundary. Kept in its own module so the vitest guard can load the same
 // allow lists this build enforces (see src/renderer/lib/ui-editor/runtime/app/importBoundary.test.ts).
 const { runtimeAliasPlugin } = require('./runtime-alias-plugin');
+// Records which npm packages each runtime bundle contains, for the notice every game ships.
+const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 const runtimeSourceDir = path.join(rootDir, 'src', 'runtime');
 const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
@@ -106,12 +108,16 @@ async function buildRuntime(options = {}) {
         ...commonNodeOptions,
         entryPoints: [path.join(runtimeSourceDir, 'main', 'main.ts')],
         outfile: path.join(runtimeOutDir, 'main.js'),
+        // koffi is not inlined, but its code still reaches every desktop game: the pack compiler
+        // copies it beside main.js without its licence file, so the notice has to carry it.
+        plugins: [thirdPartyNoticesPlugin({ shipsWith: ['koffi'] })],
     });
 
     await esbuild.build({
         ...commonNodeOptions,
         entryPoints: [path.join(runtimeSourceDir, 'preload', 'preload.ts')],
         outfile: path.join(runtimeOutDir, 'preload.js'),
+        plugins: [thirdPartyNoticesPlugin()],
     });
 
     await esbuild.build({
@@ -139,7 +145,7 @@ async function buildRuntime(options = {}) {
             '.woff': 'file',
             '.woff2': 'file',
         },
-        plugins: [runtimeAliasPlugin(), postcssPlugin()],
+        plugins: [runtimeAliasPlugin(), postcssPlugin(), thirdPartyNoticesPlugin()],
     });
 
     // Web runtime shell: replaces main.js/preload.js when a game is exported as
@@ -157,6 +163,7 @@ async function buildRuntime(options = {}) {
         define: productionDefine,
         target: ['chrome114'],
         tsconfig: runtimeTsconfig,
+        plugins: [thirdPartyNoticesPlugin()],
     });
 
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');
@@ -167,17 +174,56 @@ async function buildRuntime(options = {}) {
     // assertRuntimeDistReady): packs refuse to ship a dist/runtime that was not
     // produced by this script in production mode. Grepping bundles for dev-only
     // strings would be brittle; an explicit marker is authoritative.
+    //
+    // `engineVersion` rides along because this is the only moment anything knows it. The engine is
+    // inlined into renderer.js a few lines above and leaves no version behind in the bundle, and
+    // the process that later copies dist/runtime into a game pack may be a packaged Studio with a
+    // different node_modules - or none. Recorded here, the number is the one that actually went in.
     fs.writeFileSync(
         path.join(runtimeOutDir, 'build-manifest.json'),
         JSON.stringify({
             mode: 'production',
             sourcemap: dev,
             builtAt: new Date().toISOString(),
+            engineVersion: readEngineVersion(),
         }, null, 2),
         'utf-8',
     );
 
     console.log('[build-runtime] Runtime built successfully.');
+}
+
+/**
+ * The narraleaf-react version this build just inlined into the renderer bundle.
+ *
+ * Resolved through the package's own entry rather than by requiring its package.json, which its
+ * `exports` map does not expose, and then walked up to the manifest that names it - so a linked
+ * sibling checkout answers as readily as an installed copy.
+ *
+ * Failure is fatal rather than silent. A dist with no engine version produces packs that cannot say
+ * what engine they run, which is the whole of what the field is for; and it cannot really happen,
+ * because esbuild has just resolved the very same specifier to bundle it.
+ */
+function readEngineVersion() {
+    const ENGINE_PACKAGE = 'narraleaf-react';
+    let dir = path.dirname(require.resolve(ENGINE_PACKAGE));
+    for (;;) {
+        const manifestPath = path.join(dir, 'package.json');
+        if (fs.existsSync(manifestPath)) {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            if (manifest.name === ENGINE_PACKAGE && typeof manifest.version === 'string') {
+                return manifest.version;
+            }
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            throw new Error(
+                `[build-runtime] Could not read the version of "${ENGINE_PACKAGE}". Every pack this ` +
+                `runtime is copied into would then be unable to say which engine it ships.`,
+            );
+        }
+        dir = parent;
+    }
 }
 
 // The bundled runtime main.js reaches for sibling support modules through

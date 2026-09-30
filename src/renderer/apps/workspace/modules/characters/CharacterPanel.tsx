@@ -79,7 +79,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
 }
 
 function CharacterPanelBody({ panelId }: PanelComponentProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // Scoped to the cast's own document, which is what keeps this panel working inside a live
     // session: that freeze leaves the documents the session can carry writable and refuses the rest.
     // Unscoped, every control here would be switched off by any freeze at all - the conservative
@@ -427,13 +427,21 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
         if (!characterService || !inputDialog || !context) return;
         const nextName = await inputDialog.showRenameDialog(item.name, "character");
         if (!nextName) return;
-        characterService.renameCharacter(item.id, nextName);
+        // Lines that speak as the old name with no character behind them are a separate decision:
+        // nothing binds them to this character, so the rename leaves them alone unless the author
+        // says otherwise. Declining still renames the character - the question is only about the rows.
+        const spokenRows = await characterService.countRowsSpeakingAs(item.name);
+        const renameSpokenRows = spokenRows > 0 && await context.services.get<UIService>(Services.UI).showConfirm(
+            tn("characters.panel.renameSpokenRowsConfirm", spokenRows, { count: spokenRows, name: item.name }),
+            t("characters.panel.renameSpokenRowsDetail", { name: nextName }),
+        );
+        await characterService.renameCharacter(item.id, nextName, { renameSpokenRows });
         // The tab's title was a snapshot taken at open time, so a rename left it on the old name
         // until the tab was closed and reopened.
         syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
         loadCharacters();
         closeMenu();
-    }, [characterService, context, inputDialog, loadCharacters, closeMenu]);
+    }, [characterService, context, inputDialog, loadCharacters, closeMenu, t, tn]);
 
     const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
         if (!characterService || !context) return;

@@ -15,7 +15,7 @@
  * tell any, is the author's decision and not a setting.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Copy } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { IconButton, Select, type SelectOption } from "@/lib/components/elements";
@@ -33,6 +33,7 @@ import {
     type UserDataLocation,
 } from "@shared/utils/userDataLocation";
 import { SettingStack } from "./settingRows";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -44,10 +45,16 @@ export function ProjectUserDataSection({
 }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const [saveLocation, setSaveLocation] = useState<SaveLocationConfiguration>(
+    const stored = useMemo(
         () => normalizeSaveLocationConfiguration(config.app?.saveLocation),
+        [config.app?.saveLocation],
     );
-    const [saving, setSaving] = useState<keyof SaveLocationConfiguration | null>(null);
+    const { value: saveLocation, commit } = useConfigSlice<SaveLocationConfiguration>({
+        stored,
+        write: patch => projectService.updateSaveLocationConfiguration(patch),
+        onConfigChange,
+        uiService,
+    });
 
     const locations = useMemo(
         () => describeUserDataLocations(
@@ -57,28 +64,6 @@ export function ProjectUserDataSection({
         [config.identifier, config.name, saveLocation],
     );
     const gameFolder = t("project.userData.gameFolder");
-
-    const commit = useCallback(async (
-        field: keyof SaveLocationConfiguration,
-        mode: SaveLocationMode,
-    ) => {
-        if (saving) {
-            return;
-        }
-        const previous = saveLocation;
-        setSaving(field);
-        setSaveLocation(current => ({ ...current, [field]: mode }));
-        try {
-            const updated = await projectService.updateSaveLocationConfiguration({ [field]: mode });
-            setSaveLocation(normalizeSaveLocationConfiguration(updated.app?.saveLocation));
-            onConfigChange(updated);
-        } catch (error) {
-            setSaveLocation(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [onConfigChange, projectService, saveLocation, saving, uiService]);
 
     const options = useMemo<SelectOption[]>(() => [
         { value: "app-root", label: t("project.userData.mode.appRoot") },
@@ -115,9 +100,9 @@ export function ProjectUserDataSection({
                     className="min-w-0"
                     options={options}
                     value={saveLocation.windowsLinux}
-                    disabled={freeze.writes(saving === "windowsLinux").disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.userData.windowsLinux")}
-                    onChange={value => void commit("windowsLinux", value as SaveLocationMode)}
+                    onChange={value => void commit({ windowsLinux: value as SaveLocationMode })}
                 />
             </SettingStack>
             <SettingStack
@@ -132,9 +117,9 @@ export function ProjectUserDataSection({
                     className="min-w-0"
                     options={options}
                     value={saveLocation.macos}
-                    disabled={freeze.writes(saving === "macos").disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={t("project.userData.macos")}
-                    onChange={value => void commit("macos", value as SaveLocationMode)}
+                    onChange={value => void commit({ macos: value as SaveLocationMode })}
                 />
             </SettingStack>
 

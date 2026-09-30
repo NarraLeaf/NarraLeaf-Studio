@@ -1,6 +1,11 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import { normalizeUITextRuns } from "@shared/types/ui-editor/textRuns";
 import { normalizeVerticalTypography } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import {
+    plainTextEditPatch,
+    type MarkedLabelProps,
+} from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
 import { defaultTextWidgetProps, type TextWidgetProps } from "./types";
 
 /**
@@ -37,6 +42,29 @@ export function getTextProps(element: UIElement): TextWidgetProps {
         ...p,
         ...normalizeVerticalTypography(p),
         fontAssetId: p?.fontAssetId ?? defaultTextWidgetProps.fontAssetId,
+        // Normalised on the way out rather than trusted: a stored label may carry runs written by a
+        // tool or by hand, including the arms and marks only a typed line can mean.
+        rich: normalizeUITextRuns(p?.rich),
         effects,
     };
+}
+
+/** A text label keeps its string in `text` and its runs beside it in `rich`. */
+export const TEXT_MARKED_LABEL: MarkedLabelProps = {
+    read: element => {
+        const props = getTextProps(element);
+        return { text: props.text, rich: props.rich, color: props.color };
+    },
+    write: (text, rich) => ({ text, rich }),
+};
+
+/**
+ * The props patch that writes a label's text from a box that holds plain text.
+ *
+ * Both plain editors go through this one: the box in the inspector and the label typed on the
+ * canvas. A plain box can only hand back a string, so the marks are carried across it - the stretch
+ * that changed is written afresh, the rest of the paragraph keeps what it was set in.
+ */
+export function textValuePatch(element: UIElement, nextText: string): Record<string, unknown> {
+    return plainTextEditPatch(TEXT_MARKED_LABEL, element, nextText);
 }

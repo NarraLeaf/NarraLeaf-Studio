@@ -15,10 +15,8 @@ import {
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
-import {
-    buildLayoutPatchForNewElementFromSurfaceRect,
-    resolveInsertTargetParent,
-} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { buildLayoutPatchForNewElementFromSurfaceRect } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -36,7 +34,6 @@ import {
     SURFACE_WHEEL_PAN_DELTA_LIMIT_PX,
     SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
 } from "./surfaceWheelInput";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import {
     constrainPointToAspectRatio,
     resolveAspectRatio,
@@ -170,22 +167,19 @@ export function useSurfaceInteractionEvents({
             updateInsertPreview(null);
 
             const doc = documentService.getDocument();
-            const target = resolveInsertTargetParent(doc, surfaceId, {
-                hitElementId: null,
-                primaryElementId: state.primaryElementId,
-            });
-            if (!target) {
+            const parentId = resolveNewElementParent(doc, surfaceId, state.primaryElementId);
+            if (!parentId) {
                 return;
             }
-            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, target.parentId, {
+            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, parentId, {
                 x,
                 y,
                 width,
                 height,
             });
             const element = state.componentId
-                ? documentService.createComponentInstance(target.parentId, state.componentId, layoutPatch)
-                : documentService.createElement(target.parentId, state.nodeType, layoutPatch);
+                ? documentService.createComponentInstance(parentId, state.componentId, layoutPatch)
+                : documentService.createElement(parentId, state.nodeType, layoutPatch);
 
             stateService.setUIElementSelection({
                 editor: "ui",
@@ -332,7 +326,7 @@ export function useSurfaceInteractionEvents({
                 if (elementId) {
                     const doc = documentService.getDocument();
                     const hitElement = doc.elements[elementId];
-                    if (!hitElement || hitElement.type === "nl.root" || isComponentEditorRootElement(hitElement)) {
+                    if (!hitElement || hitElement.type === "nl.root") {
                         selectSurfaceForProperties(stateService, surfaceId, uiService);
                         containerDrillLastPointerRef.current = null;
                         return;

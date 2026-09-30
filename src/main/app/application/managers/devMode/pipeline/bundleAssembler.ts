@@ -1,12 +1,14 @@
 import path from "path";
+import { pathToFileURL } from "url";
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
+import { compileProjectScripts, listScriptCompileFailures } from "./scriptCompiler";
+import { BuildRefusal } from "@shared/build/buildRefusal";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
-import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
     Blueprint,
     BlueprintDocument,
-    SharedBlueprintAsset,
 } from "@shared/types/blueprint/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
@@ -54,6 +56,8 @@ import {
     appTagMechanismKey,
     isBuiltinAppTagId,
     RELEASE_APP_TAG,
+    resolveAppTag,
+    resolveAppTagEndingSurface,
     type AppTagMechanismRef,
 } from "@shared/types/appTag";
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
@@ -64,7 +68,7 @@ import {
 } from "@shared/build/variantPayload";
 import {
     materializeStoryAssetSets,
-    type AssetSetMaterializationProblem,
+    type AssetSetProblemDetail,
 } from "@shared/build/assetSetMaterialization";
 import {
     attachCharacterAssetSetVariants,
@@ -72,7 +76,8 @@ import {
 } from "@shared/build/characterAssetSets";
 import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
 import { attachBlueprintAssetSetVariants, blueprintGraphs } from "@shared/build/blueprintAssetSets";
-import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
+import { isAssetSetAxisKind, normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
+import { readAssetSetAxisValue, type AssetSetAxisNaming } from "@shared/types/assetSetLabels";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
@@ -80,11 +85,10 @@ import {
     applyAppTagToBlueprint,
     applyAppTagToBlueprintDocument,
     collectUnfoldableAppTagGraphs,
-    collectUnfoldableAppTagGraphsInBlueprint,
     type AppTagGraphFoldOptions,
     type UnfoldableAppTagGraph,
 } from "@shared/blueprint/appTagGraphFold";
-import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
+import { createTranslator, FALLBACK_LOCALE, type LocaleCode, type Translator } from "@shared/i18n";
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
@@ -96,16 +100,79 @@ import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSumm
 import { Fs } from "@shared/utils/fs";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import { refuseNewerProjectDocument, type ProjectDocumentGate } from "@shared/documents/newerSchema";
+import { CHARACTER_STORE_VERSION } from "@shared/characters/characterStoreModel";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { ASSET_SET_SCHEMA_VERSION } from "@shared/types/assetSet";
+import { AUDIO_TRACK_SCHEMA_VERSION } from "@shared/types/audioTrack";
+import { BRAND_SCHEMA_VERSION } from "@shared/types/brand";
+import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION, LOCALIZATION_KEYS_SCHEMA_VERSION } from "@shared/types/localization";
+import { SAVE_SCHEMA_VERSION } from "@shared/types/saveSchema";
+import {
+    STORY_ANIMATION_SCHEMA_VERSION,
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+} from "@shared/types/story";
+import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
+import { VOICE_DOCUMENT_SCHEMA_VERSION } from "@shared/types/voice";
+import { localizeProjectDocumentRefusal, rethrowIfTooNew } from "../../../utils/projectDocumentGate";
+import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
  * Assemble a DevModeBundle by reading `editor/ui/uidoc.json` and `uigraphs.json` from disk.
+ *
+ * The wrapper exists for one failure: a project file a newer Studio wrote. Every read below refuses
+ * one rather than normalizing it away - see `@shared/documents/newerSchema` for why that is worse
+ * than stopping - and the refusal is a value carrying the file, its version and this build's, with
+ * no prose. Here is where the language is known, so here is where it becomes a sentence. Every host
+ * of this assembly prints the message of what it catches, so translating once at the boundary
+ * reaches the Dev Mode console, the Dev Mode failure screen, the build report and the command-line
+ * build's exit alike.
  */
 export async function assembleDevModeBundleFromProjectPath(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
+    try {
+        return await assembleBundle(context);
+    } catch (error) {
+        throw localizeProjectDocumentRefusal(error, context.locale);
+    }
+}
+
+/**
+ * The refusal a package build gives when one of the author's scripts did not compile.
+ *
+ * A count in the author's language, then the compiler's own line for each file. Those lines stay as
+ * the compiler wrote them: they carry the file, the line and the column, and they are the same words
+ * Dev Mode's issue list shows for the same file.
+ */
+function describeScriptCompileRefusal(failures: readonly string[], locale?: LocaleCode): string {
+    const translator = createTranslator(locale ?? FALLBACK_LOCALE);
+    return [translator.tn("build.scriptsNotCompiled", failures.length), ...failures].join("\n");
+}
+
+async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
     const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
-    const uidoc = await readJsonFile<UIDocument>(uidocPath);
-    const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
+    const uidoc = await readJsonFile<UIDocument>(uidocPath, {
+        kind: "uiDocument",
+        subject: relativeSubject(context.projectPath, uidocPath),
+        supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
+    });
+    const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath, {
+        kind: "uiGraphs",
+        subject: relativeSubject(context.projectPath, uigraphsPath),
+        supportedVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+    });
+    // The blueprint document is a field of the graphs file rather than a file of its own, so it
+    // carries its own version and needs its own gate: `migrateBlueprintDocumentToLatest` refuses a
+    // version outside its band, but the sentence it throws names the floor, which for a document
+    // from the future is the wrong number to put in front of an author.
+    refuseNewerProjectDocument(uigraphsRaw?.blueprintDocument, {
+        kind: "blueprints",
+        subject: relativeSubject(context.projectPath, uigraphsPath),
+        supportedVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+    });
     const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
     const fold = { tagName: variant.name };
     // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
@@ -122,16 +189,39 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const variableTables = await loadVariableRuntimeTables(context.projectPath);
-    const sharedAssets = await loadSharedBlueprints(context.projectPath);
-    const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
-    reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
+    reportLiveVariantReads(context, fold, localBlueprints);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
-    const sceneDrop = planSceneDrop(context, variant.id, [
-        ...Object.values(localBlueprints.blueprints ?? {}),
-        ...sharedBlueprints.map(asset => asset.blueprint),
-    ]);
+    const sceneDrop = planSceneDrop(context, variant.id, Object.values(localBlueprints.blueprints ?? {}));
+    // The author's scripts, bundled. Dev Mode's answer when the host gives no output: under
+    // `.nlstudio/`, which version control and a project export both exclude, beside the rest of what
+    // a Dev Mode run produces, named as `file:` URLs because that is what the Dev Mode document's
+    // policy admits. A build says where the pack is being assembled and how the page names it.
+    const scripts = await compileProjectScripts(
+        context.projectPath,
+        localBlueprints,
+        context.scriptOutput ?? {
+            directory: path.join(context.projectPath, ".nlstudio", "dev-mode", "scripts"),
+            toUrl: filePath => pathToFileURL(filePath).toString(),
+        },
+    );
+    // A script that did not compile is a layer that will not run. Each distinct file is said once -
+    // two layers may name one script.
+    //
+    // Only a package refuses, the rule the asset sets below follow too. Dev Mode and a preview keep
+    // running with the layer dead and the message on screen, which is the loop an author fixes it
+    // in. A package that let it past would install cleanly and do less than the author wrote with
+    // nothing anywhere saying so. A type error is not one of these: esbuild strips types without
+    // reading them, so a script whose types are wrong compiles and runs, and the type check stays
+    // the author's editor's business.
+    const scriptFailures = listScriptCompileFailures(scripts);
+    if (scriptFailures.length > 0 && context.packaging) {
+        throw new BuildRefusal(describeScriptCompileRefusal(scriptFailures, context.locale));
+    }
+    for (const message of scriptFailures) {
+        context.onNotice?.(message);
+    }
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
@@ -164,7 +254,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // package's problem and must not be able to refuse its build.
     await resolveBlueprintAssetSets(
         context,
-        [...Object.values(localBlueprints.blueprints ?? {}), ...sharedBlueprints.map(asset => asset.blueprint)],
+        Object.values(localBlueprints.blueprints ?? {}),
         localization,
         variant.name,
     );
@@ -182,21 +272,28 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const brand = await loadProjectBrand(context.projectPath);
     const fonts = await loadProjectFonts(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
+    const endingSurfaceId = await loadEndingSurfaceId(context.projectPath, variant.id);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
+        // Only when the host counts them. A host that never reloads has nothing to say here, and a
+        // zero would read as "no asset has ever changed", which is a claim rather than a silence.
+        ...(context.assetRevision === undefined ? {} : { assetRevision: context.assetRevision }),
         timestamp: new Date().toISOString(),
         // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
         // empty list would be a different claim.
         ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
+        // Only when the project named one. Blank and absent mean the same thing to a host, and an
+        // empty string in the bundle would read as a surface id that could not be resolved.
+        ...(endingSurfaceId ? { endingSurfaceId } : {}),
         ui: {
             uidoc,
             uigraphs,
             localBlueprints,
-            sharedBlueprints,
             persistentVariables: variableTables.persistent,
             savedVariables: variableTables.saved,
             saveSchema,
+            scripts,
         },
         storyLibrary: resolvedStoryLibrary,
         localization,
@@ -219,33 +316,54 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         brand,
         fonts,
         compiled: context.compiled,
-        blueprintCompiledScripts: context.blueprintCompiledScripts,
-        blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
-        blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
         meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
 }
 
-async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined> {
+/**
+ * What a refusal calls a file: its path inside the project.
+ *
+ * The project's own directory is not part of it. An author is being told which of *their* files
+ * this is, and the absolute path is both longer than the answer and specific to the machine.
+ */
+function relativeSubject(projectPath: string, filePath: string): string {
+    return path.relative(projectPath, filePath).split(path.sep).join("/");
+}
+
+/**
+ * `gate` is what stops a document a newer Studio wrote from reaching the normalizers below.
+ *
+ * Checked here, between the parse and the first reader, because that is the only point where the
+ * document is still exactly what is on disk: one line further on a normalizer has already dropped
+ * whatever it did not recognise, and nothing downstream can tell that from a file that never had it.
+ */
+async function readOptionalJsonFile<T>(filePath: string, gate?: ProjectDocumentGate): Promise<T | undefined> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         return undefined;
     }
-    try {
-        return JSON.parse(result.data) as T;
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
+    const parsed = parseJsonFile(filePath, result.data);
+    if (gate) {
+        refuseNewerProjectDocument(parsed, gate);
     }
+    return parsed as T;
 }
 
-async function readJsonFile<T>(filePath: string): Promise<T> {
+async function readJsonFile<T>(filePath: string, gate?: ProjectDocumentGate): Promise<T> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         throw new Error(result.error?.message ?? `Failed to read ${filePath}`);
     }
+    const parsed = parseJsonFile(filePath, result.data);
+    if (gate) {
+        refuseNewerProjectDocument(parsed, gate);
+    }
+    return parsed as T;
+}
+
+function parseJsonFile(filePath: string, text: string): unknown {
     try {
-        return JSON.parse(result.data) as T;
+        return JSON.parse(text) as unknown;
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
@@ -268,7 +386,11 @@ async function loadVariableRuntimeTables(
     projectPath: string,
 ): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
     const registryPath = path.join(projectPath, "editor", "variables.json");
-    const raw = await readOptionalJsonFile<unknown>(registryPath);
+    const raw = await readOptionalJsonFile<unknown>(registryPath, {
+        kind: "variables",
+        subject: relativeSubject(projectPath, registryPath),
+        supportedVersion: VARIABLE_REGISTRY_SCHEMA_VERSION,
+    });
     if (raw) {
         const registry = migrateVariableRegistryToLatest(raw);
         return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
@@ -287,87 +409,15 @@ async function loadVariableRuntimeTables(
  * the empty table plus a lint error does not.
  */
 async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRuntimeTable> {
-    const raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "save-schema.json"));
+    const schemaPath = path.join(projectPath, "editor", "save-schema.json");
+    const raw = await readOptionalJsonFile<unknown>(schemaPath, {
+        kind: "saveSchema",
+        subject: relativeSubject(projectPath, schemaPath),
+        supportedVersion: SAVE_SCHEMA_VERSION,
+    });
     return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
 }
 
-
-/**
- * Every shared blueprint asset a project holds, parsed.
- *
- * Exported because the build's preflight needs the same set: the renderer cannot enumerate these
- * (they are asset files, and nothing over there resolves an asset id to a path), so a check that
- * only reads the blueprint document is blind to exactly the graphs this loads.
- */
-export async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
-    const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
-    const shardResult = await Fs.read(shardPath, "utf-8");
-    if (!shardResult.ok) {
-        return [];
-    }
-    let record: Record<string, unknown>;
-    try {
-        record = JSON.parse(shardResult.data) as Record<string, unknown>;
-    } catch {
-        return [];
-    }
-    const out: SharedBlueprintAsset[] = [];
-    for (const assetId of Object.keys(record)) {
-        const filePath = resolveAssetContentPath(projectPath, assetId);
-        if (!filePath) {
-            continue;
-        }
-        const body = await Fs.read(filePath, "utf-8");
-        if (!body.ok) {
-            continue;
-        }
-        try {
-            out.push(parseSharedBlueprintAssetJson(body.data));
-        } catch {
-            // Skip invalid entries so Dev Mode still runs
-        }
-    }
-    return out;
-}
-
-/**
- * Shared blueprint assets, folded against this variant - and the one place a variant refusal is
- * raised from the main process rather than from the build gate.
- *
- * **This stays even though the gate now covers the same assets; do not tidy it away.**
- * `BuildService`'s gate reads them through `AssetsService.listSharedBlueprints`, so an author usually
- * hears about a refusal before the build starts rather than from the packer. That is a better first
- * report, not a substitute: this runs over the bytes actually being packaged, and a build is entitled
- * to assume nothing about which checks ran before it.
- *
- * Symmetry the other way round is what would be fatal. Leaving these graphs alone would ship a live
- * `Get App Tag`, and the runtime answers the release name to it (`resolveAppTagNodeOutput`) - so in a
- * Demo package `AppTag == "Demo"` would read false and the player would silently get release content.
- * A silent wrong answer is worse than either a refusal or a leak, because nothing anywhere says it
- * happened.
- *
- * Only a build throws - see `DevModeBundleLoadContext.packaging`. A host that ships nothing has
- * nobody to keep a variant read from, and a refused graph there is something the author is still
- * editing rather than something about to be packaged; stopping the assembly would take Dev Mode away
- * from them over a graph they cannot ship either way. It is reported instead, by the caller.
- * Exported for tests.
- */
-export function foldSharedBlueprints(
-    assets: readonly SharedBlueprintAsset[],
-    context: DevModeBundleLoadContext,
-    fold: AppTagGraphFoldOptions,
-): SharedBlueprintAsset[] {
-    return assets.map(asset => {
-        if (context.appTag && context.packaging) {
-            const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
-            if (refused.length > 0) {
-                throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
-            }
-        }
-        const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
-        return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
-    });
-}
 
 /**
  * Tell a non-packaging host which graphs still ask which edition they are.
@@ -385,17 +435,13 @@ function reportLiveVariantReads(
     context: DevModeBundleLoadContext,
     fold: AppTagGraphFoldOptions,
     document: BlueprintDocument | null,
-    sharedAssets: readonly SharedBlueprintAsset[],
 ): void {
     if (!context.appTag || context.packaging || !context.onNotice) {
         return;
     }
-    const names = [
-        ...collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
-        ...sharedAssets.flatMap(asset =>
-            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold).map(() => asset.name)),
-    ];
-    const distinct = [...new Set(names)];
+    const distinct = [...new Set(
+        collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
+    )];
     if (distinct.length === 0) {
         return;
     }
@@ -403,26 +449,6 @@ function reportLiveVariantReads(
         `${distinct.join(", ")} still asks which edition it is, and this run cannot fold the answer in, `
         + `so it reads "${RELEASE_APP_TAG.name}" there. A build refuses those graphs.`,
     );
-}
-
-/**
- * One refusal as the author reads it, through the same catalogue keys the build gate logs.
- *
- * The asset's own name rather than the blueprint's, because a shared blueprint is browsed and opened
- * as an asset; the blueprint's name inside the file is not what the author would go looking for.
- */
-function describeAppTagGraphRefusal(
-    refusal: UnfoldableAppTagGraph,
-    assetName: string,
-    locale: LocaleCode | undefined,
-): string {
-    const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
-    const keys = {
-        unresolved: "build.appTagGraphUnresolved",
-        unknownNode: "build.appTagGraphUnknownNode",
-        fnHeadRemoved: "build.appTagGraphFnHead",
-    } as const;
-    return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
 }
 
 /**
@@ -493,9 +519,12 @@ export function planSceneDrop(
         }
     }
     for (const blueprint of blueprints) {
-        if (blueprint.program.kind !== "graph"
+        // A script can start any scene and nothing here can read it, so one script layer anywhere
+        // in a blueprint is enough to stop the sweep - the graph layers beside it prove nothing
+        // about what the file does.
+        if (hasScriptLayer(blueprint)
             && !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })) {
-            context.onNotice?.(`the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`);
+            context.onNotice?.(`the script ${blueprint.name} runs can start any scene, so every story ships whole`);
             return null;
         }
     }
@@ -556,7 +585,11 @@ async function loadStoryLibrary(
     carriedDlc: ReadonlySet<string> | null,
 ): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
-    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
+    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath, {
+        kind: "storyIndex",
+        subject: relativeSubject(projectPath, indexPath),
+        supportedVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+    });
     if (!index) {
         return undefined;
     }
@@ -584,7 +617,13 @@ async function loadStoryLibrary(
         // plays and grades nothing, a `/transform` preset that never moves its sprite. The editor
         // migrates on load, but a document is only rewritten when the author edits it, so "opened the
         // project once" is not enough and cannot be made enough.
-        const document = migrateStoryDocumentToLatest(await readJsonFile<StoryDocument>(documentPath));
+        // Named by the story's own name rather than by its path: the path is made of an id, and an
+        // id is not something to put in front of an author.
+        const document = migrateStoryDocumentToLatest(await readJsonFile<StoryDocument>(documentPath, {
+            kind: "story",
+            subject: entry.name || entry.id,
+            supportedVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        }));
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
@@ -654,13 +693,11 @@ async function materializeAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeAssetSetProblem(problem, storyLibrary, variantName);
-        if (context.packaging) {
-            throw new Error(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    // Where a story row named the set is its scene, by name: the block id is nothing an author can
+    // find, and the scene's id is a uuid.
+    await reportAssetSetProblems(context, result.problems, localization, variantName, (problem, translator) =>
+        storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId]?.name?.trim()
+            || translator.t("story.sceneEditor.untitledScene"));
     if (result.collapsedBuildAxis) {
         // The caller has to narrow the library now, whichever edition this is. See
         // `AssetSetMaterializationResult.collapsedBuildAxis`.
@@ -696,13 +733,7 @@ async function resolveCharacterAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new Error(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
@@ -733,13 +764,7 @@ async function resolveUiAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new Error(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
@@ -770,80 +795,132 @@ async function resolveBlueprintAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new Error(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
 }
 
 /**
- * The same sentence the story faults get, with the part of the project in place of the scene.
+ * Say each fault a pass found: a package refuses on the first, and anything else carries on with
+ * every one of them as a notice - the rule every pass above follows.
  *
- * The set's name is what the author acts on either way; what changes is where to go and look, and
- * "in the interface" is as precise as a scan of the document can honestly be.
+ * The sentence is written in the author's language, and names the set, where it is used and which of
+ * its values is at fault. The value is named the way the project names it - a language by its name,
+ * an edition by its name - because the value is stored as a language code or an edition id, and an
+ * edition's id is a uuid. The set's *members* are never named: a set is resolved by tag, so the file
+ * to import does not exist yet, and for a build axis the variants an edition did not take must not be
+ * named anywhere a log can reach.
+ *
+ * `locate` says where the set was named: a scene, or the part of the project a pass walks.
  */
-function describeShippedAssetSetProblem(problem: AssetSetRecordProblem, variantName: string): string {
-    const set = `Asset set "${problem.setName}", used in ${problem.slice}`;
-    if (problem.kind === "ambiguous") {
-        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+async function reportAssetSetProblems<P extends AssetSetProblemDetail>(
+    context: DevModeBundleLoadContext,
+    problems: readonly P[],
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+    locate: (problem: P, translator: Translator) => string,
+): Promise<void> {
+    if (problems.length === 0) {
+        return;
     }
-    if (problem.kind === "unsupported") {
-        const reason = problem.reason === "multipleAxes"
-            ? "has more than one axis, which this build cannot resolve yet"
-            : "declares no axis to resolve";
-        return `${set}, ${reason}.`;
+    const translator = createTranslator(context.locale ?? FALLBACK_LOCALE);
+    const naming = await loadAssetSetValueNaming(context.projectPath, localization, translator);
+    for (const problem of problems) {
+        const sentence = describeAssetSetProblem(problem, locate(problem, translator), variantName, naming, translator);
+        if (context.packaging) {
+            throw new BuildRefusal(sentence);
+        }
+        context.onNotice?.(sentence);
     }
-    if (problem.kind === "axisUnset") {
-        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
+}
+
+/** Where a pass with no rows found a set: a character, the interface, or a blueprint. */
+function describeAssetSetSlice(problem: AssetSetRecordProblem, translator: Translator): string {
+    switch (problem.slice) {
+        case "characters":
+            return translator.t("build.assetSet.inCharacters");
+        case "interface":
+            return translator.t("build.assetSet.inInterface");
+        case "blueprint":
+            return translator.t("build.assetSet.inBlueprint");
     }
-    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
-    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /**
- * What the author is told, naming the scene rather than the block id.
+ * What the project calls the values a set varies by: its languages, from the localization this
+ * bundle is built with, and its editions, from the variant list.
  *
- * A build failure has to be actionable from the sentence alone: which set, which coordinate, and
- * where it is used. The set's *members* are never named - a set is resolved by tag, so the file to
- * import does not exist yet and there is no name to print. For a build axis there is a second
- * reason: the variants an edition did not take must not be named anywhere a log can reach.
+ * Read only when a fault has to be put into words. A variant list that cannot be read leaves every
+ * edition but `main` named as deleted, which is still a sentence with no id in it.
  */
+async function loadAssetSetValueNaming(
+    projectPath: string,
+    localization: GameLocalizationBundle | undefined,
+    translator: Translator,
+): Promise<AssetSetAxisNaming> {
+    let editions: ReadonlyMap<string, string> = new Map();
+    try {
+        const document = await readProjectAppTagDocumentFromDir(projectPath);
+        editions = new Map(document.tags.map(tag => [tag.id, tag.name]));
+    } catch {
+        // Named as deleted, below; the fault being reported is the one that matters here.
+    }
+    return {
+        locales: new Map((localization?.locales ?? []).map(entry => [entry.code, entry.displayName])),
+        editions,
+        words: {
+            language: translator.t("assets.sets.axisWord.language"),
+            edition: translator.t("assets.sets.axisWord.variant"),
+            deletedEdition: translator.t("assets.sets.deletedVariant"),
+        },
+    };
+}
+
+/** One fault in one set, as the sentence a build refuses with. See {@link reportAssetSetProblems}. */
 function describeAssetSetProblem(
-    problem: AssetSetMaterializationProblem,
-    storyLibrary: DevModeStoryLibrary,
+    problem: AssetSetProblemDetail,
+    location: string,
     variantName: string,
+    naming: AssetSetAxisNaming,
+    translator: Translator,
 ): string {
-    const scene = storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId];
-    const where = scene?.name ? `"${scene.name}"` : problem.sceneId;
-    const set = `Asset set "${problem.setName}", used in ${where}`;
-    if (problem.kind === "ambiguous") {
-        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+    const where = { set: problem.setName, location };
+    const value = (axisKey: string, stored: string): string => {
+        if (!isAssetSetAxisKind(axisKey)) {
+            return stored;
+        }
+        const name = readAssetSetAxisValue(axisKey, stored, naming).value;
+        return axisKey === "locale"
+            ? translator.t("build.assetSet.language", { name })
+            : translator.t("build.assetSet.variant", { name });
+    };
+    switch (problem.kind) {
+        case "ambiguous":
+            return translator.t("build.assetSet.ambiguous", { ...where, value: value(problem.axisKey, problem.value) });
+        case "unsupported":
+            return translator.t(problem.reason === "multipleAxes" ? "build.assetSet.nested" : "build.assetSet.noValues", where);
+        case "axisUnset":
+            return translator.t("build.assetSet.variantUnset", { ...where, variant: variantName });
+        case "unfilled":
+            return problem.value
+                ? translator.t("build.assetSet.unfilled", { ...where, value: value(problem.axisKey, problem.value) })
+                : translator.t("build.assetSet.noLanguage", where);
     }
-    if (problem.kind === "unsupported") {
-        const reason = problem.reason === "multipleAxes"
-            ? "has more than one axis, which this build cannot resolve yet"
-            : "declares no axis to resolve";
-        return `${set}, ${reason}.`;
-    }
-    if (problem.kind === "axisUnset") {
-        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
-    }
-    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
-    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /** The sets the project declares. Absent or unreadable is "no sets", which changes nothing. */
 async function loadAssetSets(projectPath: string): Promise<AssetSet[]> {
+    const setsPath = path.join(projectPath, "editor", "asset-sets.json");
     let raw: unknown;
     try {
-        raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "asset-sets.json"));
-    } catch {
+        raw = await readOptionalJsonFile<unknown>(setsPath, {
+            kind: "assetSets",
+            subject: relativeSubject(projectPath, setsPath),
+            supportedVersion: ASSET_SET_SCHEMA_VERSION,
+        });
+    } catch (error) {
+        rethrowIfTooNew(error);
         return [];
     }
     return raw ? normalizeProjectAssetSets(raw).sets : [];
@@ -967,9 +1044,14 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
 async function loadProjectAudioTracks(projectPath: string): Promise<ProjectAudioTrack[]> {
     const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
     try {
-        const raw = await readOptionalJsonFile<unknown>(tracksPath);
+        const raw = await readOptionalJsonFile<unknown>(tracksPath, {
+            kind: "audioTracks",
+            subject: relativeSubject(projectPath, tracksPath),
+            supportedVersion: AUDIO_TRACK_SCHEMA_VERSION,
+        });
         return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return normalizeProjectAudioTracks([]);
     }
 }
@@ -987,7 +1069,12 @@ function storyDocumentRelativePath(storyId: string): string {
 
 async function loadStoryAnimations(projectPath: string): Promise<Record<string, StoryAnimationAsset>> {
     const indexPath = path.join(projectPath, "editor", "story", "animations", "index.json");
-    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath);
+    const animationGate = (filePath: string): ProjectDocumentGate => ({
+        kind: "storyAnimation",
+        subject: relativeSubject(projectPath, filePath),
+        supportedVersion: STORY_ANIMATION_SCHEMA_VERSION,
+    });
+    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath, animationGate(indexPath));
     if (!index) {
         return {};
     }
@@ -999,7 +1086,7 @@ async function loadStoryAnimations(projectPath: string): Promise<Record<string, 
         }
         seen.add(entry.id);
         const animationPath = path.join(projectPath, "editor", "story", "animations", `${entry.id}.json`);
-        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath);
+        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath, animationGate(animationPath));
         if (!animation || animation.id !== entry.id) {
             continue;
         }
@@ -1010,7 +1097,14 @@ async function loadStoryAnimations(projectPath: string): Promise<Record<string, 
 
 async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {
     const storePath = path.join(projectPath, "editor", "services", "character.json");
-    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath);
+    // The character store versions itself as `version`, not `schemaVersion`: it predates the
+    // convention, and reading the usual field here would gate nothing at all.
+    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath, {
+        kind: "characters",
+        subject: relativeSubject(projectPath, storePath),
+        supportedVersion: CHARACTER_STORE_VERSION,
+        field: "version",
+    });
     const characters = Array.isArray(store?.characters) ? store.characters : [];
     return mapCharacterStoreEntriesToSummaries(characters);
 }
@@ -1070,10 +1164,14 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
         }
         let raw: unknown;
         try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "localization", `${locale.code}.json`),
-            );
-        } catch {
+            const tablePath = path.join(projectPath, "editor", "localization", `${locale.code}.json`);
+            raw = await readOptionalJsonFile<unknown>(tablePath, {
+                kind: "localization",
+                subject: relativeSubject(projectPath, tablePath),
+                supportedVersion: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+            });
+        } catch (error) {
+            rethrowIfTooNew(error);
             continue;
         }
         if (!raw) {
@@ -1092,9 +1190,12 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
     }
     let keys: Record<string, string> | undefined;
     try {
-        const rawKeys = await readOptionalJsonFile<unknown>(
-            path.join(projectPath, "editor", "localization", "keys.json"),
-        );
+        const keysPath = path.join(projectPath, "editor", "localization", "keys.json");
+        const rawKeys = await readOptionalJsonFile<unknown>(keysPath, {
+            kind: "localizationKeys",
+            subject: relativeSubject(projectPath, keysPath),
+            supportedVersion: LOCALIZATION_KEYS_SCHEMA_VERSION,
+        });
         if (rawKeys) {
             const keysDocument = normalizeLocalizationKeysDocument(rawKeys);
             const entries = Object.entries(keysDocument.keys);
@@ -1102,7 +1203,8 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
                 keys = Object.fromEntries(entries.map(([name, definition]) => [name, definition.sourceText]));
             }
         }
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         // Broken keys file degrades to no named keys.
     }
     return {
@@ -1132,10 +1234,14 @@ export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundl
     for (const locale of voice.voicedLocales) {
         let raw: unknown;
         try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "voice", `${locale.code}.json`),
-            );
-        } catch {
+            const tablePath = path.join(projectPath, "editor", "voice", `${locale.code}.json`);
+            raw = await readOptionalJsonFile<unknown>(tablePath, {
+                kind: "voice",
+                subject: relativeSubject(projectPath, tablePath),
+                supportedVersion: VOICE_DOCUMENT_SCHEMA_VERSION,
+            });
+        } catch (error) {
+            rethrowIfTooNew(error);
             continue;
         }
         if (!raw) {
@@ -1229,6 +1335,27 @@ export async function loadWindowConfiguration(projectPath: string): Promise<Wind
 }
 
 /**
+ * The page this session ends on, resolved for the variant it is assembled as.
+ *
+ * The same read the pack compiler makes, from the same document, so a story that falls off the end
+ * lands on the same page in Dev Mode as in a build - and an author can see the page they authored
+ * for it without packaging one. Per variant for the reason the addresses are: the demo's ending is
+ * not the full game's, and one story document produces both.
+ *
+ * A document that will not parse leaves the session with no ending page rather than failing the
+ * assembly: this is one field of a bundle, and a session that will not start over it is worse than
+ * a story that stops where it always used to. Exported for tests.
+ */
+export async function loadEndingSurfaceId(projectPath: string, appTagId: string): Promise<string> {
+    try {
+        const document = await readProjectAppTagDocumentFromDir(projectPath);
+        return resolveAppTagEndingSurface(resolveAppTag(document.tags, appTagId), document.endingSurfaceId).value;
+    } catch {
+        return "";
+    }
+}
+
+/**
  * Load the frame rate screen effects are baked at from `.nlproj` `app.vfx`. Dense like the ones
  * above, and load-bearing rather than informational: this is what the running game computes a clip
  * id from, and the packer computed the ids it shipped from the same file. Exported for tests.
@@ -1288,9 +1415,10 @@ export async function loadPlayerPreferences(projectPath: string): Promise<Player
 export async function loadProjectBrand(projectPath: string): Promise<BrandColor[]> {
     const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
     try {
-        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        const raw = await readOptionalJsonFile<unknown>(brandPath, BRAND_GATE);
         return migrateProjectBrandDocument(raw ?? {}).colors;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return normalizeProjectBrandColors([]);
     }
 }
@@ -1307,12 +1435,23 @@ export async function loadProjectBrand(projectPath: string): Promise<BrandColor[
 export async function loadProjectFonts(projectPath: string): Promise<ProjectFontEntry[]> {
     const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
     try {
-        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        const raw = await readOptionalJsonFile<unknown>(brandPath, BRAND_GATE);
         return migrateProjectBrandDocument(raw ?? {}).fonts;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return [];
     }
 }
+
+/**
+ * The design document is read twice - once for its colours, once for its fonts - and both reads
+ * refuse the same file at the same version, so they state it once.
+ */
+const BRAND_GATE: ProjectDocumentGate = {
+    kind: "brand",
+    subject: BRAND_DOCUMENT_PATH,
+    supportedVersion: BRAND_SCHEMA_VERSION,
+};
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {
     try {

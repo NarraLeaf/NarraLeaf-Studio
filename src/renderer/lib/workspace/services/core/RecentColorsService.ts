@@ -2,6 +2,7 @@ import type { StudioStateStoreNamespace } from "@shared/vcs/serviceStores";
 import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "./ServiceAssetsService";
+import { storeWrite } from "../autosave/writeReport";
 import { UIService } from "./UIService";
 
 const MAX_RECENT_COLORS = 16;
@@ -137,12 +138,13 @@ export class RecentColorsService extends Service<RecentColorsService> {
         }
         this.dirty = false;
         const serviceAssets = this.getServiceAssets();
-        const uiService = this.getContext().services.get<UIService>(Services.UI);
         const data: RecentColorsStore = { version: 1, colors: this.colors };
-        const result = await serviceAssets.writeStore(RecentColorsService.Namespace, data);
-        if (!result.ok) {
-            uiService.showError(`Failed to persist recent colors: ${result.error.message}`);
-        }
+        // Reported by the save-status surface, not here: see `PanelStateService.flush`.
+        await serviceAssets.writeStore(
+            RecentColorsService.Namespace,
+            data,
+            storeWrite("workspace.shell.save.stores.recentColors", "notRetried"),
+        );
     }
 
     private getServiceAssets(): ServiceAssetsService {

@@ -6,6 +6,13 @@ import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } fr
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { EMPTY_STORY_EXPRESSION_SCOPE, parseStoryExpression } from "@shared/utils/storyExpressionParser";
+import {
+    blueprint as kitBlueprint,
+    document as kitDocument,
+    element as kitElement,
+    graph as kitGraph,
+    interfaceOf as kitInterface,
+} from "../../workspace/services/references/assetNameTestKit";
 import { createTestLintContext } from "../testContext";
 import type { LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintRuleId } from "../types";
@@ -129,25 +136,20 @@ function blueprintWithStartStory(params: Record<string, unknown>, wiredPins: str
                 id: "bp-1",
                 name: "Title screen",
                 owner: { kind: "globalMain" },
-                frontend: "visual",
-                programKind: "graph",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            "ev-1": {
-                                id: "ev-1",
-                                graph: {
-                                    nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
-                                    edges: wiredPins.map(port => ({
-                                        from: { nodeId: "n-source", port: "value" },
-                                        to: { nodeId: "n-1", port },
-                                    })),
-                                },
+                graphs: {
+                    events: {
+                        "ev-1": {
+                            id: "ev-1",
+                            graph: {
+                                nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                                edges: wiredPins.map(port => ({
+                                    from: { nodeId: "n-source", port: "value" },
+                                    to: { nodeId: "n-1", port },
+                                })),
                             },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },
@@ -1165,12 +1167,56 @@ describe("story/unreachable-scene", () => {
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });
 
-    it("goes silent when a Start Game node picks no target at all", () => {
+    it("reads a Start Game node that picks no scene as starting nothing", () => {
+        // It throws when it runs ("Pick a Scene"), so it can begin nowhere. Going silent over it let
+        // one half-made button switch the rule off for the whole project.
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
             blueprintDocument: blueprintWithStartStory({ storyId: "s1" }),
         });
-        expect(run("story/unreachable-scene", ctx)).toEqual([]);
+        expect(run("story/unreachable-scene", ctx).map(finding => finding.location)).toEqual([
+            expect.objectContaining({ sceneId: "sc2" }),
+        ]);
+    });
+
+    describe("a recollection list that replays the clicked row", () => {
+        const recollection = kitDocument(kitBlueprint("bp-list", "Recollection", { kind: "widgetMain", surfaceId: "extra", elementId: "list" }, {
+            fill: kitGraph(
+                [
+                    { id: "entries", type: "narraleaf.gallery.getEntries", params: { galleryKind: "scene" } },
+                    { id: "self", type: "blueprint.element.ref", params: { surfaceId: "extra", elementId: "list", elementType: "nl.list" } },
+                    { id: "fill", type: "blueprint.element.list.setItems" },
+                ],
+                [["self", "element", "fill", "list"], ["entries", "entries", "fill", "items"]],
+            ),
+            open: kitGraph(
+                [
+                    { id: "click", type: "blueprint.event.head.itemClick" },
+                    { id: "rowStory", type: "blueprint.list.getItemField", params: { field: "storyId" } },
+                    { id: "rowScene", type: "blueprint.list.getItemField", params: { field: "sceneId" } },
+                    { id: "play", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY },
+                ],
+                [["click", "then", "play", "in"], ["rowStory", "value", "play", "storyId"], ["rowScene", "value", "play", "sceneId"]],
+            ),
+        }));
+        const extra = kitInterface({ id: "extra", name: "Extra", rootElementId: "root" }, [
+            kitElement("root", "nl.container", null, { childrenIds: ["list"] }),
+            kitElement("list", "nl.list", "root"),
+        ]);
+        const stories = [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", []), scene("sc3", "Memory", [])], "sc1")];
+        const catalogue = { pluginId: "narraleaf.gallery", namespace: "narraleaf.gallery.items", data: { items: [{ kind: "scene", scene: { storyId: "s1", sceneId: "sc3" } }] } };
+
+        it("counts every scene the Gallery lists as a place play begins", () => {
+            const ctx = createTestLintContext({ stories, blueprintDocument: recollection, uiDocument: extra, pluginStores: [catalogue] });
+            expect(run("story/unreachable-scene", ctx).map(finding => finding.location)).toEqual([
+                expect.objectContaining({ sceneId: "sc2" }),
+            ]);
+        });
+
+        it("goes silent when the plugins' stores were not read", () => {
+            const ctx = createTestLintContext({ stories, blueprintDocument: recollection, uiDocument: extra, pluginStores: null });
+            expect(run("story/unreachable-scene", ctx)).toEqual([]);
+        });
     });
 
     it("goes silent when a Start Game node wires its target, picked scene and all", () => {
@@ -1606,5 +1652,184 @@ describe("story/rows-after-ending with a quit", () => {
         );
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toMatchObject({ blockId: "n1" });
+    });
+});
+
+// --- story/background-unchanged ----------------------------------------------
+
+describe("story/background-unchanged", () => {
+    const CAFE = "asset-cafe";
+    const STREET = "asset-street";
+
+    /** A `setBackground` row. `transition` is passed through verbatim, so a test can omit it. */
+    const bg = (
+        id: string,
+        assetId: string | undefined,
+        transition?: Record<string, unknown>,
+        extra: { color?: string; disabled?: boolean } = {},
+    ): BlockSpec => ({
+        id,
+        kind: "action",
+        payload: {
+            action: "setBackground",
+            ...(assetId ? { assetId } : {}),
+            ...(extra.color ? { color: extra.color } : {}),
+            ...(transition ? { transition } : {}),
+        },
+        ...(extra.disabled ? { disabled: true } : {}),
+    });
+
+    /** A scene that opens on `defaultBackgroundAssetId`, which is the state row 0 runs against. */
+    const openingOn = (assetId: string, specs: BlockSpec[]): StoryScene =>
+        ({ ...scene("sc1", "Prologue", specs), defaultBackgroundAssetId: assetId }) as StoryScene;
+
+    const dissolve = { kind: "dissolve", durationMs: 500 };
+    const throughBlack = { kind: "throughColor", durationMs: 1000, props: { color: "#000000" } };
+
+    it("reports a row fading to the background the scene already opens on", () => {
+        // The shape this rule exists for: the scene is already showing the picture, and the row
+        // spends a second of the player's time going through black to arrive at it again.
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [bg("b1", CAFE, throughBlack), narration("n1")])])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyBackgroundUnchanged.message");
+        expect(findings[0].location).toMatchObject({ blockId: "b1" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
+    });
+
+    it("says nothing about a row that genuinely changes the picture", () => {
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [bg("b1", STREET, throughBlack)])])),
+        )).toEqual([]);
+    });
+
+    it("says nothing about a cut, however the row spells one", () => {
+        // All four land instantly, and re-stating the background costs nothing then - it is how a
+        // scene entered from several places pins down what the player is looking at.
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", CAFE),
+                bg("b2", CAFE, { kind: "none", durationMs: 500 }),
+                bg("b3", CAFE, { kind: "dissolve", durationMs: 0 }),
+                bg("b4", CAFE, { kind: "" }),
+            ])])),
+        )).toEqual([]);
+    });
+
+    it("reads a stated kind with no duration as the compiler's own default", () => {
+        // `createTransition` reads an absent `durationMs` as 300ms, so the row does occupy the
+        // screen. A rule that treated "no duration" as "no time" would miss every such row.
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [bg("b1", CAFE, { kind: "dissolve" })])])),
+        );
+
+        expect(findings).toHaveLength(1);
+    });
+
+    it("says nothing about a transition this build cannot play", () => {
+        // Downgraded to a cut by the compiler, and `story/transition-unavailable` already has the
+        // row. A `ruleReveal` with no rule image is downgraded the same way.
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", CAFE, { kind: "custom", durationMs: 500 }),
+                bg("b2", CAFE, { kind: "ruleReveal", durationMs: 500 }),
+            ])])),
+        )).toEqual([]);
+    });
+
+    it("reads what an earlier row put up, not the scene's default", () => {
+        // The case a rule comparing against `defaultBackgroundAssetId` alone gets backwards in both
+        // directions: `b2` repeats what `b1` put up (a finding), and `b3` returns to the default
+        // the scene has not shown since `b1` replaced it (not a finding).
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", STREET, dissolve),
+                narration("n1"),
+                bg("b2", STREET, dissolve),
+                bg("b3", CAFE, throughBlack),
+            ])])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "b2" });
+    });
+
+    it("tells a colour apart from an image, and repeats of one colour apart from a change", () => {
+        // `b2` fades to the black already on screen; `b3` goes back to the picture, which is a
+        // change. Spelling is compared case-insensitively - one colour, two ways to write it.
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", undefined, dissolve, { color: "#000000" }),
+                bg("b2", undefined, dissolve, { color: "#000000" }),
+                bg("b3", CAFE, dissolve),
+                bg("b4", undefined, dissolve, { color: "#FFFFFF" }),
+                bg("b5", undefined, dissolve, { color: "#ffffff" }),
+            ])])),
+        );
+
+        expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "b2" }, { blockId: "b5" }]);
+    });
+
+    it("says nothing when the background has been posed away from the plain picture", () => {
+        // A background faded out by a `/transform` is not what the row names, so the transition has
+        // a change to play after all. Same for the background layer it sits on.
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                {
+                    id: "t1",
+                    kind: "action",
+                    payload: {
+                        action: "displayable",
+                        operation: "transform",
+                        target: { builtin: "background" },
+                        transform: { to: { opacity: 0 } },
+                    },
+                },
+                bg("b1", CAFE, throughBlack),
+            ])])),
+        )).toEqual([]);
+    });
+
+    it("says nothing about a disabled row", () => {
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [bg("b1", CAFE, throughBlack, { disabled: true })])])),
+        )).toEqual([]);
+    });
+
+    it("still walks a row whose picture only an earlier row put up", () => {
+        // The candidate gate in front of the walk is a superset test, and this is the case that
+        // proves it is not the answer: `asset-street` is not the scene's default, so only `b1`
+        // makes it reachable, and `b3` repeating it is a finding while `b2` changing away is not.
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", STREET, dissolve),
+                bg("b2", CAFE, dissolve),
+                bg("b3", STREET, dissolve),
+                bg("b4", STREET, dissolve),
+            ])])),
+        );
+
+        expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "b4" }]);
+    });
+
+    it("says nothing when the scene declares no default and no row has set one", () => {
+        // Nothing is on screen to be the same as: the row is the first thing that puts a background
+        // up, which is the opposite of the defect.
+        expect(run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [bg("b1", CAFE, throughBlack)])])),
+        )).toEqual([]);
     });
 });

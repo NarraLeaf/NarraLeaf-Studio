@@ -1,6 +1,7 @@
 import type { TranslationKey } from "@shared/i18n";
 import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
 import { paramHintKey } from "./storyCommandGrammar";
+import { localizedCommandToken, suggestCommandDef } from "./commands/registry";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
 
@@ -95,8 +96,18 @@ function looksComplete(source: string): boolean {
 function parserReason(line: Extract<StoryCommandLine, { kind: "command" }>, issue: StoryCommandIssue): StoryCommandReason {
     const token = line.token ?? "";
     switch (issue.code) {
-        case "unknownCommand":
-            return { key: reasonKey(issue.code), params: { token: issue.token } };
+        case "unknownCommand": {
+            // The word an author typed is often a word the catalogue still knows - the spelling they
+            // stopped short on, a typo, or the name a renamed command's own description still uses.
+            // Naming it is the difference between "that is not a command" and "this is".
+            //
+            // Spelled in the COMMAND language, like every other word an author would have to type;
+            // the sentence around it is prose and follows the interface.
+            const near = suggestCommandDef(issue.token);
+            return near
+                ? { key: reasonKey("unknownCommandNear"), params: { token: issue.token, suggestion: localizedCommandToken(near) } }
+                : { key: reasonKey(issue.code), params: { token: issue.token } };
+        }
         case "unknownParam":
         case "duplicateParam":
             return { key: reasonKey(issue.code), params: { token, key: issue.key } };

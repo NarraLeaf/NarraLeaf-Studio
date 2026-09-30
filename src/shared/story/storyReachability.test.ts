@@ -73,22 +73,17 @@ function startStoryBlueprint(
         id: "bp-1",
         name: "Title screen",
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        graph: {
-                            nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
-                            edges,
-                        },
+        graphs: {
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    graph: {
+                        nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                        edges,
                     },
                 },
-                functions: {},
             },
+            functions: {},
         },
     } as Blueprint;
 }
@@ -350,17 +345,78 @@ describe("scanStoryEntryPoints", () => {
             .toEqual([...blueprintGraphCarriers([blueprint])]);
     });
 
-    it("finds nothing in a TypeScript blueprint and nothing in no document", () => {
+    it("finds nothing in a script layer and nothing in no document", () => {
         const script = {
             id: "bp-2",
             name: "Script",
             owner: { kind: "globalMain" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+            graphs: {
+                eventIds: ["layer-script"],
+                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/title.ts" } } },
+                functions: {},
+            },
         } as Blueprint;
 
         expect([...blueprintGraphCarriers([script])]).toEqual([]);
         expect([...blueprintDocumentGraphCarriers(null)]).toEqual([]);
+    });
+});
+
+describe("scanStoryEntryPoints with a target reader", () => {
+    const node = { blueprintId: "bp-1", graphKind: "event", graphId: "ev-1", nodeId: "n-1" };
+
+    it("asks about a wired node and pairs what it answers against the documents", () => {
+        const asked: unknown[] = [];
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({}, [wiredTo("storyId"), wiredTo("sceneId")])]),
+            (storyId, sceneId) => storyId === "story-1" && (sceneId === "scene-3" || sceneId === "scene-4"),
+            ref => {
+                asked.push(ref);
+                // A catalogue says more than scene ids; only the pairings a document has are entries.
+                return { storyIds: ["story-1", "art-book"], sceneIds: ["scene-3", "scene-4", "scene-3", "cg-7"] };
+            },
+        );
+
+        expect(asked).toEqual([node]);
+        expect(scan.undecidable).toEqual([]);
+        expect([...(scan.byStory.get("story-1") ?? [])]).toEqual(["scene-3", "scene-4"]);
+        // Each scene once, however many rows name it.
+        expect(scan.sites.map(site => site.sceneId)).toEqual(["scene-3", "scene-4"]);
+    });
+
+    it("keeps a node undecidable when the reader cannot read it", () => {
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1" }, [wiredTo("sceneId")])]),
+            everyScene,
+            () => null,
+        );
+
+        expect(scan.byStory.size).toBe(0);
+        expect(scan.undecidable).toEqual([{ ...node, blueprintName: "Title screen", missing: ["sceneId"] }]);
+    });
+
+    it("takes a node the reader says starts nothing as starting nothing", () => {
+        // A blank picker with nothing wired throws when it runs, so it can begin nowhere - which is
+        // a claim the scan can make only when someone read the node, not by default.
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1", sceneId: "" })]),
+            everyScene,
+            () => ({ storyIds: ["story-1"], sceneIds: [] }),
+        );
+
+        expect(scan.undecidable).toEqual([]);
+        expect(scan.byStory.size).toBe(0);
+    });
+
+    it("never asks about a node its picker settles", () => {
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1", sceneId: "scene-7" })]),
+            everyScene,
+            () => {
+                throw new Error("asked about a picked node");
+            },
+        );
+
+        expect([...(scan.byStory.get("story-1") ?? [])]).toEqual(["scene-7"]);
     });
 });

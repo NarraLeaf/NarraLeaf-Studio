@@ -7,6 +7,7 @@ import { UI_SWITCH_ON_VARIANT_ID } from "@shared/types/ui-editor/switch";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { bindWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { SwitchRenderer } from "./renderer";
 
 type RenderCall = {
@@ -126,6 +127,8 @@ function mountSwitch(document: UIDocument, options?: { withRuntime?: boolean }) 
                 document={document}
                 surface={document.surfaces[0]!}
                 hostAdapter={hostAdapter}
+                // What the element tree hands every renderer: this element, in the page's drawing.
+                dispatchEvent={bindWidgetEventDispatch(hostAdapter.blueprintRuntime, "switch", {})}
                 renderChildren={callOptions => {
                     renderCalls.push(callOptions ?? {});
                     const ids = callOptions?.childrenIds ?? [];

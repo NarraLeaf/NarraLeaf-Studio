@@ -1,7 +1,7 @@
 /**
  * What a blueprint belongs to, in the words an author navigates by.
  *
- * Simplifies the internal globalMain/surfaceMain/widgetMain/sharedAsset taxonomy into terms an
+ * Simplifies the internal globalMain/surfaceMain/widgetMain/storyAction taxonomy into terms an
  * intermediate creator can read. Keys rather than words: these land in a panel row, a tab title and
  * the section beside a control, all of which are translated, and a literal here printed English
  * into every one of them.
@@ -18,7 +18,6 @@ const LABEL_KEYS: Record<BlueprintOwnerRef["kind"], TranslationKey> = {
     // A component definition's logic is the same thing to an author as a control's own, and saying
     // it differently would only ask them to tell two words apart that mean one thing.
     componentWidgetMain: "uiEditor.ownerLabel.widgetMain",
-    sharedAsset: "uiEditor.ownerLabel.sharedAsset",
     storyAction: "uiEditor.ownerLabel.storyAction",
 };
 

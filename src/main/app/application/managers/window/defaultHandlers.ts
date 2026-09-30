@@ -1,6 +1,7 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppOpenLogsFolderHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
+import { ProjectListScriptEditorsHandler, ProjectOpenScriptHandler } from "./handlers/projectScriptAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppOpenLogsFolderHandler, AppOpenThirdPartyNoticesHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     SpellcheckCheckHandler,
@@ -16,7 +17,7 @@ import {
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
-    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
+    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
     FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
@@ -36,6 +37,7 @@ import {
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
+import { VcsUseServerSessionHandler } from "./handlers/vcsServerSessionAction";
 import {
     TeamCallHandler,
     TeamConnectionsHandler,
@@ -45,6 +47,7 @@ import {
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
+import { ProjectWizardCreatedHandler } from "./handlers/projectWizardCreatedAction";
 import {
     ProjectWizardSelectPackageHandler,
     WorkspaceExportProjectPackageHandler,
@@ -59,11 +62,24 @@ import {
 } from "./handlers/mediaAction";
 import { FontCoverageProbeHandler } from "./handlers/fontAction";
 import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import {
+    ProjectTrustQueryHandler,
+    ProjectTrustGrantHandler,
+    ProjectTrustRevokeHandler,
+    ProjectTrustListHandler,
+    ProjectTrustPromptHandler,
+} from "./handlers/projectTrustAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineRunHandler, WorkspaceSetRecoveryModeHandler, WorkspaceAcquireSessionLockHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
     DevModeFullscreenSetHandler,
+    DevModeWindowFocusGetHandler,
+    DevModeProcessMemoryHandler,
+    DevModeScreenshotSaveHandler,
+    DevModeScreenshotOpenFolderHandler,
+    DevModeWindowScaleOptionsHandler,
+    DevModeWindowSetStageSizeHandler,
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
@@ -85,9 +101,11 @@ import {
     DevModeSaveReadPreviewHandler,
     DevModeSaveWriteHandler,
 } from "./handlers/devModeSaveAction";
+import { DevModeDataResetHandler } from "./handlers/devModeDataResetAction";
 import {
     PreviewGetStatusHandler,
     PreviewLaunchHandler,
+    PreviewResetDataHandler,
     PreviewStopHandler,
 } from "./handlers/previewAction";
 import {
@@ -204,11 +222,14 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppAddRecentProjectHandler(),
         new AppRemoveRecentProjectHandler(),
         new AppRevealRecentProjectHandler(),
+        new ProjectOpenScriptHandler(),
+        new ProjectListScriptEditorsHandler(),
         new AppCheckRecentProjectsHandler(),
         new AppRecentProjectIconsHandler(),
         new AppSystemPathHandler(),
         new AppExportDiagnosticsHandler(),
         new AppOpenLogsFolderHandler(),
+        new AppOpenThirdPartyNoticesHandler(),
         new AppProbeDownloadSourceHandler(),
         new AppCacheInventoryHandler(),
         new AppCacheClearHandler(),
@@ -246,6 +267,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectWizardSelectDirectoryHandler(),
         new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
+        new ProjectWizardCreatedHandler(),
 
         // Workspace handlers
         new WorkspaceLaunchHandler(),
@@ -269,11 +291,17 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceExportConsoleLogsHandler(),
         new WorkspaceMenuSyncHandler(),
         new WorkspaceSetRecoveryModeHandler(),
+        new WorkspaceAcquireSessionLockHandler(),
+        new ProjectTrustQueryHandler(),
+        new ProjectTrustGrantHandler(),
+        new ProjectTrustRevokeHandler(),
+        new ProjectTrustListHandler(),
+        new ProjectTrustPromptHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
         new WorkspaceReportLoadResultHandler(),
-        new WorkspaceCommandLineBuildHandler(),
+        new WorkspaceCommandLineRunHandler(),
         new WorkspaceReportWriteFreezeHandler(),
 
         // Dev mode handlers
@@ -283,6 +311,12 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeGetStatusHandler(),
         new DevModeFullscreenGetHandler(),
         new DevModeFullscreenSetHandler(),
+        new DevModeWindowFocusGetHandler(),
+        new DevModeProcessMemoryHandler(),
+        new DevModeScreenshotSaveHandler(),
+        new DevModeScreenshotOpenFolderHandler(),
+        new DevModeWindowScaleOptionsHandler(),
+        new DevModeWindowSetStageSizeHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),
@@ -296,11 +330,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeSaveListHeadersHandler(),
         new DevModeSaveReadPreviewHandler(),
         new DevModeSaveDeleteHandler(),
+        new DevModeDataResetHandler(),
 
         // Preview runtime handlers
         new PreviewLaunchHandler(),
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
+        new PreviewResetDataHandler(),
 
         // Game sessions owned by a test run (not by the Run button)
         new GameTestLaunchHandler(),
@@ -401,7 +437,6 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsRequestWriteHandler(),
         new FsEnsureRegularFileHandler(),
         new FsWriteFileNoFollowHandler(),
-        new FsRecoverCorruptedJsonFileHandler(),
         new FsCreateDirHandler(),
         new FsDeleteFileHandler(),
         new FsDeleteDirHandler(),
@@ -448,6 +483,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
         new VcsGetServerSessionHandler(),
+        new VcsUseServerSessionHandler(),
         new VcsSignInHandler(),
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),

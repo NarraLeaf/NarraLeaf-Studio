@@ -1,9 +1,16 @@
+import type { GameMenuModel } from "@shared/types/gameMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import {
+    SCREENSHOT_UNSUPPORTED_MESSAGE,
+    type BlueprintOpenScreenshotsResult,
+    type BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
@@ -13,6 +20,8 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { BLUEPRINT_INPUT_MISSING_MESSAGE_KEY } from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
+import { describeAssetResolutionFailure } from "@/lib/ui-editor/runtime/assetResolution";
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
@@ -32,6 +41,9 @@ import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
+import { publishRuntimeBootProgress, runtimeShellBootReporter } from "./bootProgress";
+import { resolveRuntimeBootColors } from "./bootAppearance";
+import { RuntimeBootBackdrop, RuntimeBootScreen } from "./RuntimeBootScreen";
 
 function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISurface | null {
     if (surfaceId) {
@@ -68,6 +80,9 @@ function useRuntimePack(): {
             setError(translate("game.crash.bridgeUnavailable"));
             return;
         }
+        // The first phase of the boot, and the only one nothing else can time: the loading state
+        // cannot even know the game's colours until this answers.
+        runtimeShellBootReporter.begin("bundle");
         void bridge.readPack()
             .then(nextPack => {
                 if (disposed) {
@@ -97,8 +112,12 @@ function useRuntimePack(): {
                 setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
                 setPack(nextPack);
                 setError(null);
+                // After the palette, so the phase this closes is the one the next paint can already
+                // draw in the game's own colours.
+                runtimeShellBootReporter.end("bundle");
             })
             .catch(err => {
+                runtimeShellBootReporter.end("bundle");
                 if (!disposed) {
                     setError(normalizeError(err));
                 }
@@ -122,8 +141,16 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
     return <RuntimeCrashScreen details={props.message} />;
 }
 
+/**
+ * The wait, before this page knows anything about the game it is starting.
+ *
+ * It paints nothing over the window, which the shell has already coloured for the screen this game
+ * opens on - see `bootAppearance`. The indicator is all there is, and that is the whole of what was
+ * missing: a game that shows no sign of starting is one a player cannot tell from a hung one.
+ */
 function RuntimeLoadingScreen(): ReactNode {
-    return <div className="h-screen w-screen bg-black" />;
+    const colors = resolveRuntimeBootColors(null);
+    return <RuntimeBootScreen background={colors.background} accent={colors.accent} />;
 }
 
 /**
@@ -189,10 +216,22 @@ function useRuntimePackPreload(input: {
         const preloadKey = `${pack.bundle.bundleId}:${pack.bundle.revision}:${firstSurface.id}`;
         let cancelled = false;
         setState({ key: preloadKey, ready: false, result: null });
+        // The one phase of the boot whose size is known in advance, so the one the loading state
+        // can draw as a real bar rather than a sweep.
+        runtimeShellBootReporter.begin("preload", { loaded: 0, total: 0 });
         void preloadRuntimePackAssets({
             pack,
             firstSurface,
             assetUrl: assetId => bridge.assetUrl(assetId),
+            onProgress: (settled, total) => runtimeShellBootReporter.progress("preload", settled, total),
+            // The first frame waits for the first screen and nothing else; the rest of the pack keeps
+            // warming behind it. See `preloadRuntimePackAssets` for why the wait is no longer the pack.
+            onFirstSurfaceSettled: () => {
+                runtimeShellBootReporter.end("preload");
+                if (!cancelled) {
+                    setState({ key: preloadKey, ready: true, result: null });
+                }
+            },
         }).then(result => {
             if (cancelled) {
                 return;
@@ -212,6 +251,7 @@ function useRuntimePackPreload(input: {
             }
             setState({ key: preloadKey, ready: true, result });
         }).catch(err => {
+            runtimeShellBootReporter.end("preload");
             if (cancelled) {
                 return;
             }
@@ -350,6 +390,10 @@ function createRuntimePluginHost(
             },
         },
         assetUrl: assetId => bridge.assetUrl(assetId),
+        // Whether this shell has a bar at all. The rows on it are resolved against a running game,
+        // so the game app attaches the seam itself once it is up - the same split `saves.writable`
+        // makes, and for the same reason.
+        menuBar: Boolean(bridge.menu),
         subscribeFullscreenChanged: listener => bridge.onFullscreenChanged(listener),
         // Observers only: a plugin watching the close never gets to veto it, so
         // this handler always agrees and the blueprint decider stays the only
@@ -365,6 +409,11 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // The same rule for process memory: the desktop bridge asks its main process, and a web
+        // export has no processes to count and no such member.
+        ...(bridge.processMemory
+            ? { processMemory: bridge.processMemory }
+            : {}),
         // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
         // named plugin's own declared patterns. Present on both shells, because both can open an
         // address - the desktop one through the platform opener, the web one through the browser.
@@ -391,8 +440,9 @@ export function GameRuntimeApp() {
         return <RuntimeSessionTakenScreen />;
     }
     if (sessionClaim === "pending") {
-        // The black screen a boot already shows, for the fraction of a second a lock takes to
+        // The loading state a boot already shows, for the fraction of a second a lock takes to
         // answer - and for the second and a half it takes to conclude that another tab holds it.
+        // No pack yet, so this is the seeded palette rather than the project's own.
         return <RuntimeLoadingScreen />;
     }
     return <GameRuntimeSession />;
@@ -545,16 +595,64 @@ function GameRuntimeSession() {
             return;
         }
         if (event.type === "execution.error") {
-            bridge.log("error", event.message);
+            // Prefixed with where it happened, as a missing input is below: a page by the name the
+            // author gave it, or the global blueprint, which belongs to no page. Without it a stopped
+            // loop reads the same in the log whichever of a dozen screens it was on.
+            const surface = event.surfaceId
+                ? pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId)
+                : undefined;
+            const inGlobalBlueprint = !event.surfaceId && event.blueprintId !== undefined &&
+                pack?.bundle.ui.localBlueprints.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId === event.blueprintId;
+            const place = surface ? surface.name : inGlobalBlueprint ? "Global blueprint" : null;
+            bridge.log("error", place ? `${place}: ${event.message}` : event.message);
+        } else if (event.type === "node.input_missing") {
+            // The one thing a player's log can say about "the button did nothing": which page, which
+            // node, which pin. Named in the English the catalogue declares - the map that localizes a
+            // node title is Studio's and is not in this bundle - which is also what an author reading
+            // the log will find the node under.
+            const surface = pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId);
+            const sentence = translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                node: event.nodeName,
+                pin: event.pinLabel,
+            });
+            bridge.log("warning", surface ? `${surface.name}: ${sentence}` : sentence);
         } else if (event.type === "devtools.log") {
             const level = event.level === "error" || event.level === "warning" ? event.level : "info";
             bridge.log(level, event.message);
         }
-    }, [bridge]);
+    }, [bridge, pack]);
 
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         bridge?.log(level, message);
     }, [bridge]);
+
+    /**
+     * A picture a widget could not get, as one line of the player's log.
+     *
+     * A shipped game has no issue list and must not grow one in front of a player, but a blank
+     * space with no line anywhere is the thing an author debugging a report from a player cannot
+     * work with. Once per distinct failure for the life of the window: a list of forty rows failing
+     * the same way is one line, and a failure the player walks past again is not a new one.
+     *
+     * Worded by the same function as Dev Mode's issue, prefixed with the page like a missing blueprint
+     * input is. A pack carries no asset names, so the sentence cannot say which file it was; it
+     * still says which page, which widget and which field.
+     */
+    const loggedAssetFailuresRef = useRef(new Set<string>());
+    const reportAssetResolution = useCallback<NonNullable<GameAppHost["reportAssetResolution"]>>(report => {
+        if (!bridge || report.type !== "outcome" || report.outcome.status !== "failed") {
+            return;
+        }
+        const failure = { site: report.site, requested: report.outcome.requested, stage: report.outcome.stage };
+        const sentence = describeAssetResolutionFailure(failure, pack?.bundle.storyLibrary?.assetNames, translate);
+        const key = `${report.site.surfaceId}\u0000${sentence}`;
+        if (loggedAssetFailuresRef.current.has(key)) {
+            return;
+        }
+        loggedAssetFailuresRef.current.add(key);
+        const surface = pack?.bundle.ui.uidoc.surfaces.find(item => item.id === report.site.surfaceId);
+        bridge.log("error", surface ? `${surface.name}: ${sentence}` : sentence);
+    }, [bridge, pack]);
 
     /**
      * The Fetch node's request. Every shell backs this - the desktop preload forwards it to the main
@@ -764,6 +862,54 @@ function GameRuntimeSession() {
     }, [bridge]);
 
     /**
+     * Whether the player is looking at this game right now.
+     *
+     * Optional-chained like the rest of the window family because the shell is loaded from the
+     * game's own files: a patched game can be running a preload that predates this, and a game that
+     * cannot ask is a game that is being looked at.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        return (await bridge?.isWindowFocused?.()) !== false;
+    }, [bridge]);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        return bridge?.onWindowFocusChanged?.(listener) ?? (() => undefined);
+    }, [bridge]);
+
+    /**
+     * A picture of the frame, and the folder those go in.
+     *
+     * Gated on the shell saying it can, rather than on the method being there: the web export has
+     * both methods and neither ability, and a host that offered them anyway would put a screenshot
+     * button on a page where it can only ever apologise. Absent here, the node reports that the
+     * platform has none - which is the same thing the author saw in Dev Mode's `Failed` branch.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        return (await bridge?.saveScreenshot?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        return (await bridge?.openScreenshotsFolder?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
+    /*
+     * The menu bar, when this shell has one.
+     *
+     * Both halves are omitted together when the bridge has no `menu` - a game packaged before menus
+     * existed, or a shell built without window chrome - so a game reading the host sees one honest
+     * answer rather than a setter that resolves and a subscription that never fires.
+     */
+    const setApplicationMenu = useCallback(async (model: GameMenuModel): Promise<void> => {
+        await bridge?.menu?.set(model);
+    }, [bridge]);
+
+    const subscribeMenuCommand = useCallback((listener: (itemId: string) => void): (() => void) => {
+        return bridge?.menu?.onCommand(listener) ?? (() => undefined);
+    }, [bridge]);
+
+    /**
      * The puppet backends published with this game.
      *
      * Shared with the Surface `nl.puppet` widget's mounting seam (see
@@ -795,6 +941,10 @@ function GameRuntimeSession() {
             // where the two meet.
             installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
+            // Straight into the store the loading state reads. Nothing between the two: the game
+            // app is where the story compile and the scene warm-up are, and they are the longest
+            // part of what the player is waiting through.
+            onBootProgress: publishRuntimeBootProgress,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
                 : { kind: "surface" },
@@ -802,6 +952,7 @@ function GameRuntimeSession() {
             onDebugEvent,
             disposeMessage: "Preview runtime disposed",
             log,
+            reportAssetResolution,
             resolveStoryAssetUrl,
             resolveWeatherClip,
             saveStore,
@@ -816,7 +967,14 @@ function GameRuntimeSession() {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
             subscribeCloseRequested,
+            // Present only where the shell can really take one; see `saveScreenshot` above.
+            ...(bridge?.capabilities?.screenshot ? { saveScreenshot, openScreenshotsFolder } : {}),
+            // Present only when the shell really has a bar: see the host's own note on why an
+            // absent pair is the answer rather than a pair that does nothing.
+            ...(bridge?.menu ? { setApplicationMenu, subscribeMenuCommand } : {}),
             listPuppetBackendModules,
             networkFetch,
             movePointer,
@@ -838,6 +996,7 @@ function GameRuntimeSession() {
         log,
         onDebugEvent,
         pack,
+        reportAssetResolution,
         persistenceAdapter,
         quitApplication,
         restartApplication,
@@ -852,7 +1011,14 @@ function GameRuntimeSession() {
         setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
+        setApplicationMenu,
+        subscribeMenuCommand,
+        bridge,
         saveStore,
     ]);
 
@@ -897,24 +1063,53 @@ function GameRuntimeSession() {
         [stageViewport],
     );
 
-    const renderPlaceholder = useCallback(() => <RuntimeLoadingScreen />, []);
+    /**
+     * The colours of the wait, settled once the pack is in hand.
+     *
+     * Recomputed when the entry surface changes and not per progress tick - the loading state reads
+     * its numbers from a store of its own for exactly that reason, so nothing here re-renders while
+     * the assets come in.
+     */
+    const bootColors = useMemo(() => resolveRuntimeBootColors(pack), [pack]);
+
+    // Under the loading state rather than instead of it: this is what the game app draws when it has
+    // no page yet, and a second indicator over the one already on screen would be two answers to the
+    // same question.
+    const renderPlaceholder = useCallback(
+        () => <RuntimeBootBackdrop background={bootColors.background} />,
+        [bootColors.background],
+    );
 
     if (error) {
         return <RuntimeErrorScreen message={error} />;
     }
-    if (!pack || !host || !entrySurface) {
-        return <RuntimeLoadingScreen />;
-    }
 
     return (
-        <GameApp
-            host={host}
-            rendererRegistry={rendererRegistry}
-            getScale={getScale}
-            renderFrame={renderFrame}
-            renderPlaceholder={renderPlaceholder}
-            pluginHost={pluginHost}
-            onTestControlsChanged={onTestControlsChanged}
-        />
+        <>
+            {pack && host && entrySurface ? (
+                <GameApp
+                    host={host}
+                    rendererRegistry={rendererRegistry}
+                    getScale={getScale}
+                    renderFrame={renderFrame}
+                    renderPlaceholder={renderPlaceholder}
+                    pluginHost={pluginHost}
+                    onTestControlsChanged={onTestControlsChanged}
+                />
+            ) : null}
+            {/*
+             * A sibling of the game rather than something the game renders, and mounted from this
+             * component's first render rather than swapped in when the game appears - so the wait
+             * is one continuous screen that recolours as the pack lands, instead of two screens
+             * replacing each other.
+             *
+             * It takes itself away: it removes itself the moment the boot reports its first painted
+             * frame, and it subscribes to the boot store directly. So the game app renders when the
+             * pack arrives and is not re-rendered again by the loading state updating or going -
+             * which matters, because all of that happens in the very seconds this exists to make
+             * feel shorter.
+             */}
+            <RuntimeBootScreen background={bootColors.background} accent={bootColors.accent} />
+        </>
     );
 }

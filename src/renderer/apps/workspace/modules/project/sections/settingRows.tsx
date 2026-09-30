@@ -104,7 +104,6 @@ export function SettingRow({
     description,
     hint,
     checked,
-    loading,
     disabled,
     onChange,
 }: {
@@ -112,7 +111,6 @@ export function SettingRow({
     description: string;
     hint?: string;
     checked: boolean;
-    loading: boolean;
     disabled?: boolean;
     onChange: (value: boolean) => void;
 }) {
@@ -122,10 +120,12 @@ export function SettingRow({
     const frozen = freeze.writes(disabled);
     return (
         <SettingShell title={title} description={description} hint={hint} tooltip={frozen["data-tip"]}>
+            {/* No `loading`, and nothing else that follows a write in flight: a loading Switch refuses
+                the click exactly as a disabled one does, and a click that lands while the previous
+                one is still being written is the author's next change, not a mistake to swallow. */}
             <Switch
                 size="sm"
                 checked={checked}
-                loading={loading}
                 disabled={frozen.disabled}
                 onCheckedChange={onChange}
                 aria-label={title}

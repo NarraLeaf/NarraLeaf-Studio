@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { Services } from "../services";
@@ -20,17 +21,13 @@ function createHarness() {
             id,
             name: id,
             owner,
-            frontend: "visual",
-            programKind: "graph",
-            program: { kind: "graph", graphs: { events: {}, functions: {} } },
+            graphs: { events: {}, functions: {} },
             members: { variables: {}, fields: {}, functions: {} },
             bindings: {},
         };
         const ownerKey = JSON.stringify(owner);
         blueprintDocument.ownerRecords[ownerKey] = {
-            activeBlueprintId: id,
-            privateBlueprintIds: [id],
-            initializedFrontend: "visual",
+            blueprintId: id,
         };
         return id;
     };
@@ -63,6 +60,7 @@ function createHarness() {
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     });
     (service as any).document = (service as any).createEmptyDocument();
     return { service, blueprintDocument };
@@ -159,15 +157,12 @@ function copiedGameUiGraphs() {
                     id: "src-bp",
                     name: "Button",
                     owner: { kind: "widgetMain", surfaceId: "src-dialog", elementId: "src-button" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
             },
             ownerRecords: {
                 "widgetMain:src-dialog:src-button": {
-                    activeBlueprintId: "src-bp",
-                    privateBlueprintIds: ["src-bp"],
+                    blueprintId: "src-bp",
                 },
             },
         },
@@ -333,11 +328,11 @@ describe("importTemplateBundle: a surface copied from another project", () => {
 
         const imported = result.importedSurfaces[0]!;
         const newButtonId = service.getDocument().elements[imported.rootElementId]!.childrenIds[0]!;
-        const ownerKey = `widgetMain:${imported.id}:${newButtonId}`;
+        const ownerKey = encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: imported.id, elementId: newButtonId });
         expect(Object.keys(blueprintDocument.ownerRecords)).toContain(ownerKey);
         expect(blueprintDocument.ownerRecords["widgetMain:src-dialog:src-button"]).toBeUndefined();
 
-        const newBlueprintId = blueprintDocument.ownerRecords[ownerKey].activeBlueprintId;
+        const newBlueprintId = blueprintDocument.ownerRecords[ownerKey].blueprintId;
         expect(newBlueprintId).not.toBe("src-bp");
         expect(blueprintDocument.blueprints[newBlueprintId].owner).toEqual({
             kind: "widgetMain",

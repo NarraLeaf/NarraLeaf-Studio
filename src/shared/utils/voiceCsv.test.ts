@@ -13,8 +13,9 @@ describe("voice CSV round-trip", () => {
         const csv = serializeVoiceCsv(rows);
         expect(csv.split("\r\n")[0]).toBe("filename,unit_id,character,scene,line,status,note");
         const parsed = parseVoiceCsv(csv);
-        expect(parsed.errors).toEqual([]);
-        expect(parsed.rows).toEqual(rows);
+        expect(parsed.problems).toEqual([]);
+        // Each row read back knows where it sat, as a spreadsheet numbers it: the header is row 1.
+        expect(parsed.rows).toEqual(rows.map((row, index) => ({ ...row, row: index + 2 })));
     });
 
     it("survives a UTF-8 BOM and reordered/extra columns", () => {
@@ -23,7 +24,7 @@ describe("voice CSV round-trip", () => {
             [["t-d1", "junk", "approved", "keep"]],
         );
         const parsed = parseVoiceCsv("﻿" + reordered);
-        expect(parsed.errors).toEqual([]);
+        expect(parsed.problems).toEqual([]);
         expect(parsed.rows[0]).toMatchObject({ unitId: "t-d1", status: "approved", note: "keep" });
     });
 
@@ -31,8 +32,8 @@ describe("voice CSV round-trip", () => {
         const csv = serializeCsv(["filename", "unit_id"], [["a.wav", ""], ["b.wav", "t-x"]]);
         const parsed = parseVoiceCsv(csv);
         expect(parsed.rows.map(r => r.unitId)).toEqual(["t-x"]);
-        expect(parsed.errors).toHaveLength(1);
-        expect(parseVoiceCsv("filename\na.wav").errors[0]).toContain("unit_id");
+        expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 2 } }]);
+        expect(parseVoiceCsv("filename\na.wav").problems).toEqual([{ code: "noIdColumn" }]);
     });
 });
 

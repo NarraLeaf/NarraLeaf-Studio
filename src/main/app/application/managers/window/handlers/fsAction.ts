@@ -8,6 +8,7 @@ import { FileStat, FileEntry, FileDetails, DirectorySizeResult } from "@shared/u
 import { splitFileEntry } from "@shared/utils/fileEntry";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { getRuntimeGrantPolicy } from "../permissions";
+import { unpatchedFsPromises } from "../../../../../utils/unpatchedFs";
 
 function unauthorizedPathResult<T>(fsPath: string): FsRequestResult<T> {
     return {
@@ -110,7 +111,7 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
         const denied = await ensurePathAllowed<string>(window, path, "read");
         if (denied) return this.success(denied);
 
-        const hash = window.app.storageManager.allocateHash(path, raw, "read", encoding);
+        const hash = window.app.storageManager.allocateHash(path, raw, "read", window.getWebContents().id, encoding);
 
         window.app.logger.debug(`[fs.read] path="${path}", raw=${raw}, encoding=${encoding}`);
 
@@ -205,7 +206,7 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
         const denied = await ensurePathAllowed<string>(window, path, "write");
         if (denied) return this.success(denied);
 
-        const hash = window.app.storageManager.allocateHash(path, raw, "write", encoding);
+        const hash = window.app.storageManager.allocateHash(path, raw, "write", window.getWebContents().id, encoding);
 
         window.app.logger.debug(`[fs.write] path="${path}", raw=${raw}, encoding=${encoding}`);
 
@@ -288,19 +289,6 @@ export class FsWriteFileNoFollowHandler extends IPCHandler<IPCEventType.fsWriteF
         if (denied) return this.success(denied);
 
         const result = await Fs.writeFileNoFollow(path, data, encoding);
-        return this.success(result);
-    }
-}
-
-export class FsRecoverCorruptedJsonFileHandler extends IPCHandler<IPCEventType.fsRecoverCorruptedJsonFile> {
-    readonly name = IPCEventType.fsRecoverCorruptedJsonFile;
-    readonly type = IPCMessageType.request;
-
-    public async handle(window: AppWindow, { path, replacement, encoding }: IPCEvents[IPCEventType.fsRecoverCorruptedJsonFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
-        const denied = await ensurePathAllowed<void>(window, path, "write");
-        if (denied) return this.success(denied);
-
-        const result = await Fs.recoverCorruptedJsonFile(path, replacement, encoding);
         return this.success(result);
     }
 }
@@ -654,7 +642,6 @@ export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
         if (denied) return this.success(denied);
 
         try {
-            const fs = require('fs').promises;
             const crypto = require('crypto');
 
             // Check if file exists
@@ -682,7 +669,7 @@ export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
             }
 
             // Read file content
-            const buffer = await fs.readFile(path);
+            const buffer = await unpatchedFsPromises.readFile(path);
 
             // Calculate SHA-256 hash
             const hash = crypto.createHash('sha256').update(buffer).digest('hex');

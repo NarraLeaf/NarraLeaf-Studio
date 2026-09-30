@@ -95,6 +95,17 @@ export function readProjectPackageVersion(head: Uint8Array): 1 | 2 | null {
     return null;
 }
 
+/**
+ * Whether these first eight bytes are a package's magic with a version after the one this build
+ * writes - a package from a newer Studio, which {@link readProjectPackageVersion} answers `null` for
+ * like any other file it cannot read.
+ */
+export function isNewerProjectPackage(head: Uint8Array): boolean {
+    return startsWith(head, new Uint8Array(MAGIC_PREFIX))
+        && head.length >= PROJECT_PACKAGE_BODY_OFFSET
+        && head[MAGIC_PREFIX.length] > PROJECT_PACKAGE_FORMAT_VERSION;
+}
+
 export function encodeProjectPackageIndex(index: ProjectPackageIndex): Uint8Array {
     const encoded = msgpack.encode(index);
     return encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded);
@@ -236,7 +247,19 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (fileName === ".ds_store" || fileName === "thumbs.db" || fileName.endsWith(PROJECT_PACKAGE_EXTENSION)) {
         return true;
     }
-    if (segments[0] === ".git" || segments[0] === "node_modules") {
+    if (segments[0] === ".git") {
+        return true;
+    }
+    // A dependency tree, wherever it sits. The author's own install for their scripts lands in
+    // `scripts/node_modules`, so matching only the project root would put every byte of every
+    // dependency into an export - and the recipient's own install would produce them again from
+    // the manifest that is carried.
+    if (segments.includes("node_modules")) {
+        return true;
+    }
+    // Declarations generated for those scripts. Written again when the recipient opens the
+    // project, and stale the moment their copy diverges.
+    if (segments[0] === "scripts" && segments[1] === ".narraleaf") {
         return true;
     }
     // The repository, not the project. An export is "here is a copy of my project", and every
@@ -262,27 +285,25 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (segments[0] === "editor" && segments[1] === "assets" && segments[2] === "remote") {
         return true;
     }
-    if (
-        segments[0] === ".nlstudio" &&
-        (segments[1] === "cache" ||
-            segments[1] === "tmp" ||
-            segments[1] === "temp" ||
-            segments[1] === "dev-mode" ||
-            segments[1] === "build" ||
-            // What Dev Mode and the preview runner compiled, plus the throwaway save files the
-            // author made while testing. Sits beside `build` and `dev-mode` in every other
-            // respect, and was the largest thing in the one project where this was measured -
-            // half a gigabyte of output the recipient's first preview would write again.
-            segments[1] === "preview" ||
-            // Studio's own state, not the project's: panel layout, notification history, recent
-            // colours. It moved here out of `editor/services/` when version control needed a line
-            // between "the author's project" and "how this window was arranged" - and an export
-            // that carried it would rearrange the recipient's window to match the sender's.
-            // The service stores that ARE project content (the character table, plugin stores)
-            // live elsewhere; the classification is `shared/vcs/serviceStores.ts`.
-            segments[1] === "services" ||
-            segments[1] === "dist")
-    ) {
+    // Studio's own working directory for this project, whole. Version control already draws the
+    // line in exactly this place - `.nlstudio` is in `@shared/vcs/workingSet`'s excluded names, at
+    // any depth - and an export is the same question asked of a different destination: what of this
+    // is the project, and what of it is one machine's account of having opened the project.
+    //
+    // The answer is that none of it is the project. What is under here is who has the project open
+    // right now (`session.lock`), what Dev Mode and the preview runner compiled and the throwaway
+    // saves made while testing (`preview/`, `test/`, `build/`), the snapshots a Dev Mode session
+    // materialises to run a past revision (`devmode/revisions/`), bytes set aside from a document
+    // that would not parse (`quarantine/`), how this window was arranged (`services/`), and scratch
+    // space measured in seconds (`convert/`, `tmp/`). The recipient's own Studio writes every one of
+    // them again, about their machine rather than the sender's.
+    //
+    // Named directories were listed here one at a time until a spelling drifted: the snapshots are
+    // written to `.nlstudio/devmode` and the list said `.nlstudio/dev-mode`, so every package
+    // carried a full copy of the project's documents at whatever revision the author last ran.
+    // `revisionSnapshot.test.ts` holds the writer's own path against this predicate for that reason;
+    // excluding the directory whole is what makes the next such directory right by default.
+    if (segments[0] === ".nlstudio") {
         return true;
     }
 

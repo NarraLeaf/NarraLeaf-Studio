@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useProjectDistrusted, useProjectDistrustedReason } from "../../hooks/useProjectDistrusted";
 import { useFreezeUnavailableReason } from "../../components/ui/freezeGuard";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
+import { revealInFileManagerKey } from "@/lib/app/platform";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
@@ -16,6 +18,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { ProjectDlc } from "@shared/types/dlc";
@@ -75,6 +78,16 @@ const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
  * reasoning is on `runDlc.ts`, which reads this very key on the main process side.
  */
 const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
+/**
+ * Whether a preview of this project seals its content the way a shipped build does, bucketed by
+ * project.
+ *
+ * Off unless this machine says otherwise, which is why the key holds only the projects that turned
+ * it on. A machine habit for the same reason the two above are: what it decides is how long every
+ * preview of the afternoon takes, and that is a fact about one author's session. `previewAsShipped.ts`
+ * reads this very key on the main process side.
+ */
+const PREVIEW_AS_SHIPPED_SETTINGS_KEY = "ui.previewAsShippedByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
@@ -141,6 +154,10 @@ export function RunControl() {
     // rows there would leave a button that does nothing while the process behind it would have said
     // yes.
     const frozen = useWorkspaceOperationsFrozen();
+    // A separate question from the freeze above, and it gates more: main refuses every launch
+    // for a project that arrived from elsewhere, including Dev Mode, which a freeze deliberately
+    // does not refuse (it compiles the revision instead). Affordance only - the refusal is main's.
+    const distrusted = useProjectDistrusted();
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
@@ -162,8 +179,24 @@ export function RunControl() {
     const [variantId, setVariantId] = useState<string | null>(null);
     const [dlcOpen, setDlcOpen] = useState(false);
     const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    // Reset player data is a flyout submenu, not an inline section like the variant and DLC pickers:
+    // those show a persistent current choice, while this is a one-shot action, so it opens to the
+    // side on hover and takes no permanent room in the menu.
+    const [resetOpen, setResetOpen] = useState(false);
+    const [resetToLeft, setResetToLeft] = useState(false);
+    const resetRowRef = useRef<HTMLDivElement | null>(null);
+    const resetCloseTimerRef = useRef<number | null>(null);
     /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
     const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
+    const [previewAsShipped, setPreviewAsShipped] = useState(false);
+    /**
+     * Whether the project protects its assets at all, followed live.
+     *
+     * The row below is only offered where it decides something: with protection off there is one
+     * form of a preview, and a switch between it and itself is a control that cannot do anything -
+     * the same rule the edition row follows for a project with no variants.
+     */
+    const [assetsProtected, setAssetsProtected] = useState(false);
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -173,6 +206,7 @@ export function RunControl() {
         if (!menuOpen) {
             setVariantOpen(false);
             setDlcOpen(false);
+            setResetOpen(false);
         }
     }, [menuOpen]);
 
@@ -262,6 +296,39 @@ export function RunControl() {
         return () => token?.cancel();
     }, [context]);
 
+    // Whether a preview of this project rehearses the shipped form, from the same store the main
+    // process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => {
+            const record = value && typeof value === "object" && !Array.isArray(value)
+                ? value as Record<string, unknown>
+                : {};
+            setPreviewAsShipped(record[projectKey] === true);
+        };
+        read(settings.getSync(PREVIEW_AS_SHIPPED_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === PREVIEW_AS_SHIPPED_SETTINGS_KEY) {
+                read(change.value);
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const project = context.services.get<ProjectService>(Services.Project);
+        const read = () => setAssetsProtected(project.getSecurityConfiguration().encryptAssets);
+        read();
+        return project.onConfigChanged(read);
+    }, [context]);
+
     useEffect(() => {
         if (!context) {
             return;
@@ -297,6 +364,13 @@ export function RunControl() {
      *  - **The notification stays up.** A build runs for minutes with nobody watching, so an outcome
      *    that cleared itself after five seconds was an outcome the author never saw - and the button
      *    on it has to still be there when they come back.
+     *
+     * A finished build offers both of the things there are to do with it: read what it carried, and
+     * go and look at what it wrote. The folder is the second button rather than the first because
+     * the report answers the question the author has before they have a path in their hands - and it
+     * is offered at all because "open the output folder when done" is a checkbox they may have
+     * cleared, and because a notification they come back to hours later is the only thing still on
+     * screen that knows where the build went.
      */
     useEffect(() => {
         if (!context) {
@@ -325,11 +399,24 @@ export function RunControl() {
                     "success",
                     {
                         sticky: true,
-                        actions: [{
-                            label: translate("build.toast.openReport"),
-                            primary: true,
-                            onClick: () => openBuildReportTab(context),
-                        }],
+                        actions: [
+                            {
+                                label: translate("build.toast.openReport"),
+                                primary: true,
+                                onClick: () => openBuildReportTab(context),
+                            },
+                            // Only where the run recorded a folder. A snapshot without one wrote
+                            // nowhere this window can name, and a button that opens nothing is
+                            // worse than no button.
+                            ...(run.state.outputDir
+                                ? [{
+                                    label: translate(revealInFileManagerKey()),
+                                    onClick: () => {
+                                        void build.revealLastOutput();
+                                    },
+                                }]
+                                : []),
+                        ],
                     },
                 );
             } else {
@@ -421,22 +508,40 @@ export function RunControl() {
      * always be stoppable, and this same button is the stop control.
      */
     const previewBlocked = frozen && !running && shownMode === "preview";
+    /**
+     * Nothing launches for a project that is not trusted - every mode, not just Preview.
+     *
+     * Guarded by `!running` for the reason the freeze is: this button is also the stop control, and
+     * a process that somehow got started must always be stoppable. Trust is settled when a workspace
+     * starts, so in practice nothing is running to stop; the condition is there because the day it
+     * is wrong, the wrong outcome is an unkillable process.
+     */
+    const launchBlocked = distrusted && !running;
     const frozenTitle = useFreezeUnavailableReason();
-    const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
+    const distrustedTitle = useProjectDistrustedReason();
+    // `checking` included: the pre-build checks are part of the run, and while they were left
+    // out the row went on offering to start a build that had already started.
+    const building = buildStatus === "checking" || buildStatus === "preparing"
+        || buildStatus === "compiling" || buildStatus === "packaging";
     /**
      * Production Build is off while frozen, exactly as it was when it had its own button - the same
      * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette
      * and the macOS menu consult. A frozen workspace is not claiming to be shippable, and main refuses
      * the build a second time anyway (greying a renderer control is affordance, not enforcement).
+     *
+     * Off for a distrusted project too, and unconditionally rather than `!running`: a build is not
+     * this button, so there is no stop control to keep alive. The action bar reaches the same verdict
+     * through `startsMainOperation`, which is the membership test the two share; the verdicts stay
+     * separate because a freeze permits Dev Mode and distrust does not.
      */
-    const buildBlocked = frozen;
+    const buildBlocked = frozen || distrusted;
 
     /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
     /**
      * Refresh the plugin dependency table before a run.
      *
      * Which plugin runtime entries go into the pack is decided from that table (see
-     * `selectRuntimePluginsForPack`), and until now only a build, an export, or a visit to the
+     * `selectProjectRuntimePlugins`), and until now only a build, an export, or a visit to the
      * Project panel ever refreshed it. So the first run after an author added the row that USES a
      * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
      * and the feature simply did not happen with nothing on screen to say why.
@@ -445,6 +550,9 @@ export function RunControl() {
      * run that starts before the scan lands would pack the stale answer, which is the bug.
      * Skipped on a frozen workspace, for the reason the export path documents - nobody asked for
      * this write, and it is bookkeeping rather than the thing being run.
+     *
+     * An automatic scan: a plugin Studio holds back from the project for its version stays held
+     * through any number of runs, until the author presses Rescan.
      */
     const refreshDependenciesForRun = async () => {
         if (!context || getProjectWriteFreeze() !== null) {
@@ -453,7 +561,7 @@ export function RunControl() {
         try {
             await context.services
                 .get<ProjectDependencyService>(Services.ProjectDependency)
-                .rescanAndPersist();
+                .rescanAndPersist("automatic");
         } catch (error) {
             console.warn("[run] plugin dependency rescan failed", error);
         }
@@ -544,8 +652,8 @@ export function RunControl() {
         }
     };
 
-    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild });
-    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild };
+    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, distrusted, runOrStop, launchMode, openTest, openBuild });
+    runStateRef.current = { devActive, previewActive, testActive, frozen, distrusted, runOrStop, launchMode, openTest, openBuild };
 
     useEffect(() => {
         if (!context) {
@@ -553,6 +661,9 @@ export function RunControl() {
         }
         const commandService = context.services.get<CommandService>(Services.Command);
         const idle = () => !runStateRef.current.devActive && !runStateRef.current.previewActive;
+        // Every launch, including Dev Mode. Nothing a distrusted project could start is allowed
+        // to start, so unlike the freeze there is no launch this one lets through.
+        const launchable = () => idle() && !runStateRef.current.distrusted;
         const launch = (target: RunMode) => runStateRef.current.launchMode(target);
         return commandService.registerMany([
             {
@@ -562,7 +673,7 @@ export function RunControl() {
                 // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
                 // chosen again, so the palette row and the button that does the same thing match.
                 icon: RUN_MODE_META.devMode.icon,
-                when: idle,
+                when: launchable,
                 run: () => launch("devMode"),
             },
             {
@@ -571,7 +682,7 @@ export function RunControl() {
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 icon: RUN_MODE_META.preview.icon,
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
-                when: () => idle() && !runStateRef.current.frozen,
+                when: () => launchable() && !runStateRef.current.frozen,
                 run: () => launch("preview"),
             },
             {
@@ -650,7 +761,9 @@ export function RunControl() {
                 key: "f5",
                 description: "Run the project in Dev Mode",
                 allowInEditable: true,
-                when: () => !runStateRef.current.devActive && !runStateRef.current.previewActive,
+                when: () => !runStateRef.current.devActive
+                    && !runStateRef.current.previewActive
+                    && !runStateRef.current.distrusted,
                 handler: () => runStateRef.current.launchMode("devMode"),
             },
             {
@@ -660,7 +773,8 @@ export function RunControl() {
                 allowInEditable: true,
                 when: () => !runStateRef.current.devActive
                     && !runStateRef.current.previewActive
-                    && !runStateRef.current.frozen,
+                    && !runStateRef.current.frozen
+                    && !runStateRef.current.distrusted,
                 handler: () => runStateRef.current.launchMode("preview"),
             },
             {
@@ -704,7 +818,7 @@ export function RunControl() {
         key: "f10",
         description: "Open the production build dialog",
         allowInEditable: true,
-        when: () => !runStateRef.current.frozen,
+        when: () => !runStateRef.current.frozen && !runStateRef.current.distrusted,
         handler: () => runStateRef.current.openBuild(),
     });
 
@@ -777,6 +891,91 @@ export function RunControl() {
         // several clicks, and closing after each would make the author reopen it every time.
     }, [context, dlcOn]);
 
+    const togglePreviewAsShipped = useCallback((): void => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(PREVIEW_AS_SHIPPED_SETTINGS_KEY);
+        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
+            ? { ...current as Record<string, unknown> }
+            : {};
+        const next = !previewAsShipped;
+        if (next) {
+            record[projectKey] = true;
+        } else {
+            // Deleted rather than stored as false, so "runs the fast path" and "never chose" are one
+            // state - the same rule the edition and DLC choices follow.
+            delete record[projectKey];
+        }
+        void settings.set(PREVIEW_AS_SHIPPED_SETTINGS_KEY, record);
+        setPreviewAsShipped(next);
+    }, [context, previewAsShipped]);
+
+    /**
+     * Clear the save slots and persistent data a mode leaves behind.
+     *
+     * The recovery path for a game that poisons its own persisted state and crashes on launch: the
+     * data is cleared through the main process without booting the game, so it works when the game
+     * will not. Confirmed first because it is destructive, and reported either way.
+     */
+    const resetPlayerData = useCallback(async (target: RunMode): Promise<void> => {
+        if (!context) {
+            return;
+        }
+        setMenuOpen(false);
+        const uiService = context.services.get<UIService>(Services.UI);
+        const confirmed = await uiService.showConfirm(
+            translate(target === "devMode" ? "actions.run.resetDevModeConfirm" : "actions.run.resetPreviewConfirm"),
+            translate("actions.run.resetDetail"),
+        );
+        if (!confirmed) {
+            return;
+        }
+        try {
+            if (target === "devMode") {
+                await context.services.get<DevModeService>(Services.DevMode).resetData();
+            } else {
+                await context.services.get<PreviewService>(Services.Preview).resetData();
+            }
+            uiService.showNotification(translate("actions.run.resetDone"), "success");
+        } catch (error) {
+            console.error("[run] reset player data failed", error);
+            uiService.showNotification(translate("actions.run.resetFailed"), "error");
+        }
+    }, [context, setMenuOpen]);
+
+    // The flyout opens on hover and closes on a short delay, so crossing the gap from the row to the
+    // panel does not shut it. Which side it opens on is measured, because the Run button sits well to
+    // the right of the bar and a panel pinned to the right would run off screen there.
+    const openResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+            resetCloseTimerRef.current = null;
+        }
+        const rect = resetRowRef.current?.getBoundingClientRect();
+        if (rect) {
+            const PANEL_WIDTH = 176; // min-w-44
+            setResetToLeft(rect.right + PANEL_WIDTH + 8 > window.innerWidth);
+        }
+        setResetOpen(true);
+    }, []);
+    const scheduleCloseResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+        resetCloseTimerRef.current = window.setTimeout(() => {
+            resetCloseTimerRef.current = null;
+            setResetOpen(false);
+        }, 200);
+    }, []);
+    useEffect(() => () => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+    }, []);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
@@ -788,11 +987,18 @@ export function RunControl() {
     // only thing it could add is a count - and a count is not what the face is for: the face says
     // what this run IS, and every run is the game with whatever the author asked for beside it.
     // The menu row states the count where it can be read against the list it counts.
+    //
+    // "Preview as shipped" rides here for the same reason and on the same terms: it decides what the
+    // artifact IS, and it is off by default, so a preview that seals - and takes several times as
+    // long doing it - must not be indistinguishable from an ordinary one. Only under Preview: it
+    // says nothing about a Dev Mode run.
     const runLabel = testActive
         ? t("test.statusBar.label")
-        : selectedVariant
-            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
-            : t(meta.labelKey);
+        : [
+            t(meta.labelKey),
+            ...(selectedVariant ? [selectedVariant.name] : []),
+            ...(mode === "preview" && assetsProtected && previewAsShipped ? [t("actions.run.asShipped")] : []),
+        ].join(" · ");
 
     return (
         <div className="relative flex items-center" ref={menuRef}>
@@ -800,13 +1006,13 @@ export function RunControl() {
                 <button
                     type="button"
                     onClick={runOrStop}
-                    disabled={previewBlocked}
-                    data-tip={previewBlocked ? frozenTitle : runTitle}
+                    disabled={previewBlocked || launchBlocked}
+                    data-tip={launchBlocked ? distrustedTitle : previewBlocked ? frozenTitle : runTitle}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(
                         "flex cursor-default items-center gap-1.5 px-2 text-sm transition-colors",
-                        previewBlocked
+                        previewBlocked || launchBlocked
                             ? "cursor-not-allowed text-fg-subtle"
                             : running ? "hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
                     )}
@@ -857,8 +1063,10 @@ export function RunControl() {
                             // Selecting a mode whose run button is dead would be a dead end, so the
                             // frozen mode is disabled here too - and stays listed, so the author can
                             // see that Preview exists and why it is off. Everything is inert while
-                            // something runs: the mode cannot change under a running process.
-                            const optionBlocked = running || (frozen && option === "preview");
+                            // something runs: the mode cannot change under a running process, and
+                            // inert again when nothing may start at all, which is every row rather
+                            // than just Preview - distrust is about running, not about shipping.
+                            const optionBlocked = running || launchBlocked || (frozen && option === "preview");
                             return (
                                 <button
                                     key={option}
@@ -867,7 +1075,9 @@ export function RunControl() {
                                     aria-checked={selected}
                                     aria-disabled={optionBlocked || undefined}
                                     disabled={optionBlocked}
-                                    data-tip={frozen && option === "preview" ? frozenTitle : undefined}
+                                    data-tip={launchBlocked
+                                        ? distrustedTitle
+                                        : frozen && option === "preview" ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
@@ -884,12 +1094,18 @@ export function RunControl() {
                             );
                         })}
 
+                        {/* The rule that separates the run modes from the rows that say what a run
+                            IS. Drawn once for the group rather than by whichever row happens to come
+                            first, because which of them is there depends on the project. */}
+                        {(variants.length > 0 || dlcs.length > 0 || assetsProtected) && (
+                            <div className="my-1 mx-2 h-px bg-fill-strong" />
+                        )}
+
                         {/* Which edition the three run entries above assemble as. Only where there is
                             something to pick: a project with no variant of its own has one answer, and
                             a row offering it would be a control that cannot do anything. */}
                         {variants.length > 0 && (
                             <>
-                                <div className="my-1 mx-2 h-px bg-fill-strong" />
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -939,15 +1155,11 @@ export function RunControl() {
                             rule between them, because the two rows answer one question together -
                             what this run IS. Only where the project ships some.
 
-                            The rule appears only when there is no edition row above, where it is what
-                            keeps DLC off the run modes.
-
                             Multi-select, so the row states a count rather than a name: "1 of 3" is
                             the only summary of a set that does not grow with it. None are on until an
                             author ticks one - a run is the game a player bought. */}
                         {dlcs.length > 0 && (
                             <>
-                                {variants.length === 0 && <div className="my-1 mx-2 h-px bg-fill-strong" />}
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -993,6 +1205,42 @@ export function RunControl() {
                             </>
                         )}
 
+                        {/* How a preview holds this project's protected content. Off, a preview runs
+                            loose files and starts in about a second; on, it seals the store exactly
+                            as a protected build does and takes several times as long, which is what
+                            makes an asset with no file path or a runtime file outside the store show
+                            up here rather than after shipping. Only where the project protects its
+                            assets: with protection off there is one form of a preview, and offering
+                            a switch between it and itself would be a control that cannot do
+                            anything. Two lines because the choice is a trade an author has to be
+                            able to read, unlike the pickers above, which state a name. */}
+                        {assetsProtected && (
+                            <button
+                                type="button"
+                                role="menuitemcheckbox"
+                                aria-checked={previewAsShipped}
+                                data-run-preview-as-shipped=""
+                                onClick={togglePreviewAsShipped}
+                                className={cn(
+                                    "flex w-full cursor-default items-start gap-2 px-3 py-2 text-sm transition-colors",
+                                    previewAsShipped ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                )}
+                            >
+                                <span className="flex h-5 w-4 items-center justify-center">
+                                    <PackageCheck className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1 text-left">
+                                    <span className="block whitespace-nowrap leading-5">
+                                        {t("actions.run.previewAsShipped")}
+                                    </span>
+                                    <span className="mt-0.5 block max-w-56 text-xs leading-4 text-fg-subtle">
+                                        {t("actions.run.previewAsShippedDetail")}
+                                    </span>
+                                </span>
+                                <span className="w-3 pt-0.5">{previewAsShipped && <Check className="h-3 w-3" />}</span>
+                            </button>
+                        )}
+
                         <div className="my-1 mx-2 h-px bg-fill-strong" />
 
                         {/* Production Build. Not a run mode - it produces a package rather than
@@ -1003,7 +1251,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            data-tip={distrusted ? distrustedTitle : frozen ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {
@@ -1035,7 +1283,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            data-tip={distrusted ? distrustedTitle : frozen ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {
@@ -1084,6 +1332,87 @@ export function RunControl() {
                             <MenuShortcut of={shortcuts.forBinding(TEST_RUN_COMMAND_ID)} />
                             <span className="w-3" />
                         </button>
+
+                        <div className="my-1 mx-2 h-px bg-fill-strong" />
+
+                        {/* Reset player data. Clears the saves and persistent data a run leaves
+                            behind - the recovery path when the author's own game poisons that state
+                            and crashes on launch, reached without launching anything. A flyout rather
+                            than an inline section: it is a one-shot action, not a persistent choice
+                            like the variant and DLC pickers, so it opens to the side on hover and
+                            leaves the menu the height it was. Dev Mode and Preview keep their data
+                            apart, so each row resets one without touching the other. Always here, not
+                            behind a setting: the author it helps most is the one who cannot get the
+                            game to start, and that is exactly who would never find it hidden. */}
+                        <div
+                            ref={resetRowRef}
+                            className="relative"
+                            onMouseEnter={openResetFlyout}
+                            onMouseLeave={scheduleCloseResetFlyout}
+                        >
+                            <button
+                                type="button"
+                                role="menuitem"
+                                aria-haspopup="menu"
+                                aria-expanded={resetOpen}
+                                aria-label={t("actions.run.resetData")}
+                                onClick={openResetFlyout}
+                                className={cn(
+                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                    resetOpen ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                )}
+                            >
+                                <span className="flex h-4 w-4 items-center justify-center">
+                                    <RotateCcw className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.resetData")}</span>
+                                <span className="w-3">
+                                    <ChevronRight className="h-3 w-3" />
+                                </span>
+                            </button>
+
+                            {/* The panel is a DOM child of the row, so moving the pointer onto it is
+                                not "leaving" the row - that, plus the close delay, is what lets the
+                                pointer travel across to it without the flyout shutting. */}
+                            {resetOpen && (
+                                <div
+                                    role="menu"
+                                    aria-label={t("actions.run.resetData")}
+                                    className={cn(
+                                        "absolute top-0 z-30 min-w-44 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg",
+                                        resetToLeft ? "right-full mr-1" : "left-full ml-1",
+                                    )}
+                                >
+                                    {RUN_MODES.map(option => {
+                                        // Disabled while its own mode runs: clearing the store under a
+                                        // live process would race its next write. Never blocks the
+                                        // lockout case, where the mode is crashed rather than running.
+                                        const optionRunning = option === "devMode" ? devActive : previewActive;
+                                        const optionMeta = RUN_MODE_META[option];
+                                        return (
+                                            <button
+                                                key={option}
+                                                type="button"
+                                                role="menuitem"
+                                                aria-disabled={optionRunning || undefined}
+                                                disabled={optionRunning}
+                                                data-tip={optionRunning ? t("actions.run.resetWhileRunning") : undefined}
+                                                onClick={() => void resetPlayerData(option)}
+                                                className={cn(
+                                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                                    optionRunning
+                                                        ? "cursor-not-allowed text-fg-subtle"
+                                                        : "text-fg-muted hover:bg-fill hover:text-fg",
+                                                )}
+                                            >
+                                                <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
+                                                <span className="flex-1 whitespace-nowrap text-left">{t(optionMeta.labelKey)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}

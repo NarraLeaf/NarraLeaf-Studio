@@ -47,6 +47,24 @@ export function characterStageName(characterId: string | undefined, objectName?:
 }
 
 /**
+ * The stage name a character row carries as a name, or "" when its key comes from somewhere else.
+ *
+ * The inverse of {@link characterStageObjectName}, and deliberately the same rule read backwards
+ * rather than a second opinion about it: text counts as a name exactly when the rule above keys on
+ * that text. So the bare block's literal `"character"` reads as no name, because the rule discards
+ * it and keys on the id - and anything else the author left in there reads as a name, because the
+ * rule uses it, which makes it the word every later row in the scene has to repeat.
+ *
+ * An editor showing this field must show what this returns. A field that hid a value the rule is
+ * keying on would tell an author their row has no stage name while the row addresses one nothing
+ * else on the stage answers to, and the row would compile to nothing with the field looking empty.
+ */
+export function authoredCharacterStageName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
+    const text = payload.objectName?.trim() ?? "";
+    return text && characterStageObjectName(payload) === text ? text : "";
+}
+
+/**
  * The identity of the displayable a creator action block introduces, or null when the block does not
  * declare one. Character / image / text / layer actions are the only ways a displayable comes into
  * existence, so these are the only sources of a stable identity.
@@ -105,10 +123,16 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
         // A character portrait comes into existence when the character walks on.
         case "character":
             return payload.operation === "enter";
+        // A `show` that names an asset brings the element into existence on the row that reveals it,
+        // so it declares exactly as a `create` row does. Only `image` and `video` carry that form: a
+        // text has no asset to name, a layer is never revealed, and an ambience overlay settles how it
+        // composites on the row that declares it (blend, fit, opacity, z) - settings a reveal has
+        // nowhere to put.
         case "image":
+        case "video":
+            return payload.operation === "create" || revealCreates(payload);
         case "text":
         case "layer":
-        case "video":
         case "vfx":
             return payload.operation === "create";
         // `setBgm` is left out on purpose: it points the reserved music channel at a clip, and that
@@ -119,6 +143,25 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
         default:
             return false;
     }
+}
+
+/**
+ * A `show` row that names its own source: `/show <asset>`, which creates the element and reveals it
+ * in one line.
+ *
+ * Read by {@link declaresStageObject} and by the "declared and never shown" reading, which are the
+ * two questions this shape answers differently from every other row: it declares, and it is also the
+ * reveal, so nothing later has to show it.
+ *
+ * The asset id is what distinguishes it, and it has to be: a plain `/show poster` addresses an object
+ * some other row created, and reading it as a declaration would let every dangling reveal quietly
+ * conjure an empty element - the failure the create/show split exists to end.
+ */
+export function revealCreates(payload: StoryActionPayload): boolean {
+    if (payload.action !== "image" && payload.action !== "video") {
+        return false;
+    }
+    return payload.operation === "show" && Boolean(payload.assetId?.trim());
 }
 
 /**

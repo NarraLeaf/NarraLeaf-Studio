@@ -7,9 +7,10 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
-import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
+import { isActionFrozenOut, resolveFrozenActionDisabled, startsMainOperation } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
 import { useFreezeUnavailableReason } from "../ui/freezeGuard";
 import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useTranslation } from "@/lib/i18n";
@@ -64,6 +65,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     // The kind, not merely "frozen": one of them leaves the operations main starts alone, and the
     // policy below is what knows which actions those are.
     const freeze = useWorkspaceFreezeReason();
+    const distrusted = useProjectDistrusted();
     const frozenReason = useFreezeUnavailableReason();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
@@ -106,7 +108,11 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
                 // Computed for the render only; the registered object is left exactly as it was, so
                 // thawing restores it without anyone having to remember what it used to be.
                 const frozenOut = isActionFrozenOut(action, freeze);
-                const disabled = resolveFrozenActionDisabled(action, freeze);
+                // Two verdicts, not one predicate: a freeze exempts an operation under a
+                // condition, while distrust refuses every operation outright. Folding them would
+                // mean one of the two answering for a question it was not written for.
+                const disabled = resolveFrozenActionDisabled(action, freeze)
+                    || (distrusted && startsMainOperation(action.id));
                 const stateClasses = disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : "text-fg-muted hover:bg-fill hover:text-fg";

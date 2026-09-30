@@ -8,7 +8,7 @@ import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, shell } from "electron";
 import type { Dirent } from "fs";
-import { promises as fs } from "fs";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
 import {
@@ -23,8 +23,9 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
-import { isProtectedStateKey } from "@shared/constants/settingsScopes";
+import { isMainOnlyStateKey, isMainOwnedStateKey, isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
+import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -101,6 +102,15 @@ export class AppTerminateHandler extends IPCHandler<IPCEventType.appTerminate> {
         const timestamp = new Date().toISOString();
         window.app.logger.error(`A ${window.getWindowType()} window reported a fatal error at ${timestamp}: ${data.err}`);
 
+        // A window nobody is looking at: its run ends on the failure it reported, rather than on the
+        // window going away or on the restart prompt below - the one says nothing about why, and the
+        // other waits for somebody who is not there.
+        if (window.isUnattended()) {
+            window.endUnattendedRun(`The ${window.getWindowType()} window stopped on an error: ${firstLine(data.err)}`);
+            window.forceClose();
+            return this.success(void 0 as never);
+        }
+
         const others = window.app.windowManager.getWindows()
             .filter(candidate => candidate !== window && !candidate.isClosed());
         if (others.length === 0) {
@@ -145,8 +155,32 @@ export class AppReportRendererErrorHandler extends IPCHandler<IPCEventType.appRe
             lines.push(`Component stack:${data.componentStack}`);
         }
         window.app.logger.error(lines.join("\n"));
+
+        // "boundary" is the one report that replaces the whole window with the crash screen, which
+        // waits for somebody to press Reload. In a window nobody is looking at that is a run waiting
+        // out its silence deadline, so the run ends here with what the screen would have said.
+        if (data.source === "boundary" && window.isUnattended()) {
+            window.endUnattendedRun(
+                `The ${window.getWindowType()} window stopped on an error and put up its crash screen: ${firstLine(data.message)}`,
+            );
+        }
         return this.success(void 0 as never);
     }
+}
+
+/**
+ * The first line of a failure a renderer reported; the rest is a stack, which the log keeps.
+ *
+ * A page that failed to start reports its error as the error's name on one line and its message on
+ * the next (`renderApp`), and "TypeError" alone tells an operator nothing - so a bare name keeps the
+ * line after it.
+ */
+function firstLine(text: string): string {
+    const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    if (lines.length > 1 && /^[A-Za-z]*Error$/.test(lines[0])) {
+        return `${lines[0]}: ${lines[1]}`;
+    }
+    return lines[0] ?? text;
 }
 
 export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowControl> {
@@ -274,6 +308,12 @@ export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
+        // A key whose value stays in this process reads as unset rather than as a refusal: the
+        // renderer has no use for it either way, and "unset" is the answer every reader already
+        // handles.
+        if (isMainOnlyStateKey(data.key)) {
+            return this.success({ value: undefined as never });
+        }
         return this.success({ value: window.app.globalState.get(data.key) });
     }
 }
@@ -283,6 +323,13 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
+        // Refused by name, before anything is written: these decide whose credential a request
+        // carries and where it goes, and the only writer that may decide that is this process.
+        // See `MAIN_OWNED_STATE_KEYS`.
+        if (isMainOwnedStateKey(data.key)) {
+            window.app.logger.warn(`[State] Refused a renderer write to ${data.key}, which only the main process writes`);
+            return this.failed(new Error(`${data.key} is written by Studio itself and cannot be set from a window`));
+        }
         // Persists, fans the change out to every open window so live views (e.g. the
         // i18n locale) stay in sync without a reload, and runs the per-key
         // main-process side effects.
@@ -297,7 +344,11 @@ export class AppGlobalStateGetAllHandler extends IPCHandler<IPCEventType.appGlob
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow) {
-        return this.success({ settings: window.app.globalState.raw() });
+        const settings = { ...window.app.globalState.raw() };
+        for (const key of Object.keys(settings)) {
+            if (isMainOnlyStateKey(key)) delete settings[key];
+        }
+        return this.success({ settings });
     }
 }
 
@@ -638,6 +689,36 @@ export class AppOpenLogsFolderHandler extends IPCHandler<IPCEventType.appOpenLog
 }
 
 /**
+ * Open Studio's own third-party notice in the system's text editor.
+ *
+ * The file lists the npm packages inlined into Studio's bundles with their licence texts; the build
+ * scripts write it to `dist/`, and a packaged Studio carries it in its resources folder
+ * (electron-builder.yml), because an editor outside Electron cannot open a file inside the asar.
+ * Like the logs folder it takes no path, so it opens that one file and nothing else.
+ */
+export class AppOpenThirdPartyNoticesHandler extends IPCHandler<IPCEventType.appOpenThirdPartyNotices> {
+    readonly name = IPCEventType.appOpenThirdPartyNotices;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        try {
+            const file = window.app.isPackaged()
+                ? path.join(process.resourcesPath, THIRD_PARTY_NOTICES_FILENAME)
+                : path.join(window.app.getDistDir(), THIRD_PARTY_NOTICES_FILENAME);
+            await fs.access(file);
+            // openPath answers with a message rather than throwing, and an empty string means it worked.
+            const failure = await shell.openPath(file);
+            if (failure) {
+                return this.failed(new Error(failure));
+            }
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
  * Reachability of one mirror address, for the Network settings panel.
  *
  * A HEAD, with the same 5 s budget `probePluginBuildDependency` uses, and the same reading of the
@@ -732,7 +813,7 @@ export class AppGlobalStateDeleteHandler extends IPCHandler<IPCEventType.appGlob
         const deleted: string[] = [];
         const refused: string[] = [];
         for (const key of keys) {
-            if (isProtectedStateKey(key)) {
+            if (isProtectedStateKey(key) || isMainOwnedStateKey(key)) {
                 refused.push(key);
                 continue;
             }

@@ -114,6 +114,54 @@ describe("placeCodecBinary", () => {
         }
     });
 
+    /*
+     * A protected build compiles each image for the title, so an image is only
+     * as right as the compiler was asked to make it. One for the wrong Mac packs,
+     * merges and signs without complaint and then fails on one kind of Mac only;
+     * the placement is the last point that can still say which image it was.
+     */
+    it("refuses a macOS image built for the other Mac, alone or as half of a universal copy", async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codec-arch-"));
+        try {
+            const swapped = {
+                "darwin-x64": archiveReaderPathFor("darwin-arm64"),
+                "darwin-arm64": archiveReaderPathFor("darwin-x64"),
+            };
+            const universal = path.join(dir, "universal", "bindings.node");
+            await expect(placeCodecBinary(
+                { platformKey: "macos-universal", destination: universal, slices: [...UNIVERSAL_CODEC_SLICES] },
+                swapped,
+            )).rejects.toThrow("the darwin-x64 codec image should be an x64 image, but it is built for arm64");
+
+            const intel = path.join(dir, "intel", "bindings.node");
+            await expect(placeCodecBinary(
+                { platformKey: "macos-x64", destination: intel, slices: ["darwin-x64"] },
+                swapped,
+            )).rejects.toThrow(/darwin-x64 codec image should be an x64 image/);
+
+            // Refused before anything was written, directories included.
+            await expect(fs.access(path.dirname(universal))).rejects.toThrow();
+            await expect(fs.access(path.dirname(intel))).rejects.toThrow();
+        } finally {
+            await fs.rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("places a macOS image that is the architecture it is named for", async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codec-arch-"));
+        try {
+            const destination = path.join(dir, "bindings.node");
+            await placeCodecBinary(
+                { platformKey: "macos-arm64", destination, slices: ["darwin-arm64"] },
+                { "darwin-arm64": archiveReaderPathFor("darwin-arm64") },
+            );
+            expect((await fs.readFile(destination)).equals(await fs.readFile(archiveReaderPathFor("darwin-arm64"))))
+                .toBe(true);
+        } finally {
+            await fs.rm(dir, { recursive: true, force: true });
+        }
+    });
+
     // The failure this replaces would have been a package shipping whatever
     // happened to be at that path, which is how the original defect looked.
     it("refuses when an image it needs was not produced", async () => {

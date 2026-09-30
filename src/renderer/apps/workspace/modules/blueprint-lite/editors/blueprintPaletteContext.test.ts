@@ -16,7 +16,7 @@ function element(input: Partial<UIElement> & Pick<UIElement, "id" | "type">): UI
 describe("resolveWidgetEventLayerSlotsForPalette", () => {
     it("uses a matching widget event id as the Add Node menu event slot", () => {
         expect(resolveWidgetEventLayerSlotsForPalette({
-            ownerKind: "widgetMain",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
             widgetElement: element({ id: "list", type: "nl.list" }),
             graphView: { kind: "event", graphId: "scroll" },
             widgetBlueprintEvents: [{ id: "scroll" }],
@@ -25,7 +25,7 @@ describe("resolveWidgetEventLayerSlotsForPalette", () => {
 
     it("leaves generic widget layers unrestricted by slot", () => {
         expect(resolveWidgetEventLayerSlotsForPalette({
-            ownerKind: "widgetMain",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
             widgetElement: element({ id: "button", type: "nl.button" }),
             graphView: { kind: "event", graphId: "custom-layer" },
             widgetBlueprintEvents: [{ id: "mouseClick" }],

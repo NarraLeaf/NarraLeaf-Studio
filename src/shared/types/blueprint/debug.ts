@@ -16,6 +16,30 @@ export type BlueprintDebugEvent =
     | { type: "function.return"; functionId: string }
     | { type: "devtools.log"; level: string; message: string }
     | {
+          /**
+           * A node ran with one of its required data inputs left unconnected and no value on the
+           * card, so the pin resolved to nothing.
+           *
+           * Its own event rather than a `devtools.log`, because it has a place: an issue list can
+           * put it on a surface, and a repeat of it on the same pin is the same problem rather than
+           * a second line of output. Carries the node's and the pin's English names off the
+           * catalogue, which is what a host that has no node-title map (the shipped game) can still
+           * write into a player's log.
+           */
+          type: "node.input_missing";
+          executionId: string;
+          nodeId: string;
+          /** The node's display name as its definition declares it. */
+          nodeName: string;
+          /** The unwired pin's label as its definition declares it. */
+          pinLabel: string;
+          blueprintId?: string;
+          eventId?: string;
+          graphId?: string;
+          /** See the note on `execution.error`: what lets a host say "the Quick Menu". */
+          surfaceId?: string;
+      }
+    | {
           type: "execution.error";
           executionId: string;
           message: string;
@@ -32,6 +56,13 @@ export type BlueprintDebugEvent =
            * the global blueprint, which belongs to no surface.
            */
           surfaceId?: string;
+          /**
+           * Present when the graph was stopped for running its whole step budget without once
+           * waiting - a loop that would otherwise have held the window forever. The node it was
+           * stopped at and the event head the run started from, by the English names their
+           * definitions declare, so a host can word the stop itself and name both.
+           */
+          stepLimit?: { steps: number; nodeName: string; headName: string };
       };
 
 export type BlueprintDebugEventLogLevel = "error" | "warning" | "log" | "verbose";
@@ -49,6 +80,11 @@ export type BlueprintDebugEventLogLevel = "error" | "warning" | "log" | "verbose
 export function getBlueprintDebugEventLogLevel(event: BlueprintDebugEvent): BlueprintDebugEventLogLevel {
     if (event.type === "execution.error") {
         return "error";
+    }
+    // A warning, not an error: the graph carries on and only the one effect this node was placed
+    // for is lost. Not `verbose` either - it is a defect, and the whole point is that it was silent.
+    if (event.type === "node.input_missing") {
+        return "warning";
     }
     if (event.type === "devtools.log") {
         const level = event.level.trim().toLowerCase();

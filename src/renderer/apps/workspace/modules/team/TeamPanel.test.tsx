@@ -108,6 +108,7 @@ function panel(overrides: Partial<VersionSurface> = {}, server: TeamProjectSurfa
         // Signed in, which is the ordinary state: an account is what makes a server usable at
         // all now, and the cases without one are their own below.
         serverSession: session("ada", "Blackwood Studio"),
+        availableSession: null,
         syncState: null,
         checkRemote: vi.fn(),
         setRemote: vi.fn(() => Promise.resolve(true)),
@@ -115,6 +116,7 @@ function panel(overrides: Partial<VersionSurface> = {}, server: TeamProjectSurfa
         setAuthorName: vi.fn(() => Promise.resolve(true)),
         signInToServer: vi.fn(() => Promise.resolve(true)),
         signOutOfServer: vi.fn(() => Promise.resolve()),
+        useServerSession: vi.fn(() => Promise.resolve()),
         ...overrides,
     } as unknown as VersionSurface;
     render(<TeamPanel surface={surface} team={server} isOpen onClose={onClose} />);
@@ -265,6 +267,29 @@ describe("the account the Team panel names", () => {
         fireEvent.click(action("workspace.shell.versionControl.server.picker.add"));
 
         expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull();
+    });
+
+    /**
+     * The machine is signed in to that server; this project does not use the sign-in - it was never
+     * asked, or the author said no. Neither is "no account here", and the remedy is not adding the
+     * server again: it is the one row that puts the question.
+     */
+    it("says a project does not use the sign-in this machine holds, and offers to ask", () => {
+        const { surface } = panel({ serverSession: null, availableSession: session("ada", "Blackwood Studio") });
+
+        expect(seam("sign-in-unused")?.textContent).toBe("workspace.shell.team.signInUnused");
+        expect(seam("needs-account")).toBeNull();
+
+        fireEvent.click(action("workspace.shell.team.useSignIn"));
+        expect(surface.useServerSession).toHaveBeenCalledTimes(1);
+        // Signing in separately is still offered: saying no is how an author gets to use another
+        // account for this project.
+        expect(action("workspace.shell.versionControl.server.picker.add")).toBeTruthy();
+    });
+
+    it("says signing out here is this project's alone", () => {
+        panel();
+        expect(seam("sign-out")?.getAttribute("data-tip")).toBe("workspace.shell.team.signOutHint");
     });
 
     it("says it too where a connect was refused for want of one, which has no other way out", () => {

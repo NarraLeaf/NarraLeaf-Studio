@@ -13,14 +13,13 @@ export const uiEditor = {
      * What a blueprint belongs to, in the words the author navigates by.
      *
      * The blueprint panel, the tab title and the read-only section beside a control all name the
-     * same six owners, so they are named once here.
+     * same five owners, so they are named once here.
      */
     ownerLabel: {
         globalMain: "App logic",
         surfaceMain: "Page logic",
         widgetMain: "Component logic",
         widgetValue: "Component value",
-        sharedAsset: "Shared blueprint",
         storyAction: "Story action",
     },
     // The five stage slots a Game UI can take. Named once here because the author meets the same
@@ -66,6 +65,10 @@ export const uiEditor = {
         gameUi: "{slot} UI",
         component: "Component {index}",
         inputAction: "Action {index}",
+    },
+    // Names for the undo steps this panel leaves behind ("Undo move interface Title").
+    history: {
+        moveSurface: "move interface {name}",
     },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and
@@ -160,7 +163,14 @@ export const uiEditor = {
             one: "{count} linked instance will show as missing until unlinked or replaced.",
             other: "{count} linked instances will show as missing until unlinked or replaced.",
         },
-        refs: "{count} refs",
+        refs: {
+            one: "{count} ref",
+            other: "{count} refs",
+        },
+    },
+    canvas: {
+        unknownWidget: "Unknown widget",
+        widgetRenderFailed: "Widget failed to draw",
     },
     editor: {
         componentNotFound: "Component not found",
