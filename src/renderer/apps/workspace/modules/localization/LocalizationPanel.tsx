@@ -103,7 +103,7 @@ const GHOST_ROW_CLASS =
 export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // Adding, removing and re-sourcing a language write `.nlproj`, which no partial freeze exempts.
     // Reading the tables, switching locale and exporting a CSV write nothing at all.
     const freeze = useFreezeGuard();
@@ -594,7 +594,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             await localizationService.loadDocument(code);
             const currentSourceByUnit = new Map(rows.map(row => [row.unitId, row.sourceText]));
             const summary = localizationService.applyImportedRows(code, parsed.rows, currentSourceByUnit);
-            uiService.showNotification(t("workspace.localization.panel.importSummary", { ...summary }), "success");
+            uiService.showNotification(t("workspace.localization.panel.importCounts", {
+                ...summary,
+                applied: tn("workspace.localization.panel.translationCount", summary.applied),
+            }), "success");
             if (parsed.problems.length > 0) {
                 uiService.showNotification(
                     t("workspace.localization.exchange.importWarnings", {

@@ -191,7 +191,12 @@ export const characters = {
             title: "Import PSD",
             choose: "Choose a PSD…",
             canvas: "Document size",
-            cost: "{layers} layers · ~{megabytes} MB",
+            // `{layers}` is a whole count with its noun, from `layerCount`.
+            costCounts: "{layers} · ~{megabytes} MB",
+            layerCount: {
+                one: "{count} layer",
+                other: "{count} layers",
+            },
             mapping: "Layers",
             axis: "axis, {count} tags",
             blends: "Blend modes the engine cannot reproduce",

@@ -19,7 +19,10 @@ export const workspace = {
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
-            importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            importCounts: "已导入 {applied}（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            translationCount: {
+                other: "{count} 条翻译",
+            },
             readFailed: "{name} 的译文无法读取",
             alreadyAdded: "{name} 已在语言列表中",
             sourceLocked: "{name} 是源语言；请先移除其他语言，或将其他语言设为源语言",
@@ -140,10 +143,16 @@ export const workspace = {
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
             pickupEmpty: "没有需要补录的对白",
-            importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
+            importCounts: "已关联 {linked}（{unmatched} 条未匹配，{failed} 条失败）",
+            takeCount: {
+                other: "{count} 条",
+            },
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
-            importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
+            importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
+            scriptRowCount: {
+                other: "{count} 行",
+            },
             importScriptSkipped: {
                 one: "有 {count} 行被跳过",
                 other: "有 {count} 行被跳过",

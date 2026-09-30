@@ -465,7 +465,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        summary: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        counts: "{errors}，{warnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -491,7 +491,7 @@ export const lint = {
         channel: "检查",
         channelDescription: "项目检查及其发现的问题",
         started: "开始检查",
-        finished: "{errors} 个错误，{warnings} 个警告，用时 {duration}",
+        finishedCounts: "{errors}，{warnings}，用时 {duration}",
         // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。
         // 不再留严重级别的位：控制台每一行左边本来就有一列级别，写在句子里是重复。
         finding: "{location} {message}（{rule}）",
@@ -502,7 +502,9 @@ export const lint = {
     },
     build: {
         started: "正在检查项目…",
-        blocked: "{count} 个问题中止了构建",
+        blocked: {
+            other: "{count} 个问题中止了构建",
+        },
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
         blockedHint: "可在「项目 ▸ 项目 ▸ 构建前检查」中调整",

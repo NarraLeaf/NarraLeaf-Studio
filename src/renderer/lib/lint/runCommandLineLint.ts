@@ -11,6 +11,7 @@ import {
 } from "../workspace/services/core/BuildService";
 import { LintService } from "../workspace/services/core/LintService";
 import { ProjectService } from "../workspace/services/core/ProjectService";
+import { formatLintFinishedLine } from "./finishedLine";
 import { describeLintLocation } from "./locationText";
 import { tallyLintFindingsByRule } from "./ruleTally";
 import { resolveLintMessageParams, type LintReport, type LintSeverity } from "./types";
@@ -104,11 +105,7 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
 
     const config = projectService.getLintingConfiguration();
     const blocking = countBlockingLintFindings(report, config.failBuildOn);
-    emit(blocking > 0 ? "error" : "success", translate("lint.console.finished", {
-        errors: report.counts.error,
-        warnings: report.counts.warning,
-        duration: `${((report.finishedAt - report.startedAt) / 1000).toFixed(1)}s`,
-    }));
+    emit(blocking > 0 ? "error" : "success", formatLintFinishedLine(report));
 
     const findings: CommandLineRunFinding[] = report.entries.map(entry => {
         const location = describeLintLocation(entry.location);

@@ -21,6 +21,7 @@ import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { storyUnreadableFinding } from "@/lib/lint/storyLoadFailure";
+import { formatLintFinishedLine } from "@/lib/lint/finishedLine";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -280,11 +281,7 @@ export class LintService extends Service<LintService> implements ILintService {
             consoleService.append(LINT_CONSOLE_CHANNEL, {
                 level: merged.counts.error > 0 ? "error" : merged.counts.warning > 0 ? "warning" : "success",
                 source: LINT_CONSOLE_SOURCE,
-                message: translate("lint.console.finished", {
-                    errors: merged.counts.error,
-                    warnings: merged.counts.warning,
-                    duration: `${((merged.finishedAt - merged.startedAt) / 1000).toFixed(1)}s`,
-                }),
+                message: formatLintFinishedLine(merged),
             });
             return merged;
         } finally {

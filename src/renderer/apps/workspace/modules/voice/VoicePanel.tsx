@@ -498,7 +498,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             await voiceService.loadDocument(code);
             const { skipped: unapplied, ...summary } = voiceService.applyImportedRows(code, parsed.rows);
             await voiceService.flushPendingChanges();
-            uiService?.showNotification(t("workspace.voice.panel.importScriptSummary", summary), "success");
+            uiService?.showNotification(t("workspace.voice.panel.importScriptCounts", {
+                ...summary,
+                applied: tn("workspace.voice.panel.scriptRowCount", summary.applied),
+            }), "success");
             // The rows that went nowhere, by their row in the file and why: the ones with no ID the
             // parser passed over, and the ones whose note or approval had no take to attach to. The
             // summary only counted the second kind, and never mentioned the first at all.
@@ -568,7 +571,11 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             // The count alone said "3 failed" and left the author to find out which three and why;
             // the detail names them, which is what the booth has to be told.
             uiService?.showNotification(
-                t("workspace.voice.panel.importSummary", { linked, unmatched, failed: failures.length }),
+                t("workspace.voice.panel.importCounts", {
+                    linked: tn("workspace.voice.panel.takeCount", linked),
+                    unmatched,
+                    failed: failures.length,
+                }),
                 failures.length > 0 ? "warning" : "success",
                 failures.length > 0 ? { detail: summarizeImportFailures(failures, t) } : undefined,
             );

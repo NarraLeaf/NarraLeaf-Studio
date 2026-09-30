@@ -67,7 +67,8 @@ export const test = {
         rerun: "Run again",
         severityFilter: "Severity",
         filterAll: "All",
-        findings: "{errors} errors, {warnings} warnings, {infos} info",
+        // Each slot is one whole count with its noun, from `common.count.*`.
+        findingCounts: "{errors}, {warnings}, {infos}",
         durationSeconds: "{seconds}s",
         durationMinutes: "{minutes}m {seconds}s",
     },
@@ -117,7 +118,10 @@ export const test = {
             description: "All project check rules, run as one test",
             summary: {
                 passed: "No problems found",
-                failed: "{errors} errors, {warnings} warnings",
+                // Noun-first, like `routeCoverage` below, so the numbers read at any count: a
+                // summary is a key and bare numbers rendered later, with no way to pick "error" or
+                // "errors" per number.
+                failed: "Problems: errors {errors}, warnings {warnings}",
             },
         },
         walkthrough: {
@@ -135,7 +139,8 @@ export const test = {
                 },
             },
             log: {
-                planned: "Route planned: {scenes} scenes, {decisions} decisions",
+                // Noun-first for the same reason as `projectDiagnostics.summary.failed`.
+                planned: "Route planned: scenes {scenes}, decisions {decisions}",
                 choosing: "{scene}: choosing \"{option}\"",
                 improvised: "Answered an unplanned choice with \"{option}\"",
             },

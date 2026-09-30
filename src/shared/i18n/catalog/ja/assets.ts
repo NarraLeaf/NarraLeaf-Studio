@@ -465,7 +465,10 @@ export const assets = {
         success: {
             other: "{count} ファイルを書き出した",
         },
-        partial: "{exported} ファイルを書き出し、{failed} ファイルは書き出せなかった",
+        partialCounts: "{exported}を書き出し、{failed} ファイルは書き出せなかった",
+        fileCount: {
+            other: "{count} ファイル",
+        },
         partialTitle: "書き出せなかったファイルがある",
         failed: "書き出しに失敗：{error}",
         reason: {
@@ -498,7 +501,13 @@ export const assets = {
         exampleFilename: "ファイル名の例：{filename}",
         categoryPlaceholder: "タグの区分（例：char、emo）",
         moreFiles: "…ほか {count} ファイル",
-        summary: "{files} ファイルに合計 {tags} 個のタグを付ける",
+        tagCounts: "{files}に合計 {tags}を付ける",
+        tagCount: {
+            other: "{count} 個のタグ",
+        },
+        fileCount: {
+            other: "{count} ファイル",
+        },
         applying: "適用している…",
         applyTags: "タグを適用",
         parseFailedTitle: "マジックタグの解析に失敗",

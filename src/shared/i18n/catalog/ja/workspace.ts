@@ -23,7 +23,10 @@ export const workspace = {
             openTable: "翻訳の表を開く",
             progress: "{total} 件中 {completed} 件が翻訳済み",
             staleCount: "確認が必要なもの {count} 件",
-            importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
+            importCounts: "{applied}を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
+            translationCount: {
+                other: "翻訳 {count} 件",
+            },
             readFailed: "{name} の翻訳を読み込めなかった",
             alreadyAdded: "{name} はすでに言語の一覧にある",
             sourceLocked: "{name} は原文の言語。先にほかの言語を取り除くか、別の言語を原文の言語にする",
@@ -144,10 +147,16 @@ export const workspace = {
             importAudio: "音声を読み込む…",
             exportDone: "{path} に書き出した",
             pickupEmpty: "録り直しが必要な行はない",
-            importSummary: "テイク {linked} 件を結びつけた（対応不明 {unmatched}、失敗 {failed}）",
+            importCounts: "{linked}を結びつけた（対応不明 {unmatched}、失敗 {failed}）",
+            takeCount: {
+                other: "テイク {count} 件",
+            },
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
-            importScriptSummary: "{applied} 行を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
+            importScriptCounts: "{applied}を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
+            scriptRowCount: {
+                other: "{count} 行",
+            },
             importScriptSkipped: {
                 other: "{count} 行を飛ばした",
             },

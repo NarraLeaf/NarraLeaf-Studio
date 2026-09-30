@@ -70,4 +70,15 @@ export const common = {
     error: "错误",
     warning: "警告",
     untitled: "未命名",
+    count: {
+        errors: {
+            other: "{count} 个错误",
+        },
+        warnings: {
+            other: "{count} 个警告",
+        },
+        infos: {
+            other: "{count} 个提示",
+        },
+    },
 } satisfies LocaleNamespace<"common">;

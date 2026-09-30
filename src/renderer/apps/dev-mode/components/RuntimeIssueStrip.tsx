@@ -45,7 +45,7 @@ export type RuntimeIssueStripProps = {
  */
 export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
     const { sessionError, issues, onDismiss, onOpenIssues } = props;
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     if (!sessionError && issues.length === 0) {
         return null;
@@ -112,7 +112,10 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             )}
             {issues.length > 1 ? (
                 <span className="shrink-0 text-2xs opacity-70">
-                    {t("devMode.issues.summary", { errors, warnings })}
+                    {t("devMode.issues.counts", {
+                        errors: tn("common.count.errors", errors),
+                        warnings: tn("common.count.warnings", warnings),
+                    })}
                 </span>
             ) : null}
             <button

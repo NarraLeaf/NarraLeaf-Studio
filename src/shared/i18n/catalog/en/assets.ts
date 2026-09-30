@@ -539,7 +539,12 @@ export const assets = {
             one: "Exported {count} file.",
             other: "Exported {count} files.",
         },
-        partial: "Exported {exported} files, {failed} could not be exported.",
+        // `{exported}` is a whole count with its noun, from `fileCount`.
+        partialCounts: "Exported {exported}, {failed} could not be exported.",
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         partialTitle: "Some files were not exported",
         failed: "Export failed: {error}",
         // What the disk said when a copy failed, worded from its error code: the system's message
@@ -574,7 +579,16 @@ export const assets = {
         exampleFilename: "Example Filename: {filename}",
         categoryPlaceholder: "Tag Category (e.g.: char, emo)",
         moreFiles: "… and {count} more files",
-        summary: "Will add a total of {tags} tags to {files} files",
+        // Both slots are whole counts with their nouns, from `tagCount` and `fileCount`.
+        tagCounts: "Will add a total of {tags} to {files}",
+        tagCount: {
+            one: "{count} tag",
+            other: "{count} tags",
+        },
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         applying: "Applying…",
         applyTags: "Apply Tags",
         parseFailedTitle: "Magic Tags parsing failed",

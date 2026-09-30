@@ -375,7 +375,10 @@ export const assets = {
             one: "已导出 {count} 个文件",
             other: "已导出 {count} 个文件",
         },
-        partial: "已导出 {exported} 个文件，{failed} 个未能导出",
+        partialCounts: "已导出 {exported}，{failed} 个未能导出",
+        fileCount: {
+            other: "{count} 个文件",
+        },
         partialTitle: "部分文件未能导出",
         failed: "导出失败：{error}",
         reason: {
@@ -408,7 +411,13 @@ export const assets = {
         exampleFilename: "示例文件名：{filename}",
         categoryPlaceholder: "标签类别（例如：char、emo）",
         moreFiles: "…还有 {count} 个文件",
-        summary: "将为 {files} 个文件共添加 {tags} 个标签",
+        tagCounts: "将为 {files}共添加 {tags}",
+        tagCount: {
+            other: "{count} 个标签",
+        },
+        fileCount: {
+            other: "{count} 个文件",
+        },
         applying: "正在应用…",
         applyTags: "应用标签",
         parseFailedTitle: "魔法标签解析失败",

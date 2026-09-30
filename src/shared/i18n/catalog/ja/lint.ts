@@ -469,7 +469,7 @@ export const lint = {
         title: "問題",
         empty: "問題は見つからなかった",
         running: "検査中…",
-        summary: "エラー {errors} 件、警告 {warnings} 件、情報 {infos} 件",
+        counts: "{errors}、{warnings}、{infos}",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
         filterAll: "すべて",
@@ -495,7 +495,7 @@ export const lint = {
         channel: "検査",
         channelDescription: "プロジェクトの検査と見つかった問題",
         started: "検査を開始",
-        finished: "エラー {errors} 件、警告 {warnings} 件（{duration}）",
+        finishedCounts: "{errors}、{warnings}（{duration}）",
         // 場所、次に何がおかしいか、最後にそう言っているルール。コンパイラの 1 行と同じ並びで、
         // 読み手が目で追う順でもある。重大度の枠は無い。コンソールは行ごとに別の列で出している。
         finding: "{location} {message}（{rule}）",
@@ -506,7 +506,9 @@ export const lint = {
     },
     build: {
         started: "プロジェクトを検査中…",
-        blocked: "問題 {count} 件のためビルドを中止した",
+        blocked: {
+            other: "問題 {count} 件のためビルドを中止した",
+        },
         // パネル → ページ → 項目まで書く。この関門は既定で有効なので、このパネルを開いたことのない
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
         blockedHint: "「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変更できる",
