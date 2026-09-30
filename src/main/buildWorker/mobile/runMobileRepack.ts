@@ -5,7 +5,7 @@ import { packBuffer } from "@narraleaf/bindings";
 import { readKeystore } from "./keystoreReader";
 import { buildAab } from "./buildAab";
 import { signJar } from "./jarSigning";
-import { repackApk } from "./repackApk";
+import { repackApk, type ApkWwwEntry } from "./repackApk";
 import { repackIpa } from "./repackIpa";
 import { signIpa } from "./signIpa";
 import {
@@ -13,7 +13,6 @@ import {
     toApkSigningIdentity,
     type ApkSigningIdentity,
 } from "./signingIdentity";
-import type { ZipEntrySource } from "./zipWriter";
 import { countBuildStep } from "../stepProgress";
 import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
@@ -34,7 +33,7 @@ export type MobileRepackLogger = (level: "info" | "warning" | "error", message: 
 type SiteFile = { relativePath: string; absolutePath: string; size: number };
 
 /** Structurally what both repack orchestrators accept as a payload file. */
-type SiteEntry = { relativePath: string; source: ZipEntrySource };
+type SiteEntry = { relativePath: string; source: ApkWwwEntry["source"] };
 
 /**
  * The finished archive is assembled in memory (both repack orchestrators are

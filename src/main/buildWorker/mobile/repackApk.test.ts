@@ -180,6 +180,24 @@ describe("repackApk", () => {
         expect(findMisalignedStoredEntries(apk, 4)).toEqual([]);
     });
 
+    it("stores every payload entry, even text that would deflate well, because the shell opens it with openFd", async () => {
+        // AssetManager.openFd throws on a compressed entry, so the extension table (which deflates
+        // .html/.js/.json) must not decide here. Repetitive text makes deflate the tempting choice,
+        // and odd name lengths push the data off a 4-byte boundary unless the writer pads it.
+        const text = "const line = 'the same line, again and again';\n".repeat(200);
+        const apk = await repack({
+            www: www({ "index.html": text, "a.js": text, "js/app.js": text, "pack.json": text, "fonts/x.woff2": text }),
+        });
+        const payload = parseZipIndex(apk).entries.filter(entry => entry.name.startsWith("assets/www/"));
+        expect(payload).toHaveLength(5);
+        for (const entry of payload) {
+            expect(entry.method, entry.name).toBe(ZIP_METHOD_STORE);
+            expect(readEntryBytes(apk, entry).toString("utf8"), entry.name).toBe(text);
+        }
+        expect(findMisalignedStoredEntries(apk, 4)).toEqual([]);
+        expect(verifyApkV2(apk).verified).toBe(true);
+    });
+
     it("detects tampering after the fact (the signature covers the payload)", async () => {
         const apk = await repack();
         const tampered = Buffer.from(apk);
