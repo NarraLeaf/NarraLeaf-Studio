@@ -21,7 +21,6 @@ import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { Select } from "@/lib/components/elements/Select";
 import { Component, MoreHorizontal, Search, X } from "lucide-react";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
 import {
     toReadOnlyDockerBarItems,
@@ -902,9 +901,9 @@ export function UIEditorDockerBar({
         const doc = documentService.getDocument();
         return selection.data.elementIds
             .map((elementId) => doc.elements[elementId])
-            .filter((element): element is UIElement =>
-                Boolean(element) && element.type !== "nl.root" && !isComponentEditorRootElement(element)
-            );
+            // A component's frame gets its container's bar like any container; a page's root is not
+            // on the surface to be edited.
+            .filter((element): element is UIElement => Boolean(element) && element.type !== "nl.root");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selection, surfaceId, documentService, docVersion]);
     const selectedElement = selectedElements[selectedElements.length - 1] ?? null;

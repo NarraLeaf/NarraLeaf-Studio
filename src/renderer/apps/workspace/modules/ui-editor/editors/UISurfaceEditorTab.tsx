@@ -403,7 +403,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         }
         const pid = data.primaryId ?? data.elementIds[0];
         const el = documentService.getDocument().elements[pid];
-        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
+        // A component's frame is named like any layer; only a page's own root has no name to edit.
+        if (!el || el.type === "nl.root") {
             return;
         }
         void inputDialog.showRenameDialog(el.name ?? el.type ?? t("uiEditor.editor.layerFallback"), "layer").then(name => {
@@ -715,8 +716,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         // Read by the component frame's squares, which stay screen-sized under any zoom.
         [CANVAS_SCALE_PROPERTY]: viewport.scale,
     } as CSSProperties;
-    // The definition's root is the frame itself: drawn at the origin, sized from its far edges.
-    const originElementId = componentId ? baseDocumentService?.getComponent(componentId)?.rootElementId ?? null : null;
 
     return (
         // A component being edited is the same canvas answering a different question, so the two
@@ -894,7 +893,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             openSurfaceEditor={handleOpenSurfaceEditor}
                             openComponentEditor={handleOpenComponentEditor}
                             readOnly={readOnly}
-                            originElementId={originElementId}
                         />
                     ) : null}
 

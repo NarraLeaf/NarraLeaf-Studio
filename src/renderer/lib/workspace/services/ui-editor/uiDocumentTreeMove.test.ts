@@ -8,7 +8,7 @@ import {
     normalizeFlowChildLayouts,
     planMoveElementsInSurface,
 } from "./uiDocumentTreeMove";
-import { COMPONENT_EDITOR_ROOT_EXTRA_KEY } from "@/lib/ui-editor/componentEditorRoot";
+import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
 
 function element(
     id: string,
@@ -188,14 +188,11 @@ describe("uiDocumentTreeMove ungroup", () => {
 
     it("refuses anything that is not a user's group", () => {
         const document = makeDocument({
-            root: element("root", "nl.root", null, ["button", "linked", "componentRoot", "plain"]),
+            root: element("root", "nl.root", null, ["button", "linked", "plain"]),
             button: element("button", "nl.button", "root", ["label"]),
             label: element("label", "nl.text", "button"),
             linked: element("linked", "nl.container", "root", [], {
                 extra: { componentLink: { componentId: "c1", linked: true } },
-            }),
-            componentRoot: element("componentRoot", "nl.container", "root", [], {
-                extra: { [COMPONENT_EDITOR_ROOT_EXTRA_KEY]: true },
             }),
             plain: element("plain", "nl.container", "root", []),
         });
@@ -203,11 +200,40 @@ describe("uiDocumentTreeMove ungroup", () => {
         expect(canUngroupContainer(document, "surface", "root")).toBe(false);
         expect(canUngroupContainer(document, "surface", "button")).toBe(false);
         expect(canUngroupContainer(document, "surface", "linked")).toBe(false);
-        expect(canUngroupContainer(document, "surface", "componentRoot")).toBe(false);
         expect(canUngroupContainer(document, "surface", "missing")).toBe(false);
         expect(canUngroupContainer(document, "surface", "plain")).toBe(true);
         expect(applyUngroupContainer(document, "surface", "button")).toBeNull();
         expect(document.elements.button.childrenIds).toEqual(["label"]);
+    });
+
+    it("refuses a component's frame in its own editor, whatever the frame is called", () => {
+        // The editor puts a made-up root above the definition; the definition's own root, directly
+        // under it, is the frame. Its name is not what decides that.
+        const virtualRootId = `${COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX}card`;
+        for (const name of ["Root", "根节点", "ルート", "Save slot"]) {
+            const document: UIDocument = {
+                ...makeDocument({}),
+                surfaces: [
+                    {
+                        id: "component-editor:card",
+                        name: "Card",
+                        host: "app",
+                        kind: "appSurface",
+                        designSize: { width: 100, height: 50 },
+                        rootElementId: virtualRootId,
+                    },
+                ],
+                elements: {
+                    [virtualRootId]: element(virtualRootId, "nl.root", null, ["frame"]),
+                    frame: element("frame", "nl.container", virtualRootId, ["group"], { name }),
+                    group: element("group", "nl.container", "frame", ["label"]),
+                    label: element("label", "nl.text", "group"),
+                },
+            };
+
+            expect(canUngroupContainer(document, "component-editor:card", "frame")).toBe(false);
+            expect(canUngroupContainer(document, "component-editor:card", "group")).toBe(true);
+        }
     });
 
     it("keeps a non-empty group whose parent takes no user children", () => {
