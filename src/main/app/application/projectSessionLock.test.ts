@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import path from "path";
+
 import {
+    claimsDirectory,
     decideHeldProjectSession,
     decideProjectSessionClaim,
+    digestProjectDirectory,
     parseProjectSessionLockRecord,
     PROJECT_SESSION_LOCK_STALE_MS,
     type HeldProjectSessionContext,
@@ -21,9 +25,13 @@ const NOW = Date.parse("2026-09-01T10:00:00.000Z");
 
 const SELF = { pid: 4242, hostname: "studio-one", installation: "aaaaaaaaaaaaaaaa" };
 
+/** The folder the record is found in, and another one it could have been copied from. */
+const HERE = "1111111111111111";
+const ELSEWHERE = "2222222222222222";
+
 function context(alive: number[] = [SELF.pid], now = NOW): ProjectSessionClaimContext {
     const running = new Set(alive);
-    return { self: SELF, now, isProcessAlive: pid => running.has(pid) };
+    return { self: SELF, now, isProcessAlive: pid => running.has(pid), directory: HERE };
 }
 
 function record(overrides: Partial<ProjectSessionLockRecord> = {}): ProjectSessionLockRecord {
@@ -144,6 +152,83 @@ describe("decideProjectSessionClaim", () => {
 });
 
 /**
+ * A lock found in a folder that is a copy of an open project: an Explorer copy, a backup, a zip.
+ *
+ * The file came with the folder, and names a Studio that is running and heartbeating - on the
+ * folder it was copied from. Until records said which folder they claim, the copy could not be
+ * opened until that frozen heartbeat went stale.
+ */
+describe("decideProjectSessionClaim on a copy of an open project", () => {
+    /** A live Studio on this machine, holding another folder. */
+    function copiedFromLiveStudio(overrides: Partial<ProjectSessionLockRecord> = {}): ProjectSessionLockRecord {
+        return record({ hostname: SELF.hostname, pid: 7000, directory: ELSEWHERE, ...overrides });
+    }
+
+    it("is not held by a claim on another folder of this machine, however alive its holder is", () => {
+        expect(decideProjectSessionClaim(copiedFromLiveStudio(), context([SELF.pid, 7000]))).toEqual({ kind: "copied" });
+    });
+
+    it("is held by the same record found in the folder it names", () => {
+        const claim = decideProjectSessionClaim(copiedFromLiveStudio({ directory: HERE }), context([SELF.pid, 7000]));
+        expect(claim.kind).toBe("held");
+    });
+
+    it("reads a record this very process wrote on another folder as a copy, not as its own claim", () => {
+        expect(decideProjectSessionClaim(record({ ...SELF, directory: ELSEWHERE }), context())).toEqual({ kind: "copied" });
+    });
+
+    it("takes a claim from another machine at its word, whatever folder it names", () => {
+        // The same project through a sync client, or a share mounted at another path, is one folder
+        // under two paths on two machines - exactly the second writer the lock exists to keep out.
+        expect(decideProjectSessionClaim(record({ directory: ELSEWHERE }), context()).kind).toBe("held");
+    });
+
+    it("lets a copy carrying another machine's claim in once that frozen heartbeat is stale", () => {
+        const claim = decideProjectSessionClaim(
+            record({ directory: ELSEWHERE, heartbeat: new Date(NOW - PROJECT_SESSION_LOCK_STALE_MS - 5_000).toISOString() }),
+            context(),
+        );
+        expect(claim.kind).toBe("stale");
+    });
+
+    it("takes a record that names no folder at its word, as every claim was before", () => {
+        // Written by a Studio from before the field existed, which may be holding this very folder.
+        const claim = decideProjectSessionClaim(record({ hostname: SELF.hostname, pid: 7000 }), context([SELF.pid, 7000]));
+        expect(claim.kind).toBe("held");
+    });
+});
+
+describe("claimsDirectory", () => {
+    it("is a question only about records written on this machine", () => {
+        expect(claimsDirectory(record({ hostname: SELF.hostname, directory: HERE }), SELF, HERE)).toBe(true);
+        expect(claimsDirectory(record({ hostname: SELF.hostname, directory: ELSEWHERE }), SELF, HERE)).toBe(false);
+        expect(claimsDirectory(record({ directory: ELSEWHERE }), SELF, HERE)).toBe(true);
+        expect(claimsDirectory(record({ hostname: SELF.hostname }), SELF, HERE)).toBe(true);
+    });
+});
+
+describe("digestProjectDirectory", () => {
+    const folder = path.resolve("/projects/Game One");
+
+    it("names a folder by sixteen hex digits that are not its path", () => {
+        const digest = digestProjectDirectory(folder);
+        expect(digest).toMatch(/^[0-9a-f]{16}$/);
+        expect(digestProjectDirectory(folder)).toBe(digest);
+    });
+
+    it("tells two folders apart", () => {
+        expect(digestProjectDirectory(path.resolve("/projects/Game One - Copy"))).not.toBe(digestProjectDirectory(folder));
+    });
+
+    it("folds a spelling of the same folder the way every project path is folded", () => {
+        expect(digestProjectDirectory(`${folder}${path.sep}`)).toBe(digestProjectDirectory(folder));
+        if (process.platform === "win32") {
+            expect(digestProjectDirectory(folder.toUpperCase().split(path.sep).join("/"))).toBe(digestProjectDirectory(folder));
+        }
+    });
+});
+
+/**
  * What a holder's heartbeat makes of the disk - above all when its own claim has gone, which is
  * both what a cleared `.nlstudio/` looks like and what a takeover it slept through looks like once
  * the Studio that took the project has closed it again.
@@ -154,7 +239,7 @@ describe("decideHeldProjectSession", () => {
     const TAKER = record({ hostname: SELF.hostname, pid: 7000, startedAt: new Date(NOW - 120_000).toISOString() });
 
     function held(lastClaimAtOwnClaim: ProjectSessionLockRecord | null = OWN): HeldProjectSessionContext {
-        return { self: SELF, lastClaimAtOwnClaim };
+        return { self: SELF, lastClaimAtOwnClaim, directory: HERE };
     }
 
     it("renews a claim that is still its own", () => {
@@ -205,6 +290,28 @@ describe("decideHeldProjectSession", () => {
         expect(decideHeldProjectSession(null, TAKER, held(before))).toEqual({ kind: "displaced", by: TAKER });
     });
 
+    it("writes over a record copied in from another folder on this machine", () => {
+        // Somebody copied another open project's files over this one, lock and all.
+        const stray = record({ hostname: SELF.hostname, pid: 7000, directory: ELSEWHERE });
+        expect(decideHeldProjectSession(stray, OWN, held())).toEqual({ kind: "stray" });
+    });
+
+    it("still gives the project up to a claim from another machine, whatever folder it names", () => {
+        const remote = record({ directory: ELSEWHERE });
+        expect(decideHeldProjectSession(remote, OWN, held())).toEqual({ kind: "taken-over", by: remote });
+    });
+
+    it("gives the project up to a claim on this very folder", () => {
+        const taker = { ...TAKER, directory: HERE };
+        expect(decideHeldProjectSession(taker, OWN, held())).toEqual({ kind: "taken-over", by: taker });
+    });
+
+    it("does not read a last claim made on another folder as somebody having had this one", () => {
+        expect(decideHeldProjectSession(null, { ...TAKER, directory: ELSEWHERE }, held())).toEqual({ kind: "reclaim" });
+        expect(decideHeldProjectSession(null, { ...TAKER, directory: HERE }, held()))
+            .toEqual({ kind: "displaced", by: { ...TAKER, directory: HERE } });
+    });
+
     it("sees the same Studio claiming the project again as somebody arriving since", () => {
         // The one that took it over closed it and opened it again - a second session all the same.
         const again = { ...TAKER, startedAt: new Date(NOW - 30_000).toISOString() };
@@ -214,8 +321,21 @@ describe("decideHeldProjectSession", () => {
 
 describe("parseProjectSessionLockRecord", () => {
     it("reads what the manager writes", () => {
+        const written = record({ directory: HERE });
+        expect(parseProjectSessionLockRecord(JSON.stringify(written))).toEqual(written);
+    });
+
+    it("reads a record from before folders were recorded, as one that names none", () => {
         const written = record();
         expect(parseProjectSessionLockRecord(JSON.stringify(written))).toEqual(written);
+        expect(parseProjectSessionLockRecord(JSON.stringify(written))).not.toHaveProperty("directory");
+    });
+
+    it("keeps a record whose folder is not text, as one that names none", () => {
+        // Nothing writes that; and a record that says nothing about its folder is still a claim.
+        const parsed = parseProjectSessionLockRecord(JSON.stringify({ ...record(), directory: 42 }));
+        expect(parsed).not.toBeNull();
+        expect(parsed).not.toHaveProperty("directory");
     });
 
     it.each([
