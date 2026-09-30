@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@shared/i18n/catalog";
+import type { PluralKey, TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 import type { LintContext } from "./context";
 
@@ -272,6 +272,16 @@ export type LintFinding = {
      * Every surface that renders a finding goes through {@link resolveLintMessageParams}.
      */
     messageParamKeys?: Record<string, TranslationKey>;
+    /**
+     * Params that are a count with its noun - "1 condition", "3 conditions" - spelled in the
+     * reader's locale and in that locale's plural for the number.
+     *
+     * A rule knows the number and not the language, so it names the plural group and the number and
+     * {@link resolveLintMessageParams} spells them, with {@link messageParams} available to the
+     * group's text. The bare number stays in `messageParams` under its own name, so a translation
+     * written against the number still reads it.
+     */
+    messageParamCounts?: Record<string, { key: PluralKey; count: number }>;
     location: LintLocation;
     /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
     target?: SearchJumpTarget;
@@ -319,15 +329,19 @@ export type LintRule = LintRuleMeta & {
  * catalogue key where a word belongs.
  */
 export function resolveLintMessageParams(
-    finding: Pick<LintFinding, "messageParams" | "messageParamKeys">,
+    finding: Pick<LintFinding, "messageParams" | "messageParamKeys" | "messageParamCounts">,
     translate: (key: TranslationKey) => string,
+    translatePlural: (base: PluralKey, count: number, params?: Record<string, string | number>) => string,
 ): Record<string, string | number> | undefined {
-    if (!finding.messageParamKeys) {
+    if (!finding.messageParamKeys && !finding.messageParamCounts) {
         return finding.messageParams;
     }
     const params: Record<string, string | number> = { ...finding.messageParams };
-    for (const [name, key] of Object.entries(finding.messageParamKeys)) {
+    for (const [name, key] of Object.entries(finding.messageParamKeys ?? {})) {
         params[name] = translate(key);
+    }
+    for (const [name, { key, count }] of Object.entries(finding.messageParamCounts ?? {})) {
+        params[name] = translatePlural(key, count, finding.messageParams);
     }
     return params;
 }

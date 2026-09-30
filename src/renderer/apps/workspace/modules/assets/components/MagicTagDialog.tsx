@@ -255,7 +255,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                                 ))}
                                 {preview.length > 10 && (
                                     <div className="text-xs text-fg-subtle italic pt-2 border-t border-edge">
-                                        {t("assets.magicTag.moreFiles", { count: preview.length - 10 })}
+                                        {tn("assets.magicTag.moreFiles", preview.length - 10)}
                                     </div>
                                 )}
                             </div>

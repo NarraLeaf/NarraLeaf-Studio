@@ -380,7 +380,11 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "Condition nothing can change",
             description: "A variable a condition tests, that nothing in the project ever assigns",
-            message: "{variable} is tested by {count} condition(s) but nothing ever sets it",
+            message: "{variable} is tested by {conditions} but nothing ever sets it",
+            conditionCount: {
+                one: "{count} condition",
+                other: "{count} conditions",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "Random outside an assignment",
@@ -417,7 +421,11 @@ export const lint = {
         localizationOrphan: {
             title: "Orphan translation",
             description: "A translation whose line no longer exists",
-            message: "{count} {locale} translations have no line",
+            message: "{translations} with no line",
+            translationCount: {
+                one: "{count} {locale} translation",
+                other: "{count} {locale} translations",
+            },
         },
         voiceMissing: {
             title: "Missing voice",
@@ -432,7 +440,11 @@ export const lint = {
         voiceOrphan: {
             title: "Orphan voice",
             description: "A recording whose line no longer exists",
-            message: "{count} {locale} recordings have no line",
+            message: "{recordings} with no line",
+            recordingCount: {
+                one: "{count} {locale} recording",
+                other: "{count} {locale} recordings",
+            },
         },
         brandBrokenLink: {
             title: "Broken color link",
@@ -450,10 +462,18 @@ export const lint = {
             // The character itself, because nothing in the location can carry it and it is the only
             // thing that tells one of these findings from the next. Its count travels with it: one
             // finding per line would be thousands of them when the font is simply the wrong one.
-            message: "No project font can draw “{character}” ({count} times)",
-            messageInLanguage: "No project font can draw “{character}” in {language} ({count} times)",
-            messageMore: "{count} more characters no project font can draw",
-            messageMoreInLanguage: "{count} more characters no project font can draw in {language}",
+            message: "No project font can draw “{character}” ({occurrences})",
+            occurrenceCount: {
+                one: "{count} time",
+                other: "{count} times",
+            },
+            messageInLanguage: "No project font can draw “{character}” in {language} ({occurrences})",
+            messageMore: "{characters} no project font can draw",
+            moreCharacterCount: {
+                one: "{count} more character",
+                other: "{count} more characters",
+            },
+            messageMoreInLanguage: "{characters} no project font can draw in {language}",
             // Not a coverage finding at all: the check could not be made. Said out loud because a
             // check that quietly did not run reads on screen as a check that passed.
             messageUnreadable: "{font} could not be read, so glyph coverage was not checked",

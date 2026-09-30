@@ -362,7 +362,10 @@ export const assets = {
         noneFoundHint: "Check the kind selected above, then the folder. It must be the folder the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
-        fileSummary: "{count} files · {size}",
+        fileSummary: {
+            one: "{count} file · {size}",
+            other: "{count} files · {size}",
+        },
         selectAll: "Select all",
         selectNone: "Select none",
         importAction: "Import",
@@ -578,7 +581,10 @@ export const assets = {
         categoryMapping: "Tag Category Mapping",
         exampleFilename: "Example Filename: {filename}",
         categoryPlaceholder: "Tag Category (e.g.: char, emo)",
-        moreFiles: "… and {count} more files",
+        moreFiles: {
+            one: "… and {count} more file",
+            other: "… and {count} more files",
+        },
         // Both slots are whole counts with their nouns, from `tagCount` and `fileCount`.
         tagCounts: "Will add a total of {tags} to {files}",
         tagCount: {

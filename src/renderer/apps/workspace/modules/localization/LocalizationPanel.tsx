@@ -475,7 +475,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                 throw new Error(describeFileWriteFailure(basename(targetPath), result.error, t));
             }
             uiService?.showNotification(
-                t("workspace.localization.exchange.exportDone", { count: exportRows.length, path: targetPath }),
+                tn("workspace.localization.exchange.exportDone", exportRows.length, { path: targetPath }),
                 "success",
             );
         } catch (error) {
@@ -600,8 +600,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             }), "success");
             if (parsed.problems.length > 0) {
                 uiService.showNotification(
-                    t("workspace.localization.exchange.importWarnings", {
-                        count: parsed.problems.length,
+                    tn("workspace.localization.exchange.importWarnings", parsed.problems.length, {
                         first: describeExchangeProblem(parsed.problems[0], t),
                     }),
                     "warning",

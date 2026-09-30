@@ -315,8 +315,7 @@ export function ModelImportWizard(props: {
                                                 <span className="block truncate text-2xs text-fg-subtle" data-tip={model.relativePath}>
                                                     {model.relativePath || "."}
                                                     {" · "}
-                                                    {t("assets.modelImport.fileSummary", {
-                                                        count: String(model.fileCount),
+                                                    {tn("assets.modelImport.fileSummary", model.fileCount, {
                                                         size: formatByteSize(model.totalBytes),
                                                     })}
                                                 </span>

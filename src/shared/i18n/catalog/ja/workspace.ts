@@ -61,10 +61,14 @@ export const workspace = {
             scopeAll: "すべて",
             scopePending: "未翻訳と要確認",
             exportAction: "書き出す",
-            exportDone: "{count} 行を {path} に書き出した",
+            exportDone: {
+                other: "{count} 行を {path} に書き出した",
+            },
             exportEmpty: "書き出すものがない",
             importUnsupported: "Studio が読めるのは CSV、XLIFF、PO、JSON",
-            importWarnings: "{count} 件を飛ばした。最初のもの：{first}",
+            importWarnings: {
+                other: "{count} 件を飛ばした。最初のもの：{first}",
+            },
             localeMismatch: "このファイルは {declared} 向け。{name} に読み込むか",
             localeMismatchDetail: "ファイルが何と宣言していても、翻訳は選んだ言語に読み込まれる",
         },
@@ -709,8 +713,12 @@ export const workspace = {
             retrySave: "いますぐ保存し直す",
             resetZoom: "拡大率を 100% に戻す",
             shortcuts: "キーボードショートカット",
-            words: "{count} 語",
-            lines: "{count} 行",
+            words: {
+                other: "{count} 語",
+            },
+            lines: {
+                other: "{count} 行",
+            },
             noStoryOpen: "ストーリーを開いていない",
             openDashboard: "プロジェクトのダッシュボードを開く",
             openCurrentScene: "現在のシーンを開く",
@@ -1073,7 +1081,9 @@ export const workspace = {
                 compareChanges: "前のバージョンと変更を比較",
             },
             filterPlaceholder: "名前または番号でバージョンを探す",
-            filterNoMatch: "読み込んだ {count} 件のバージョンに一致はありません",
+            filterNoMatch: {
+                other: "読み込んだ {count} 件のバージョンに一致はありません",
+            },
             today: "今日",
             yesterday: "昨日",
             compareBase: {
@@ -1082,7 +1092,9 @@ export const workspace = {
                 current: "{version} と比較中",
                 compare: "{version} と比較",
             },
-            showCheckpoints: "チェックポイント {count} 件を表示",
+            showCheckpoints: {
+                other: "チェックポイント {count} 件を表示",
+            },
             hideCheckpoints: "チェックポイントを隠す",
             systemMessage: {
                 unnamed: "名前のないバージョン",

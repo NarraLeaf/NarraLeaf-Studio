@@ -354,7 +354,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "永远不会变的条件",
             description: "条件判断读取了某个变量，而整个项目从来没有给它赋过值",
-            message: "{count} 处条件判断读取了 {variable}，但没有任何地方给它赋值",
+            message: "{conditions}读取了 {variable}，但没有任何地方给它赋值",
+            conditionCount: {
+                other: "{count} 处条件判断",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
@@ -391,7 +394,10 @@ export const lint = {
         localizationOrphan: {
             title: "孤立的译文",
             description: "对应的原文已不存在",
-            message: "{count} 条 {locale} 译文没有对应的行",
+            message: "{translations}没有对应的行",
+            translationCount: {
+                other: "{count} 条 {locale} 译文",
+            },
         },
         voiceMissing: {
             title: "缺少语音",
@@ -406,7 +412,10 @@ export const lint = {
         voiceOrphan: {
             title: "孤立的语音",
             description: "对应的对白已不存在",
-            message: "{count} 条 {locale} 录音没有对应的行",
+            message: "{recordings}没有对应的行",
+            recordingCount: {
+                other: "{count} 条 {locale} 录音",
+            },
         },
         brandBrokenLink: {
             title: "断开的颜色链接",
@@ -420,10 +429,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "缺少字形",
             description: "文本用到了项目里任何字体都画不出的字符",
-            message: "项目字体画不出“{character}”（{count} 处）",
-            messageInLanguage: "{language}中项目字体画不出“{character}”（{count} 处）",
-            messageMore: "另有 {count} 个字符项目字体画不出",
-            messageMoreInLanguage: "{language}中另有 {count} 个字符项目字体画不出",
+            message: "项目字体画不出“{character}”（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 处",
+            },
+            messageInLanguage: "{language}中项目字体画不出“{character}”（{occurrences}）",
+            messageMore: "另有 {characters}项目字体画不出",
+            moreCharacterCount: {
+                other: "{count} 个字符",
+            },
+            messageMoreInLanguage: "{language}中另有 {characters}项目字体画不出",
             messageUnreadable: "{font} 读不出来，未检查字形覆盖",
             messageUnloadable: "{font} 是 .{format} 字体，游戏无法用它绘制文字",
         },

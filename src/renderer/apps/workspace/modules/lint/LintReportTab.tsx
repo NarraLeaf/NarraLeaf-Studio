@@ -164,7 +164,7 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
      * mostly that rule.
      */
     const entryHaystack = useCallback((entry: LintReportEntry): string => {
-        const message = t(entry.messageKey, resolveLintMessageParams(entry, t));
+        const message = t(entry.messageKey, resolveLintMessageParams(entry, t, tn));
         const { label, line } = lintEntryLocator(entry.location, groupMode, locationLabel, message);
         return [
             label,
@@ -173,7 +173,7 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
             lintEntryExcerpt(entry.location),
             ruleTitle(entry.ruleId),
         ].join("\n");
-    }, [t, groupMode, locationLabel, ruleTitle]);
+    }, [t, tn, groupMode, locationLabel, ruleTitle]);
 
     const findQuery = useFindQuery();
 
@@ -532,8 +532,8 @@ function LintEntryRow({
     matchActive: boolean;
     onJump: (entry: LintReportEntry) => void;
 }) {
-    const { t } = useTranslation();
-    const message = t(entry.messageKey, resolveLintMessageParams(entry, t));
+    const { t, tn } = useTranslation();
+    const message = t(entry.messageKey, resolveLintMessageParams(entry, t, tn));
     const excerpt = lintEntryExcerpt(entry.location);
     const { label, line } = lintEntryLocator(entry.location, mode, locationLabel, message);
 

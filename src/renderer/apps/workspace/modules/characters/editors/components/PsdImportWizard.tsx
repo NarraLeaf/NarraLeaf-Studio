@@ -327,7 +327,7 @@ export function PsdImportWizard(props: {
                                     <Layers className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                     <span className="min-w-0 flex-1 truncate">{slot.axis}</span>
                                     <span className="text-2xs text-fg-subtle">
-                                        {t("characters.editor.psd.axis", { count: slot.options.length })}
+                                        {tn("characters.editor.psd.axis", slot.options.length)}
                                     </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1 pl-5">

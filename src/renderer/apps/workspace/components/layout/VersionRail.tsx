@@ -1710,7 +1710,7 @@ function EnableVersionControl({ surface }: { surface: VersionSurface }) {
  * the way to make the list short again.
  */
 function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows: FlatHistoryEntry[] }) {
-    const { t, locale } = useTranslation();
+    const { t, tn, locale } = useTranslation();
     const { context } = useWorkspace();
     const { state, compareBase: base } = surface;
     const focused = state.kind === "revision" ? state.revision : state.kind === "current" ? state.head : null;
@@ -1758,9 +1758,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                         >
                             {surface.showCheckpoints
                                 ? t("workspace.shell.versionControl.hideCheckpoints")
-                                : t("workspace.shell.versionControl.showCheckpoints", {
-                                    count: String(surface.hiddenCheckpoints),
-                                })}
+                                : tn("workspace.shell.versionControl.showCheckpoints", surface.hiddenCheckpoints)}
                         </button>
                     )}
                 </div>
@@ -1812,7 +1810,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                 cannot do on its own. */}
             {rows.length === 0 && (
                 <p className="px-3 py-2 text-2xs text-fg-subtle">
-                    {t("workspace.shell.versionControl.filterNoMatch", { count: String(allRows.length) })}
+                    {tn("workspace.shell.versionControl.filterNoMatch", allRows.length)}
                 </p>
             )}
 

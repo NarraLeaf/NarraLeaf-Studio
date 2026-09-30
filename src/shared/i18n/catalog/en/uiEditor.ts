@@ -163,7 +163,10 @@ export const uiEditor = {
             one: "{count} linked instance will show as missing until unlinked or replaced.",
             other: "{count} linked instances will show as missing until unlinked or replaced.",
         },
-        refs: "{count} refs",
+        refs: {
+            one: "{count} ref",
+            other: "{count} refs",
+        },
     },
     canvas: {
         unknownWidget: "Unknown widget",

@@ -3,7 +3,7 @@
 // the registry that the picker touches on open. The instance comes off the service registry.
 import type { LintService } from "@/lib/workspace/services/core/LintService";
 import { resolveLintMessageParams, type LintReportEntry } from "@/lib/lint/types";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { TestDefinition, TestFinding } from "../types";
 import type { BuiltInTestHost } from "./index";
@@ -97,7 +97,7 @@ function toFinding(entry: LintReportEntry): TestFinding {
         severity: entry.severity,
         // Resolved here rather than carried: a test finding's params are words, and a catalogue key
         // among them would print as the key.
-        message: { key: entry.messageKey, params: resolveLintMessageParams(entry, translate) },
+        message: { key: entry.messageKey, params: resolveLintMessageParams(entry, translate, translateN) },
         target: entry.target,
     };
 }

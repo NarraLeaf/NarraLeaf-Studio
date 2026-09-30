@@ -1,7 +1,7 @@
 import { getInterface } from "@/lib/app/bridge";
 import { DEFAULT_LOCALE } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n/store";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import type { CommandLineRunFinding } from "@shared/types/commandLineRun";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import { Services, type WorkspaceContext } from "../workspace/services/services";
@@ -112,7 +112,7 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
         return {
             severity: entry.severity,
             id: entry.ruleId,
-            message: translate(entry.messageKey, resolveLintMessageParams(entry, translate)),
+            message: translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN)),
             ...(location ? { location } : {}),
         };
     });

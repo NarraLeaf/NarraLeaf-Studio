@@ -1852,7 +1852,7 @@ function isBlockingLintSeverity(
  * {@link nonRedundantLintLocation}.
  */
 export function formatLintFinding(entry: LintReportEntry): string {
-    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate));
+    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN));
     return translate("lint.console.finding", {
         rule: entry.ruleId,
         location: nonRedundantLintLocation(describeLintLocation(entry.location), message),

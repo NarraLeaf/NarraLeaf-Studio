@@ -198,7 +198,10 @@ export const characters = {
                 other: "{count} layers",
             },
             mapping: "Layers",
-            axis: "axis, {count} tags",
+            axis: {
+                one: "axis, {count} tag",
+                other: "axis, {count} tags",
+            },
             blends: "Blend modes the engine cannot reproduce",
             merge: "Merge down",
             skip: "Skip",

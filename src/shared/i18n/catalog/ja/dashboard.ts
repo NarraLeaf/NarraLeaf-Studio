@@ -99,7 +99,9 @@ export const dashboard = {
         empty: "ビルドの記録がない",
         emptyHint: "このプロジェクトで走らせたビルドがここに並ぶ",
         logEmpty: "このビルドは出力を残さなかった",
-        logOmitted: "記録を小さく保つため、最初の {count} 行を省いた",
+        logOmitted: {
+            other: "記録を小さく保つため、最初の {count} 行を省いた",
+        },
     },
 
     structure: {

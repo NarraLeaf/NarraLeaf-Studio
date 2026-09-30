@@ -57,10 +57,14 @@ export const workspace = {
             scopeAll: "全部",
             scopePending: "未翻译与待校对",
             exportAction: "导出",
-            exportDone: "已导出 {count} 条到 {path}",
+            exportDone: {
+                other: "已导出 {count} 条到 {path}",
+            },
             exportEmpty: "没有可导出的条目",
             importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
-            importWarnings: "有 {count} 条被跳过，第一条：{first}",
+            importWarnings: {
+                other: "有 {count} 条被跳过，第一条：{first}",
+            },
             localeMismatch: "该文件标注的语言是 {declared}，导入目标为 {name}",
             localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
         },
@@ -681,8 +685,12 @@ export const workspace = {
             retrySave: "立即重试保存",
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
-            words: "{count} 字",
-            lines: "{count} 行",
+            words: {
+                other: "{count} 字",
+            },
+            lines: {
+                other: "{count} 行",
+            },
             noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             openCurrentScene: "打开当前场景",
@@ -1029,7 +1037,9 @@ export const workspace = {
                 compareChanges: "与上一个版本比较变更",
             },
             filterPlaceholder: "按名称或编号查找版本",
-            filterNoMatch: "已读取的 {count} 个版本里没有匹配",
+            filterNoMatch: {
+                other: "已读取的 {count} 个版本里没有匹配",
+            },
             today: "今天",
             yesterday: "昨天",
             compareBase: {
@@ -1038,7 +1048,9 @@ export const workspace = {
                 current: "正在与 {version} 比较",
                 compare: "与 {version} 比较",
             },
-            showCheckpoints: "显示 {count} 个检查点",
+            showCheckpoints: {
+                other: "显示 {count} 个检查点",
+            },
             hideCheckpoints: "隐藏检查点",
             systemMessage: {
                 unnamed: "未命名的版本",

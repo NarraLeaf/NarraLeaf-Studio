@@ -505,6 +505,9 @@ async function runGlyphCoverage(
                     count: entry.count,
                     ...(named ? { language } : {}),
                 },
+                messageParamCounts: {
+                    occurrences: { key: "lint.rule.typographyGlyphCoverage.occurrenceCount", count: entry.count },
+                },
                 location: entry.location,
                 ...(entry.target ? { target: entry.target } : {}),
             });
@@ -522,6 +525,12 @@ async function runGlyphCoverage(
                 messageParams: {
                     count: missing.length - maxCharacters,
                     ...(named ? { language } : {}),
+                },
+                messageParamCounts: {
+                    characters: {
+                        key: "lint.rule.typographyGlyphCoverage.moreCharacterCount",
+                        count: missing.length - maxCharacters,
+                    },
                 },
                 location: { kind: "project" as const },
             });

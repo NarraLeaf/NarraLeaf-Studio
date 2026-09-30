@@ -330,7 +330,9 @@ export const assets = {
         noneFoundHint: "上で選んだ種類を確かめ、次にフォルダを確かめる。書き出し側が作ったフォルダである必要がある",
         entry: "エントリ",
         /** 行の副題。複製する前に、そのフォルダが何を持っているか。 */
-        fileSummary: "{count} ファイル · {size}",
+        fileSummary: {
+            other: "{count} ファイル · {size}",
+        },
         selectAll: "すべて選択",
         selectNone: "選択を解除",
         importAction: "読み込む",
@@ -500,7 +502,9 @@ export const assets = {
         categoryMapping: "タグの区分の割り当て",
         exampleFilename: "ファイル名の例：{filename}",
         categoryPlaceholder: "タグの区分（例：char、emo）",
-        moreFiles: "…ほか {count} ファイル",
+        moreFiles: {
+            other: "…ほか {count} ファイル",
+        },
         tagCounts: "{files}に合計 {tags}を付ける",
         tagCount: {
             other: "{count} 個のタグ",

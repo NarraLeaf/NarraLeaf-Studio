@@ -68,12 +68,18 @@ export const workspace = {
             scopeAll: "Everything",
             scopePending: "Untranslated and to review",
             exportAction: "Export",
-            exportDone: "Exported {count} lines to {path}",
+            exportDone: {
+                one: "Exported {count} line to {path}",
+                other: "Exported {count} lines to {path}",
+            },
             exportEmpty: "Nothing to export.",
             // Follows `workspace.shell.import.failed` as its reason.
             importUnsupported: "Studio reads CSV, XLIFF, PO and JSON.",
             // `{first}` is one of `workspace.shell.import.skipped`.
-            importWarnings: "{count} entries were skipped. First: {first}",
+            importWarnings: {
+                one: "{count} entry was skipped. First: {first}",
+                other: "{count} entries were skipped. First: {first}",
+            },
             localeMismatch: "This file is for {declared}. Import it into {name}?",
             localeMismatchDetail: "The translations are imported into the selected language regardless of what the file declares.",
         },
@@ -270,7 +276,7 @@ export const workspace = {
         },
         details: {
             noStories: "No stories in this project.",
-            storiesRead: "{count} story documents read.",
+            storiesRead: "Story documents read: {count}.",
         },
         tools: {
             title: "Tools",
@@ -782,8 +788,14 @@ export const workspace = {
             retrySave: "Retry saving now",
             resetZoom: "Reset zoom to 100%",
             shortcuts: "Keyboard shortcuts",
-            words: "{count} words",
-            lines: "{count} lines",
+            words: {
+                one: "{count} word",
+                other: "{count} words",
+            },
+            lines: {
+                one: "{count} line",
+                other: "{count} lines",
+            },
             noStoryOpen: "No story open",
             openDashboard: "Open the project dashboard",
             openCurrentScene: "Open the current scene",
@@ -1229,7 +1241,10 @@ export const workspace = {
             // Nothing matched. Says how many were searched, because the history is paged and the
             // answer is only ever about what has been read - "Show older versions" below reaches
             // further, and this line is what tells the author that is still worth pressing.
-            filterNoMatch: "No match in the {count} versions read so far.",
+            filterNoMatch: {
+                one: "No match in the {count} version read so far.",
+                other: "No match in the {count} versions read so far.",
+            },
             today: "Today",
             yesterday: "Yesterday",
             // Comparing against a version the author picked, rather than against the row below.
@@ -1243,7 +1258,10 @@ export const workspace = {
                 compare: "Compare with {version}",
             },
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
-            showCheckpoints: "Show {count} checkpoints",
+            showCheckpoints: {
+                one: "Show {count} checkpoint",
+                other: "Show {count} checkpoints",
+            },
             hideCheckpoints: "Hide checkpoints",
             // What a version Studio recorded on its own says, when it is read back rather than
             // written. The bytes in the repository stay English - they travel to collaborators and
