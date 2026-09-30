@@ -97,7 +97,13 @@ import {
     TOOLTIP_DELAY_MIN_MS,
     TOOLTIP_DELAY_STEP_MS,
 } from "@/lib/settings/tooltipOptions";
-import { WINDOW_ICON_DEFAULT, WINDOW_ICON_IDS, WINDOW_ICON_KEY, windowIconUrl } from "@shared/constants/windowIcon";
+import {
+    WINDOW_ICON_DEFAULT,
+    WINDOW_ICON_IDS,
+    WINDOW_ICON_KEY,
+    resolveWindowIcon,
+    windowIconUrl,
+} from "@shared/constants/windowIcon";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -409,6 +415,11 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The icon Studio shows on the taskbar and in the notification area. Desktop and Start menu shortcuts keep the installed icon.",
         descriptionKey: "settings.items.windowIcon.description",
         defaultValue: WINDOW_ICON_DEFAULT,
+        // What the main process wears for the stored id. A profile from before the Narra icon
+        // carries `default` (written to disk as the default it then was), and an id can outlive
+        // its icon; both resolve to the current default there, so the row shows that option and
+        // reads as unchanged rather than printing an id no option carries.
+        resolveStoredValue: stored => resolveWindowIcon(typeof stored === "string" ? stored : null).id,
         options: [...WINDOW_ICON_IDS],
         optionLabelKeys: {
             narra: "settings.items.windowIcon.options.narra",

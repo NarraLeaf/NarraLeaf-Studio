@@ -90,6 +90,14 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Interpolation params for `descriptionKey` (e.g. dynamic min/max ranges). */
     descriptionParams?: Record<string, string | number>;
     defaultValue: TypeofSettingSchema<T>;
+    /**
+     * What a stored value stands for, for a setting whose reader accepts more than the options it
+     * offers - an id an older Studio stored, or one a later one dropped - and settles it on one of
+     * them. The row shows, and compares against the default, what this returns rather than the raw
+     * value, so it displays the option the product actually applies and never an id no option
+     * carries. The stored value itself is left as it is.
+     */
+    resolveStoredValue?: (stored: unknown) => TypeofSettingSchema<T>;
     options?: string[];
     /** Human-facing label per option value (e.g. locale code → endonym). */
     optionLabels?: Record<string, string>;

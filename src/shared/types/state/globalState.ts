@@ -97,9 +97,12 @@ export interface GlobalStateType extends Record<string, any> {
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
     /**
-     * Which built-in mark Studio's windows wear, as an id from `@shared/constants/windowIcon` -
+     * Which built-in icon Studio wears while it runs, as an id from `@shared/constants/windowIcon` -
      * not a file name. Applied by the main process, which is the only side that can call
-     * `BrowserWindow.setIcon`; Windows and Linux only, since macOS has no per-window icon at all.
+     * `BrowserWindow.setIcon` and `app.dock.setIcon`: the windows and the tray on Windows and Linux,
+     * the Dock tile on macOS. An id the registry does not declare - `default`, which profiles from
+     * before the Narra icon carry, among them - is read as the current default everywhere
+     * (`resolveWindowIcon`).
      */
     "ui.windowIcon": string;
     /**
