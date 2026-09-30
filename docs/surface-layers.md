@@ -50,7 +50,10 @@ answer both once more than one thing is live:
   included, is inert; it and everything above it stay live.
 - **Keyboard.** The topmost *modal* layer owns it - not the topmost layer. With a modal below a
   non-modal, both are clickable and the keys still belong to the modal underneath, because it is the
-  one that asked for them.
+  one that asked for them. With neither a modal layer nor a page drawn - a running game has hidden
+  the pages and the story is on screen - the keys belong to the stage, and every Game UI surface on
+  it that takes input hears them (`keyboardOwner`). That is how a dialogue box answering an action
+  bound to Space advances the story.
 
 With no layers mounted both reduce to the rule the page lane always had, and a page behaves exactly
 as it did before layers existed.

@@ -52669,6 +52669,14 @@
         {
           "kind": "pointer",
           "gesture": "click"
+        },
+        {
+          "kind": "key",
+          "key": "Space"
+        },
+        {
+          "kind": "key",
+          "key": "Enter"
         }
       ]
     },
@@ -52719,7 +52727,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-30T18:37:30.912Z"
+    "updatedAt": "2026-09-30T19:02:40.337Z"
   },
   "structs": {
     "extra.galleryEntry": {

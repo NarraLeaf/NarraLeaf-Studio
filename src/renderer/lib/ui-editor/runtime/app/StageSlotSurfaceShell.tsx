@@ -91,6 +91,13 @@ export type GameUiSlotHostOptions = {
      * those events, such as the story editor's preview.
      */
     ambientSurfaces?: AmbientSurfaceTargets;
+    /**
+     * Where a slot surface that takes input says it is live, so the keys reach it while the stage
+     * owns the keyboard - the story on screen with nothing drawn over it (see `keyboardOwner`).
+     * A display-only slot never registers: it answers no pointer, and answers no key either. Absent
+     * on a host with no keyboard dispatch of its own, such as the story editor's preview.
+     */
+    stageKeyboardSurfaces?: AmbientSurfaceTargets;
 };
 
 export type StageSlotSurfaceRuntime = {
@@ -306,6 +313,15 @@ export function StageSlotSurfaceBody(props: {
         }
         return ambientSurfaces.add({ surface, hostAdapter, runtimeScopeId });
     }, [ambientSurfaces, core, hostAdapter, runtimeScopeId, subscriptionsReady, surface]);
+    // Heard by the keys from the same moment, for as long as it is on the stage - unless it is a
+    // display-only slot, which is inert to every input.
+    const { stageKeyboardSurfaces } = options;
+    useEffect(() => {
+        if (!stageKeyboardSurfaces || !core || !subscriptionsReady || passive) {
+            return undefined;
+        }
+        return stageKeyboardSurfaces.add({ surface, hostAdapter, runtimeScopeId });
+    }, [core, hostAdapter, passive, runtimeScopeId, stageKeyboardSurfaces, subscriptionsReady, surface]);
     const getWidgetRuntimePatches = useCallback(
         () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
         [runtimeScopeId, widgetPatchesByScopeRef],

@@ -538,7 +538,12 @@ export const help = {
                 + "\n"
                 + "A scrolling list is the one exception, and only for a scroll: it keeps the scroll while it "
                 + "has somewhere left to travel and lets it through once it does not. That is what lets one "
-                + "more pull at the bottom of a list close the page the list is in.",
+                + "more pull at the bottom of a list close the page the list is in.\n"
+                + "\n"
+                + "Keys go to one place at a time: the modal layer on top, or the page on top, or, while the "
+                + "story is on screen with nothing over it, the interfaces on the stage such as the dialogue "
+                + "box. A key held down fires its action once. When a button or list row has the keyboard "
+                + "focus, Enter and Space press it and fire no action.",
         },
         inputActionsInBlueprints: {
             title: "Actions in blueprints",

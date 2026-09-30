@@ -112,7 +112,16 @@ export const UI_INPUT_ACTION_PRESETS: readonly {
     // who already knows what they want makes, and it is not one of the templates - it is the way
     // past them.
     { id: "blank", bindings: [] },
-    { id: "advance", bindings: [{ kind: "pointer", gesture: "click" }] },
+    // A click, Space and Enter: what a reader expects to move a line on, and what the starter
+    // project's Advance is bound to.
+    {
+        id: "advance",
+        bindings: [
+            { kind: "pointer", gesture: "click" },
+            { kind: "key", key: "Space" },
+            { kind: "key", key: "Enter" },
+        ],
+    },
     { id: "back", bindings: [{ kind: "key", key: "Escape" }] },
     { id: "backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
     { id: "hideInterface", bindings: [{ kind: "pointer", gesture: "longPress" }] },

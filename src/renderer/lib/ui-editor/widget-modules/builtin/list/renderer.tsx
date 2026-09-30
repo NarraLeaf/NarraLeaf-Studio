@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type FocusEvent,
+    type KeyboardEvent,
+    type MouseEvent,
+    type PointerEvent,
+} from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type {
     UIListItemScope,
@@ -32,6 +43,7 @@ import { verticalTypographyCss } from "@/lib/ui-editor/widget-modules/shared/tex
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import {
     getListProps,
+    listRowKeyboardMove,
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
     resolveListRepeatLayout,
@@ -540,6 +552,44 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [dispatchListItemEvent],
     );
+    /**
+     * The row the keyboard enters this list on: the one it last left, else the selected one, else the
+     * first. The list is one stop on Tab however many rows it has - the rest are reached with the
+     * arrows - so a menu of four options or a backlog of two hundred lines costs the same one press
+     * to pass. See `listRowKeyboardMove` for the keys.
+     */
+    const [keyboardRowIndex, setKeyboardRowIndex] = useState<number | null>(null);
+    const tabStopRowIndex = count > 0
+        ? Math.min(count - 1, Math.max(0, keyboardRowIndex ?? (selectedIndex >= 0 && selectedIndex < count ? selectedIndex : 0)))
+        : -1;
+    const handleListRowKeyDown = useCallback(
+        (event: KeyboardEvent<HTMLDivElement>, scope: UIListItemScope) => {
+            // A control inside the row - a button, a text field - answers its own keys.
+            if (event.target !== event.currentTarget) {
+                return;
+            }
+            if (event.key === "Enter" || event.key === " ") {
+                // Prevented even when held, so the game does not read the repeats as its own: the key
+                // is this row's for as long as it is down (see `keyInputClaimedByControl`).
+                event.preventDefault();
+                if (!event.repeat) {
+                    handleListItemClick(scope);
+                }
+                return;
+            }
+            const next = listRowKeyboardMove(event.key, scope.index, scope.count);
+            if (next === null) {
+                return;
+            }
+            event.preventDefault();
+            const row = Array.from(event.currentTarget.parentElement?.children ?? [])
+                .find(sibling => sibling.getAttribute("data-ui-list-item-index") === String(next));
+            if (row instanceof HTMLElement) {
+                row.focus();
+            }
+        },
+        [handleListItemClick],
+    );
     // Resolved once for the whole list rather than per row: every row gets the same motion, and only
     // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply
     // on screen from replaying its arrival every time an unrelated prop changes.
@@ -568,6 +618,17 @@ export function ListRenderer(props: WidgetRendererProps) {
             style: rowStyle,
             onClick: isRuntime ? () => handleListItemClick(scope) : undefined,
             onPointerEnter: isRuntime ? () => handleListItemHover(scope) : undefined,
+            // In a running game a row is a control the keyboard reaches, as a button is: Enter and
+            // Space raise Item Click exactly as a click does. On the canvas it is only a drawing.
+            tabIndex: isRuntime ? (i === tabStopRowIndex ? 0 : -1) : undefined,
+            onFocus: isRuntime
+                ? (event: FocusEvent<HTMLDivElement>) => {
+                      if (event.target === event.currentTarget) {
+                          setKeyboardRowIndex(i);
+                      }
+                  }
+                : undefined,
+            onKeyDown: isRuntime ? (event: KeyboardEvent<HTMLDivElement>) => handleListRowKeyDown(event, scope) : undefined,
         };
         const rowChildren = (
             <>

@@ -526,6 +526,38 @@ select:focus {
 }
 
 /*
+ * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
+ * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
+ *
+ * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
+ * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
+ * for the keyboard - `:focus-visible`, and a click does not focus these at all - so a player who
+ * never touches Tab never sees it.
+ *
+ * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
+ * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
+ * outline: a choice row is one container filling the row from edge to edge, and an outline on the
+ * row was measured present and never seen. Inside, because a list clips its rows at its own edge. A
+ * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
+ * the focus; its widgets are laid out inside their own boxes and do not move.
+ */
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible {
+    position: relative;
+}
+
+.ui-editor-surface [role="button"][tabindex]:focus-visible::after,
+.ui-editor-surface [role="switch"][tabindex]:focus-visible::after,
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    outline: -webkit-focus-ring-color auto 2px;
+    outline-offset: -2px;
+}
+
+/*
  * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
  * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
  * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill

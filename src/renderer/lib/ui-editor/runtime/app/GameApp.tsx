@@ -201,6 +201,7 @@ import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
+import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
@@ -956,6 +957,11 @@ export function GameApp(props: GameAppProps): ReactNode {
      * register here so the window and preference events reach them too (see `ambientSurfaceEvents`).
      */
     const [ambientSurfaces] = useState(() => new AmbientSurfaceTargets());
+    /**
+     * The stage's surfaces that take input, which register here the same way, so the keys reach them
+     * while the stage owns the keyboard (see `keyboardOwner`).
+     */
+    const [stageKeyboardSurfaces] = useState(() => new AmbientSurfaceTargets());
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -4109,6 +4115,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             widgetPatchesByScopeRef,
             reducedMotion: prefersReducedMotion === true,
             ambientSurfaces,
+            stageKeyboardSurfaces,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -4263,6 +4270,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [
         activeSurface,
         ambientSurfaces,
+        stageKeyboardSurfaces,
         bootReporter,
         bundle,
         clearGameHiddenStudioPages,
@@ -5301,10 +5309,14 @@ export function GameApp(props: GameAppProps): ReactNode {
             vocabulary: bundle.ui.uidoc.actions,
             core,
             globalHost: hostAdapterBundle,
-            readKeyboardOwner: () => keyboardOwnerRef.current,
+            // An entry when one owns the keyboard; otherwise the stage, when the story is what the
+            // player is looking at - the moment the skip loop and the auto-forward hold treat as the
+            // story running, so the keys and the story's own motion leave the stage together.
+            readKeyboardOwner: () => keyboardOwnerRef.current
+                ?? (isStoryOnScreen() ? { stage: stageKeyboardSurfaces.list() } : null),
             onError: err => host.log("error", normalizeError(err)),
         });
-    }, [bundle, core, host, hostAdapterBundle]);
+    }, [bundle, core, host, hostAdapterBundle, isStoryOnScreen, stageKeyboardSurfaces]);
 
     /**
      * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
@@ -6004,6 +6016,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
+                // The keyboard focus is the keyboard's: a click on a control answers the click and
+                // leaves the next key to the game, see `pointerKeyboardFocus`.
+                onMouseDownCapture={keepPointerPressOffKeyboardFocus}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}
