@@ -512,7 +512,9 @@ export const lint = {
         title: "Problems",
         empty: "No problems found",
         running: "Checking…",
-        summary: "{errors} errors, {warnings} warnings, {infos} info",
+        // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
+        // reads in the singular.
+        counts: "{errors}, {warnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -541,7 +543,8 @@ export const lint = {
         channel: "Lint",
         channelDescription: "Project checks and the problems they find",
         started: "Check started",
-        finished: "{errors} errors, {warnings} warnings in {duration}",
+        // `{errors}` and `{warnings}` are whole counts with their nouns, from `common.count.*`.
+        finishedCounts: "{errors}, {warnings} in {duration}",
         // Site first, then what is wrong, then the rule that says so - a compiler's line, and the
         // order a reader scans in. No severity slot: the console prints the level in its own column
         // beside every line, and this used to repeat it inside the sentence.
@@ -561,7 +564,10 @@ export const lint = {
         // between the click and the first sign of a package, and the build channel is where an
         // author waiting for one is looking.
         started: "Checking the project…",
-        blocked: "Build stopped by {count} problems",
+        blocked: {
+            one: "Build stopped by {count} problem",
+            other: "Build stopped by {count} problems",
+        },
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"
         // would leave them looking for it.

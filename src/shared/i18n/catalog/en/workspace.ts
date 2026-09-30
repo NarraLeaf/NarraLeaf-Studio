@@ -22,7 +22,12 @@ export const workspace = {
             openTable: "Open translation table",
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
-            importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            // `{applied}` is a whole count with its noun, from `translationCount`.
+            importCounts: "Imported {applied} ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            translationCount: {
+                one: "{count} translation",
+                other: "{count} translations",
+            },
             // A language's table that could not be read, by the language's name; one of
             // `assets.reference.reason` follows it. Never the file's path.
             readFailed: "The translations for {name} could not be read.",
@@ -155,10 +160,20 @@ export const workspace = {
             importAudio: "Import audio…",
             exportDone: "Exported to {path}",
             pickupEmpty: "No outdated lines to re-record.",
-            importSummary: "Linked {linked} takes ({unmatched} unmatched, {failed} failed)",
+            // `{linked}` is a whole count with its noun, from `takeCount`.
+            importCounts: "Linked {linked} ({unmatched} unmatched, {failed} failed)",
+            takeCount: {
+                one: "{count} take",
+                other: "{count} takes",
+            },
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
-            importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
+            // `{applied}` is a whole count with its noun, from `scriptRowCount`.
+            importScriptCounts: "Applied {applied} ({unchanged} unchanged, {unknown} not voiced)",
+            scriptRowCount: {
+                one: "{count} row",
+                other: "{count} rows",
+            },
             // Beside the summary when rows of the script were skipped; the detail lists them by row.
             importScriptSkipped: {
                 one: "{count} row was skipped",

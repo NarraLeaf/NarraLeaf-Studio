@@ -32,6 +32,7 @@ import {
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
 import { tallyLintFindingsByRule } from "@/lib/lint/ruleTally";
+import { formatLintFinishedLine } from "@/lib/lint/finishedLine";
 export { nonRedundantLintLocation };
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
@@ -1563,7 +1564,7 @@ export class BuildService extends Service<BuildService> {
         // the dashboard keeps per run, and without this line that record ends at "12 warnings in
         // 1.2s" and never says the build stopped at all - let alone which of those findings stopped
         // it, which is what the count is for.
-        const refusal = translate("lint.build.blocked", { count: blocking });
+        const refusal = translateN("lint.build.blocked", blocking);
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.logLintGateHint(consoleService);
         // `startedAt` and `platforms` carried through for the same reason the gate above carries
@@ -1637,11 +1638,7 @@ export class BuildService extends Service<BuildService> {
         consoleService.log(
             BUILD_CONSOLE_CHANNEL,
             report.counts.error > 0 ? "error" : report.counts.warning > 0 ? "warning" : "success",
-            translate("lint.console.finished", {
-                errors: report.counts.error,
-                warnings: report.counts.warning,
-                duration: `${((report.finishedAt - report.startedAt) / 1000).toFixed(1)}s`,
-            }),
+            formatLintFinishedLine(report),
             { source: BUILD_CONSOLE_SOURCE },
         );
     }

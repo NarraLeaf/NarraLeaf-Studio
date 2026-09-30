@@ -253,12 +253,12 @@ export function useProjectWizard() {
 
             // Only auto-generate app ID if it wasn't manually edited
             if (!appIdManuallyEdited) {
-                newData.appId = ValidationService.generateAppId(name);
+                newData.appId = ValidationService.generateAppId(name, locale);
             }
 
             return newData;
         });
-    }, [appIdManuallyEdited]);
+    }, [appIdManuallyEdited, locale]);
 
     /**
      * Update app ID and mark as manually edited

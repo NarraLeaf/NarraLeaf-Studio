@@ -90,7 +90,9 @@ describe("RuntimeIssueStrip", () => {
             />,
         );
 
-        expect(screen.getByText("devMode.issues.summary|errors=0,warnings=20")).toBeTruthy();
+        expect(screen.getByText(
+            "devMode.issues.counts|errors=common.count.errors(0),warnings=common.count.warnings(20)",
+        )).toBeTruthy();
     });
 
     it("counts a mixed list by level", () => {
@@ -107,6 +109,8 @@ describe("RuntimeIssueStrip", () => {
             />,
         );
 
-        expect(screen.getByText("devMode.issues.summary|errors=1,warnings=2")).toBeTruthy();
+        expect(screen.getByText(
+            "devMode.issues.counts|errors=common.count.errors(1),warnings=common.count.warnings(2)",
+        )).toBeTruthy();
     });
 });

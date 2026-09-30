@@ -57,7 +57,7 @@ export const test = {
         rerun: "もう一度実行",
         severityFilter: "重大度",
         filterAll: "すべて",
-        findings: "エラー {errors} 件、警告 {warnings} 件、情報 {infos} 件",
+        findingCounts: "{errors}、{warnings}、{infos}",
         durationSeconds: "{seconds} 秒",
         durationMinutes: "{minutes} 分 {seconds} 秒",
     },

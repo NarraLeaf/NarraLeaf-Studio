@@ -1388,7 +1388,10 @@ ${where}` : t("assets.delete.unverifiedMessage"),
             // The count leads and the reasons follow in an alert: a run that half worked has to say
             // which files are not in that folder, and a toast is not a place to list them.
             uiService.showNotification(
-                t("assets.export.partial", { exported, failed: failures.length }),
+                t("assets.export.partialCounts", {
+                    exported: tn("assets.export.fileCount", exported),
+                    failed: failures.length,
+                }),
                 "warning",
             );
             uiService.showAlert(

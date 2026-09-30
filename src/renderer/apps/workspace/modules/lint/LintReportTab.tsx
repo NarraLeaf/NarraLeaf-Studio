@@ -93,7 +93,7 @@ const GROUP_MODE_OPTIONS: SelectOption[] = [
  *    see `freezeActionPolicy`.
  */
 export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComponentProps<void>> = {}) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
     const freeze = useFreezeGuard();
@@ -319,10 +319,10 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
     const headline = running
         ? t("lint.report.running")
         : counts
-          ? t("lint.report.summary", {
-                errors: counts.error,
-                warnings: counts.warning,
-                infos: counts.info,
+          ? t("lint.report.counts", {
+                errors: tn("common.count.errors", counts.error),
+                warnings: tn("common.count.warnings", counts.warning),
+                infos: tn("common.count.infos", counts.info),
             })
           : "";
 

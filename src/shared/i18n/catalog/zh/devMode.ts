@@ -35,7 +35,7 @@ export const devMode = {
         viaPlayHead: "播放到此处",
         stack: "调用栈",
         dismissAll: "全部关闭（{count}）",
-        summary: "本次运行 {errors} 个错误 · {warnings} 个警告",
+        counts: "本次运行 {errors} · {warnings}",
     },
     // See the English catalog: the panels are named for their subject, one word each.
     devtools: {

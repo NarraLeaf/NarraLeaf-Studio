@@ -228,7 +228,10 @@ export const story = {
     paste: {
         title: "粘贴为行",
         action: "粘贴",
-        totals: "对白 {dialogue} · 旁白 {narration} · 新建角色 {created}",
+        totalCounts: "对白 {dialogue} · 旁白 {narration} · {created}",
+        newCharacterCount: {
+            other: "新建角色 {count}",
+        },
         lineCount: {
             other: "{count} 行",
         },

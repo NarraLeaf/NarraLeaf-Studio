@@ -131,3 +131,34 @@ describe("ValidationService directory validation", () => {
         expect(mocks.fs.list).not.toHaveBeenCalled();
     });
 });
+
+/**
+ * The identifier the wizard suggests while the name is typed. A Han character reads one way in
+ * Chinese and another in Japanese, and the transliterator only knows the Chinese reading: it
+ * suggested `fang-ke-hou` for 放課後, which is read "houkago".
+ */
+describe("the identifier suggested from a project name", () => {
+    it("spells a Latin name as it always did", () => {
+        expect(ValidationService.generateAppId("My Game!", "en")).toBe("my-game");
+        expect(ValidationService.generateAppId("Épica", "ja")).toBe("epica");
+    });
+
+    it("romanizes kana, whatever language Studio is in", () => {
+        expect(ValidationService.generateAppId("アリス", "en")).toBe("arisu");
+        expect(ValidationService.generateAppId("ひまわり", "zh")).toBe("himawari");
+    });
+
+    it("reads Han characters as Mandarin for someone working in Chinese", () => {
+        expect(ValidationService.generateAppId("你好世界", "zh")).toBe("ni-hao-shi-jie");
+    });
+
+    it("suggests nothing it would have to guess the reading of", () => {
+        // Studio in Japanese or English: the Chinese reading may well be the wrong one.
+        expect(ValidationService.generateAppId("放課後", "ja")).toBe("");
+        expect(ValidationService.generateAppId("放課後", "en")).toBe("");
+        // Kana beside the kanji make the name Japanese, whatever language Studio is in.
+        expect(ValidationService.generateAppId("放課後のアリス", "zh")).toBe("");
+        // Half a spelling is worse than none.
+        expect(ValidationService.generateAppId("星の詩 Prologue", "ja")).toBe("");
+    });
+});

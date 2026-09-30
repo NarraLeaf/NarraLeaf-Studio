@@ -245,7 +245,10 @@ export const story = {
     paste: {
         title: "行として貼り付け",
         action: "貼り付け",
-        totals: "台詞 {dialogue} · 地の文 {narration} · 新しいキャラクター {created}",
+        totalCounts: "台詞 {dialogue} · 地の文 {narration} · {created}",
+        newCharacterCount: {
+            other: "新しいキャラクター {count}",
+        },
         lineCount: {
             other: "{count} 行",
         },

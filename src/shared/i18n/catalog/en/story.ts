@@ -299,7 +299,12 @@ export const story = {
     paste: {
         title: "Paste as Rows",
         action: "Paste",
-        totals: "{dialogue} dialogue · {narration} narration · {created} new characters",
+        // `{created}` is a whole count with its noun, from `newCharacterCount`.
+        totalCounts: "{dialogue} dialogue · {narration} narration · {created}",
+        newCharacterCount: {
+            one: "{count} new character",
+            other: "{count} new characters",
+        },
         lineCount: {
             one: "{count} line",
             other: "{count} lines",
