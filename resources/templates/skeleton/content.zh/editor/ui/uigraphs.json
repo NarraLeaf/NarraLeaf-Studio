@@ -23267,6 +23267,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的 CG 条目。新项目没有条目，列表为空。锁定的条目显示为带锁的暗色格子，由故事中的 Unlock Gallery 节点解锁；点击已解锁的条目，以全尺寸打开图片。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -24203,6 +24218,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的回想条目。新项目没有条目，列表为空。锁定的条目显示为带锁的暗色格子，故事进入对应场景时解锁；点击已解锁的条目，重播该场景。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -24860,6 +24890,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的音乐条目。新项目没有条目，列表为空。锁定的行显示一把锁，故事中播放该曲目时解锁；点击已解锁的行，播放该曲目。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -25445,6 +25490,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的语音条目。新项目没有条目，列表为空。锁定的行显示一把锁，故事中播放该对白时解锁；点击已解锁的行，播放该对白。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -27287,6 +27347,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-30T18:27:17.244Z"
+    "updatedAt": "2026-09-30T19:20:34.861Z"
   }
 }

@@ -31,6 +31,8 @@ import {
     type GameHostSurfaceBinding,
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
+import { isStageSlotConcealedByPage } from "./layers/stageOcclusion";
+import { useStageCoveredByPage } from "./stageConcealment";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
@@ -283,6 +285,9 @@ export function StageSlotSurfaceBody(props: {
     passive?: boolean;
 }) {
     const { options, surface, runtime, surfacePointerEvents, passive } = props;
+    // Stepped off the screen, not unmounted, while a page is up: the line keeps revealing and the
+    // graphs keep their state, so closing the page brings back exactly what it covered.
+    const concealed = useStageCoveredByPage() && isStageSlotConcealedByPage(surface.mount.slotId);
     // The runtime store comes from the game's capabilities rather than from a second field beside
     // them: the store the widgets render against has to be the one the host API writes into.
     const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetPatchesByScopeRef } = options;
@@ -378,6 +383,7 @@ export function StageSlotSurfaceBody(props: {
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
                     passive={passive}
+                    concealed={concealed}
                     // A Game UI slot has no page animation of its own - it appears when the scene
                     // says so - but the widgets on it can still arrive and leave on their own terms.
                     elementAnimations

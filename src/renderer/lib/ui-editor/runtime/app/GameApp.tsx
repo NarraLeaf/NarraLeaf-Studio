@@ -243,7 +243,8 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
-import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
+import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
+import { StageCoveredByPageContext } from "./stageConcealment";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -915,6 +916,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameHiddenKeys: gameHiddenNavKeys,
         layers,
         drawableSurfaceIds,
+    });
+    /**
+     * The page half of the same answer, which is what the Game UI inside the stage steps off for
+     * (see `isStageSlotConcealedByPage`): a page is a screen of its own, while a layer floats over
+     * the one the player is on.
+     */
+    const stageCoveredByPage = isStageCoveredByPage({
+        pageEntries: navStack,
+        pagesHiddenForGame: studioPageHiddenForGame,
+        gameHiddenKeys: gameHiddenNavKeys,
     });
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
@@ -5999,7 +6010,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onContextMenu={offerSyntheticPointerInputToGlobal}
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
-                {nlrStageLayer}
+                <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
+                    {nlrStageLayer}
+                </StageCoveredByPageContext.Provider>
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
                     HOST-rendered layer can go — NarraLeaf renders the dialogue inside the

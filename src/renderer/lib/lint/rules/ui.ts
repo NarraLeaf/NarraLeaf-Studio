@@ -272,6 +272,16 @@ function clipLiteral(text: string): string {
  * A widget that opted in through `localizable` is bound just as firmly as one naming a key: the
  * implicit unit `ui:<elementId>.<prop>` is a row in every target locale's document. Both are
  * "translatable"; neither is reported.
+ *
+ * **Nor is a prop whose words come from a value binding** - a list row's field or a value blueprint.
+ * The binding writes the prop before the widget draws it, so the literal is a placeholder no player
+ * reads (the inspector hides it for a row field for that reason), and the words that do arrive are
+ * translated where they come from: a backlog row's line is a story line, a choice row's text a
+ * choice. Following this rule's advice there would break the widget, not translate it: a key or the
+ * implicit unit is resolved after the binding has written the prop, so it replaces the bound words
+ * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
+ * no list draws the element, or the list no longer declares the field - leaves the literal on
+ * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
  */
 function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -298,7 +308,8 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
         }
         const boundToKey = readStringProp(props, site.keyProp).trim().length > 0;
         const boundToUnit = site.optInProp !== undefined && props[site.optInProp] === true;
-        if (boundToKey || boundToUnit) {
+        const boundToValue = element.valueBindings?.[site.textProp] !== undefined;
+        if (boundToKey || boundToUnit || boundToValue) {
             continue;
         }
         findings.push({

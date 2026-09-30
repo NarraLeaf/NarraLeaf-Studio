@@ -108,6 +108,8 @@ const NODE_PARAM_SLOTS = [
     ["blueprint.element.text.setText", "text", TEXT],
     ["blueprint.event.head.action", "actionId", VERBATIM],
     ["blueprint.event.head.onBroadcast", "event", VERBATIM],
+    // A note on the canvas, written to whoever opens the graph.
+    ["blueprint.flow.comment", "text", TEXT],
     ["blueprint.fn.call", "fnRef", VERBATIM],
     ["blueprint.fn.head", "name", TEXT],
     ["blueprint.game.getTrackVolume", "audioTrackId", VERBATIM],

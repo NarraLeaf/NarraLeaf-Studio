@@ -54,6 +54,9 @@ import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackgr
 import { getSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
+/** How long a concealed surface takes to fade out and back - about what a page takes to fade in. */
+const CONCEAL_FADE_MS = 200;
+
 /**
  * The part of an input event a lane step needs.
  *
@@ -113,6 +116,14 @@ export type GameSurfaceRendererProps = {
      */
     passive?: boolean;
     /**
+     * The surface steps off the screen without leaving it: it fades out and takes no input, and
+     * everything on it stays mounted and running, so it comes back as it was. A Game UI slot does
+     * this while a page is drawn over the stage (see `isStageSlotConcealedByPage`).
+     *
+     * Left undefined by a host that never conceals its surface, which then gets no transition at all.
+     */
+    concealed?: boolean;
+    /**
      * Background the design-size layer paints, overriding the surface's authored colour.
      *
      * The app surface stack resolves the colour itself (an in-game overlay thins it, see
@@ -165,6 +176,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         onRuntimeSubscriptionsReady,
         surfacePointerEvents,
         passive = false,
+        concealed,
         backgroundColor,
         backgroundImageOpacity,
         staticDocument,
@@ -506,6 +518,18 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // A surface that takes no input is click-through as well as inert, so the thing behind it is
         // reachable rather than merely unblocked-in-principle.
         ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        // Faded rather than cut, at about the pace a page fades in over it. `visibility` follows the
+        // fade out so nothing on the surface is left focusable; on the way back it is simply not
+        // set, because setting it to `visible` would outrank the hidden stage this surface sits in
+        // before the game reveals it.
+        ...(concealed ? { opacity: 0, visibility: "hidden" } : {}),
+        ...(concealed !== undefined && !reducedMotion
+            ? {
+                transition: concealed
+                    ? `opacity ${CONCEAL_FADE_MS}ms ease-out, visibility 0s linear ${CONCEAL_FADE_MS}ms`
+                    : `opacity ${CONCEAL_FADE_MS}ms ease-out`,
+            }
+            : {}),
     };
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -529,8 +553,10 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
             style={shellStyle}
-            // Display-only, all the way down: see `passive`.
-            inert={passive}
+            // Display-only, all the way down: see `passive`. A concealed surface is off the screen,
+            // so it takes nothing either.
+            inert={passive || concealed === true}
+            aria-hidden={concealed === true ? true : undefined}
             onClick={laneInteractive ? handleSurfaceClick : undefined}
             onDoubleClick={laneInteractive ? handleSurfaceDoubleClick : undefined}
             onAuxClick={laneInteractive ? handleSurfaceAuxClick : undefined}
