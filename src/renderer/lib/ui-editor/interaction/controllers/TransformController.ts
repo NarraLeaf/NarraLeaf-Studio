@@ -5,6 +5,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { IUIEditorStateService } from "@/lib/workspace/services/services";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import { useMoveableHandlers } from "@/lib/ui-editor/interaction/useMoveableHandlers";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import type { InteractionController } from "./types";
 
 interface TransformControllerConfig {
@@ -24,8 +25,6 @@ interface TransformControllerConfig {
     stateService: IUIEditorStateService;
     /** e.g. Alt key held - skip snapping for this gesture. */
     snapSuspended: () => boolean;
-    /** The element pinned at the canvas origin, if any - see {@link resolveTransformGestures}. */
-    originElementId?: string | null;
 }
 
 /** The resize handles that leave an element's top-left corner where it is. */
@@ -95,9 +94,11 @@ export function useTransformController(config: TransformControllerConfig): Inter
         });
     }, [config.documentService, config.selectionIds]);
 
-    const selectionHasOriginElement = Boolean(
-        config.originElementId && config.selectionIds.includes(config.originElementId),
-    );
+    // A component's frame, in the editor for that component - see `isComponentEditorRootElement`.
+    const selectionHasOriginElement = useMemo(() => {
+        const doc = config.documentService.getDocument();
+        return config.selectionIds.some(id => isComponentEditorRootElement(doc.elements[id]));
+    }, [config.documentService, config.selectionIds]);
 
     const isInlineTextEditing = Boolean(
         config.inlineTextEditElementId &&

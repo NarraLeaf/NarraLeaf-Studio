@@ -5,10 +5,7 @@ import {
     sortElementIdsByPreorder,
 } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { filterSelectionToTopLevelMovers } from "./uiEditorSelection";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
-
-const ROOT_WIDGET_TYPE = "nl.root";
+import { filterToEditableTopLevel } from "./uiEditorSelection";
 
 /** @internal Exported for unit tests */
 export function isContiguousSiblingBlock(childrenIds: readonly string[], blockSet: ReadonlySet<string>): boolean {
@@ -139,11 +136,8 @@ export function computeSendBackwardOrder(childrenIds: readonly string[], blockId
 }
 
 function getArrangeMovers(document: UIDocument, selection: UIElementSelection): string[] {
-    const tops = filterSelectionToTopLevelMovers(document, selection);
-    return tops.filter(id => {
-        const el = document.elements[id];
-        return el != null && el.type !== ROOT_WIDGET_TYPE && !isComponentEditorRootElement(el);
-    });
+    // A page's root and a component's frame have no siblings to be ordered among.
+    return filterToEditableTopLevel(document, selection.elementIds);
 }
 
 function groupMoversByParent(document: UIDocument, movers: string[]): Map<string, string[]> {

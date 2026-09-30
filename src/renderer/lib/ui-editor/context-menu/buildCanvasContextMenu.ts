@@ -6,7 +6,7 @@ import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { isSurfaceRootElement } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { translate } from "@/lib/i18n";
 
 const ROOT = "nl.root";
@@ -53,11 +53,18 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
 
     items.push({ separator: true, id: "sep-edit" });
 
+    // What can be copied, cut, duplicated or deleted: never the surface itself - a page's root, or a
+    // component's frame in its own editor.
     const editableIds = menuSelection.elementIds.filter(id => {
         const el = input.document.elements[id];
-        return el && el.type !== ROOT && !isComponentEditorRootElement(el);
+        return el != null && !isSurfaceRootElement(el);
     });
     const hasEditable = editableIds.length > 0;
+    // What can be named and shown or hidden: anything but a page's root, the frame included.
+    const hasLayer = menuSelection.elementIds.some(id => {
+        const el = input.document.elements[id];
+        return el != null && el.type !== ROOT;
+    });
 
     items.push(
         {
@@ -121,7 +128,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
             items.push({
                 id: "rename",
                 label: translate("uiEditor.contextMenu.rename"),
-                disabled: el.type === ROOT || isComponentEditorRootElement(el),
+                disabled: el.type === ROOT,
                 onClick: () => {
                     actions.hideMenu();
                     actions.renamePrimary();
@@ -147,7 +154,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         {
             id: "show-selected",
             label: translate("common.show"),
-            disabled: !hasEditable,
+            disabled: !hasLayer,
             onClick: () => {
                 actions.hideMenu();
                 actions.setSelectedVisible(true);
@@ -156,7 +163,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         {
             id: "hide-selected",
             label: translate("common.hide"),
-            disabled: !hasEditable,
+            disabled: !hasLayer,
             onClick: () => {
                 actions.hideMenu();
                 actions.setSelectedVisible(false);

@@ -9,15 +9,14 @@ import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimat
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
-import { COMPONENT_EDITOR_ROOT_EXTRA_KEY } from "@/lib/ui-editor/componentEditorRoot";
+import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
 
 export const COMPONENT_TAB_PREFIX = "ui-editor:component:";
 export const COMPONENT_EDITOR_SURFACE_PREFIX = "component-editor:";
-const COMPONENT_EDITOR_ROOT_PREFIX = "component-editor-root:";
 
 export const getComponentTabId = (componentId: string) => `${COMPONENT_TAB_PREFIX}${componentId}`;
 export const getComponentEditorSurfaceId = (componentId: string) => `${COMPONENT_EDITOR_SURFACE_PREFIX}${componentId}`;
-export const getComponentEditorRootId = (componentId: string) => `${COMPONENT_EDITOR_ROOT_PREFIX}${componentId}`;
+export const getComponentEditorRootId = (componentId: string) => `${COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX}${componentId}`;
 
 export function parseComponentEditorSurfaceId(surfaceId: string | null | undefined): string | null {
     if (!surfaceId?.startsWith(COMPONENT_EDITOR_SURFACE_PREFIX)) {
@@ -52,10 +51,6 @@ function resolveComponentEditorDesignSize(root: UIElement | undefined): UISurfac
         width: Math.max(1, Math.abs(root?.layout.width ?? 1)),
         height: Math.max(1, Math.abs(root?.layout.height ?? 1)),
     };
-}
-
-function isComponentEditorWrapperRoot(element: UIElement, componentRootId: string): boolean {
-    return element.id === componentRootId && element.type === "nl.container" && (element.name ?? "").trim() === "Root";
 }
 
 export class ComponentDocumentServiceAdapter {
@@ -138,17 +133,14 @@ export class ComponentDocumentServiceAdapter {
         for (const [elementId, element] of Object.entries(component.elements)) {
             const copy = cloneElement(element);
             if (elementId === component.rootElementId) {
+                // Under the made-up root, which is what makes it the frame everywhere in the editor
+                // (`isComponentEditorRootElement`) - whatever it is called and whichever template or
+                // language it came from.
                 copy.parentId = this.virtualRootId;
                 // At the frame's origin whatever position is stored, because that is where a
                 // placement draws it: the root's own x and y are never read outside this editor.
                 copy.layout.x = 0;
                 copy.layout.y = 0;
-                if (isComponentEditorWrapperRoot(element, component.rootElementId)) {
-                    copy.extra = {
-                        ...(copy.extra ?? {}),
-                        [COMPONENT_EDITOR_ROOT_EXTRA_KEY]: true,
-                    };
-                }
             }
             elements[elementId] = copy;
         }

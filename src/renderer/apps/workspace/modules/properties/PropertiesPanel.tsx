@@ -118,6 +118,7 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
@@ -347,11 +348,7 @@ function createLayoutInspectorSchema(
     // A component's root, in that component's editor, is the frame the canvas is drawn at: it sits at
     // the origin because a placement draws it from there, and the editor keeps no position for it.
     // Its size is the component's size and stays; a position row would take a number and show 0.
-    const editedComponentId = parseComponentEditorSurfaceId(surfaceId);
-    const isComponentOrigin =
-        editedComponentId != null &&
-        elements.length === 1 &&
-        documentService.getComponent(editedComponentId)?.rootElementId === elements[0]!.id;
+    const isComponentOrigin = elements.length === 1 && isComponentEditorRootElement(elements[0]);
     const fields: FieldDefinition<UIInspectorData>[] = [
         defineField<UIInspectorData, any>({
             id: "layout.position",

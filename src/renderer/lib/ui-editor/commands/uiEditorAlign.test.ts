@@ -301,10 +301,14 @@ describe("UI editor align, excluded elements", () => {
 
     it("skips the surface root", () => {
         expect(patches(makeDocument(), ["root"], "left")).toEqual({});
-        // Root plus a child is empty rather than "align the child": the top-level-mover filter drops
-        // anything whose ancestor is also selected, and then the root itself is not movable. Same
-        // outcome as arrange, and select-all never puts the root in the selection to begin with.
-        expect(patches(makeDocument(), ["root", "a"], "horizontalCenter")).toEqual({});
+        // The root is left out before the top level is taken, so what else is selected is aligned as
+        // if it were selected alone - the same rule delete, copy and arrange follow. A page's root
+        // is never selected, but a component's frame is, and it is a root in this sense: selected
+        // with a child, it must not swallow that child as its descendant and leave nothing to align.
+        expect(patches(makeDocument(), ["root", "a"], "horizontalCenter")).toEqual(
+            patches(makeDocument(), ["a"], "horizontalCenter"),
+        );
+        expect(patches(makeDocument(), ["a"], "horizontalCenter")).toEqual({ a: { x: 350 } });
     });
 
     it("drops descendants when their ancestor is selected too", () => {

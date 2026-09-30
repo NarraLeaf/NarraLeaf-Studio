@@ -5,10 +5,8 @@ import {
     getUiEditorArrangeAvailability,
     type UiEditorArrangeOp,
 } from "@/lib/ui-editor/commands/uiEditorArrange";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { isSurfaceRootElement } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { translate } from "@/lib/i18n";
-
-const ROOT = "nl.root";
 
 function hasEditableArrangeTarget(document: UIDocument, menuSelection: UIElementSelection | null): boolean {
     if (!menuSelection || menuSelection.elementIds.length === 0) {
@@ -16,7 +14,7 @@ function hasEditableArrangeTarget(document: UIDocument, menuSelection: UIElement
     }
     return menuSelection.elementIds.some(id => {
         const el = document.elements[id];
-        return el != null && el.type !== ROOT && !isComponentEditorRootElement(el);
+        return el != null && !isSurfaceRootElement(el);
     });
 }
 

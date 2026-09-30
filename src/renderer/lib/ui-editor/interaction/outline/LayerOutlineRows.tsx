@@ -7,6 +7,7 @@ import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { isComponentEditorRootElement, isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
 import { useOutlineElementBadge } from "./outlineBadges";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
@@ -81,13 +82,15 @@ export function OutlineRow({
     const { t } = useTranslation();
     const Badge = useOutlineElementBadge();
     const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
+    // A component's frame is not moved anywhere, so its row has nothing to drag by.
+    const isComponentFrame = isComponentEditorRootElement(element);
     const renameEnabled = isSurfaceGestureEnabled("outlineRename", readOnly);
     const visibilityEnabled = isSurfaceGestureEnabled("outlineVisibility", readOnly);
     // dnd-kit's own `disabled` rather than withholding the listeners: it also stops the sensor, so the
     // 4px activation constraint cannot half-start a drag that then has nowhere to land.
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
-        disabled: !reorderEnabled,
+        disabled: !reorderEnabled || isComponentFrame,
     });
 
     const hasChildren = element.childrenIds.length > 0;
@@ -164,18 +167,22 @@ export function OutlineRow({
                         <span className="w-3.5 h-3.5 inline-block" />
                     )}
                 </button>
-                <button
-                    type="button"
-                    ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
-                    aria-label={t("widgetChrome.outline.dragToReorder")}
-                    disabled={!reorderEnabled}
-                    data-tip={reorderEnabled ? undefined : readOnly.reason}
-                    {...attributes}
-                    {...listeners}
-                >
-                    <GripVertical className="h-3.5 w-3.5" />
-                </button>
+                {isComponentFrame ? (
+                    <span className="h-5 w-4 shrink-0" aria-hidden />
+                ) : (
+                    <button
+                        type="button"
+                        ref={setActivatorNodeRef}
+                        className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
+                        aria-label={t("widgetChrome.outline.dragToReorder")}
+                        disabled={!reorderEnabled}
+                        data-tip={reorderEnabled ? undefined : readOnly.reason}
+                        {...attributes}
+                        {...listeners}
+                    >
+                        <GripVertical className="h-3.5 w-3.5" />
+                    </button>
+                )}
                 {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
                     <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
                 ) : (
@@ -349,7 +356,10 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
     // part slots - offers no place to drop among them. Every such drop is refused by the move (see
     // `planMoveElementsInSurface`), and a drop line that lights up where nothing can land is the
     // outline promising what the document will not do.
-    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type);
+    //
+    // Nor beside a component's frame: the component editor's made-up root holds the frame and
+    // nothing else, and anything put there would be outside the component.
+    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type) && !isComponentEditorVirtualRootId(parent.id);
     return (
         <div
             className={`rounded-sm transition-colors duration-150 ease-out ${

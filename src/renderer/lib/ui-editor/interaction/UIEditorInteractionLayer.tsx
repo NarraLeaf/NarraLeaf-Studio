@@ -39,7 +39,6 @@ import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { filterSelectionToTopLevelMovers, selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import {
     isSurfaceGestureEnabled,
     toReadOnlyFloatingToolbarItems,
@@ -100,12 +99,6 @@ type Props = {
      * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
      */
     readOnly?: UIEditorReadOnly;
-    /**
-     * An element whose top-left corner is the canvas origin and stays there: a component's root, in
-     * the editor for that component. The canvas is drawn at its size, so it is resized from its right
-     * and bottom edges and never dragged. See `useTransformController`.
-     */
-    originElementId?: string | null;
 };
 export function UIEditorInteractionLayer({
     surfaceId,
@@ -118,7 +111,6 @@ export function UIEditorInteractionLayer({
     openSurfaceEditor,
     openComponentEditor,
     readOnly = UI_EDITOR_WRITABLE,
-    originElementId = null,
 }: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
@@ -192,10 +184,8 @@ export function UIEditorInteractionLayer({
             return;
         }
         const allowed = collectSubtreeElementIds(document, rootId);
-        const nextIds = selection.data.elementIds.filter(id => {
-            const element = document.elements[id];
-            return allowed.has(id) && element != null && !isComponentEditorRootElement(element);
-        });
+        // A component's frame stays selectable: it is how the component is sized.
+        const nextIds = selection.data.elementIds.filter(id => allowed.has(id) && document.elements[id] != null);
         if (nextIds.length === 0) {
             selectSurfaceForProperties(stateService, surfaceId, uiService);
             return;
@@ -413,15 +403,12 @@ export function UIEditorInteractionLayer({
     const selectedSingleElement = selectedSingleElementId
         ? documentService.getDocument().elements[selectedSingleElementId]
         : null;
-    const effectiveSelectedSingleElement = isComponentEditorRootElement(selectedSingleElement)
-        ? null
-        : selectedSingleElement;
-    const isInlineTextEditableSelection = isInlineTextEditableElement(effectiveSelectedSingleElement);
+    const isInlineTextEditableSelection = isInlineTextEditableElement(selectedSingleElement);
     const floatingToolbarItems = useMemo<FloatingToolbarItem[]>(() => {
-        if (!effectiveSelectedSingleElement) {
+        if (!selectedSingleElement) {
             return [];
         }
-        const componentLink = getUIComponentLink(effectiveSelectedSingleElement);
+        const componentLink = getUIComponentLink(selectedSingleElement);
         if (componentLink) {
             const component = documentService.getComponent(componentLink.componentId);
             return [
@@ -443,8 +430,8 @@ export function UIEditorInteractionLayer({
                     icon: Unlink,
                     tooltip: "Unlink component",
                     onClick: () => {
-                        const ids = documentService.unlinkComponentInstance(effectiveSelectedSingleElement.id);
-                        const primary = ids[0] ?? effectiveSelectedSingleElement.id;
+                        const ids = documentService.unlinkComponentInstance(selectedSingleElement.id);
+                        const primary = ids[0] ?? selectedSingleElement.id;
                         stateService.setUIElementSelection({
                             editor: "ui",
                             surfaceId,
@@ -455,14 +442,14 @@ export function UIEditorInteractionLayer({
                 },
             ];
         }
-        const module = widgetModuleRegistry.get(effectiveSelectedSingleElement.type);
+        const module = widgetModuleRegistry.get(selectedSingleElement.type);
         return module?.createFloatingToolbarItems?.({
-            element: effectiveSelectedSingleElement,
+            element: selectedSingleElement,
             documentService,
             surfaceId,
             openSurfaceEditor,
         }) ?? [];
-    }, [documentRevision, documentService, effectiveSelectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
+    }, [documentRevision, documentService, selectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
     const effectiveFloatingToolbarItems = useMemo(
         () => toReadOnlyFloatingToolbarItems(floatingToolbarItems, readOnly),
         [floatingToolbarItems, readOnly],
@@ -593,12 +580,7 @@ export function UIEditorInteractionLayer({
             const doc = documentService.getDocument();
             const targetIds = targets
                 .map(target => target.dataset.uiElementId)
-                .filter((id): id is string => {
-                    if (!id) {
-                        return false;
-                    }
-                    return !isComponentEditorRootElement(doc.elements[id]);
-                });
+                .filter((id): id is string => Boolean(id && doc.elements[id]));
             if (targetIds.length === 0) {
                 selectSurfaceForProperties(stateService, surfaceId, uiService);
                 return;
@@ -750,7 +732,6 @@ export function UIEditorInteractionLayer({
         surfaceDesignSize: surface.designSize,
         stateService,
         snapSuspended: transformSnapSuspended,
-        originElementId,
     });
     const imageCropController = useImageCropController({
         documentService,
