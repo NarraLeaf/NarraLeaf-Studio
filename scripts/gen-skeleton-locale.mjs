@@ -8,9 +8,9 @@
 // only thing that differs is the words.
 //
 // Two sources of words per variant, and neither is invented here:
-//   - the story, the character names and the named keys come from the template's OWN translation
-//     file for that language (`editor/localization/zh-CN.json`, `ja.json`), promoted into the
-//     source text;
+//   - the story, the character names, the named keys and any widget text that opted into its own
+//     translation unit come from the template's OWN translation file for that language
+//     (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
 //   - everything the localization system never covered - button labels, screen text, confirm
 //     dialogs, element and blueprint names - comes from that variant's table beside this script.
 //
@@ -75,6 +75,12 @@ const FEEDS = "feeds";
 const RETURN = "return";
 /** A literal whose uses disagree: left as it is, and printed. */
 const AMBIGUOUS = "ambiguous";
+
+/**
+ * The prop a widget's own translation unit (`ui:<elementId>.<prop>`) carries, by widget type - the
+ * same table the localization panel lists those units from (`localizationModel.ts`).
+ */
+const UNIT_TEXT_PROP_BY_WIDGET = { "nl.text": "text", "nl.button": "label" };
 
 /**
  * What each node param holds, by node type and param key. A literal typed into a data pin is stored
@@ -437,16 +443,49 @@ function buildVariant(locale) {
         files.push({ path: relativePath, content: serialize(value, trailingNewline) });
     };
 
+    // The template's own translation into this language, read before anything is translated: the
+    // interface below promotes from it as well as the story.
+    const translationsPath = `editor/localization/${table.translations}.json`;
+    const translations = readJson(join(contentDir, translationsPath)).value;
+    const unitTarget = unitId => {
+        const unit = translations.units?.[unitId];
+        if (!unit || typeof unit.target !== "string" || unit.target === "") {
+            throw new Error(`${translationsPath} has no translation for unit ${unitId}`);
+        }
+        return unit.target;
+    };
+    /** Source text before and after, per unit: what the English translation file is made of. */
+    const flipped = new Map();
+
     // --- The interface: names, labels, screen text, the placeholder rows of list previews.
     const uidocPath = "editor/ui/uidoc.json";
     const uidoc = readJson(join(contentDir, uidocPath));
     const translateElement = element => {
         element.name = say(element.name);
         const props = element.props ?? {};
+        // A widget that opted into its own translation unit (`ui:<elementId>.<prop>`, the inspector's
+        // "Localize text") is translated by the project, like a story line: its words come from that
+        // unit, and the English goes into the English translation file. Through the table instead,
+        // the unit would keep the English as its source and every other language's translation of
+        // it would arrive stale. The prop is the one the runtime resolves for the widget type, and a
+        // named key wins over the unit there, so a keyed widget stays with the table.
+        const unitProp = UNIT_TEXT_PROP_BY_WIDGET[element.type];
+        const ownsUnit = unitProp !== undefined
+            && props.localizable === true
+            && !(typeof props.localizationKey === "string" && props.localizationKey.trim())
+            && typeof props[unitProp] === "string"
+            && props[unitProp].trim() !== "";
         for (const key of ["text", "label"]) {
-            if (typeof props[key] === "string") {
-                props[key] = say(props[key]);
+            if (typeof props[key] !== "string") {
+                continue;
             }
+            if (ownsUnit && key === unitProp) {
+                const unitId = `ui:${element.id}.${key}`;
+                flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
+                props[key] = unitTarget(unitId);
+                continue;
+            }
+            props[key] = say(props[key]);
         }
         // A list draws `items` when no graph has written any, so those rows are what an author
         // sees on the canvas and what the choice list shows until the game runs. They are text
@@ -493,18 +532,6 @@ function buildVariant(locale) {
     emit(graphsPath, graphs.value, graphs.trailingNewline);
 
     // --- The story: its own translation, promoted into the text the author edits.
-    const translationsPath = `editor/localization/${table.translations}.json`;
-    const translations = readJson(join(contentDir, translationsPath)).value;
-    const unitTarget = unitId => {
-        const unit = translations.units?.[unitId];
-        if (!unit || typeof unit.target !== "string" || unit.target === "") {
-            throw new Error(`${translationsPath} has no translation for unit ${unitId}`);
-        }
-        return unit.target;
-    };
-    /** Source text before and after, per unit: what the English translation file is made of. */
-    const flipped = new Map();
-
     const storyIndexPath = "editor/story/index.json";
     const storyIndex = readJson(join(contentDir, storyIndexPath));
     for (const story of storyIndex.value.stories ?? []) {

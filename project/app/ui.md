@@ -362,7 +362,7 @@ node project/app/ui.js show --project D:/path/to/project --surface Title --out t
 `show` prints in the same format `apply` reads, ids and props included, so the
 way to change something that exists is to dump it, edit two lines and apply it
 back. Printing the shipped skeleton and compiling the result gives the same
-document - twelve surfaces, eleven components and 260 elements of it - which is
+document - eleven surfaces, eleven components and nearly three hundred elements of it - which is
 asserted in `dsl/roundTrip.test.ts`.
 
 ## Writing
