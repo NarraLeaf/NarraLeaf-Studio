@@ -16,7 +16,7 @@ async function square(size: number): Promise<Buffer> {
 }
 
 const SQUARES = new Map<number, Buffer>();
-for (const size of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
+for (const size of [16, 24, 32, 48, 64, 72, 96, 128, 256, 512, 1024]) {
     SQUARES.set(size, await square(size));
 }
 
@@ -110,7 +110,7 @@ describe("ensureDesktopIcon", () => {
             passedThrough: false,
             reused: false,
         });
-        expect(icoSizes(await fs.readFile(result.iconPath))).toEqual([16, 24, 32, 48, 64, 128, 256]);
+        expect(icoSizes(await fs.readFile(result.iconPath))).toEqual([16, 24, 32, 48, 64, 72, 96, 128, 256]);
     });
 
     it("writes an .icns whose chunks cover every size it rendered", async () => {

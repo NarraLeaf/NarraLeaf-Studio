@@ -563,10 +563,11 @@ select:focus {
  * The editor's reading surfaces: the story editor's prose area, the inspector, the text editor and
  * the Dev Mode debug panel body. Without a wallpaper this is plain `bg-surface-sunken`.
  *
- * Under a wallpaper the plate is the author's choice, made in the background dialog: off by default,
- * so the picture runs behind the prose like behind the rest of the editor area, or on at an opacity
- * of their own. The workspace root publishes the resulting alpha as `--nl-editor-surface-alpha`
- * beside `.nl-has-workspace-bg`; the fallback only covers a frame where the class is set and the
+ * Under a wallpaper the plate is the author's choice, made in the background dialog: on and opaque
+ * by default, so the text the author reads and writes never sits on the photograph unasked, or
+ * thinner, or off so the picture runs behind the prose like behind the rest of the editor area. The
+ * workspace root publishes the resulting alpha as `--nl-editor-surface-alpha` beside
+ * `.nl-has-workspace-bg`; the fallback is that default, for a frame where the class is set and the
  * property is not yet. Two rules rather than one alpha that defaults to 1, so a window with no
  * wallpaper (Dev Mode, the launcher's previews) has nothing to read and cannot come out translucent.
  */
@@ -575,7 +576,7 @@ select:focus {
 }
 
 .nl-has-workspace-bg .nl-editor-surface {
-    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 0));
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 1));
 }
 
 /*
