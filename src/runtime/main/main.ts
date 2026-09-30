@@ -97,6 +97,7 @@ import { buildGameMenuTemplate } from "./gameMenu";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
+import { refuseToStart, type StartupRefusalHost } from "./startupRefusal";
 import {
     currentWindowScale,
     fitInside,
@@ -506,15 +507,50 @@ if (testDriven) {
 }
 
 /**
+ * How every launch that does not go ahead ends: the log, one line on standard error, a code that is
+ * not 0. See `startupRefusal`.
+ *
+ * Standard error is written through its descriptor rather than through `process.stderr`: the write
+ * has to be complete before `app.exit`, which before app-ready ends the process on the spot.
+ */
+const startupRefusalHost: StartupRefusalHost = {
+    log: logRuntime,
+    writeStandardError: text => {
+        fsSync.writeSync(2, text);
+    },
+    exit: code => {
+        app.exit(code);
+    },
+};
+
+/**
+ * The line a refused command line is logged and reported with.
+ *
+ * The fixed half is masked in the bundle (it would otherwise be a plaintext beacon pointing a search
+ * straight at this refusal) and reconstructed here, so the log and standard error still read plainly.
+ * `REFUSAL_LOG_PREFIX` is "refusing to start: this build does not accept ". What follows it is only
+ * what the caller put on the command line - never what the game does accept.
+ */
+function commandLineRefusalReason(refused: readonly string[]): string {
+    return `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`;
+}
+
+/**
  * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
  * before any window or session exists. The post-pack-read check below stays as the authoritative
  * (tamper-resistant on asar-integrity platforms) second gate.
  *
- * Both halves matter and they are not the same half. Quitting states the policy; taking the
+ * Both halves matter and they are not the same half. Stopping states the policy; taking the
  * switches off the command line is what stops them being acted on, because Chromium reads several
  * of them after this script has run. Measured on Electron 38: a launch with
  * `--remote-debugging-port` that only quit here still had the port accepting connections about
- * 130ms later, and the same launch with the switch removed here never listened at all.
+ * 130ms later, and the same launch with the switch removed here never listened at all. The exit is
+ * immediate now (`app.exit` before app-ready ends the process where it stands), and the switches are
+ * still taken off first, so nothing depends on how quickly that happens.
+ *
+ * Said on standard error as well as in the log, with exit code 2. It used to be the log alone and an
+ * ordinary quit, which exits 0 - so the player who typed a switch into a launcher, and the launcher
+ * itself, were both told the game had run.
  */
 function refuseStartupArguments(): boolean {
     const refused = refusedStartupArguments();
@@ -524,14 +560,7 @@ function refuseStartupArguments(): boolean {
     for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
         app.commandLine.removeSwitch(name);
     }
-    // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
-    // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing. The fixed half of the line is masked in the bundle (it would otherwise
-    // be a plaintext beacon pointing a search straight at this refusal) and reconstructed here, so
-    // the log file still reads plainly. `REFUSAL_LOG_PREFIX` is "refusing to start: this build does
-    // not accept ".
-    logRuntime("error", `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`);
-    app.quit();
+    refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refused) });
     return true;
 }
 
@@ -547,6 +576,10 @@ const startupBlocked = shellMode === "production" && !shellDebuggable && refuseS
  *
  * After the command-line gate above, so a launch this build refuses is refused for that reason
  * rather than reported as a second copy.
+ *
+ * Not a refusal, and so an ordinary quit with exit code 0 rather than `refuseToStart`: what was asked
+ * for was the game on screen, and the copy that is running puts it there. A launcher that reads the
+ * code gets the same answer every single-instance application gives.
  */
 const secondCopy = shellMode === "production" && !startupBlocked && !claimSingleInstance({
     requestLock: () => app.requestSingleInstanceLock(),
@@ -567,45 +600,67 @@ void app.whenReady().then(async () => {
         return;
     }
     appReadyAt = Date.now();
-    resources = await createRuntimeResources(appDir, {
-        // Where a player puts a patch: the folder their copy of the game sits in,
-        // which is the first place anyone looks for one. The same folder the
-        // player's files may sit in, resolved by the same function, so a player
-        // told where their saves are has been told where a patch goes.
-        gameRootDir,
-        // Searched as well, so a patch can outlive reinstalling the game.
-        userDataDir,
-        // What applied, and what did not, is the only trace a patch leaves.
-        log: logRuntime,
-        // A build made to be inspected says why a patch was refused; a shipped one names the file
-        // and stops, because the reason describes how a patch is bound to its build.
-        explainRefusedPatches: shellMode !== "production" || shellDebuggable,
-        // Content the player installed that this build cannot read. Told to them rather than only
-        // logged: the game is about to run exactly as it did before, and "nothing happened" is the
-        // one answer they cannot act on.
-        onContentTooNew: reportContentTooNew,
-    });
-    const pack = await readPack();
-    // The game's own content, from inside its own archive, written by a Studio this build does not
-    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
-    // the pack's own bundle - so this is the native box and a clean exit, which is the same last
-    // resort a crash loop ends at.
-    const packVersion = newerRuntimePackSchemaVersion(pack);
-    if (packVersion !== null) {
-        logRuntime(
-            "error",
-            `refusing to start: game content schema v${packVersion} is newer than this build reads`
-            + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
-        );
-        reportFatalRuntimeError(shellText().contentTooNew);
+    let pack: GameRuntimePackV1;
+    try {
+        resources = await createRuntimeResources(appDir, {
+            // Where a player puts a patch: the folder their copy of the game sits in,
+            // which is the first place anyone looks for one. The same folder the
+            // player's files may sit in, resolved by the same function, so a player
+            // told where their saves are has been told where a patch goes.
+            gameRootDir,
+            // Searched as well, so a patch can outlive reinstalling the game.
+            userDataDir,
+            // What applied, and what did not, is the only trace a patch leaves.
+            log: logRuntime,
+            // A build made to be inspected says why a patch was refused; a shipped one names the file
+            // and stops, because the reason describes how a patch is bound to its build.
+            explainRefusedPatches: shellMode !== "production" || shellDebuggable,
+            // Content the player installed that this build cannot read. Told to them rather than only
+            // logged: the game is about to run exactly as it did before, and "nothing happened" is the
+            // one answer they cannot act on.
+            onContentTooNew: reportContentTooNew,
+        });
+        pack = await readPack();
+    } catch (error) {
+        // The game's own content would not open: a store that is damaged or incomplete, a pack that
+        // is missing or does not parse. Left to propagate, this was an unhandled rejection, which
+        // Electron's main process only warns about - measured on Electron 38, the error monitor
+        // below never saw it, so nothing reached the log or the player, and the process stayed up
+        // with no window, for nobody, until it was killed. There is nothing to run, so it is a launch
+        // that did not start.
+        const described = describeRuntimeError(error);
         isQuitting = true;
-        app.quit();
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's content could not be read: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
         return;
     }
-    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
+    // The game's own content, from inside its own archive, written by a Studio this build does not
+    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
+    // the pack's own bundle - so this is the native box and an exit that says the game did not
+    // start, which is the same last resort a crash loop ends at.
+    const packVersion = newerRuntimePackSchemaVersion(pack);
+    if (packVersion !== null) {
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "contentTooNew",
+            reason: `refusing to start: game content schema v${packVersion} is newer than this build reads`
+                + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
+            tellPlayer: () => reportFatalRuntimeError(shellText().contentTooNew),
+        });
+        return;
+    }
+    const refusedByPack = pack.mode === "production" && !packDebuggable(pack) ? refusedStartupArguments() : [];
+    if (refusedByPack.length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
-        // rewritten shell manifest does not get past on the platforms that validate one.
-        app.quit();
+        // rewritten shell manifest does not get past on the platforms that validate one. It is only
+        // reached when the first gate stood aside, which the manifest told it to; the switches were
+        // not taken off in time for that, and this stops the launch as the first gate would have.
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refusedByPack) });
         return;
     }
     if (packDebuggable(pack)) {
