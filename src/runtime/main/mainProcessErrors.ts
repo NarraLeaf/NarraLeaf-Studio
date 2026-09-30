@@ -29,7 +29,8 @@ import type { RuntimeLogSink } from "./runtimeLog";
  * silences Electron's stack box, whose listener stands aside once another one is registered. The
  * order - write, then tell, then go - is the one Studio's own main process uses when it crashes: the
  * box waits for a click, and nothing written after it is safe from a player who kills the process
- * instead of clicking.
+ * instead of clicking. The same ending serves a game window that will not stay up (see
+ * `windowCrashHandling`), through {@link createCrashTeardown}: one way for a running game to crash.
  *
  * **A rejection is recorded and is not fatal.** It is almost always one operation that failed - a
  * write the player's disk refused, a sidecar that did not answer, a window that closed while something
@@ -66,6 +67,13 @@ export interface MainProcessErrorHost {
     log: RuntimeLogSink;
     /** Hand a `runtime-error` to a test that is watching; does nothing when none is. */
     emitTestEvent(event: GameTestEvent): void;
+    /** End the game after a crash - the function {@link createCrashTeardown} returns. */
+    endAfterCrash(headline: string): void;
+}
+
+/** What {@link createCrashTeardown} needs. Structural so a test can stand in for it. */
+export interface CrashTeardownHost {
+    log: RuntimeLogSink;
     /**
      * Write out what the player would otherwise lose - the save and persistence stores' pending
      * writes. Settles when they are on disk or have failed; never waited on for longer than
@@ -117,27 +125,40 @@ function defaultWait(ms: number): Promise<void> {
 /**
  * Take both events over, once, for the life of the process. See the file comment for what each does.
  *
- * A second exception while the first is still ending the game - the flush can fail in its own way,
- * and so can drawing the box - is recorded like the first and changes nothing else: one box, one
- * exit, and the flush the first one started is not cut short by the second.
+ * Every exception is recorded, and every one asks for the game to end; the ending itself happens
+ * once (see {@link createCrashTeardown}), so a second exception while the first is still ending the
+ * game - the flush can fail in its own way, and so can drawing the box - changes nothing else.
  */
 export function installMainProcessErrorReporting(host: MainProcessErrorHost): void {
-    let crashing = false;
     host.on("uncaughtException", error => {
-        const headline = recordMainProcessError(host, error, "uncaughtException");
-        if (crashing) {
-            return;
-        }
-        crashing = true;
-        void endAfterCrash(host, headline);
+        host.endAfterCrash(recordMainProcessError(host, error, "uncaughtException"));
     });
     host.on("unhandledRejection", reason => {
         recordMainProcessError(host, reason, "unhandledRejection");
     });
 }
 
+/**
+ * The one way a game that has started ends when it has crashed: write out what can be written in the
+ * budget, tell the player once, exit with `GAME_EXIT_CODES.crashed`.
+ *
+ * Returned as a function that ends the game the first time it is called and does nothing after, from
+ * whichever source: an exception in this process, a game window that keeps dying or will not load
+ * again. Two of them arriving together are still one flush, one box and one exit.
+ */
+export function createCrashTeardown(host: CrashTeardownHost): (headline: string) => void {
+    let ending = false;
+    return headline => {
+        if (ending) {
+            return;
+        }
+        ending = true;
+        void endAfterCrash(host, headline);
+    };
+}
+
 /** Write out what can be written in the budget, tell the player, and exit with the crash code. */
-async function endAfterCrash(host: MainProcessErrorHost, headline: string): Promise<void> {
+async function endAfterCrash(host: CrashTeardownHost, headline: string): Promise<void> {
     const wait = host.wait ?? defaultWait;
     let outcome: "written" | "timed-out" | "failed" = "failed";
     try {
