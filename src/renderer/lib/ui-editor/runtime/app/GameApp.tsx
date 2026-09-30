@@ -168,7 +168,6 @@ import {
     restoreLiveGameToHistory,
     STUDIO_SKIP_KEY_BINDING,
 } from "./gameUiSlots";
-import { audioClipGain, audioClipRegionToSoundConfig } from "@shared/types/audio";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
@@ -412,16 +411,9 @@ export type GameAppProps = {
 };
 
 /**
- * Shared game application orchestrator: owns the blueprint runtime core, the
- * surface navigation stack and transitions, the NarraLeaf environment boot /
- * story lifecycle, saves, keyboard dispatch, and appBoot/gameReady events.
- * Studio Dev Mode and the standalone game runtime render this component and
- * differ only in the injected GameAppHost.
- */
-
-/**
- * A fresh `Sound` for replaying one voice take: its speaker's bus, and its gain as the volume when it
- * has one. Fresh rather than the scene table's instance, for the reason `playVoiceUnit` gives.
+ * A fresh `Sound` for replaying one voice take: its speaker's bus, at the volume the compile gave the
+ * take (its gain, already folded in by `clipVolume`). Fresh rather than the scene table's instance,
+ * for the reason `playVoiceUnit` gives.
  */
 function voiceReplaySound(playback: VoicePlayback): Sound {
     return new Sound({
@@ -431,6 +423,13 @@ function voiceReplaySound(playback: VoicePlayback): Sound {
     });
 }
 
+/**
+ * Shared game application orchestrator: owns the blueprint runtime core, the
+ * surface navigation stack and transitions, the NarraLeaf environment boot /
+ * story lifecycle, saves, keyboard dispatch, and appBoot/gameReady events.
+ * Studio Dev Mode and the standalone game runtime render this component and
+ * differ only in the injected GameAppHost.
+ */
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -2228,19 +2227,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
         // which the transport reads as the built-ins.
         getAudioTracks: () => bundle.audio?.tracks,
-        // The in/out points the author marked on the asset apply here exactly as they do in a story
-        // row, so a music page loops a track's body rather than the whole file.
-        createSound: ({ src, busId, loop, volume, assetId }) => new Sound({
-            src,
+        // The config arrives finished - the clip's region and gain folded in by the transport - and
+        // goes to the engine as it is.
+        createSound: ({ busId, ...config }) => new Sound({
+            ...config,
             // An arbitrary bus id, not one of three enum members: the tracks declared at boot are
             // the buses, so `voice/alice` routes here with nothing to map it through.
             type: busId,
-            loop,
-            volume,
-            ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
         }),
-        // The clip's own gain, which the transport multiplies into every volume it writes.
-        getClipGain: assetId => audioClipGain(bundle.audio?.clips?.[assetId]),
+        // The markers and gain the author set on each asset, which the transport reads each clip's
+        // playback from.
+        getClip: assetId => bundle.audio?.clips?.[assetId],
         log: (level, message) => host.log(level, message),
     }), [bundle, host]);
 

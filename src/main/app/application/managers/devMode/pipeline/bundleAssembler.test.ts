@@ -384,6 +384,33 @@ describe("bundleAssembler audio payload", () => {
         });
     });
 
+    it("carries each clip's gain, alone or beside its markers, for every runtime that reads the table", async () => {
+        // Dev Mode and the packaged game both play from this table, so a gain left out of it would
+        // balance the clip in the editor and nowhere else.
+        const projectPath = await createProject({
+            a1: { id: "a1", extras: { audioGain: { db: -6.5 } } },
+            a2: { id: "a2", extras: { audioLoop: { inMs: 1000 }, audioGain: { db: -3, targetLufs: -16 } } },
+            a3: { id: "a3", extras: { audioGain: { db: 0 } } },
+        });
+        expect(await clipsOf(projectPath)).toEqual({
+            a1: { gainDb: -6.5 },
+            a2: { inMs: 1000, gainDb: -3 },
+        });
+    });
+
+    it("carries the markers alone, whatever else an earlier build stored beside them", async () => {
+        // A loop with no out point ends at the end of the file wherever it plays; a length the
+        // preview once measured is not part of the table.
+        const projectPath = await createProject({
+            a1: {
+                id: "a1",
+                hash: "h1",
+                extras: { audioLoop: { inMs: 1000, loopStartMs: 5000, fileLength: { ms: 90_000, hash: "h1" } } },
+            },
+        });
+        expect(await clipsOf(projectPath)).toEqual({ a1: { inMs: 1000, loopStartMs: 5000 } });
+    });
+
     it("reads the cue-point shape that preceded the region", async () => {
         const projectPath = await createProject({
             a1: { id: "a1", extras: { cuePoints: [{ timeMs: 900 }, { timeMs: 200 }] } },
