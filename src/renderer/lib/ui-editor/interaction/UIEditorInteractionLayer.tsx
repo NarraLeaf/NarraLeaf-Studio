@@ -100,6 +100,12 @@ type Props = {
      * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
      */
     readOnly?: UIEditorReadOnly;
+    /**
+     * An element whose top-left corner is the canvas origin and stays there: a component's root, in
+     * the editor for that component. The canvas is drawn at its size, so it is resized from its right
+     * and bottom edges and never dragged. See `useTransformController`.
+     */
+    originElementId?: string | null;
 };
 export function UIEditorInteractionLayer({
     surfaceId,
@@ -112,6 +118,7 @@ export function UIEditorInteractionLayer({
     openSurfaceEditor,
     openComponentEditor,
     readOnly = UI_EDITOR_WRITABLE,
+    originElementId = null,
 }: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
@@ -743,6 +750,7 @@ export function UIEditorInteractionLayer({
         surfaceDesignSize: surface.designSize,
         stateService,
         snapSuspended: transformSnapSuspended,
+        originElementId,
     });
     const imageCropController = useImageCropController({
         documentService,
