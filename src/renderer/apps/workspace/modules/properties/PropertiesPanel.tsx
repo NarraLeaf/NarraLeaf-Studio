@@ -344,6 +344,14 @@ function createLayoutInspectorSchema(
     };
 
     const sizeField = createSizeField();
+    // A component's root, in that component's editor, is the frame the canvas is drawn at: it sits at
+    // the origin because a placement draws it from there, and the editor keeps no position for it.
+    // Its size is the component's size and stays; a position row would take a number and show 0.
+    const editedComponentId = parseComponentEditorSurfaceId(surfaceId);
+    const isComponentOrigin =
+        editedComponentId != null &&
+        elements.length === 1 &&
+        documentService.getComponent(editedComponentId)?.rootElementId === elements[0]!.id;
     const fields: FieldDefinition<UIInspectorData>[] = [
         defineField<UIInspectorData, any>({
             id: "layout.position",
@@ -490,7 +498,7 @@ function createLayoutInspectorSchema(
             ],
             order: 2,
         }),
-    ];
+    ].filter(field => !(isComponentOrigin && field.id === "layout.position"));
 
     if (!linkedOnly) {
         fields.push(defineField<UIInspectorData, any>({

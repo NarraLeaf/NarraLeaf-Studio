@@ -9,7 +9,6 @@ import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimat
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
-import { DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { COMPONENT_EDITOR_ROOT_EXTRA_KEY } from "@/lib/ui-editor/componentEditorRoot";
 
 export const COMPONENT_TAB_PREFIX = "ui-editor:component:";
@@ -39,12 +38,20 @@ function cloneElement(element: UIElement): UIElement {
     };
 }
 
-function resolveDefaultComponentEditorDesignSize(baseDocument: UIDocument): UISurface["designSize"] {
-    const appSurface =
-        baseDocument.surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID) ??
-        baseDocument.surfaces.find(surface => surface.kind === "appSurface") ??
-        baseDocument.surfaces[0];
-    return appSurface?.designSize ?? DEFAULT_UI_SURFACE_SIZE;
+/**
+ * The size the component editor's canvas is drawn at: the definition's own, which is its root's.
+ *
+ * The same measure every placement scales from (`buildUIComponentDocumentView`), so the frame the
+ * author edits in is the box a placement draws, and what falls outside it here is what a placement
+ * cuts off. The canvas used to take the project's page size instead, and a 456x348 save slot sat in
+ * the corner of a 1920x1080 white page - which read as the component being a page, or as something
+ * being broken.
+ */
+function resolveComponentEditorDesignSize(root: UIElement | undefined): UISurface["designSize"] {
+    return {
+        width: Math.max(1, Math.abs(root?.layout.width ?? 1)),
+        height: Math.max(1, Math.abs(root?.layout.height ?? 1)),
+    };
 }
 
 function isComponentEditorWrapperRoot(element: UIElement, componentRootId: string): boolean {
@@ -98,7 +105,7 @@ export class ComponentDocumentServiceAdapter {
         }
 
         const root = component.elements[component.rootElementId];
-        const designSize = resolveDefaultComponentEditorDesignSize(baseDocument);
+        const designSize = resolveComponentEditorDesignSize(root);
         const surface: UISurface = {
             id: this.surfaceId,
             name: component.name,
@@ -106,6 +113,9 @@ export class ComponentDocumentServiceAdapter {
             kind: "appSurface",
             designSize,
             rootElementId: this.virtualRootId,
+            // A definition has no background of its own: a placement draws it over whatever page it
+            // is put on. Left to the page default, the frame painted itself white.
+            settings: { backgroundColor: "transparent" },
         };
         const virtualRoot: UIElement = {
             id: this.virtualRootId,
@@ -129,6 +139,10 @@ export class ComponentDocumentServiceAdapter {
             const copy = cloneElement(element);
             if (elementId === component.rootElementId) {
                 copy.parentId = this.virtualRootId;
+                // At the frame's origin whatever position is stored, because that is where a
+                // placement draws it: the root's own x and y are never read outside this editor.
+                copy.layout.x = 0;
+                copy.layout.y = 0;
                 if (isComponentEditorWrapperRoot(element, component.rootElementId)) {
                     copy.extra = {
                         ...(copy.extra ?? {}),
@@ -187,7 +201,18 @@ export class ComponentDocumentServiceAdapter {
         if (this.isVirtualRoot(elementId)) {
             return;
         }
-        this.base.updateComponentElementLayout(this.componentId, elementId, layoutPatch);
+        let patch = layoutPatch;
+        if (this.isComponentRoot(elementId)) {
+            // The root is drawn at the frame's origin (see `buildDocument`), so a position written to
+            // it would change the stored definition and nothing anyone can see. Its size is the
+            // component's size, and goes through.
+            const { x: _x, y: _y, ...rest } = layoutPatch;
+            if (Object.keys(rest).length === 0) {
+                return;
+            }
+            patch = rest;
+        }
+        this.base.updateComponentElementLayout(this.componentId, elementId, patch);
     }
 
     public updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void {
