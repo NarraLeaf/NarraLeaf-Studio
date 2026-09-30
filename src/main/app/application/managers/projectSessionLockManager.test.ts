@@ -894,3 +894,163 @@ describe("ProjectSessionLockManager and a silent Studio that is still running he
         locks.dispose();
     });
 });
+
+/**
+ * A copy of a project that is open somewhere: an Explorer copy, a backup, a folder sent to a
+ * colleague. The lock is a file in the project, so the copy carries it - naming a Studio that is
+ * running and heartbeating, on the folder the copy was made from. Until a record said which folder it
+ * claims, the copy was refused as "already open in another NarraLeaf Studio" for as long as that
+ * frozen heartbeat stayed fresh.
+ */
+describe("ProjectSessionLockManager and a copy of a project that is open", () => {
+    const NOW = Date.parse("2026-09-01T10:00:00.000Z");
+
+    /** Another Studio on this machine, under another profile, with both processes running. */
+    function secondStudio(options: HarnessOptions = {}) {
+        return manager({ pid: 5555, userDataDir: "C:/profiles/other", alive: new Set([4242, 5555]), ...options });
+    }
+
+    /** Copy a project folder whole, lock and all, the way a file manager does. */
+    async function copyOf(projectPath: string): Promise<string> {
+        const copy = `${projectPath} - Copy`;
+        roots.push(copy);
+        await fs.cp(projectPath, copy, { recursive: true });
+        return copy;
+    }
+
+    it("opens a copy made while the project is open, at once, and leaves the original alone", async () => {
+        const project = await scratchProject();
+        const onTakenOver = vi.fn();
+        const first = manager({ now: () => NOW, alive: new Set([4242, 5555]), onTakenOver });
+        await first.acquire(project);
+
+        const copy = await copyOf(project);
+        // The copy carries the first Studio's claim: same machine, process running, heartbeat fresh.
+        expect((await readLock(copy))?.pid).toBe(4242);
+
+        const sleep = vi.fn(async () => undefined);
+        const second = secondStudio({ now: () => NOW, sleep });
+        await expect(second.acquire(copy)).resolves.toEqual({ ok: true });
+        // Not the look-again that a silent live holder gets: the claim was never about this folder.
+        expect(sleep).not.toHaveBeenCalled();
+        expect(second.heldElsewhere(copy)).toBeNull();
+        expect((await readLock(copy))?.pid).toBe(5555);
+
+        // The original is the first Studio's still, and still closed to the second.
+        expect((await readLock(project))?.pid).toBe(4242);
+        expect((await second.acquire(project)).ok).toBe(false);
+        await first.beat();
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect(first.holds(project)).toBe(true);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("opens a copy in the very Studio that has the original open", async () => {
+        const project = await scratchProject();
+        const locks = manager();
+        await locks.acquire(project);
+        const copy = await copyOf(project);
+
+        await expect(locks.acquire(copy)).resolves.toEqual({ ok: true });
+        expect(locks.holds(project)).toBe(true);
+        expect(locks.holds(copy)).toBe(true);
+        // Two claims by one process, told apart by the folder each names.
+        expect((await readLock(copy))?.directory).not.toBe((await readLock(project))?.directory);
+        locks.dispose();
+    });
+
+    it("records the folder it claims, and not the folder's path", async () => {
+        const project = await scratchProject();
+        const locks = manager();
+        await locks.acquire(project);
+
+        const record = await readLock(project);
+        expect(record?.directory).toMatch(/^[0-9a-f]{16}$/);
+        // The file travels with the project; a path on this disk has no business in it.
+        const content = await fs.readFile(lockPathOf(project), "utf-8");
+        expect(content).not.toContain(path.basename(project));
+        locks.dispose();
+    });
+
+    it("still keeps a second Studio out of the same folder reached by another route", async () => {
+        // A junction on Windows and a symbolic link elsewhere stand in for every other route to one
+        // folder - a mapped drive, `subst`, a short name. The claim must not read as a copy there.
+        const project = await scratchProject();
+        const link = `${project}-link`;
+        await fs.symlink(project, link, process.platform === "win32" ? "junction" : "dir");
+        try {
+            const first = manager({ alive: new Set([4242, 5555]) });
+            await first.acquire(project);
+
+            const outcome = await secondStudio().acquire(link);
+            expect(outcome.ok).toBe(false);
+            expect((await readLock(project))?.pid).toBe(4242);
+            first.dispose();
+        } finally {
+            await fs.unlink(link);
+        }
+    });
+
+    it("still keeps a second Studio out of the same folder spelled another way", async () => {
+        const project = await scratchProject();
+        const first = manager({ alive: new Set([4242, 5555]) });
+        await first.acquire(project);
+
+        // What a script, a shortcut or a hand-typed path hands in, against what the picker returned.
+        const respelled = process.platform === "win32"
+            ? project.toUpperCase().split(path.sep).join("/")
+            : `${project}${path.sep}`;
+        expect((await secondStudio().acquire(respelled)).ok).toBe(false);
+        first.dispose();
+    });
+
+    it("waits out the heartbeat of a copy that carries another machine's claim", async () => {
+        // Byte for byte what a sync client delivers of a project open on the other machine, where
+        // that folder has another path - so it is judged the way that always was.
+        const project = await scratchProject();
+        const time = clock(NOW);
+        await writeLock(project, otherSession(time.now(), { directory: "ffffffffffffffff" }));
+        const locks = manager({ now: time.now });
+
+        expect((await locks.acquire(project)).ok).toBe(false);
+        time.advance(PROJECT_SESSION_LOCK_STALE_MS + 1_000);
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+        locks.dispose();
+    });
+
+    it("waits out the heartbeat of a claim that names no folder, as every claim did before", async () => {
+        // Written by a Studio from before the field, which may be holding this very folder now.
+        const project = await scratchProject();
+        await writeLock(project, otherSession(NOW, { hostname: "studio-one", pid: 7000 }));
+        const locks = manager({ now: () => NOW, alive: new Set([4242, 7000]) });
+
+        expect((await locks.acquire(project)).ok).toBe(false);
+        expect((await readLock(project))?.pid).toBe(7000);
+        locks.dispose();
+    });
+
+    it("writes its claim back over a lock copied in from another folder while it holds the project", async () => {
+        const project = await scratchProject();
+        const other = await scratchProject();
+        const onTakenOver = vi.fn();
+        const first = manager({ alive: new Set([4242, 5555]), onTakenOver });
+        await first.acquire(project);
+        const second = secondStudio();
+        await second.acquire(other);
+
+        // Another open project's files copied over this one, its lock among them.
+        await fs.cp(path.join(other, ".nlstudio"), path.join(project, ".nlstudio"), { recursive: true, force: true });
+        expect((await readLock(project))?.pid).toBe(5555);
+        await first.beat();
+
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect(first.holds(project)).toBe(true);
+        expect(first.heldElsewhere(project)).toBeNull();
+        expect((await readLock(project))?.pid).toBe(4242);
+        // The other project's own claim is untouched.
+        expect((await readLock(other))?.pid).toBe(5555);
+        first.dispose();
+        second.dispose();
+    });
+});

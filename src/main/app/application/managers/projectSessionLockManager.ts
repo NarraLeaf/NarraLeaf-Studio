@@ -10,9 +10,11 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 import {
     buildProjectSessionLockRecord,
+    claimsDirectory,
     decideHeldProjectSession,
     decideProjectSessionClaim,
     describeHolder,
+    digestProjectDirectory,
     isRecordOf,
     parseProjectSessionLockRecord,
     PROJECT_SESSION_HEARTBEAT_MS,
@@ -80,6 +82,8 @@ interface HeldLock {
     lockPath: string;
     /** Where the last claim on the project is kept - see `PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH`. */
     lastClaimPath: string;
+    /** The folder, digested the way its records state it - see `digestProjectDirectory`. */
+    directory: string;
     record: ProjectSessionLockRecord;
     /**
      * What the last-claim record says as far as this session knows: its own record once it has
@@ -311,6 +315,7 @@ export class ProjectSessionLockManager {
                 const state = decideHeldProjectSession(lock.kind === "record" ? lock.record : null, lastClaim, {
                     self: this.identity,
                     lastClaimAtOwnClaim: held.lastClaim,
+                    directory: held.directory,
                 });
 
                 if (state.kind === "taken-over") {
@@ -328,9 +333,15 @@ export class ProjectSessionLockManager {
                     continue;
                 }
                 held.record = { ...held.record, heartbeat: new Date(this.now()).toISOString() };
-                if (state.kind === "own" || lock.kind === "unreadable") {
+                if (state.kind === "stray") {
+                    this.logger.info(
+                        "[Project] The session lock on", held.projectPath,
+                        "had been replaced by one copied in from another folder; this one writes its claim back over it.",
+                    );
+                }
+                if (state.kind === "own" || state.kind === "stray" || lock.kind === "unreadable") {
                     // A record that cannot be read is nobody's claim (see `decideProjectSessionClaim`)
-                    // and is written over, as it always was.
+                    // and is written over, as it always was - and so is one about another folder.
                     await this.writeRecord(held.lockPath, held.record);
                 } else {
                     await this.reclaim(held);
@@ -376,7 +387,13 @@ export class ProjectSessionLockManager {
 
         const onDisk = await this.readRecord(held.lockPath);
         if (onDisk !== null && !this.isOwnRecord(onDisk)) {
-            this.loseTo(held, onDisk);
+            if (claimsDirectory(onDisk, this.identity, held.directory)) {
+                this.loseTo(held, onDisk);
+            } else {
+                // Copied in from another folder in the moment the file was missing: nobody's claim
+                // on this one, so written over as a heartbeat would.
+                await this.writeRecord(held.lockPath, held.record);
+            }
         }
         // Otherwise the file that appeared is this session's own - a beat that overlapped this one -
         // or one nobody can read, which the next beat writes over.
@@ -396,6 +413,7 @@ export class ProjectSessionLockManager {
             this.logger.warn("[Project] Could not create the session lock directory for", resolved, error);
             return { ok: true };
         }
+        const directory = await canonicalDirectoryDigest(resolved);
 
         // Two rounds. The first acts on what is there; the second exists because "there was nothing
         // there" can be answered by another process getting in first, and the answer to that is the
@@ -406,6 +424,7 @@ export class ProjectSessionLockManager {
                 self: this.identity,
                 now: this.now(),
                 isProcessAlive: this.isProcessAlive,
+                directory,
             });
 
             if (claim.kind === "held") {
@@ -439,10 +458,18 @@ export class ProjectSessionLockManager {
                     `- ${claim.reason}.`,
                 );
             }
+            if (claim.kind === "copied") {
+                // Nothing the author needs to hear about: this folder is not open anywhere, and the
+                // record in it is about the folder it was copied from.
+                this.logger.info(
+                    "[Project] The session lock on", resolved,
+                    "came with the project from another folder and claims nothing here; replacing it.",
+                );
+            }
 
             const taken = claim.kind === "free"
-                ? await this.createLock(lockPath)
-                : await this.takeOver(lockPath);
+                ? await this.createLock(lockPath, directory)
+                : await this.takeOver(lockPath, directory);
 
             if (taken.outcome === "taken") {
                 // Before the claim is answered, and so before the window reads or writes a single
@@ -455,6 +482,7 @@ export class ProjectSessionLockManager {
                     projectPath: resolved,
                     lockPath,
                     lastClaimPath,
+                    directory,
                     record: taken.record,
                     lastClaim,
                 });
@@ -481,8 +509,8 @@ export class ProjectSessionLockManager {
     }
 
     /** Create the file, which only one of two simultaneous callers can do. */
-    private async createLock(lockPath: string): Promise<ClaimAttempt> {
-        const record = buildProjectSessionLockRecord(this.identity, this.now());
+    private async createLock(lockPath: string, directory: string): Promise<ClaimAttempt> {
+        const record = buildProjectSessionLockRecord(this.identity, this.now(), directory);
         const created = await Fs.createFileExclusive(lockPath, serializeProjectSessionLockRecord(record));
         if (!created.ok) {
             this.logger.warn("[Project] Could not write the session lock", lockPath, created.error.message);
@@ -500,9 +528,9 @@ export class ProjectSessionLockManager {
      * writing its own: after it, exactly one of the two is holding a record that is on disk, and the
      * other has been told who the holder is.
      */
-    private async takeOver(lockPath: string): Promise<ClaimAttempt> {
+    private async takeOver(lockPath: string, directory: string): Promise<ClaimAttempt> {
         await fs.rm(lockPath, { force: true }).catch(() => undefined);
-        const created = await this.createLock(lockPath);
+        const created = await this.createLock(lockPath, directory);
         if (created.outcome !== "taken") {
             return created;
         }
@@ -666,7 +694,31 @@ function sameRecord(a: ProjectSessionLockRecord | null, b: ProjectSessionLockRec
         && a.hostname === b.hostname
         && a.installation === b.installation
         && a.startedAt === b.startedAt
-        && a.heartbeat === b.heartbeat;
+        && a.heartbeat === b.heartbeat
+        && a.directory === b.directory;
+}
+
+/**
+ * The folder a claim is about, as its records state it: the canonical path, digested.
+ *
+ * Canonical means what the file system itself calls the folder. `realpath` - which on Windows asks
+ * for the final path of an open handle - brings a junction, a symbolic link, a drive letter mapped
+ * onto a share or `subst`ed onto a folder, an 8.3 short name and a differently-cased spelling all
+ * back to the one path they lead to. Two Studios that reached one folder by two routes have to write
+ * the same digest, or each would read the other's claim as one copied from elsewhere and both would
+ * be let in.
+ *
+ * A folder the call fails on (some virtual drives refuse the final-path query) keeps the path as it
+ * was given, folded as every project path is.
+ */
+async function canonicalDirectoryDigest(resolved: string): Promise<string> {
+    let canonical = resolved;
+    try {
+        canonical = await fs.realpath(resolved);
+    } catch {
+        // Keep the resolved spelling; see above.
+    }
+    return digestProjectDirectory(canonical);
 }
 
 /** The identity key: the same normalization every other per-project map in Studio is keyed by. */

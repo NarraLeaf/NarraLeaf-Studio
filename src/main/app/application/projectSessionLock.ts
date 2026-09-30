@@ -1,6 +1,8 @@
+import { createHash } from "crypto";
 import path from "path";
 
 import type { ProjectSessionHolder } from "@shared/types/projectSession";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 /**
  * One project, one Studio.
@@ -21,9 +23,9 @@ import type { ProjectSessionHolder } from "@shared/types/projectSession";
  *
  * The record identifies a *session*, not a person: the process id and the machine, plus a digest of
  * the profile directory so that two Studios on one machine under different profiles are two
- * holders. None of that except the machine name and the time reaches the interface - a process id
- * is not something an author can act on, and a digest is not something anybody should ever be
- * shown.
+ * holders, and a digest of the folder it claims (see "Copies of a project that is open" below). None
+ * of that except the machine name and the time reaches the interface - a process id is not something
+ * an author can act on, and a digest is not something anybody should ever be shown.
  *
  * ## Staleness
  *
@@ -75,6 +77,30 @@ import type { ProjectSessionHolder } from "@shared/types/projectSession";
  *
  * A Studio from before the last-claim record never writes one, so a takeover by one of those that
  * has already closed again still goes unnoticed; every claim this version makes is covered.
+ *
+ * ## Copies of a project that is open
+ *
+ * The claim is a file inside the project, so anything that copies the folder copies the claim with
+ * it: an Explorer copy, a backup, a zip sent to a colleague. The copy is a folder nobody has open,
+ * but its lock names a Studio that is running and heartbeating - the original folder, not this one -
+ * so until that record's heartbeat went stale the copy could not be opened.
+ *
+ * So a record also says which folder it claims ({@link ProjectSessionLockRecord.directory}), and a
+ * record found in a folder other than the one it names is not a claim on that folder at all: it is
+ * taken over without a word, as a claim by a process that has gone would be. The same goes for a
+ * last-claim record, which says nothing about who has had this folder if it was made on another.
+ *
+ * Only for a record written on THIS machine. A path is only comparable with another path on the
+ * machine that resolved it: the same project reached through a sync client, or through a network
+ * share mounted somewhere else, is one folder under two different paths on two machines - and that is
+ * exactly the second writer this lock exists to keep out. A copy that carries a claim from another
+ * machine is judged on its heartbeat, as every claim from there always was, so it opens once the
+ * frozen heartbeat is {@link PROJECT_SESSION_LOCK_STALE_MS} old - which a copy that went through an
+ * archive or an upload usually already is.
+ *
+ * A record from a Studio that did not write the folder is a claim as it always was. That Studio may
+ * be running and holding the project right now, and a claim that cannot be checked is not one to wave
+ * through; a copy made from under one of those still waits for the heartbeat.
  */
 
 /** Where the claim lives, relative to the project directory. */
@@ -114,6 +140,16 @@ export interface ProjectSessionLockRecord {
     startedAt: string;
     /** When it last said it was still here, ISO-8601. */
     heartbeat: string;
+    /**
+     * A digest of the folder this claim was made on, as the claiming machine resolves it - see
+     * {@link digestProjectDirectory}.
+     *
+     * What tells a claim on this folder from one that was copied into it along with the project.
+     * Digested for the same reason as {@link installation}: the path is somebody's disk, and this
+     * file goes wherever the project goes. Absent from a record written before it existed, and such
+     * a record is a claim on whatever folder it is found in.
+     */
+    directory?: string;
 }
 
 /** Who this process is, as a lock record identifies it. */
@@ -139,6 +175,12 @@ export type ProjectSessionClaim =
      * the project away from it.
      */
     | { kind: "stale"; reason: string; holderRunning: boolean }
+    /**
+     * The record claims another folder on this machine: it came along when the project was copied,
+     * and says nothing about this one. Taken over at once and without a word, whoever wrote it and
+     * whether or not that Studio is still running - it is holding the original, not this copy.
+     */
+    | { kind: "copied" }
     /** Another session holds it, and is still saying so. */
     | { kind: "held"; holder: ProjectSessionHolder };
 
@@ -150,6 +192,8 @@ export interface ProjectSessionClaimContext {
     now: number;
     /** Whether a process id is running on THIS machine. */
     isProcessAlive: (pid: number) => boolean;
+    /** The folder the record was found in, digested the way a record states its own. */
+    directory: string;
 }
 
 /**
@@ -172,6 +216,11 @@ export function decideProjectSessionClaim(
     }
 
     const sameHost = record.hostname === context.self.hostname;
+    // Before anything about who wrote it: a record about another folder is not about this one,
+    // even when it was this very process that wrote it there.
+    if (!claimsDirectory(record, context.self, context.directory)) {
+        return { kind: "copied" };
+    }
     if (isRecordOf(record, context.self)) {
         return { kind: "own" };
     }
@@ -204,6 +253,12 @@ export type HeldProjectSessionState =
     /** Another session's claim is where this one's was. */
     | { kind: "taken-over"; by: ProjectSessionLockRecord }
     /**
+     * Another session's record is where this one's was, but it claims another folder on this
+     * machine: it was copied in over this project's own files, and claims nothing here. Written over,
+     * as a record nobody can read is.
+     */
+    | { kind: "stray" }
+    /**
      * This session's claim is gone, and the last claim on the project was made by another session
      * after this one made its own: somebody had the project in between, and has let go of it since.
      * The same loss as a takeover, found after the fact.
@@ -222,6 +277,8 @@ export interface HeldProjectSessionContext {
      * this one is not news, whoever it names.
      */
     lastClaimAtOwnClaim: ProjectSessionLockRecord | null;
+    /** The folder this session holds, digested the way a record states its own. */
+    directory: string;
 }
 
 /**
@@ -235,7 +292,8 @@ export interface HeldProjectSessionContext {
  * A missing last-claim record is no evidence of anybody: it is what a cleared `.nlstudio/` looks
  * like, and what a project last opened by a Studio from before the record existed looks like. Only
  * a record naming some other session, and not the one that was there when this session claimed,
- * says that another Studio took the project after this one did.
+ * says that another Studio took the project after this one did - and only when it was made on this
+ * folder: one that names another folder on this machine came in with copied files.
  */
 export function decideHeldProjectSession(
     lock: ProjectSessionLockRecord | null,
@@ -243,12 +301,18 @@ export function decideHeldProjectSession(
     context: HeldProjectSessionContext,
 ): HeldProjectSessionState {
     if (lock !== null) {
-        return isRecordOf(lock, context.self) ? { kind: "own" } : { kind: "taken-over", by: lock };
+        if (isRecordOf(lock, context.self)) {
+            return { kind: "own" };
+        }
+        return claimsDirectory(lock, context.self, context.directory)
+            ? { kind: "taken-over", by: lock }
+            : { kind: "stray" };
     }
 
     if (
         lastClaim === null
         || isRecordOf(lastClaim, context.self)
+        || !claimsDirectory(lastClaim, context.self, context.directory)
         || (context.lastClaimAtOwnClaim !== null && isSameClaim(lastClaim, context.lastClaimAtOwnClaim))
     ) {
         return { kind: "reclaim" };
@@ -261,6 +325,39 @@ export function isRecordOf(record: ProjectSessionLockRecord, identity: ProjectSe
     return record.pid === identity.pid
         && record.hostname === identity.hostname
         && record.installation === identity.installation;
+}
+
+/**
+ * Whether a record found in the folder `directory` is a claim on that folder, as far as this machine
+ * can tell.
+ *
+ * Yes unless it was written here and names another folder - see "Copies of a project that is open"
+ * above for why a record from another machine, and one from a Studio that did not write the folder,
+ * are both taken at their word.
+ */
+export function claimsDirectory(
+    record: ProjectSessionLockRecord,
+    self: ProjectSessionIdentity,
+    directory: string,
+): boolean {
+    if (record.directory === undefined || record.hostname !== self.hostname) {
+        return true;
+    }
+    return record.directory === directory;
+}
+
+/**
+ * The digest a record states its folder by, from the folder's canonical path on this machine.
+ *
+ * The caller resolves the path first - links, junctions, a drive letter mapped onto a share, the
+ * spelling the file system itself uses (see `ProjectSessionLockManager`) - because two spellings of
+ * one folder that digested differently would read as a copy, and let a second Studio in beside the
+ * first. {@link normalizeProjectPath} then folds what is left the way every other per-project key in
+ * Studio is folded. Sixteen hex digits, like the profile digest: enough to tell folders apart, and
+ * nothing a reader could turn back into a path.
+ */
+export function digestProjectDirectory(canonicalPath: string): string {
+    return createHash("sha256").update(normalizeProjectPath(canonicalPath)).digest("hex").slice(0, 16);
 }
 
 /**
@@ -281,10 +378,11 @@ export function describeHolder(record: ProjectSessionLockRecord, sameHost: boole
     };
 }
 
-/** The record this process would write, taking the project now. */
+/** The record this process would write, taking the project in the folder `directory` now. */
 export function buildProjectSessionLockRecord(
     self: ProjectSessionIdentity,
     now: number,
+    directory: string,
 ): ProjectSessionLockRecord {
     const timestamp = new Date(now).toISOString();
     return {
@@ -293,6 +391,7 @@ export function buildProjectSessionLockRecord(
         installation: self.installation,
         startedAt: timestamp,
         heartbeat: timestamp,
+        directory,
     };
 }
 
@@ -333,6 +432,9 @@ export function parseProjectSessionLockRecord(content: string): ProjectSessionLo
         installation: candidate.installation,
         startedAt: candidate.startedAt,
         heartbeat: candidate.heartbeat,
+        // Left off when it is not a string rather than failing the record: nothing writes that, and
+        // a record that says nothing about its folder is still a claim, which is the side to err on.
+        ...(typeof candidate.directory === "string" ? { directory: candidate.directory } : {}),
     };
 }
 
