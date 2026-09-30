@@ -98,7 +98,7 @@ import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./disp
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
 import { refuseToStart, type StartupRefusalHost } from "./startupRefusal";
-import { describeRuntimeError, installMainProcessErrorReporting } from "./mainProcessErrors";
+import { createCrashTeardown, describeRuntimeError, installMainProcessErrorReporting } from "./mainProcessErrors";
 import {
     currentWindowScale,
     fitInside,
@@ -111,7 +111,7 @@ import {
     writeWindowGeometry,
     type WindowChrome,
 } from "./windowGeometry";
-import { installWindowCrashHandling } from "./windowCrashHandling";
+import { installWindowCrashHandling, type WindowCrashHandle } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
     hasStartupSwitch,
@@ -362,6 +362,8 @@ let loadedBuildIdentity: CrashReportBuild | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The main window's crash handling, which also decides what a page that will not load means. */
+let mainWindowCrashHandling: WindowCrashHandle | null = null;
 /** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
 let displaySleep: DisplaySleepInhibitor | null = null;
 /** What the project says its window may do; settled from the pack as the window is built. */
@@ -726,7 +728,11 @@ void app.whenReady().then(async () => {
         if (isQuitting) {
             return;
         }
-        throw error;
+        // Not rethrown: a page that will not load is the window's crash handling's to decide, and
+        // it has almost always decided already from the same failure's `did-fail-load`. Rethrown, it
+        // became a rejection the game records and survives - with an empty window in front of the
+        // player for as long as the process lived.
+        mainWindowCrashHandling?.loadRejected(error);
     });
 });
 
@@ -841,12 +847,8 @@ const WEBSOCKET_OPEN = 1;
  * Registered here, below `testSubscribers`, so an error thrown while this module is still evaluating
  * finds the set initialised.
  */
-installMainProcessErrorReporting({
-    on: (event: "uncaughtException" | "unhandledRejection", listener: (...args: never[]) => void) => {
-        process.on(event, listener as (...args: unknown[]) => void);
-    },
+const endGameAfterCrash = createCrashTeardown({
     log: logRuntime,
-    emitTestEvent: event => emitTestEvent(event),
     flushForCrash: () => {
         isQuitting = true;
         return Promise.allSettled([saveStore?.flush(), persistenceStore?.flush()]);
@@ -858,6 +860,15 @@ installMainProcessErrorReporting({
         sidecarHost?.killAllSync();
         app.exit(code);
     },
+});
+
+installMainProcessErrorReporting({
+    on: (event: "uncaughtException" | "unhandledRejection", listener: (...args: never[]) => void) => {
+        process.on(event, listener as (...args: unknown[]) => void);
+    },
+    log: logRuntime,
+    emitTestEvent: event => emitTestEvent(event),
+    endAfterCrash: endGameAfterCrash,
 });
 
 /**
@@ -1283,7 +1294,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("focus", emitWindowFocus(true));
     win.on("blur", emitWindowFocus(false));
-    installWindowCrashHandling(win, {
+    mainWindowCrashHandling = installWindowCrashHandling(win, {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
@@ -1292,11 +1303,15 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,
         isQuitting: () => isQuitting,
-        quit: () => {
+        failedToStart: (reason, headline) => {
             isQuitting = true;
-            app.quit();
+            refuseToStart(startupRefusalHost, {
+                kind: "failed",
+                reason,
+                tellPlayer: () => reportFatalRuntimeError(headline),
+            });
         },
-        reportFatal: reportFatalRuntimeError,
+        endAfterCrash: endGameAfterCrash,
         ask: async request => (await dialog.showMessageBox(win, {
             type: "warning",
             title: request.title,
