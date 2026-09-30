@@ -98,6 +98,7 @@ import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./disp
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
 import { refuseToStart, type StartupRefusalHost } from "./startupRefusal";
+import { describeRuntimeError, installMainProcessErrorReporting } from "./mainProcessErrors";
 import {
     currentWindowScale,
     fitInside,
@@ -788,7 +789,7 @@ process.on("exit", () => {
  * server for anything to subscribe on. That is what makes {@link emitTestEvent} safe to call from
  * anywhere, including a crash handler - with no subscribers it does nothing at all.
  *
- * Declared above the error monitor below rather than after it, so an exception thrown while this
+ * Declared above the error reporting below rather than after it, so an exception thrown while this
  * module is still evaluating finds an initialised set instead of a temporal-dead-zone error that
  * would replace the real crash with a bogus one.
  */
@@ -797,46 +798,27 @@ const testSubscribers = new Set<WebSocket>();
 /** `ws` readyState for an open socket; compared numerically so no `ws` value import is needed. */
 const WEBSOCKET_OPEN = 1;
 
-function describeRuntimeError(error: unknown): { message: string; stack?: string } {
-    if (error instanceof Error) {
-        return {
-            message: error.message || String(error),
-            ...(error.stack ? { stack: error.stack } : {}),
-        };
-    }
-    return { message: String(error) };
-}
-
 /**
- * Report an uncaught error in the game's main process without changing what happens next.
+ * Record every error nobody caught in the game's main process: the log, a test that is watching, and -
+ * for an exception - the fatal box. See `mainProcessErrors` for what Electron does with each kind on
+ * its own (measured, and not what Node does), and why a rejection is recorded but not fatal.
  *
- * `uncaughtExceptionMonitor` rather than `uncaughtException` / `unhandledRejection`: registering
- * either of those *replaces* Node's default handling, and the default is to die. A game left alive
- * after an uncaught exception - half-initialised, its invariants gone - is a worse bug than the
- * missing report this hook exists to fix, and a test watching that wreck would call it a pass.
- * The monitor observes and the process still ends exactly as it would have. Unhandled rejections
- * arrive here too: Node's default mode raises them as uncaught exceptions.
+ * An exception is observed rather than taken over: `uncaughtExceptionMonitor` leaves what happens
+ * next to whatever already decides it. The report to a test is best-effort by nature - the frame is
+ * written to the socket on the way, and a process that dies before the kernel drains it loses the
+ * message. Studio classifies the run from the exit code as well, so a lost frame costs detail, not
+ * the verdict.
  *
- * Best-effort by nature - the frame is written to the socket on the way out, and a process that
- * dies before the kernel drains it loses the message. Studio still classifies the death from the
- * exit code, so a lost frame costs detail, not the verdict.
+ * Registered here, below `testSubscribers`, so an error thrown while this module is still evaluating
+ * finds the set initialised.
  */
-process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
-    const described = describeRuntimeError(error);
-    const headline = origin === "unhandledRejection"
-        ? `Unhandled rejection: ${described.message}`
-        : described.message;
-    emitTestEvent({
-        kind: "runtime-error",
-        scope: "main",
-        message: headline,
-        ...(described.stack ? { stack: described.stack } : {}),
-    });
-    // Written before the box below, so the record survives even if drawing it is what fails. Both
-    // are new: this used to report to a test nobody was running and then let the process disappear
-    // off the player's screen without a word.
-    logRuntime("error", `[Crash] ${headline}${described.stack ? `\n${described.stack}` : ""}`);
-    reportFatalRuntimeError(headline);
+installMainProcessErrorReporting({
+    on: (event: "uncaughtExceptionMonitor" | "unhandledRejection", listener: (...args: never[]) => void) => {
+        process.on(event, listener as (...args: unknown[]) => void);
+    },
+    log: logRuntime,
+    emitTestEvent: event => emitTestEvent(event),
+    reportFatal: reportFatalRuntimeError,
 });
 
 /**
