@@ -97,6 +97,32 @@ function collectExports() {
     return result;
 }
 
+/**
+ * Studio names its own interface strings with `TranslationKey`, the union of every key in the
+ * English catalogue. Inside Studio that exactness is worth having: a mistyped key fails to compile.
+ * In the published package it is a liability. The package carries Studio's version, and almost
+ * every Studio release renames or retires a few keys, so an exact union would turn an ordinary
+ * patch release into a breaking one for any plugin that happened to name a key since removed.
+ * Plugins do not own keys in this catalogue - a plugin's strings come from its own translator - so
+ * the published type keeps the known keys for completion and accepts any other string.
+ *
+ * Matching the exact declaration and failing when it is absent is deliberate: if the source ever
+ * spells the type differently, a silent no-op here would put the exact union back on npm.
+ */
+const EXACT_TRANSLATION_KEY = "type TranslationKey = Flatten<Messages>;";
+const PUBLISHED_TRANSLATION_KEY = "type TranslationKey = Flatten<Messages> | (string & {});";
+
+function widenTranslationKey(declarations) {
+    const occurrences = declarations.split(EXACT_TRANSLATION_KEY).length - 1;
+    if (occurrences !== 1) {
+        throw new Error(
+            `Expected exactly one \`${EXACT_TRANSLATION_KEY}\` in the bundled declarations, found ${occurrences}.\n` +
+            "Its spelling changed in the source; update widenTranslationKey in packages/plugin-types/build.mjs.",
+        );
+    }
+    return declarations.replace(EXACT_TRANSLATION_KEY, PUBLISHED_TRANSLATION_KEY);
+}
+
 function buildSharedEntry(exportsByEntry) {
     // `export *` from both surfaces: if the same name were exported by both,
     // the star re-exports would silently cancel each other out and the name
@@ -168,7 +194,7 @@ function verify(dir) {
     const tsconfigPath = path.join(dir, "tsconfig.verify.json");
 
     fs.writeFileSync(probePath, `import type { ReactElement } from "react";
-import type { PluginBlueprintNodeDef, PluginServices } from "./plugin.js";
+import type { PluginBlueprintNodeDef, PluginServices, TestText } from "./plugin.js";
 import type { RuntimeBlueprintNodeDef, RuntimePluginApp, RuntimeWidgetRendererProps } from "./runtime.js";
 
 // A shared node definition must satisfy both surfaces; this is the pattern the
@@ -191,6 +217,10 @@ services.blueprintNodes.registerMany(shared);
 declare const widgetRender: (props: RuntimeWidgetRendererProps) => ReactElement | null;
 type StudioWidgetRender = Parameters<PluginServices["widgets"]["register"]>[0]["render"];
 const _studioAcceptsWidgetRender: StudioWidgetRender = widgetRender;
+
+// A key Studio has since retired still compiles: the published TranslationKey is open (see
+// widenTranslationKey), so renaming a catalogue key is not a breaking change to this package.
+const _retiredKeyCompiles: TestText = { key: "retired.catalogue.key" };
 export type { };
 `);
 
@@ -262,7 +292,7 @@ files.set(`${SHARED_MODULE}.d.ts`, `/**
  * ${GENERATED_NOTE}
  */
 
-${bundled}`);
+${widenTranslationKey(bundled)}`);
 for (const entry of ENTRIES) {
     files.set(`${entry.name}.d.ts`, shim(entry, exportsByEntry.get(entry.name)));
     files.set(`${entry.name}.js`, stub(entry));
