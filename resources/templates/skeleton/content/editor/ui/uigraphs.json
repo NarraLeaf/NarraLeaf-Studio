@@ -23267,6 +23267,21 @@
               "name": "Fill",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "This list shows the CG entries of the Gallery panel on the left rail. A new project has none, so the list starts empty. A locked entry draws as a dark tile with a padlock; an Unlock Gallery node in the story unlocks it, and pressing an unlocked entry opens the picture full size.",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -24203,6 +24218,21 @@
               "name": "Fill",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "This list shows the recollection entries of the Gallery panel on the left rail. A new project has none, so the list starts empty. A locked entry draws as a dark tile with a padlock; reaching its scene in the story unlocks it, and pressing an unlocked entry replays the scene.",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -24860,6 +24890,21 @@
               "name": "Fill",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "This list shows the music entries of the Gallery panel on the left rail. A new project has none, so the list starts empty. A locked row shows a padlock; playing the track in the story unlocks it, and pressing an unlocked row plays the track.",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -25445,6 +25490,21 @@
               "name": "Fill",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "This list shows the voice entries of the Gallery panel on the left rail. A new project has none, so the list starts empty. A locked row shows a padlock; hearing the line in the story unlocks it, and pressing an unlocked row plays the line.",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -27287,6 +27347,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-30T18:27:17.244Z"
+    "updatedAt": "2026-09-30T19:20:34.861Z"
   }
 }
