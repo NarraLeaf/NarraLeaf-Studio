@@ -39,6 +39,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { StoryLibraryEntry } from "@shared/types/story";
+import { clipVolume, normalizeAudioClipRegion } from "@shared/types/audio";
 import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
 import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
@@ -369,6 +370,8 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                 audioRef.current = audio;
             }
             audio.src = url;
+            // The level the game plays the take at: its gain, folded in the way every path folds it.
+            audio.volume = clipVolume(normalizeAudioClipRegion(asset.extras));
             audio.onended = () => stopPlayback();
             setPlayingUnitId(unitId);
             await audio.play();

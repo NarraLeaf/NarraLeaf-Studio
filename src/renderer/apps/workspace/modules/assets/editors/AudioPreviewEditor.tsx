@@ -26,7 +26,7 @@ import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
-import { isDeferredWriteAllowed, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { audioLoopHistoryScope } from "@/lib/workspace/services/history/historyScopes";
@@ -36,19 +36,8 @@ import { LoopSeamView, SEAM_DEFAULT_HALF_SECONDS, clampHalfWindow } from "./audi
 import { planSeamAudition, resolveLoopSeam, SEAM_AUDITION_SECONDS } from "./audio/seam";
 import { measureLevelsInSlices, type ClipLevels } from "./audio/levels";
 import { stepAmplitude } from "./audio/amplitude";
-import {
-    alignedGain,
-    clampGainDb,
-    clampTargetLufs,
-    gainFactor,
-    gainFromAssetExtras,
-    projectTargetLufs,
-    sameGain,
-    storedLengthIsStale,
-    toAssetGain,
-    toStoredRegion,
-    type ClipGain,
-} from "./audio/clipGain";
+import { alignedGainDb, clampGainDb, gainFromAssetExtras, toAssetGain } from "./audio/clipGain";
+import { clipVolume } from "@shared/types/audio";
 import { useClipPlayback, type PlayRange } from "./audio/useClipPlayback";
 import { clipDuration, clipLength, fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt, zoomToRange } from "./audio/viewWindow";
@@ -60,6 +49,7 @@ import {
     loopPointAt,
     markPoint,
     sameLoop,
+    toAssetLoop,
     type LoopPoints,
 } from "./audio/loopHistory";
 import { TooltipGroup } from "@/lib/tooltip";
@@ -132,14 +122,14 @@ function withGain(value: number, gainDb: number): string {
     return gainDb === 0 || !Number.isFinite(value) ? formatDb(value) : `${formatDb(value)} \u2192 ${formatDb(value + gainDb)}`;
 }
 
-/** Everything the editor authors on the asset: the markers and the gain. */
+/** Everything the editor authors on the asset: the markers and the gain in decibels, 0 at unity. */
 interface ClipAuthoring {
     loop: LoopPoints;
-    gain: ClipGain;
+    gainDb: number;
 }
 
 function authoringFromExtras(extras: AssetExtras | undefined): ClipAuthoring {
-    return { loop: fromAssetExtras(extras), gain: gainFromAssetExtras(extras) };
+    return { loop: fromAssetExtras(extras), gainDb: gainFromAssetExtras(extras) };
 }
 
 /** Levels read to one decimal, which is as fine as any of them is worth comparing. */
@@ -152,19 +142,21 @@ function formatDb(value: number): string {
  * and the clip's in and out points.
  *
  * Deliberately not an editor. Studio's job is to tell you what a clip sounds like and where its
- * interesting moments are, not to be a DAW; trimming and gain belong in the tool the audio came
+ * interesting moments are, not to be a DAW; trimming and mastering belong in the tool the audio came
  * from. What survives is the part that informs authoring: drag a range and loop it to find a BGM's
- * in/out points, then mark them. Those two points are the only thing written back (to the asset
- * record - they are authored data, not a cache); the audio file is never modified.
+ * in/out points, then mark them, and turn a loud clip down to sit with the rest. The markers and the
+ * gain are the only things written back (to the asset record - they are authored data, not a cache),
+ * and only when the author sets one: opening a clip writes nothing. The audio file is never modified.
  *
- * That also makes cue points the only undoable thing here, which is what the history covers.
+ * That also makes the markers and the gain the only undoable things here, which is what the history
+ * covers.
  */
 export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
     const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     // Playback, zoom, selection and the jump-to-point keys are pure inspection and stay live while
-    // frozen. The cue points are the one thing here that is written back to the asset record, so
-    // they are the one thing the freeze refuses.
+    // frozen. The markers and the gain are the only things here written back to the asset record,
+    // so they are the only things the freeze refuses.
     const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const asset = payload?.asset;
 
@@ -197,7 +189,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     // undoing straight after an alignment would take back the marker change before it instead.
     const [committed, setCommitted] = useState<ClipAuthoring>(() => authoringFromExtras(payload?.asset.extras));
     const committedLoop = committed.loop;
-    const committedGain = committed.gain;
+    const committedGainDb = committed.gainDb;
     const loopHistory = useHistoryScope<ClipAuthoring>({
         scopeId: payload?.asset.id ? audioLoopHistoryScope(payload.asset.id) : null,
         label: { key: "workspace.history.scope.audioLoop" },
@@ -217,8 +209,12 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const playback = useClipPlayback(clip);
     const { playing, position, setPosition, finished, loop, setLoop, play, stop, setGain } = playback;
     // The clip's gain applies to what is heard here too, so aligning a clip is something to listen to
-    // and not only a number. The volume slider stays the author's own monitoring level on top.
-    useEffect(() => setGain((muted ? 0 : volume) * gainFactor(committedGain)), [muted, volume, committedGain, setGain]);
+    // and not only a number - folded in by the same `clipVolume` the game uses. The volume slider
+    // stays the author's own monitoring level.
+    useEffect(
+        () => setGain(clipVolume({ gainDb: committedGainDb }, muted ? 0 : volume)),
+        [muted, volume, committedGainDb, setGain],
+    );
     const totalSamples = clip ? clipLength(clip) : 0;
 
     // ---- loading -----------------------------------------------------------
@@ -316,17 +312,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
     // ---- in and out points -------------------------------------------------
 
-    /**
-     * The decoded file's length and hash, which a region with no out point is stored with (see
-     * `toStoredRegion`). Null until the clip decodes.
-     */
-    const fileFacts = useMemo(
-        () => (clip && asset?.hash ? { lengthMs: Math.round(clipDuration(clip) * 1000), hash: asset.hash } : null),
-        [clip, asset?.hash],
-    );
-
     // The region and the gain ride with the asset record, so they survive closing the tab and are
-    // visible to anything else reading the asset - the game bundle included.
+    // visible to anything else reading the asset - the game bundle included. Nothing else is: how a
+    // region with no out point ends is worked out from the markers wherever the clip plays (see
+    // `clipSoundConfig`), so the record never needs a fact about the file.
     const persistAuthoring = useCallback(
         (next: ClipAuthoring, changed: { loop: boolean; gain: boolean }) => {
             if (!context || !asset) {
@@ -335,15 +324,15 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             void context.services.get<AssetsService>(Services.Assets).patchAssetExtras(asset, {
                 ...(changed.loop
                     ? {
-                        audioLoop: toStoredRegion(next.loop, fileFacts),
+                        audioLoop: toAssetLoop(next.loop),
                         // Drop the superseded list, so a record never carries both shapes.
                         cuePoints: undefined,
                     }
                     : {}),
-                ...(changed.gain ? { audioGain: toAssetGain(next.gain) } : {}),
+                ...(changed.gain ? { audioGain: toAssetGain(next.gainDb) } : {}),
             });
         },
-        [context, asset, fileFacts],
+        [context, asset],
     );
 
     /**
@@ -374,7 +363,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
         const changed = {
             loop: !sameLoop(persistedRef.current.loop, committed.loop),
-            gain: !sameGain(persistedRef.current.gain, committed.gain),
+            gain: persistedRef.current.gainDb !== committed.gainDb,
         };
         if (!changed.loop && !changed.gain) {
             return;
@@ -383,31 +372,12 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         persistAuthoring(committed, changed);
     }, [committed, persistAuthoring]);
 
-    /**
-     * Record the file's length on a region that needs it but was stored without one - markers set
-     * before lengths were recorded, or a file replaced since. Nobody asked for this write, so a freeze
-     * defers it rather than refusing it, and it runs again once the project is writable: the check is
-     * against the record, so whatever was out of date still is.
-     */
-    const frozen = freeze.frozen;
-    useEffect(() => {
-        if (!context || !asset || !fileFacts || draftLoop || !isDeferredWriteAllowed(frozen)) {
-            return;
-        }
-        const assets = context.services.get<AssetsService>(Services.Assets);
-        const live = assets.getAssets()[AssetType.Audio]?.[asset.id];
-        if (!storedLengthIsStale(live?.extras?.audioLoop, committed.loop, fileFacts)) {
-            return;
-        }
-        void assets.patchAssetExtras(asset, { audioLoop: toStoredRegion(committed.loop, fileFacts) });
-    }, [context, asset, fileFacts, committed.loop, draftLoop, frozen]);
-
     const commitAuthoring = useCallback(
         (next: ClipAuthoring, entry: "workspace.history.entry.audioMarkers" | "workspace.history.entry.audioGain") => {
             setDraftLoop(null);
             // A commit that changes nothing must not push a step, or undo starts needing repeated
             // presses to get anywhere.
-            if (sameLoop(committed.loop, next.loop) && sameGain(committed.gain, next.gain)) {
+            if (sameLoop(committed.loop, next.loop) && committed.gainDb === next.gainDb) {
                 return;
             }
             loopHistory.checkpoint({ key: entry });
@@ -422,36 +392,22 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     );
 
     const commitGain = useCallback(
-        (next: ClipGain) => {
+        (nextDb: number) => {
             if (freeze.frozen) {
                 return;
             }
-            commitAuthoring({ ...committed, gain: next }, "workspace.history.entry.audioGain");
+            commitAuthoring({ ...committed, gainDb: nextDb }, "workspace.history.entry.audioGain");
         },
         [commitAuthoring, committed, freeze.frozen],
     );
 
-    /**
-     * The loudness the next alignment levels this clip to. Opens on the target this clip was last
-     * aligned to, else the one the project's other clips share, so a project balances to one level
-     * without a setting of its own. Not stored until an alignment uses it.
-     */
-    const [targetLufs, setTargetLufs] = useState(-16);
-    useEffect(() => {
-        if (!context || !asset) {
-            return;
-        }
-        const own = gainFromAssetExtras(asset.extras).targetLufs;
-        const audio = context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio] ?? {};
-        setTargetLufs(own ?? projectTargetLufs(Object.values(audio).map(entry => entry?.extras)));
-    }, [context, asset?.id]);
-
+    /** Set the gain from the measured loudness, to the one level Studio aligns every clip to. */
     const alignLoudness = useCallback(() => {
         if (levels?.loudnessLufs === null || levels?.loudnessLufs === undefined) {
             return;
         }
-        commitGain(alignedGain(levels.loudnessLufs, targetLufs));
-    }, [levels, targetLufs, commitGain]);
+        commitGain(alignedGainDb(levels.loudnessLufs));
+    }, [levels, commitGain]);
 
     const sampleToMs = useCallback(
         (sample: number) => (clip ? Math.max(0, Math.round((sample / clip.sampleRate) * 1000)) : 0),
@@ -1009,13 +965,13 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         {[
                             {
                                 label: t("assets.audio.editor.peak"),
-                                value: levels && `${withGain(levels.peakDb, committedGain.db)} dBFS`,
+                                value: levels && `${withGain(levels.peakDb, committedGainDb)} dBFS`,
                             },
                             {
                                 label: t("assets.audio.editor.loudness"),
                                 value: levels && (levels.loudnessLufs === null
                                     ? "-"
-                                    : `${withGain(levels.loudnessLufs, committedGain.db)} LUFS`),
+                                    : `${withGain(levels.loudnessLufs, committedGainDb)} LUFS`),
                             },
                             {
                                 label: t("assets.audio.editor.leadingSilence"),
@@ -1042,35 +998,23 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         ))}
                     </dl>
                     {/* The gain, and the alignment that sets it. Written to the asset, so the game
-                        plays the clip at this level wherever it is used. */}
-                    <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border border-edge bg-surface-raised p-3 text-xs">
+                        plays the clip at this level wherever it is used. Aligning brings the clip
+                        to a loudness Studio chooses, so there is no target to fill in. */}
+                    <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md border border-edge bg-surface-raised p-3 text-xs">
                         <span className="flex min-h-7 items-center self-start whitespace-nowrap text-fg-muted">{t("assets.audio.editor.gain")}:</span>
-                        <div className="flex justify-end">
+                        {/* Wraps the button under the field in a narrow column rather than squeezing it. */}
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                             <NumericDraftEnhancedInput
                                 size="sm"
                                 unit="dB"
                                 className="w-24"
                                 commitOn="blur"
-                                draftResetKey={`${asset?.id}:${committedGain.db}`}
-                                committedDisplay={committedGain.db.toFixed(1)}
-                                onFiniteNumber={value => commitGain({ db: clampGainDb(value), targetLufs: null })}
+                                draftResetKey={`${asset?.id}:${committedGainDb}`}
+                                committedDisplay={committedGainDb.toFixed(1)}
+                                onFiniteNumber={value => commitGain(clampGainDb(value))}
                                 disabled={freeze.frozen}
                                 data-tip={freeze.frozen ? freeze.reason : t("assets.audio.editor.gainTip")}
                                 aria-label={t("assets.audio.editor.gain")}
-                            />
-                        </div>
-                        <span className="flex min-h-7 items-center self-start whitespace-nowrap text-fg-muted">{t("assets.audio.editor.target")}:</span>
-                        {/* Wraps the button under the field in a narrow column rather than squeezing it. */}
-                        <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            <NumericDraftEnhancedInput
-                                size="sm"
-                                unit="LUFS"
-                                className="w-24"
-                                commitOn="blur"
-                                draftResetKey={`${asset?.id}:${targetLufs}`}
-                                committedDisplay={targetLufs.toFixed(1)}
-                                onFiniteNumber={value => setTargetLufs(clampTargetLufs(value))}
-                                aria-label={t("assets.audio.editor.target")}
                             />
                             <Button
                                 size="sm"

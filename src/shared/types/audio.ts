@@ -1,11 +1,12 @@
 /**
- * Audio clip regions - the in and out points an author marks on an audio asset.
+ * Audio clip regions - the in and out points an author marks on an audio asset, and its gain.
  *
- * The points are authored in the asset manager's audio preview and stored on the asset record
- * (`Asset.extras.audioLoop`, a renderer-side type). This module is the *shared* half: the shape as
- * it travels in a game bundle, and the one normalizer that turns a raw asset record into it. Both
- * the bundle assembler (main process) and the editor (renderer) reduce through here, so a clip
- * cannot mean one region in the preview and another in the game.
+ * Both are authored in the asset manager's audio preview and stored on the asset record
+ * (`Asset.extras.audioLoop` and `audioGain`, renderer-side types). This module is the *shared* half:
+ * the shape as it travels in a game bundle, the one normalizer that turns a raw asset record into
+ * it, and the two functions every playback path reads a clip through ({@link clipSoundConfig} and
+ * {@link clipVolume}). Both the bundle assembler (main process) and the editor (renderer) reduce
+ * through here, so a clip cannot mean one region or one level in the preview and another in the game.
  *
  * Why a region rather than a bag of markers: the question every consumer asks is "where does this
  * loop", which one pair answers and a marker list does not. Either end may stand alone while the
@@ -37,44 +38,29 @@ export type AudioClipRegion = {
      */
     loopStartMs?: number;
     /**
-     * Length of the file, in milliseconds, standing in for an out point the author did not mark.
-     *
-     * Carried only when a region needs it: an in or loop point with no out point. The engine keeps a
-     * loop point only alongside an end time, and without one it streams a looping clip through an
-     * element that restarts at 0:00 - so "loop back to the loop point at the end of the file", which
-     * is what the preview plays and the seam view draws, reached the game as "loop the whole file".
-     * The end of the file is the end time the author meant.
-     */
-    lengthMs?: number;
-    /**
      * Playback gain in decibels, never above 0: the engine cannot raise a clip past its own level, so
-     * balancing loudness means bringing the loud clips down. Absent is unity.
+     * balancing loudness means bringing the loud clips down. Absent is unity. Folded into a volume
+     * only by {@link clipVolume}.
      */
     gainDb?: number;
 };
 
 /**
- * The file length a region was measured against, as the asset record stores it.
+ * `extras.audioLoop` on an audio asset: the three markers and nothing else.
  *
- * Kept with the hash of the file it was measured on, because markers outlive the file: after the
- * file is replaced, a length from the old one would describe a loop end the new file does not have.
- * A length whose hash no longer matches is ignored, and the preview measures the new file again.
+ * A record written by an earlier build may also carry a `fileLength` the preview measured; nothing
+ * reads it any more (see {@link clipSoundConfig} for how a region with no out point ends), and it
+ * drops out the next time the markers are saved.
  */
-export type AudioClipLength = { ms: number; hash: string };
-
-/** `extras.audioLoop` on an audio asset: the three markers, plus the file length when it is needed. */
-export type StoredAudioClipRegion = Pick<AudioClipRegion, "inMs" | "outMs" | "loopStartMs"> & {
-    fileLength?: AudioClipLength;
-};
+export type StoredAudioClipRegion = Pick<AudioClipRegion, "inMs" | "outMs" | "loopStartMs">;
 
 /**
- * `extras.audioGain` on an audio asset.
+ * `extras.audioGain` on an audio asset, absent at unity.
  *
- * `targetLufs` is the loudness the gain was aligned to, when it came from aligning rather than from
- * a number typed in. It is what lets the next clip opened in the same project offer the same target,
- * so a project's clips balance against one another without a project setting to keep in step.
+ * An earlier build also stored the loudness a gain was aligned to; the gain alone is what plays, so
+ * that key is ignored where it survives.
  */
-export type StoredAudioGain = { db: number; targetLufs?: number };
+export type StoredAudioGain = { db: number };
 
 /** The quietest a gain can make a clip. Below this it is silence for every practical purpose. */
 export const AUDIO_GAIN_MIN_DB = -60;
@@ -84,9 +70,10 @@ export const AUDIO_GAIN_MIN_DB = -60;
  *
  * Two tables, both keyed by what the surface that reads them already holds:
  *
- * - `clips` - the marked regions, keyed by asset id. Only assets with a region appear, so a project
- *   whose author never opened the audio preview carries an empty table rather than one row per
- *   sound effect.
+ * - `clips` - the marked regions and gains, keyed by asset id. Only assets with markers or a gain
+ *   appear, so a project whose author never opened the audio preview carries an empty table rather
+ *   than one row per sound effect. Every path that plays a clip reads its entry through
+ *   {@link clipSoundConfig} and {@link clipVolume}.
  * - `tracks` - the project's audio tracks, in author order. Always populated: a project with no
  *   `editor/audio-tracks.json` carries the three built-ins, which is what every reference falls
  *   back to anyway, so a consumer never has to decide what "no tracks" means.
@@ -132,14 +119,10 @@ export function hasClipMarkers(region: AudioClipRegion | null | undefined): bool
  * list, so the earliest two markers in time order are the in and the out. Reading them keeps records
  * written against the old shape from silently losing what the author marked. Never write `cuePoints`.
  *
- * `fileHash` is the hash of the file the asset holds now. Only with it does a stored file length
- * reach the result, and only when it was measured on that same file (see {@link AudioClipLength}).
- * Callers that only draw the markers pass nothing.
- *
  * Returns `null` rather than an empty object when nothing is marked and the gain is unity, so
  * callers can drop the asset from a table with a single check.
  */
-export function normalizeAudioClipRegion(extras: unknown, fileHash?: string): AudioClipRegion | null {
+export function normalizeAudioClipRegion(extras: unknown): AudioClipRegion | null {
     if (!extras || typeof extras !== "object") {
         return null;
     }
@@ -182,66 +165,87 @@ export function normalizeAudioClipRegion(extras: unknown, fileHash?: string): Au
     if (inMs === undefined && outMs === undefined && loopStartMs === undefined && gainDb === undefined) {
         return null;
     }
-    // The file's end, standing in for the out point, only where the engine needs one and only when it
-    // was measured on the file the asset holds now.
-    let lengthMs: number | undefined;
-    if (outMs === undefined && (inMs !== undefined || loopStartMs !== undefined) && fileHash) {
-        const stored = (loop as { fileLength?: { ms?: unknown; hash?: unknown } } | null)?.fileLength;
-        const ms = finiteNonNegative(stored?.ms);
-        const lastMarker = Math.max(inMs ?? 0, loopStartMs ?? 0);
-        if (stored?.hash === fileHash && ms !== undefined && ms > lastMarker) {
-            lengthMs = ms;
-        }
-    }
     return {
         ...(inMs !== undefined ? { inMs } : {}),
         ...(outMs !== undefined ? { outMs } : {}),
         ...(loopStartMs !== undefined ? { loopStartMs } : {}),
-        ...(lengthMs !== undefined ? { lengthMs } : {}),
         ...(gainDb !== undefined ? { gainDb } : {}),
     };
 }
 
 /**
- * A clip's gain as the linear factor a `Sound` volume is multiplied by: 1 when it has none.
+ * The end time a looping clip is given when its markers turn around at the end of the file: an in
+ * or loop point, and no out point.
  *
- * Multiplied into the volume at every place a clip starts *and* every place its volume is set again
- * afterwards, because the engine keeps one volume per sound: a `/vol` row or a Set Sound Volume node
- * writes that number outright, and a factor applied only at the start would be gone after the first.
+ * The engine plays a loop region only with an end time beside it. Without one it takes the clip for
+ * a whole-file loop and streams it through an element that restarts at 0:00, so "return to the loop
+ * point at the end of the file" - what the preview plays and the seam view draws - reached the game
+ * as "loop the whole file". With one it decodes the clip and hands the region to the buffer source,
+ * which clamps a loop end past its buffer to the buffer's last sample (`actualLoopEnd =
+ * min(loopEnd, duration)` in Web Audio's playback algorithm). The clip therefore turns around at the
+ * end of the file exactly as the game decoded it: worked out from the markers alone, on every clip,
+ * with no length measured or stored anywhere and nothing depending on the clip's preview having been
+ * opened.
+ *
+ * A day, which is longer than any clip a game ships. Only a looping clip is given it: the engine sets
+ * no stop timer for one, and a clip that plays once needs no end time to reach the end of its file.
  */
-export function audioClipGain(region: AudioClipRegion | null | undefined): number {
+export const LOOP_TO_END_OF_FILE_SECONDS = 24 * 60 * 60;
+
+/**
+ * The volume a clip plays at: `volume` - the row's, the node's or the scene's own level - with the
+ * clip's gain folded in.
+ *
+ * The one place a clip's gain becomes part of a volume, and every volume written for a clip goes
+ * through it: the one its `Sound` starts at ({@link clipSoundConfig} calls this) and each one that
+ * later replaces it - a `/vol` row, a Set Sound Volume node, the target of a fade-in. The engine
+ * keeps one volume per sound and each of those writes it outright, so a gain folded in only at the
+ * start would be gone after the first of them. What a caller keeps for a later write is the clip,
+ * never a volume that already carries its gain, so each write folds the gain in exactly once.
+ *
+ * A gain never raises a clip: anything at or above 0 dB, or unreadable, is unity.
+ */
+export function clipVolume(region: AudioClipRegion | null | undefined, volume = 1): number {
     const db = region?.gainDb;
-    return db === undefined || !Number.isFinite(db) ? 1 : Math.pow(10, Math.min(0, db) / 20);
+    if (db === undefined || !Number.isFinite(db) || db >= 0) {
+        return volume;
+    }
+    return volume * Math.pow(10, Math.max(AUDIO_GAIN_MIN_DB, db) / 20);
 }
 
 /**
- * A region as the engine's `Sound` config wants it: seconds, and `endTime` omitted when unmarked.
+ * Everything a clip contributes to the `Sound` built to play it: the caller's volume with the clip's
+ * gain folded in ({@link clipVolume}), and the marked region in the engine's seconds.
  *
- * "Unmarked" means neither an out point nor a file length standing in for one: an in or loop point
- * with no out point ends at the end of the file, and says so, because the engine drops a loop point
- * that has no end time beside it (see {@link AudioClipRegion.lengthMs}). The gain is not part of this:
- * it multiplies the caller's own volume (see {@link audioClipGain}).
+ * The only way a clip's region reaches a `Sound` config, and it cannot be had without a volume - so
+ * no call site can build a clip's `Sound` from its markers and leave its gain behind.
  *
  * `seek` is always present because zero is its default anyway, so there is no difference between
  * "starts at the beginning" and "unmarked". `endTime` is different: present means "stop/turn around
- * here", so an unmarked out point must leave the key off entirely.
+ * here", so it is the out point when there is one, the end of the file for a looping clip that
+ * turns around past its head (see {@link LOOP_TO_END_OF_FILE_SECONDS}), and otherwise absent - a
+ * whole-file loop keeps the streamed playback the engine gives one.
  *
- * `loopStart` follows `endTime`'s rule and adds one of its own: it is emitted only when it differs
- * from `seek`. The engine's default is to return to `seek`, so a loop point that equals the in
- * point is the same playback either way - and leaving the key off means a clip the author never
- * gave a third marker produces byte-for-byte the config it produced before this field existed.
+ * `loopStart` is emitted only when it differs from `seek`. The engine's default is to return to
+ * `seek`, so a loop point that equals the in point is the same playback either way - and leaving the
+ * key off means a clip the author never gave a third marker produces byte-for-byte the config it
+ * produced before this field existed.
  */
-export function audioClipRegionToSoundConfig(region: AudioClipRegion | null | undefined): {
-    seek: number;
-    endTime?: number;
-    loopStart?: number;
-} {
+export function clipSoundConfig(
+    region: AudioClipRegion | null | undefined,
+    playback: { volume: number; loop: boolean },
+): { volume: number; seek: number; endTime?: number; loopStart?: number } {
+    const volume = clipVolume(region, playback.volume);
     const seek = (region?.inMs ?? 0) / 1000;
     const loopStart = region?.loopStartMs === undefined ? undefined : region.loopStartMs / 1000;
     const loopStartPart = loopStart !== undefined && loopStart !== seek ? { loopStart } : {};
-    const endMs = region?.outMs ?? region?.lengthMs;
-    if (endMs === undefined) {
-        return { seek, ...loopStartPart };
+    if (region?.outMs !== undefined) {
+        return { volume, seek, endTime: region.outMs / 1000, ...loopStartPart };
     }
-    return { seek, endTime: endMs / 1000, ...loopStartPart };
+    // Where each repeat resumes: the loop point, else the in point. At the head of the file that is
+    // a plain whole-file loop and needs no end time.
+    if (playback.loop && (loopStart ?? seek) > 0) {
+        return { volume, seek, endTime: LOOP_TO_END_OF_FILE_SECONDS, ...loopStartPart };
+    }
+    return { volume, seek, ...loopStartPart };
 }

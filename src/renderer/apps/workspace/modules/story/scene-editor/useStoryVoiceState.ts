@@ -6,6 +6,7 @@ import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { clipVolume, normalizeAudioClipRegion } from "@shared/types/audio";
 import { deriveVoiceUnitState, type VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { serializeSegmentSourceText } from "@shared/utils/localizationText";
 import type { StoryBlock } from "@shared/types/story";
@@ -161,7 +162,13 @@ export function useStoryVoiceState(block: StoryBlock): StoryVoiceState {
                 return null;
             }
             const result = await assetsService.fetch(asset);
-            return result.success ? new Uint8Array((result.data as { data: Uint8Array }).data) : null;
+            if (!result.success) {
+                return null;
+            }
+            return {
+                bytes: new Uint8Array((result.data as { data: Uint8Array }).data),
+                volume: clipVolume(normalizeAudioClipRegion(asset.extras)),
+            };
         });
     }, [assetId, assetsService, auditionKey]);
 

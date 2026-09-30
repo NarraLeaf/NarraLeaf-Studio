@@ -614,9 +614,8 @@ export const assets = {
             clearMarkers: "Clear all markers",
             gain: "Gain",
             gainTip: "Lowers this clip's volume in the game. It cannot raise it.",
-            target: "Target",
-            align: "Align",
-            alignTip: "Sets the gain so this clip plays at the target loudness. A clip that is already quieter keeps its level.",
+            align: "Align loudness",
+            alignTip: "Sets the gain from the measured loudness, so every aligned clip plays at the same level. A clip that is already quieter keeps its level.",
             seamEnd: {
                 out: "Out point",
                 clipEnd: "End of clip",

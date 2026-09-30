@@ -2213,6 +2213,48 @@ describe("weather clips in the pack", () => {
     });
 
     /*
+     * The clip table is what a shipped game plays every clip's markers and gain from, and it is
+     * narrowed to the assets the package carries like every other per-asset table. What survives
+     * the narrowing has to be the entry as the author set it - the gain included - or a clip
+     * balanced in Studio would play at its unbalanced level in the player's copy.
+     */
+    it("ships the markers and gain of each clip the package carries, and no row for one it leaves out", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, { assets: {} });
+        await fs.writeFile(
+            path.join(projectPath, "assets", "assets.metadata.audio.json"),
+            JSON.stringify({
+                [ASSET_ID]: {
+                    id: ASSET_ID,
+                    name: "theme.ogg",
+                    ext: ".ogg",
+                    source: "local",
+                    extras: { audioLoop: { inMs: 1000, loopStartMs: 5000 }, audioGain: { db: -6 } },
+                },
+                [UNUSED_ASSET_ID]: {
+                    id: UNUSED_ASSET_ID,
+                    name: "spare.ogg",
+                    ext: ".ogg",
+                    source: "local",
+                    extras: { audioGain: { db: -3 } },
+                },
+            }),
+            "utf-8",
+        );
+        await writeAsset(projectPath, ASSET_ID, "referenced audio bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced audio bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await referenceAssetFromRootSurface(projectPath, ASSET_ID);
+
+        const result = await compileGameRuntimeArtifact(packagedCompileInput(projectPath, runtimeDistDir, ["windows-x64"]));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.bundle.audio.clips).toEqual({ [ASSET_ID]: { inMs: 1000, loopStartMs: 5000, gainDb: -6 } });
+    });
+
+    /*
      * A C toolchain, if this machine keeps one. Compiling a codec for a title is
      * the shipping path now, so a test of that path needs a compiler; fetching one
      * would pull 76 MB into a unit test, so it is looked for and the test says so

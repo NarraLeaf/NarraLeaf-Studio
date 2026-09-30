@@ -119,7 +119,7 @@ import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveLocaleChain } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import type { AudioClipRegion } from "@shared/types/audio";
-import { audioClipGain, audioClipRegionToSoundConfig } from "@shared/types/audio";
+import { clipSoundConfig, clipVolume } from "@shared/types/audio";
 import type { AudioTrackChannel, AudioTrackPlayback, ProjectAudioTrack } from "@shared/types/audioTrack";
 import {
     AUDIO_TRACK_CHANNELS,
@@ -358,8 +358,8 @@ export type StoryVoiceRuntime = GameVoiceBundle & {
 };
 
 /**
- * What replaying one voice take needs: the clip, its speaker's bus, and the take's gain as a volume
- * when it has one - a replay is a fresh `Sound`, so the gain has to be handed to it again.
+ * What replaying one voice take needs: the clip, its speaker's bus, and the take's volume when its
+ * gain turns it down - a replay is a fresh `Sound`, so that volume has to be handed to it again.
  */
 export type VoicePlayback = { src: string; busId: string; volume?: number };
 
@@ -413,12 +413,13 @@ async function buildVoiceMapsByLocale(input: {
 }
 
 /**
- * Per voice language, the gain of each take that has one, by unit id.
+ * Per voice language, the volume each take plays at when its gain turns it down, by unit id - the
+ * take's gain through {@link clipVolume}, like every other clip's.
  *
  * Only takes turned down appear, so a project that never set a gain carries an empty table and every
  * scene's voice table stays the bare URLs it always was (see {@link buildSceneVoices}).
  */
-function buildVoiceGainsByLocale(
+function buildVoiceVolumesByLocale(
     voice: StoryVoiceRuntime,
     audioClips: Record<string, AudioClipRegion> | undefined,
 ): Record<string, Record<string, number>> {
@@ -427,14 +428,14 @@ function buildVoiceGainsByLocale(
         return byLocale;
     }
     for (const [locale, table] of Object.entries(voice.tables)) {
-        const gains: Record<string, number> = {};
+        const volumes: Record<string, number> = {};
         for (const [unitId, assetId] of Object.entries(table)) {
-            const gain = audioClipGain(audioClips[assetId]);
-            if (gain < 1) {
-                gains[unitId] = gain;
+            const volume = clipVolume(audioClips[assetId]);
+            if (volume < 1) {
+                volumes[unitId] = volume;
             }
         }
-        byLocale[locale] = gains;
+        byLocale[locale] = volumes;
     }
     return byLocale;
 }
@@ -543,8 +544,8 @@ function voiceUnitIdsByScene(document: StoryDocument): Map<string, Set<string>> 
  *
  * A take whose speaker sits on the plain `voice` bus stays a bare URL, which is exactly what the
  * table held before this existed: the engine wraps a string in `Sound.voice()` itself, so a project
- * with no per-character track produces the same table it always did, entry for entry. A take with a
- * gain is the one exception on that bus: the gain has to travel as the sound's volume.
+ * with no per-character track produces the same table it always did, entry for entry. A take its
+ * gain turns down is the one exception on that bus: the gain has to travel as the sound's volume.
  */
 function buildSceneVoices(input: {
     voiceIdMap: Record<string, string>;
@@ -552,8 +553,8 @@ function buildSceneVoices(input: {
     audioTracks: readonly ProjectAudioTrack[];
     /** Only these units, or every unit in the map when absent. See {@link voiceUnitIdsByScene}. */
     unitIds?: ReadonlySet<string>;
-    /** The gain of each take that has one, by unit id. See {@link buildVoiceGainsByLocale}. */
-    gainByUnit?: Readonly<Record<string, number>>;
+    /** The volume of each take its gain turns down, by unit id. See {@link buildVoiceVolumesByLocale}. */
+    volumeByUnit?: Readonly<Record<string, number>>;
 }): Record<string, string | Sound> {
     const voices: Record<string, string | Sound> = {};
     // Driven by whichever side is smaller: a scene's own ids when it has been given a set, the whole
@@ -564,14 +565,14 @@ function buildSceneVoices(input: {
             return;
         }
         const busId = input.busIdByUnit.get(unitId) ?? AUDIO_TRACK_ID_VOICE;
-        const gain = input.gainByUnit?.[unitId];
-        voices[unitId] = busId === AUDIO_TRACK_ID_VOICE && gain === undefined
+        const volume = input.volumeByUnit?.[unitId];
+        voices[unitId] = busId === AUDIO_TRACK_ID_VOICE && volume === undefined
             ? url
             : createBusSound(
                 input.audioTracks,
                 busId,
                 AUDIO_TRACK_ID_VOICE,
-                gain === undefined ? { src: url } : { src: url, volume: gain },
+                volume === undefined ? { src: url } : { src: url, volume },
             );
     };
     if (input.unitIds) {
@@ -944,13 +945,14 @@ type SceneCompileContext = {
      */
     soundAssetIds: Map<string, string>;
     /**
-     * The gain each named sound handle's clip carries, as a linear factor, keyed the same way.
+     * The clip each named sound handle plays - its markers and gain - keyed the same way.
      *
      * Kept per handle because the engine keeps one volume per sound: a `/vol` row writes it outright,
-     * so the factor the handle was built with has to be multiplied in again there or the clip jumps
-     * back to its unbalanced level on the first volume change.
+     * so the clip's gain has to be folded into that number too ({@link clipVolume}), or the clip jumps
+     * back to its unbalanced level on the first volume change. The clip rather than a factor or a
+     * volume, so the fold happens at the write and happens once.
      */
-    soundGains: Map<string, number>;
+    soundClips: Map<string, AudioClipRegion | undefined>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -1281,13 +1283,13 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics, document: input.document })
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
-    const voiceGainsByLocale = input.voice ? buildVoiceGainsByLocale(input.voice, input.audioClips) : undefined;
+    const voiceVolumesByLocale = input.voice ? buildVoiceVolumesByLocale(input.voice, input.audioClips) : undefined;
     // Built here rather than beside the variable tables further down: a scene's own background and
     // music are resolved while the scenes are created, and a set named there needs the same reader a
     // row's set reference uses.
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
-    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string }>();
+    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string; clip: AudioClipRegion | undefined }>();
     /**
      * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
      *
@@ -1306,7 +1308,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         assetUrlCache,
         diagnostics,
         voiceUrlsByLocale,
-        voiceGainsByLocale,
+        voiceVolumesByLocale,
         activeVoiceLocale: input.voice?.getVoiceLocale() ?? "",
         audioClips: input.audioClips,
         audioTracks,
@@ -1389,7 +1391,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
             soundTrackIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.trackId]]) : new Map(),
             soundAssetIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.assetId]]) : new Map(),
-            soundGains: sceneMusic ? new Map([[BGM_SOUND_NAME, audioClipGain(input.audioClips?.[sceneMusic.assetId])]]) : new Map(),
+            soundClips: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.clip]]) : new Map(),
             audioClips: input.audioClips,
             audioTracks,
             animations,
@@ -1631,7 +1633,7 @@ async function buildLaunchEntryScene(params: {
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
         soundAssetIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.assetId]]) : new Map(),
-        soundGains: launchMusic ? new Map([[BGM_SOUND_NAME, audioClipGain(input.audioClips?.[launchMusic.assetId])]]) : new Map(),
+        soundClips: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.clip]]) : new Map(),
         audioClips: input.audioClips,
         audioTracks,
         animations: params.animations,
@@ -1895,7 +1897,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         sounds: new Map(),
         soundTrackIds: new Map(),
         soundAssetIds: new Map(),
-        soundGains: new Map(),
+        soundClips: new Map(),
         audioClips: input.audioClips,
         audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
@@ -2189,8 +2191,8 @@ async function createNlrScenes(input: {
     elementIdBindings: string[];
     /** Every voice language's unit id → clip URL map. Voice ids are global, so one table serves every scene. */
     voiceUrlsByLocale?: Record<string, Record<string, string>>;
-    /** Every voice language's unit id → gain, for the takes that have one. */
-    voiceGainsByLocale?: Record<string, Record<string, number>>;
+    /** Every voice language's unit id → volume, for the takes their gain turns down. */
+    voiceVolumesByLocale?: Record<string, Record<string, number>>;
     /** Which language the scenes open on. */
     activeVoiceLocale?: string;
     /** Asset id → marked in/out points, so a scene's own track loops where the author marked it. */
@@ -2205,10 +2207,11 @@ async function createNlrScenes(input: {
      * The caller seeds it into that scene's sound registry under the reserved name `bgm`, which is
      * what makes `/vol 0.5` and `/seek bgm 30` address the scene's own music. Without it the control
      * family would answer "no background music is set" on precisely the scene that has some. The
-     * audio track rides along for the same reason: a later `/vol` on that handle has to reach the
-     * gain the scene's music was built with, not the built-in fallback's.
+     * audio track and the clip ride along for the same reason: a later `/vol` on that handle has to
+     * reach the bus the scene's music was built on, not the built-in fallback's, and fold in the
+     * same clip's gain.
      */
-    backgroundMusic?: Map<string, { sound: Sound; trackId: string; assetId: string }>;
+    backgroundMusic?: Map<string, { sound: Sound; trackId: string; assetId: string; clip: AudioClipRegion | undefined }>;
 }): Promise<{
     scenes: Record<string, Scene>;
     setVoiceLocale: (locale: string) => boolean;
@@ -2266,7 +2269,7 @@ async function createNlrScenes(input: {
                 busIdByUnit,
                 audioTracks: input.audioTracks,
                 unitIds,
-                gainByUnit: input.voiceGainsByLocale?.[locale],
+                volumeByUnit: input.voiceVolumesByLocale?.[locale],
             });
         }
         voicesByLocale[locale] = byScene;
@@ -2319,7 +2322,7 @@ async function createNlrScenes(input: {
         if (!src) {
             return null;
         }
-        const volume = input.voiceGainsByLocale?.[activeLocale]?.[unitId];
+        const volume = input.voiceVolumesByLocale?.[activeLocale]?.[unitId];
         return { src, busId: busIdByUnit.get(unitId) ?? AUDIO_TRACK_ID_VOICE, ...(volume !== undefined ? { volume } : {}) };
     };
     // Two scenes with the same runtime name share one `Scene.local` namespace, so their scene-local
@@ -2396,7 +2399,7 @@ async function createNlrScenes(input: {
         if (music) {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
-            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId, assetId: music.assetId });
+            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId, assetId: music.assetId, clip: music.clip });
         }
         const built = new Scene(
             runtimeName,
@@ -2468,7 +2471,7 @@ async function resolveSceneBackgroundMusic(input: {
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
     localization?: SceneLocalizationResolver;
-}): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string } | null> {
+}): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string; clip: AudioClipRegion | undefined } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
@@ -2498,18 +2501,19 @@ async function resolveSceneBackgroundMusic(input: {
         volume: bgm.volume,
         loop: bgm.loop,
     });
+    // The member, not the set: a clip region is authored against a file, and a set id would find
+    // none - the scene would play the whole track where the author trimmed it.
+    const clip = input.audioClips?.[member];
     return {
         sound: createBusSound(input.audioTracks, playback.busId, "bgm", {
             src: url,
             loop: playback.loop,
-            volume: playback.volume * audioClipGain(input.audioClips?.[member]),
-            // The member, not the set: a clip region is authored against a file, and a set id would
-            // find none - the scene would play the whole track where the author trimmed it.
-            ...audioClipRegionToSoundConfig(input.audioClips?.[member]),
+            ...clipSoundConfig(clip, playback),
         }),
         fadeMs: bgm.fadeMs ?? 0,
         trackId: track.id,
         assetId: member,
+        clip,
     };
 }
 
@@ -3021,12 +3025,12 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             // On the speaker's own bus, not the bare `voice` one. That is the whole per-character
             // voice feature: `voice/alice` gives the player a slider for Alice alone, and a
             // character with no track of its own resolves to `voice`, i.e. to what this always was.
-            const gain = audioClipGain(clipFor(ctx, block.payload.voiceAssetId, block.id));
+            const volume = clipVolume(clipFor(ctx, block.payload.voiceAssetId, block.id));
             config.voice = createBusSound(
                 ctx.audioTracks,
                 characterVoiceBusId(ctx, block.payload.characterId),
                 AUDIO_TRACK_ID_VOICE,
-                gain < 1 ? { src: voiceUrl, volume: gain } : { src: voiceUrl },
+                volume < 1 ? { src: voiceUrl, volume } : { src: voiceUrl },
             );
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
@@ -3215,9 +3219,9 @@ async function compileEventRun(
             owner: say("story.compile.owner.inlineSound"),
         });
         if (url) {
-            const gain = audioClipGain(clipFor(ctx, event.sound.assetId, blockId));
+            const volume = clipVolume(clipFor(ctx, event.sound.assetId, blockId));
             // The bare string is the form it always had; a config only when a gain has to ride along.
-            sound = gain < 1 ? Sound.sound({ src: url, volume: gain }) : Sound.sound(url);
+            sound = volume < 1 ? Sound.sound({ src: url, volume }) : Sound.sound(url);
         }
     }
 
@@ -4087,7 +4091,7 @@ async function compileAudioAction(
             ctx.sounds.delete(BGM_SOUND_NAME);
             ctx.soundTrackIds.delete(BGM_SOUND_NAME);
             ctx.soundAssetIds.delete(BGM_SOUND_NAME);
-            ctx.soundGains.delete(BGM_SOUND_NAME);
+            ctx.soundClips.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, rowFadeMs(payload)), block)];
         }
         // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
@@ -4100,19 +4104,17 @@ async function compileAudioAction(
             return [];
         }
         const clip = clipFor(ctx, payload.assetId, block.id);
-        const gain = audioClipGain(clip);
         const sound = createBusSound(ctx.audioTracks, playback.busId, "bgm", {
             src: url,
             loop: playback.loop,
-            volume: playback.volume * gain,
-            ...audioClipRegionToSoundConfig(clip),
+            ...clipSoundConfig(clip, playback),
         });
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
         ctx.sounds.set(BGM_SOUND_NAME, sound);
         ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
         ctx.soundAssetIds.set(BGM_SOUND_NAME, payload.assetId);
-        ctx.soundGains.set(BGM_SOUND_NAME, gain);
+        ctx.soundClips.set(BGM_SOUND_NAME, clip);
         return [recordStatement(
             ctx,
             ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)),
@@ -4168,9 +4170,9 @@ async function compileAudioAction(
         case "setVolume":
             // The clip's own level, not multiplied by the buses - they apply live in the gain graph,
             // so a `/vol piano 0.4` sets `piano` to 0.4 of whatever the player's sliders allow. The
-            // clip's own gain IS multiplied in: it was part of the volume the handle started with,
-            // and this row replaces that volume outright.
-            return [recordStatement(ctx, sound.setVolume(playback.volume * (ctx.soundGains.get(name) ?? 1), fadeMs), block)];
+            // clip's own gain IS folded in: it was part of the volume the handle started with, and
+            // this row replaces that volume outright.
+            return [recordStatement(ctx, sound.setVolume(clipVolume(ctx.soundClips.get(name), playback.volume), fadeMs), block)];
         case "setRate":
             return [recordStatement(ctx, sound.setRate(payload.rate ?? 1), block)];
         case "muteSound":
@@ -5161,18 +5163,16 @@ async function getSound(
     }
     const { track, playback } = resolveRowPlayback(ctx, payload, null);
     const clip = clipFor(ctx, assetId, blockId);
-    const gain = audioClipGain(clip);
     const sound = createBusSound(ctx.audioTracks, playback.busId, audioActionFallbackChannel(payload.operation), {
         src: url,
         loop: playback.loop,
-        volume: playback.volume * gain,
         rate: payload.rate ?? 1,
-        ...audioClipRegionToSoundConfig(clip),
+        ...clipSoundConfig(clip, playback),
     });
     ctx.sounds.set(name, sound);
     ctx.soundTrackIds.set(name, track.id);
     ctx.soundAssetIds.set(name, assetId);
-    ctx.soundGains.set(name, gain);
+    ctx.soundClips.set(name, clip);
     return sound;
 }
 
