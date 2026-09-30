@@ -422,6 +422,9 @@ const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
  * `unload` into the page and waits for the answer, and the page is a running game - the busiest
  * thread in the process. A renderer that has stopped answering would otherwise leave a window
  * ordered off screen that is never destroyed, which is a leak nobody can see.
+ *
+ * A crash gives the save and persistence stores the same time to write out what they hold before
+ * the game closes (see the error reporting below).
  */
 const CLOSE_TEARDOWN_DEADLINE_MS = 3000;
 
@@ -667,33 +670,55 @@ void app.whenReady().then(async () => {
     if (packDebuggable(pack)) {
         console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
-    const allowHttp = pack.network?.allowHttp === true;
-    const networkAllowlist = packNetworkAllowlist(pack);
-    applyRuntimeAppIdentity(pack);
-    applyRuntimeMenu();
-    registerRuntimeProtocol(allowHttp, networkAllowlist);
-    sidecarHost = createSidecarHost(pack);
-    registerRuntimeIpc();
-    startPreviewControlServer(pack);
-    // Confine the renderer to the app protocol before it loads any document
-    // unless the project opted into HTTP - and unconditionally when a test asked
-    // for a network-less run, which overrides the project's own flag.
-    installRuntimeNetworkPolicy(session.defaultSession, {
-        allowHttp,
-        allowlist: networkAllowlist,
-        blockAll: testNetworkBlocked,
-    });
-    mainWindow = createWindow(pack);
+    let window: BrowserWindow;
+    let sidecars: SidecarHost;
+    try {
+        const allowHttp = pack.network?.allowHttp === true;
+        const networkAllowlist = packNetworkAllowlist(pack);
+        applyRuntimeAppIdentity(pack);
+        applyRuntimeMenu();
+        registerRuntimeProtocol(allowHttp, networkAllowlist);
+        sidecars = createSidecarHost(pack);
+        sidecarHost = sidecars;
+        registerRuntimeIpc();
+        startPreviewControlServer(pack);
+        // Confine the renderer to the app protocol before it loads any document
+        // unless the project opted into HTTP - and unconditionally when a test asked
+        // for a network-less run, which overrides the project's own flag.
+        installRuntimeNetworkPolicy(session.defaultSession, {
+            allowHttp,
+            allowlist: networkAllowlist,
+            blockAll: testNetworkBlocked,
+        });
+        window = createWindow(pack);
+        mainWindow = window;
+    } catch (error) {
+        // A pack that opened but that the window cannot be set up from - measured: an entry that
+        // names no surface kind threw from inside `createWindow`. This function is async, so a throw
+        // here is a rejection, which the game records and survives (see `mainProcessErrors`) - and
+        // survived with no window, for nobody, until it was killed. Nothing here has run yet that
+        // the player could lose, so it is a launch that did not start, like a pack that would not
+        // open.
+        const described = describeRuntimeError(error);
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's window could not be set up: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
+        return;
+    }
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
-    sidecarHost.startAutostart();
+    sidecars.startAutostart();
     // A preview stopped while it was still booting quits mid-load, and the pending navigation then
     // rejects with ERR_FAILED. That is the shutdown working, not a failure to report - and the
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
     windowCreatedAt = Date.now();
-    await mainWindow.loadURL(buildGameRuntimeIndexUrl({
+    await window.loadURL(buildGameRuntimeIndexUrl({
         policy: normalizeGameCrashPolicy(pack.crash?.policy),
         logPath: runtimeLogPath(userDataDir),
         launch: gameLaunchTiming(),
@@ -799,26 +824,40 @@ const testSubscribers = new Set<WebSocket>();
 const WEBSOCKET_OPEN = 1;
 
 /**
- * Record every error nobody caught in the game's main process: the log, a test that is watching, and -
- * for an exception - the fatal box. See `mainProcessErrors` for what Electron does with each kind on
- * its own (measured, and not what Node does), and why a rejection is recorded but not fatal.
+ * Take over every error nobody caught in the game's main process. An exception ends the game - the
+ * log, a test that is watching, the save and persistence stores written out within the close budget,
+ * the fatal box, exit `GAME_EXIT_CODES.crashed`; a rejection is recorded and the game carries on. See
+ * `mainProcessErrors` for what Electron does with each on its own (measured, and not what Node does)
+ * and why the two are treated differently.
  *
- * An exception is observed rather than taken over: `uncaughtExceptionMonitor` leaves what happens
- * next to whatever already decides it. The report to a test is best-effort by nature - the frame is
- * written to the socket on the way, and a process that dies before the kernel drains it loses the
- * message. Studio classifies the run from the exit code as well, so a lost frame costs detail, not
- * the verdict.
+ * The flush is the half of `before-quit` that a player would miss: the stores' queued writes. The
+ * other half, a polite shutdown of the sidecars, is not waited for - a crash kills them on the way out
+ * (`exit` below, and the process `exit` hook), which is what they are built to survive.
+ *
+ * The report to a test is best-effort by nature - the frame is written to the socket on the way, and
+ * a process that dies before the kernel drains it loses the message. Studio classifies the run from
+ * the exit code as well, so a lost frame costs detail, not the verdict.
  *
  * Registered here, below `testSubscribers`, so an error thrown while this module is still evaluating
  * finds the set initialised.
  */
 installMainProcessErrorReporting({
-    on: (event: "uncaughtExceptionMonitor" | "unhandledRejection", listener: (...args: never[]) => void) => {
+    on: (event: "uncaughtException" | "unhandledRejection", listener: (...args: never[]) => void) => {
         process.on(event, listener as (...args: unknown[]) => void);
     },
     log: logRuntime,
     emitTestEvent: event => emitTestEvent(event),
+    flushForCrash: () => {
+        isQuitting = true;
+        return Promise.allSettled([saveStore?.flush(), persistenceStore?.flush()]);
+    },
+    crashFlushBudgetMs: CLOSE_TEARDOWN_DEADLINE_MS,
     reportFatal: reportFatalRuntimeError,
+    exit: code => {
+        isQuitting = true;
+        sidecarHost?.killAllSync();
+        app.exit(code);
+    },
 });
 
 /**

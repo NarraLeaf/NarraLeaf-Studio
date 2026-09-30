@@ -1,32 +1,42 @@
 import type { GameTestEvent } from "@shared/types/gameTest";
 
+import { GAME_EXIT_CODES } from "./gameExitCodes";
 import type { RuntimeLogSink } from "./runtimeLog";
 
 /**
- * Where an error nobody caught in the game's main process goes.
+ * What happens to an error nobody caught in the game's main process.
  *
- * Two kinds reach nothing on their own, and both were measured on Electron 38 rather than assumed
- * from Node:
+ * Left to itself, Electron 38 does neither of the things one would expect from Node, and both were
+ * measured rather than assumed:
  *
- *  - **An exception nobody caught.** Node's default would end the process, but Electron registers an
- *    `uncaughtException` listener of its own in the main process: it shows a box headed "A JavaScript
- *    error occurred in the main process" with the stack in it, and the process carries on. The game
- *    observes these with `uncaughtExceptionMonitor`, which adds a record and the game's own box
- *    without taking over from Electron's listener.
- *  - **A promise rejection nobody handled.** Electron runs its main process in Node's `warn` mode:
- *    the rejection is printed as a Node warning on stderr - which a shipped game has nobody reading -
- *    and is not raised as an exception, so the monitor never sees it. It used to be believed that it
- *    was (Node's own default raises it), and so these went unrecorded: no line in `game.log`, no
- *    report to a test watching the game.
+ *  - **An exception nobody caught** does not end the process. Electron registers an
+ *    `uncaughtException` listener of its own in the main process, which shows a box headed "A
+ *    JavaScript error occurred in the main process" with the stack in it - the engine's internals, in
+ *    front of a player - and then carries on. The game used to observe these with a monitor and show
+ *    its own box first, which says the game has to close; so the player read "the game has to close",
+ *    then the stack, and then went on playing a game whose main process had been interrupted
+ *    half-way through something, with nothing to say what state that had left it in.
+ *  - **A promise rejection nobody handled** is printed as a Node warning on stderr - which a shipped
+ *    game has nobody reading - and is not raised as an exception at all, so the monitor never saw it:
+ *    no line in `game.log`, no report to a test watching the game.
  *
- * A rejection is recorded here and is not fatal. It is almost always one operation that failed -
- * a write the player's disk refused, a sidecar that did not answer, a window that closed while
- * something was being done to it - and the process it happened in has not been left half-way through
- * anything the way a synchronous throw can leave it. Ending the game over one would throw away the
- * playthrough in front of the player to report a failure they may never have noticed, which is a
- * worse outcome than the failure. Studio's own main process makes the same call for the same reason.
- * Electron makes it too, and this keeps it, only now with the record it was missing and without the
- * warning text on stderr.
+ * Both are now taken over here.
+ *
+ * **An exception ends the game, as the box always said it would.** It is recorded (`[Crash]` and the
+ * stack in `game.log`, a `runtime-error` to a watching test); what the player would lose is written
+ * out, with a budget so that a store that cannot finish does not hold the process; the game's own box
+ * is shown, once; and the process exits with `GAME_EXIT_CODES.crashed`. Taking the event over also
+ * silences Electron's stack box, whose listener stands aside once another one is registered. The
+ * order - write, then tell, then go - is the one Studio's own main process uses when it crashes: the
+ * box waits for a click, and nothing written after it is safe from a player who kills the process
+ * instead of clicking.
+ *
+ * **A rejection is recorded and is not fatal.** It is almost always one operation that failed - a
+ * write the player's disk refused, a sidecar that did not answer, a window that closed while something
+ * was being done to it - and the process it happened in has not been left half-way through anything
+ * the way a synchronous throw can leave it. Ending the game over one would throw away the playthrough
+ * in front of the player to report a failure they may never have noticed, which is a worse outcome
+ * than the failure. Studio's own main process makes the same call for the same reason.
  *
  * Comments in English per project convention.
  */
@@ -50,21 +60,33 @@ export function describeRuntimeError(error: unknown): DescribedMainProcessError 
 
 /** What {@link installMainProcessErrorReporting} needs. Structural so a test can stand in for it. */
 export interface MainProcessErrorHost {
-    /** `process.on`, for the two events this listens to. */
-    on(event: "uncaughtExceptionMonitor", listener: (error: unknown, origin?: string) => void): void;
+    /** `process.on`, for the two events this takes over. */
+    on(event: "uncaughtException", listener: (error: unknown) => void): void;
     on(event: "unhandledRejection", listener: (reason: unknown) => void): void;
     log: RuntimeLogSink;
     /** Hand a `runtime-error` to a test that is watching; does nothing when none is. */
     emitTestEvent(event: GameTestEvent): void;
-    /** Tell the player the game is going down (the native box). Called for exceptions only. */
+    /**
+     * Write out what the player would otherwise lose - the save and persistence stores' pending
+     * writes. Settles when they are on disk or have failed; never waited on for longer than
+     * {@link crashFlushBudgetMs}.
+     */
+    flushForCrash(): Promise<unknown>;
+    /** How long a crash waits for {@link flushForCrash} before it goes without it. */
+    crashFlushBudgetMs: number;
+    /** Tell the player the game is going down (the native box). Returns once they have seen it. */
     reportFatal(headline: string): void;
+    /** End the process with this code, at once. */
+    exit(code: number): void;
+    /** How the crash waits out its budget. Replaceable so a test need not sit through it. */
+    wait?(ms: number): Promise<void>;
 }
 
 /**
  * Put one error where it can be found: a test that is watching, and the game's log.
  *
- * The report to a test comes first, the log second, and anything shown to the player after both, so
- * the record survives even when drawing the box is what fails.
+ * The report to a test comes first and the log second, and anything shown to the player after both,
+ * so the record survives even when drawing the box is what fails.
  *
  * @returns the one-line headline, for whatever is shown after.
  */
@@ -82,29 +104,65 @@ export function recordMainProcessError(
         message: headline,
         ...(described.stack ? { stack: described.stack } : {}),
     });
-    // `[Crash]` for the kind that puts the fatal box up, `[Error]` for the kind the game carries on
-    // through - somebody reading the log afterwards needs to know which one the player saw.
+    // `[Crash]` for the kind that ends the game, `[Error]` for the kind it carries on through -
+    // somebody reading the log afterwards needs to know which one the player saw.
     host.log("error", `${rejection ? "[Error]" : "[Crash]"} ${headline}${described.stack ? `\n${described.stack}` : ""}`);
     return headline;
 }
 
+function defaultWait(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
- * Listen for both kinds, once, for the life of the process. See the file comment for what each does.
+ * Take both events over, once, for the life of the process. See the file comment for what each does.
  *
- * The exception side stays a monitor: taking `uncaughtException` over would change what happens after
- * one, which is not this function's to decide. The rejection side has to be a listener - a monitor is
- * never called for one - and registering it is also what stops Node printing its warning.
+ * A second exception while the first is still ending the game - the flush can fail in its own way,
+ * and so can drawing the box - is recorded like the first and changes nothing else: one box, one
+ * exit, and the flush the first one started is not cut short by the second.
  */
 export function installMainProcessErrorReporting(host: MainProcessErrorHost): void {
-    host.on("uncaughtExceptionMonitor", (error, origin) => {
-        const headline = recordMainProcessError(
-            host,
-            error,
-            origin === "unhandledRejection" ? "unhandledRejection" : "uncaughtException",
-        );
-        host.reportFatal(headline);
+    let crashing = false;
+    host.on("uncaughtException", error => {
+        const headline = recordMainProcessError(host, error, "uncaughtException");
+        if (crashing) {
+            return;
+        }
+        crashing = true;
+        void endAfterCrash(host, headline);
     });
     host.on("unhandledRejection", reason => {
         recordMainProcessError(host, reason, "unhandledRejection");
     });
+}
+
+/** Write out what can be written in the budget, tell the player, and exit with the crash code. */
+async function endAfterCrash(host: MainProcessErrorHost, headline: string): Promise<void> {
+    const wait = host.wait ?? defaultWait;
+    let outcome: "written" | "timed-out" | "failed" = "failed";
+    try {
+        outcome = await Promise.race([
+            Promise.resolve()
+                .then(() => host.flushForCrash())
+                .then(() => "written" as const, () => "failed" as const),
+            wait(host.crashFlushBudgetMs).then(() => "timed-out" as const),
+        ]);
+    } catch {
+        // A flush that could not even be asked for; the log line below says so.
+    }
+    try {
+        host.log("error", outcome === "written"
+            ? `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); what was waiting to be saved was written first.`
+            : outcome === "timed-out"
+                ? `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); gave up waiting ${host.crashFlushBudgetMs}ms for what was waiting to be saved.`
+                : `[Crash] Closing the game (exit ${GAME_EXIT_CODES.crashed}); what was waiting to be saved could not be written.`);
+    } catch {
+        // The log is the one thing that already has the error; going on without this line is fine.
+    }
+    try {
+        host.reportFatal(headline);
+    } catch {
+        // Telling the player is a courtesy; closing, as the box promises, is not.
+    }
+    host.exit(GAME_EXIT_CODES.crashed);
 }

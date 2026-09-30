@@ -1,3 +1,4 @@
+import { GAME_EXIT_CODES } from "./gameExitCodes";
 import type { RuntimeLogSink } from "./runtimeLog";
 
 /**
@@ -18,7 +19,8 @@ import type { RuntimeLogSink } from "./runtimeLog";
  *    that the silenced console does not swallow it and so that it is on its way before the process
  *    is - which, before the app is ready, is immediately;
  *  - the process exits with a code that is not 0, one per kind of refusal (see
- *    {@link STARTUP_EXIT_CODES}), so a script can tell them apart without reading anything.
+ *    {@link STARTUP_EXIT_CODES}, and `GAME_EXIT_CODES` for every code the game ends with), so a
+ *    script can tell them apart without reading anything.
  *
  * The line carries the reason and nothing else - not the tag the log sink puts on console output,
  * which names the engine. For a command line it names the arguments that were refused, which the
@@ -32,18 +34,19 @@ import type { RuntimeLogSink } from "./runtimeLog";
  */
 
 /**
- * The exit code of each kind of launch that did not start.
+ * The exit code of each kind of launch that did not start - the rows of `GAME_EXIT_CODES` that are
+ * about a launch, which is where every code the game ends with is listed.
  *
  * Not 0 for any of them, which is the whole point. `2` for the command line follows the long
  * convention for a usage error.
  */
 export const STARTUP_EXIT_CODES = {
-    /** The game's own content could not be opened or read. */
-    failed: 1,
+    /** The game's own content could not be opened or read, or no window could be set up from it. */
+    failed: GAME_EXIT_CODES.failedToStart,
     /** The command line carries something this build does not accept. */
-    commandLine: 2,
+    commandLine: GAME_EXIT_CODES.commandLineRefused,
     /** The game's content was written by a newer Studio than this build can read. */
-    contentTooNew: 3,
+    contentTooNew: GAME_EXIT_CODES.contentTooNew,
 } as const;
 
 export type StartupRefusalKind = keyof typeof STARTUP_EXIT_CODES;
