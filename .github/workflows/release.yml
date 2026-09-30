@@ -199,3 +199,84 @@ jobs:
               --generate-notes \
               --verify-tag
           fi
+
+  # Publish the plugin API's types package, `narraleaf-studio`, under the same version as the
+  # Studio just released. The two versions are the same number on purpose: a plugin author reads
+  # off which Studio a declaration describes, and a plugin's devDependency range says which Studio
+  # it was written against. Publishing it here, from the tag, is what keeps that true - a manual
+  # step once left a bumped version unpublished for weeks.
+  #
+  # There is no npm token anywhere in this repository. The job authenticates with npm trusted
+  # publishing: the registry is configured to accept this workflow file in this repository, and
+  # `id-token: write` lets npm exchange the run's OIDC identity for a publish credential that lasts
+  # only as long as the publish. The same exchange attaches a provenance statement to the package.
+  # Renaming this file breaks that trust, which is set on the package's settings page on npmjs.com.
+  #
+  # It runs after `release` rather than beside the builds so the declarations never reach npm for a
+  # Studio nobody can download yet. Re-running it after a success is harmless: a version already on
+  # the registry is skipped, since npm refuses a second publish of the same version anyway.
+  plugin-types:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # The declarations are generated from Studio's source by the package's prepack script, which
+      # needs the repository's own dependencies - the same install the builds above do.
+      - name: Authenticate to GitHub Packages
+        run: node .github/scripts/write-packages-credential.mjs
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: yarn install --no-immutable
+
+      # The tag, Studio's version and the types package's version must be one number. A unit test
+      # holds the manifests together; this holds them to the tag, which no test can see.
+      - name: Check the versions agree
+        id: version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          studio=$(node -p "require('./package.json').version")
+          types=$(node -p "require('./packages/plugin-types/package.json').version")
+          test "$TAG" = "v$studio" || { echo "::error::tag $TAG does not match Studio's version $studio"; exit 1; }
+          test "$types" = "$studio" || { echo "::error::packages/plugin-types is $types but Studio is $studio"; exit 1; }
+          echo "version=$types" >> "$GITHUB_OUTPUT"
+
+      - name: Skip a version already on npm
+        id: published
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/narraleaf-studio/$VERSION")
+          case "$status" in
+            200) echo "narraleaf-studio@$VERSION is already published; nothing to do."; echo "done=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "done=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::the registry answered $status for narraleaf-studio@$VERSION"; exit 1 ;;
+          esac
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 bundles npm 10.
+      - name: Publish narraleaf-studio
+        if: steps.published.outputs.done == 'false'
+        working-directory: packages/plugin-types
+        run: |
+          npm install --global npm@^11.5.1
+          npm publish
