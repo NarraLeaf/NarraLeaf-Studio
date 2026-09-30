@@ -49,6 +49,7 @@
  * not start), so it is both the floor and the answer for a project that declares no languages.
  */
 
+import { chineseScriptOf, localeTagParts } from "@shared/i18n/chineseScript";
 import { normalizeLocalizationConfiguration } from "@shared/types/localization";
 
 /** The pack Chromium falls back to, and the one every build keeps. */
@@ -62,39 +63,6 @@ const CHROMIUM_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
     tl: "fil",
 };
 
-/** Chinese regions that write Traditional Chinese; every other one is Simplified to Chromium. */
-const TRADITIONAL_CHINESE_REGIONS = new Set(["tw", "hk", "mo"]);
-
-/** A BCP-47 tag taken apart as far as choosing a pack needs: the language, its script, its region. */
-interface LocaleParts {
-    language: string;
-    script: string | null;
-    region: string | null;
-}
-
-/**
- * Read the language, script and region out of a tag, lower-cased; `null` for something that does not
- * start with a language code at all.
- *
- * `_` is read as `-`, because that is how a POSIX locale spells the same tag and how electron-builder
- * reads a pack name. Anything after the region - variants, extensions - says nothing about packs.
- */
-function localeParts(tag: string): LocaleParts | null {
-    const subtags = tag.trim().toLowerCase().split(/[-_]/);
-    const language = subtags[0] ?? "";
-    if (!/^[a-z]{2,3}$/.test(language)) {
-        return null;
-    }
-    let index = 1;
-    let script: string | null = null;
-    if (/^[a-z]{4}$/.test(subtags[index] ?? "")) {
-        script = subtags[index];
-        index += 1;
-    }
-    const region = /^([a-z]{2}|\d{3})$/.test(subtags[index] ?? "") ? subtags[index] : null;
-    return { language: CHROMIUM_LANGUAGE_ALIASES[language] ?? language, script, region };
-}
-
 /**
  * The Chromium locale packs a game needs to carry for one of its languages: the pack Chromium would
  * settle on for a player whose system speaks it, or, for a language named without a region, the pack
@@ -105,23 +73,21 @@ function localeParts(tag: string): LocaleParts | null {
  * that does not begin with a language code.
  */
 export function chromiumLocalePacksFor(tag: string): string[] {
-    const parts = localeParts(tag);
+    const parts = localeTagParts(tag);
     if (!parts) {
         return [];
     }
-    const { language, script, region } = parts;
+    const language = CHROMIUM_LANGUAGE_ALIASES[parts.language] ?? parts.language;
+    const { region } = parts;
     switch (language) {
         case "zh": {
-            if (script === "hans") {
-                return ["zh-CN"];
-            }
-            if (script === "hant") {
-                return ["zh-TW"];
-            }
-            if (region === null) {
+            // By script, the script a region writes standing in for one that is not named - the
+            // same table the game's first-launch language match reads.
+            const script = chineseScriptOf(parts);
+            if (script === null) {
                 return ["zh-CN", "zh-TW"];
             }
-            return [TRADITIONAL_CHINESE_REGIONS.has(region) ? "zh-TW" : "zh-CN"];
+            return [script === "hant" ? "zh-TW" : "zh-CN"];
         }
         case "es":
             if (region === null) {
