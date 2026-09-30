@@ -11,6 +11,7 @@ import {
     gameBuildArtifactBaseName,
     gameBuildArtifactNamePattern,
     hostCanBuildTarget,
+    iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
     mobileExportFileName,
@@ -201,6 +202,72 @@ describe("gameBuildArtifactBaseName", () => {
 
     it("sanitizes both halves", () => {
         expect(gameBuildArtifactBaseName("My: Game", "All ages / cut")).toBe("My-Game-All-ages-cut");
+    });
+
+    /**
+     * Names are spelled the way their author wrote them. They used to go through a transliterator
+     * that reads every Han character as Mandarin, which named a Japanese project's installer in
+     * pinyin: `Fang-Ke-Hou-Ti-Yan-Ban-1.0.0-win-x64.exe` for 放課後 and its 体験版.
+     */
+    it("keeps a Japanese project and edition in their own script", () => {
+        expect(gameBuildArtifactBaseName("放課後", "体験版")).toBe("放課後-体験版");
+        expect(gameBuildArtifactBaseName("放課後のアリス", null)).toBe("放課後のアリス");
+    });
+
+    it("keeps a Chinese project in its own script", () => {
+        expect(gameBuildArtifactBaseName("你好世界", "试玩版")).toBe("你好世界-试玩版");
+    });
+
+    it("keeps a mixed name, separating its words the way a Latin one is", () => {
+        expect(gameBuildArtifactBaseName("星の詩 Prologue", "Demo 版")).toBe("星の詩-Prologue-Demo-版");
+        // An ideographic space is a space.
+        expect(gameBuildArtifactBaseName(`夏の終わり${String.fromCodePoint(0x3000)}第二章`, null)).toBe("夏の終わり-第二章");
+    });
+
+    it("names every platform's artifacts from the same spelling the dialog predicts", () => {
+        const artifactBaseName = gameBuildArtifactBaseName("放課後", "体験版");
+        const predicted = predictGameBuildArtifacts({
+            artifactBaseName,
+            version: "1.0.0",
+            targets: [
+                { platform: "windows", formats: ["nsis", "zip"], arch: "x64" },
+                { platform: "macos", formats: ["dmg"], arch: "arm64" },
+                { platform: "linux", formats: ["appimage"], arch: "x64" },
+                { platform: "web", formats: ["zip"] },
+                { platform: "android", formats: ["apk", "aab"] },
+                { platform: "ios", formats: ["ipa"] },
+            ],
+        });
+        expect(predicted.map(artifact => artifact.name)).toEqual([
+            "放課後-体験版-1.0.0-win-x64.exe",
+            "放課後-体験版-1.0.0-win-x64.zip",
+            "放課後-体験版-1.0.0-mac-arm64.dmg",
+            "放課後-体験版-1.0.0-linux-x86_64.AppImage",
+            "放課後-体験版-1.0.0-web.zip",
+            "放課後-体験版-1.0.0-android.apk",
+            "放課後-体験版-1.0.0-android.aab",
+            "放課後-体験版-1.0.0-ios.ipa",
+        ]);
+    });
+});
+
+describe("iosAppDirectoryName", () => {
+    it("keeps an ASCII artifact name, exactly as it always was", () => {
+        expect(iosAppDirectoryName("My-Game-Demo", "com.narraleaf.games.my-game")).toBe("My-Game-Demo");
+    });
+
+    it("spells any other name from the app id, which the author's identifier gave", () => {
+        expect(iosAppDirectoryName("放課後-体験版", "com.narraleaf.games.houkago")).toBe("houkago");
+        expect(iosAppDirectoryName("Épica", "com.example.epica")).toBe("epica");
+    });
+});
+
+describe("deriveGameAppId without an identifier", () => {
+    it("still spells the project's name as it always did, because players' save folders follow it", () => {
+        // Deliberately the old transliteration, pinyin and all: this is an identity, not a name,
+        // and moving it would orphan every save made under it.
+        expect(deriveGameAppId(undefined, "放課後")).toBe("com.narraleaf.games.fang-ke-hou");
+        expect(deriveGameAppId("", "My Game")).toBe("com.narraleaf.games.my-game");
     });
 });
 
