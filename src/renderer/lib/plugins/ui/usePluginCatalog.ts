@@ -3,6 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { localizePluginRegistryEntry } from "@shared/utils/pluginRegistryText";
 import { forgetStoreIcon } from "./useStoreIcon";
 
 /** How long a "done" line stays before the surface goes quiet again. */
@@ -49,6 +50,7 @@ export interface PluginCatalogHooks {
 
 export interface PluginCatalog {
     plugins: PluginListItem[];
+    /** The store index, each entry's name and description already in the interface language. */
     registry: PluginRegistryEntry[] | null;
     registryError: string | null;
     registryLoading: boolean;
@@ -100,9 +102,19 @@ export interface PluginCatalog {
  * being what tells the *installed* list that an update exists.
  */
 export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [plugins, setPlugins] = useState<PluginListItem[]>([]);
-    const [registry, setRegistry] = useState<PluginRegistryEntry[] | null>(null);
+    const [fetchedRegistry, setRegistry] = useState<PluginRegistryEntry[] | null>(null);
+    /**
+     * The index as the store shows it: every entry's name and description in the interface
+     * language, taken from its own `locales`. Resolved here, once, so each surface that shows an
+     * entry - the rows, the details, the project's dependency table, the search - reads the same
+     * words, and all of them follow a language switch.
+     */
+    const registry = useMemo(
+        () => fetchedRegistry?.map(entry => localizePluginRegistryEntry(entry, locale)) ?? null,
+        [fetchedRegistry, locale],
+    );
     const [registryError, setRegistryError] = useState<string | null>(null);
     const [registryLoading, setRegistryLoading] = useState(false);
     const [task, setTask] = useState<PluginCatalogTask>({ status: "idle" });
