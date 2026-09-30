@@ -167,7 +167,7 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.backgroundBlur": number;
     /**
      * Whether the editor's reading surfaces (story prose, text editor) keep a plate over the
-     * wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
+     * wallpaper; absent means on. Meaningless without `ui.backgroundImage`.
      */
     "ui.backgroundEditorFill": boolean;
     /** Opacity of that plate while it is on, as a percentage; clamped to 10–100 when read. */
@@ -637,8 +637,41 @@ export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
     "advanced.experimentalFeatures",
     // The reading surfaces' opacity, from when it was a row in the Settings window. The plate only
     // exists under a wallpaper, so it moved into the background dialog as `ui.backgroundEditorFill`
-    // plus `ui.backgroundEditorOpacity`. Swept rather than migrated: the value it carried on nearly
-    // every profile was its default of 100, and carried over that would switch on a plate the new
-    // setting leaves off unless asked.
+    // plus `ui.backgroundEditorOpacity`. A value the author lowered is carried there first (see
+    // `carriedRetiredValues`); the default of 100 most profiles hold is the new plate's default too.
     "editor.surfaceOpacity",
 ];
+
+/**
+ * What a retired key's stored value still says about the keys that replaced it.
+ *
+ * `GlobalStateManager.sweepRetiredKeys` writes this just before it deletes the retired keys, so it
+ * applies once per profile, on the first launch that knows the replacement. A replacement that has
+ * a value of its own keeps it: that was set through the new control, and is the newer answer.
+ */
+export function carriedRetiredValues(stored: Readonly<Record<string, unknown>>): Partial<GlobalStateType> {
+    const carried: Partial<GlobalStateType> = {};
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(stored, key);
+
+    // `editor.surfaceOpacity` (0-100, default 100) set the reading surfaces' plate; the background
+    // dialog's editor plate is the same paint under a switch. 100 is that plate's default as well,
+    // so only a lowered value carries anything: 0 was a clear surface, which is the switch off, and
+    // anything between is the plate on at that opacity (clamped to the slider's range when read).
+    const surfaceOpacity = stored["editor.surfaceOpacity"];
+    if (
+        typeof surfaceOpacity === "number"
+        && Number.isFinite(surfaceOpacity)
+        && surfaceOpacity < 100
+        && !has("ui.backgroundEditorFill")
+        && !has("ui.backgroundEditorOpacity")
+    ) {
+        if (surfaceOpacity <= 0) {
+            carried["ui.backgroundEditorFill"] = false;
+        } else {
+            carried["ui.backgroundEditorFill"] = true;
+            carried["ui.backgroundEditorOpacity"] = Math.round(surfaceOpacity);
+        }
+    }
+
+    return carried;
+}
