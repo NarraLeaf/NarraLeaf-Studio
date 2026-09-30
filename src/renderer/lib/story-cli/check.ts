@@ -20,7 +20,7 @@
 
 import { LINT_RULES, resolveLintMessageParams, runLintRules, storyUnreadableFinding, type LintReportEntry } from "@/lib/lint";
 import { buildProjectLintContext, headlessLintCategories } from "@/lib/lint/projectContext";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
 import type { StoryFileDiagnostic } from "./dsl/ast";
 import { compileStoryFile } from "./dsl/compile";
@@ -252,7 +252,7 @@ function toDiagnostic(entry: LintReportEntry): StoryFileDiagnostic {
             .filter(Boolean)
             .join(", ")
         : "";
-    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate));
+    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate, translateN));
     return {
         code: entry.ruleId,
         // A rule's configured severity, mapped onto the two this tool reports: `info` is advice and

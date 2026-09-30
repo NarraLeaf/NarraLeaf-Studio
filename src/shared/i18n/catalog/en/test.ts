@@ -151,8 +151,8 @@ export const test = {
                 optionMissing: "{scene} did not offer \"{option}\", so this route is not walkable",
                 otherEnding: "Reached {reached} instead of {ending}",
                 endedWithoutEnding: "The story ended without reaching {ending}",
-                stalled: "Stopped advancing after {steps} steps without reaching {ending}",
-                cancelled: "Cancelled after {steps} steps",
+                stalled: "Stopped advancing without reaching {ending}. Steps taken: {steps}",
+                cancelled: "Cancelled. Steps taken: {steps}",
                 exit: {
                     closed: "The game closed before reaching {ending}",
                     stopped: "The game was stopped before reaching {ending}",

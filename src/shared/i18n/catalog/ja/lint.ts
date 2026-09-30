@@ -358,7 +358,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "変化しない条件",
             description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
-            message: "{variable} を参照する条件が {count} 件ありますが、代入する箇所がありません",
+            message: "{variable} を参照する条件が {conditions}ありますが、代入する箇所がありません",
+            conditionCount: {
+                other: "{count} 件",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",
@@ -395,7 +398,10 @@ export const lint = {
         localizationOrphan: {
             title: "対応する行のない翻訳",
             description: "対応する行が存在しない翻訳",
-            message: "対応する行のない {locale} の翻訳が {count} 件ある",
+            message: "対応する行のない {locale} の翻訳が {translations}ある",
+            translationCount: {
+                other: "{count} 件",
+            },
         },
         voiceMissing: {
             title: "ボイスの欠落",
@@ -410,7 +416,10 @@ export const lint = {
         voiceOrphan: {
             title: "対応する行のない録音",
             description: "対応する行が存在しない録音",
-            message: "対応する行のない {locale} の録音が {count} 件ある",
+            message: "対応する行のない {locale} の録音が {recordings}ある",
+            recordingCount: {
+                other: "{count} 件",
+            },
         },
         brandBrokenLink: {
             title: "切れた色のリンク",
@@ -424,10 +433,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "グリフ不足",
             description: "プロジェクトのどのフォントにも無い文字を使っている",
-            message: "プロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
-            messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
+            message: "プロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 箇所",
+            },
+            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageMore: "他に {characters}、プロジェクトのフォントに無い",
+            moreCharacterCount: {
+                other: "{count} 文字",
+            },
+            messageMoreInLanguage: "{language}で他に {characters}、プロジェクトのフォントに無い",
             messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
             messageUnloadable: "{font} は .{format} フォントで、ゲームでは描画できない",
         },

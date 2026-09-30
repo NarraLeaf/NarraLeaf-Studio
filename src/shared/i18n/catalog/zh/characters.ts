@@ -174,7 +174,9 @@ export const characters = {
                 other: "{count} 层",
             },
             mapping: "层",
-            axis: "轴，{count} 个差分",
+            axis: {
+                other: "轴，{count} 个差分",
+            },
             blends: "引擎无法还原的混合模式",
             merge: "向下合并",
             skip: "跳过",

@@ -19,16 +19,20 @@ import {
 
 /** A translator with a fixed catalogue, so a test asserts on WHICH key was asked for. */
 function translatorFor(catalog: Record<string, string>): LabelTranslator {
+    const t = ((key: string, params?: Record<string, string | number>) => {
+        const template = catalog[key];
+        if (template === undefined) {
+            return key;
+        }
+        return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+            params && name in params ? String(params[name]) : match);
+    }) as LabelTranslator["t"];
     return {
         has: (key: string) => key in catalog,
-        t: ((key: string, params?: Record<string, string | number>) => {
-            const template = catalog[key];
-            if (template === undefined) {
-                return key;
-            }
-            return template.replace(/\{(\w+)\}/g, (match, name: string) =>
-                params && name in params ? String(params[name]) : match);
-        }) as LabelTranslator["t"],
+        t,
+        // English's two forms, which is all a fixed catalogue here needs.
+        tn: ((base: string, count: number) =>
+            t(`${base}.${count === 1 ? "one" : "other"}` as never, { count })) as LabelTranslator["tn"],
     };
 }
 
@@ -262,5 +266,45 @@ describe("a change label never carries a generated id", () => {
 
         expect(view.primary).toBe("…");
         expect(view.detail).toBeUndefined();
+    });
+});
+
+/**
+ * A producer sends a count as a bare number, because it has no locale. "Scene added (1 rows)" is what
+ * that read as when the template spelled the noun itself; the noun now takes the reader's plural.
+ */
+describe("counts a change label carries", () => {
+    const translator = translatorFor({
+        "documentDiff.story.sceneAdded": "Scene added ({rowCount})",
+        "documentDiff.uiGraphs.graphRemoved": "Graph removed ({nodeCount})",
+        "documentDiff.units.rows.one": "{count} row",
+        "documentDiff.units.rows.other": "{count} rows",
+        "documentDiff.units.nodes.one": "{count} node",
+        "documentDiff.units.nodes.other": "{count} nodes",
+        // A translation written against the bare number, as a language pack may still be.
+        "documentDiff.uiDocument.surfaceAdded": "Surface added ({elements} elements)",
+    });
+    const scene = (blocks: number): DocumentChange => ({
+        path: ["scene"],
+        kind: "added",
+        label: { key: "documentDiff.story.sceneAdded", params: { blocks } },
+    });
+
+    it("reads in the singular at one and the plural otherwise", () => {
+        expect(resolveDocumentChangeLabel(scene(1), translator).primary).toBe("Scene added (1 row)");
+        expect(resolveDocumentChangeLabel(scene(12), translator).primary).toBe("Scene added (12 rows)");
+        expect(resolveDocumentChangeLabel({
+            path: ["graph"],
+            kind: "removed",
+            label: { key: "documentDiff.uiGraphs.graphRemoved", params: { nodes: 1 } },
+        }, translator).primary).toBe("Graph removed (1 node)");
+    });
+
+    it("still hands the bare number to a template that asks for it", () => {
+        expect(resolveDocumentChangeLabel({
+            path: ["surface"],
+            kind: "added",
+            label: { key: "documentDiff.uiDocument.surfaceAdded", params: { elements: 4 } },
+        }, translator).primary).toBe("Surface added (4 elements)");
     });
 });

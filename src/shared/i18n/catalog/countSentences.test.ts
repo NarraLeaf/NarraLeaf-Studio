@@ -205,3 +205,85 @@ describe("sentences with several counts", () => {
             .toBe("経路を決定: シーン 1 件、選択 2 件");
     });
 });
+
+/**
+ * Strings that carry one count. Each is a plural group read with `tn`: English at one and at many,
+ * and the Chinese and Japanese text exactly as it read before it became a group.
+ */
+describe("strings with one count", () => {
+    const en = createTranslator("en");
+    const zh = createTranslator("zh");
+    const ja = createTranslator("ja");
+
+    type Case = {
+        key: Parameters<Translator["tn"]>[0];
+        params?: Record<string, string | number>;
+        one: string;
+        many: [number, string];
+        zh: string;
+        ja: string;
+    };
+    const CASES: Case[] = [
+        { key: "settings.transfer.imported", one: "Applied 1 setting.", many: [3, "Applied 3 settings."],
+            zh: "已应用 3 项设置", ja: "設定 3 件を適用した" },
+        { key: "workspace.localization.exchange.exportDone", params: { path: "a.csv" },
+            one: "Exported 1 line to a.csv", many: [3, "Exported 3 lines to a.csv"],
+            zh: "已导出 3 条到 a.csv", ja: "3 行を a.csv に書き出した" },
+        { key: "workspace.localization.exchange.importWarnings", params: { first: "Row 2" },
+            one: "1 entry was skipped. First: Row 2", many: [3, "3 entries were skipped. First: Row 2"],
+            zh: "有 3 条被跳过，第一条：Row 2", ja: "3 件を飛ばした。最初のもの：Row 2" },
+        { key: "workspace.shell.statusBar.words", one: "1 word", many: [3, "3 words"], zh: "3 字", ja: "3 語" },
+        { key: "workspace.shell.statusBar.lines", one: "1 line", many: [3, "3 lines"], zh: "3 行", ja: "3 行" },
+        { key: "workspace.shell.versionControl.filterNoMatch",
+            one: "No match in the 1 version read so far.", many: [3, "No match in the 3 versions read so far."],
+            zh: "已读取的 3 个版本里没有匹配", ja: "読み込んだ 3 件のバージョンに一致はありません" },
+        { key: "workspace.shell.versionControl.showCheckpoints", one: "Show 1 checkpoint", many: [3, "Show 3 checkpoints"],
+            zh: "显示 3 个检查点", ja: "チェックポイント 3 件を表示" },
+        { key: "assets.modelImport.fileSummary", params: { size: "2 MB" },
+            one: "1 file · 2 MB", many: [3, "3 files · 2 MB"], zh: "3 个文件 · 2 MB", ja: "3 ファイル · 2 MB" },
+        { key: "assets.magicTag.moreFiles", one: "… and 1 more file", many: [3, "… and 3 more files"],
+            zh: "…还有 3 个文件", ja: "…ほか 3 ファイル" },
+        { key: "characters.editor.psd.axis", one: "axis, 1 tag", many: [3, "axis, 3 tags"],
+            zh: "轴，3 个差分", ja: "軸、タグ 3 個" },
+        { key: "uiEditor.componentLibrary.refs", one: "1 ref", many: [3, "3 refs"], zh: "3 处引用", ja: "参照 3" },
+        { key: "dashboard.builds.logOmitted",
+            one: "The first 1 line was dropped to keep the record small.",
+            many: [3, "The first 3 lines were dropped to keep the record small."],
+            zh: "为控制记录体积，已省略开头 3 行", ja: "記録を小さく保つため、最初の 3 行を省いた" },
+        { key: "documentDiff.tab.documentsOmitted",
+            one: "1 more document is not listed here.", many: [3, "3 more documents are not listed here."],
+            zh: "另有 3 份文档没有列出", ja: "ここに載っていないドキュメントがあと 3 件ある" },
+        { key: "documentDiff.resolve.rowsOmitted",
+            one: "1 more file is not listed here. Use the two links above to choose for all of them.",
+            many: [3, "3 more files are not listed here. Use the two links above to choose for all of them."],
+            zh: "另有 3 个文件未列出，可用上方的两个链接一次性选择",
+            ja: "ここに載っていないファイルがあと 3 件ある。上の 2 つのリンクでまとめて選ぶ" },
+    ];
+
+    for (const entry of CASES) {
+        it(`reads each number in its own form: ${entry.key}`, () => {
+            expect(en.tn(entry.key, 1, entry.params)).toBe(entry.one);
+            expect(en.tn(entry.key, entry.many[0], entry.params)).toBe(entry.many[1]);
+            expect(zh.tn(entry.key, entry.many[0], entry.params)).toBe(entry.zh);
+            expect(ja.tn(entry.key, entry.many[0], entry.params)).toBe(entry.ja);
+        });
+    }
+
+    it("spells the counts a change label carries, as the comparison view renders them", () => {
+        const label = (translator: Translator, count: number) =>
+            translator.t("documentDiff.story.sceneAdded", { rowCount: translator.tn("documentDiff.units.rows", count) });
+        expect(label(en, 1)).toBe("Scene added (1 row)");
+        expect(label(en, 5)).toBe("Scene added (5 rows)");
+        expect(label(zh, 5)).toBe("新增场景（5 行）");
+        expect(label(ja, 5)).toBe("シーンを追加（5 行）");
+        expect(ja.t("documentDiff.uiGraphs.graphAdded", { nodeCount: ja.tn("documentDiff.units.nodes", 2) }))
+            .toBe("グラフを追加（ノード 2 件）");
+    });
+
+    it("names the noun first where the text is stored and rendered later", () => {
+        expect(en.t("workspace.recovery.details.storiesRead", { count: 1 })).toBe("Story documents read: 1.");
+        expect(en.t("test.builtin.walkthrough.finding.cancelled", { steps: 1 })).toBe("Cancelled. Steps taken: 1");
+        expect(zh.t("workspace.recovery.details.storiesRead", { count: 3 })).toBe("已读取 3 个故事文档");
+        expect(ja.t("test.builtin.walkthrough.finding.cancelled", { steps: 3 })).toBe("3 ステップ進んだところで中止");
+    });
+});

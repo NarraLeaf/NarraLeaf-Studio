@@ -68,6 +68,24 @@ export const documentDiff = {
         root: "The document itself",
     },
     /**
+     * A count a change label states, with its noun, in the reader's plural. The producer sends the
+     * bare number; `spellLabelCounts` in `renderer/lib/vcs/documentChangeView.ts` spells it.
+     */
+    units: {
+        rows: {
+            one: "{count} row",
+            other: "{count} rows",
+        },
+        elements: {
+            one: "{count} element",
+            other: "{count} elements",
+        },
+        nodes: {
+            one: "{count} node",
+            other: "{count} nodes",
+        },
+    },
+    /**
      * What a spec's summary counts, by the stable key `DocumentSummaryCount.key` carries.
      *
      * A key with no entry here falls back to the raw identifier rather than to a missing-key
@@ -124,8 +142,8 @@ export const documentDiff = {
         /** Reordered, or a scene moved in or out. The two values are the two lengths. */
         chapterScenes: "Scene list changed",
         chapterOrder: "Chapters reordered",
-        sceneAdded: "Scene added ({blocks} rows)",
-        sceneRemoved: "Scene removed ({blocks} rows)",
+        sceneAdded: "Scene added ({rowCount})",
+        sceneRemoved: "Scene removed ({rowCount})",
         sceneChanged: "Scene changed",
         sceneRenamed: "Renamed",
         sceneField: "Scene {field}",
@@ -275,8 +293,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "Interface renamed",
-        surfaceAdded: "Surface added ({elements} elements)",
-        surfaceRemoved: "Surface removed ({elements} elements)",
+        surfaceAdded: "Surface added ({elementCount})",
+        surfaceRemoved: "Surface removed ({elementCount})",
         surfaceChanged: "Surface changed",
         surfaceRenamed: "Renamed",
         /** The design area the Surface is laid out in - not the resolution it is rendered at. */
@@ -284,8 +302,8 @@ export const documentDiff = {
         surfaceSettings: "Background or page animation changed",
         surfaceRoot: "Root element changed",
         surfaceField: "{field} changed",
-        componentAdded: "Component added ({elements} elements)",
-        componentRemoved: "Component removed ({elements} elements)",
+        componentAdded: "Component added ({elementCount})",
+        componentRemoved: "Component removed ({elementCount})",
         componentChanged: "Component changed",
         componentRenamed: "Renamed",
         componentField: "{field} changed",
@@ -320,8 +338,8 @@ export const documentDiff = {
     uiGraphs: {
         /** Which of an owner's blueprints is the live one. */
         ownerRecord: "Active blueprint changed",
-        blueprintAdded: "Blueprint added ({nodes} nodes)",
-        blueprintRemoved: "Blueprint removed ({nodes} nodes)",
+        blueprintAdded: "Blueprint added ({nodeCount})",
+        blueprintRemoved: "Blueprint removed ({nodeCount})",
         blueprintChanged: "Blueprint changed",
         blueprintRenamed: "Renamed",
         /** Which file a script runs. Its text lives on disk and is not part of this document. */
@@ -330,8 +348,8 @@ export const documentDiff = {
         scriptRemoved: "Script removed",
         scriptChanged: "Script changed",
         blueprintField: "{field} changed",
-        graphAdded: "Graph added ({nodes} nodes)",
-        graphRemoved: "Graph removed ({nodes} nodes)",
+        graphAdded: "Graph added ({nodeCount})",
+        graphRemoved: "Graph removed ({nodeCount})",
         graphChanged: "Graph changed",
         graphRenamed: "Renamed",
         graphField: "{field} changed",
@@ -853,7 +871,10 @@ export const documentDiff = {
         emptyWorkingTree: "Nothing has changed since the last version",
         readFailure: "This comparison could not be read: {error}",
         incomplete: "{shown} of {total} changed documents were compared.",
-        documentsOmitted: "{count} more documents are not listed here.",
+        documentsOmitted: {
+            one: "{count} more document is not listed here.",
+            other: "{count} more documents are not listed here.",
+        },
         unavailable: "Version control is not available in this project.",
     },
     /**
@@ -933,7 +954,10 @@ export const documentDiff = {
         takeTheirs: "Keep theirs",
         takeAllMine: "Keep mine everywhere",
         takeAllTheirs: "Keep theirs everywhere",
-        rowsOmitted: "{count} more files are not listed here. Use the two links above to choose for all of them.",
+        rowsOmitted: {
+            one: "{count} more file is not listed here. Use the two links above to choose for all of them.",
+            other: "{count} more files are not listed here. Use the two links above to choose for all of them.",
+        },
         /** The two panes: the conflicted files, and the changes inside the one being looked at. */
         fileList: "Conflicted files",
         /** The controls on one file's row, named as the question they answer. */

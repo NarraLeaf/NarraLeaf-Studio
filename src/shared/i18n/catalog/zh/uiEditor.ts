@@ -150,7 +150,9 @@ export const uiEditor = {
             one: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
             other: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
         },
-        refs: "{count} 处引用",
+        refs: {
+            other: "{count} 处引用",
+        },
     },
     canvas: {
         unknownWidget: "未知控件",

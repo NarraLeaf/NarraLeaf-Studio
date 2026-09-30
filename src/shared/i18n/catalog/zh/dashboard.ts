@@ -99,7 +99,9 @@ export const dashboard = {
         empty: "暂无构建记录",
         emptyHint: "该项目的构建完成后将显示在此处",
         logEmpty: "本次构建没有输出记录",
-        logOmitted: "为控制记录体积，已省略开头 {count} 行",
+        logOmitted: {
+            other: "为控制记录体积，已省略开头 {count} 行",
+        },
     },
 
     structure: {

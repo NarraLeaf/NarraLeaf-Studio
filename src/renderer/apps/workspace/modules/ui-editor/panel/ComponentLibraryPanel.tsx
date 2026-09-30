@@ -440,7 +440,7 @@ export function ComponentLibraryPanel({
                                             {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                             {documentService ? (
                                                 <span className="ml-2">
-                                                    {t("uiEditor.componentLibrary.refs", { count: usageCounts[component.id] ?? 0 })}
+                                                    {tn("uiEditor.componentLibrary.refs", usageCounts[component.id] ?? 0)}
                                                 </span>
                                             ) : null}
                                         </div>

@@ -239,7 +239,9 @@ export const assets = {
         noneFound: "该文件夹中没有 {family} 模型",
         noneFoundHint: "确认上方所选的类型，并确认该文件夹是否为导出工具生成的文件夹",
         entry: "入口文件",
-        fileSummary: "{count} 个文件 · {size}",
+        fileSummary: {
+            other: "{count} 个文件 · {size}",
+        },
         selectAll: "全选",
         selectNone: "全不选",
         importAction: "导入",
@@ -410,7 +412,9 @@ export const assets = {
         categoryMapping: "标签类别映射",
         exampleFilename: "示例文件名：{filename}",
         categoryPlaceholder: "标签类别（例如：char、emo）",
-        moreFiles: "…还有 {count} 个文件",
+        moreFiles: {
+            other: "…还有 {count} 个文件",
+        },
         tagCounts: "将为 {files}共添加 {tags}",
         tagCount: {
             other: "{count} 个标签",

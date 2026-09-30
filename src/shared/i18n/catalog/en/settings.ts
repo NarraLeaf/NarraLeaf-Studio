@@ -575,7 +575,10 @@ export const settings = {
         apply: "Apply",
         exportHint: "Writes the settings to a plain JSON file. The workspace background, the name recorded on commits, recent projects, statistics and window layout stay on this machine.",
         exported: "Saved to {path}",
-        imported: "Applied {count} settings.",
+        imported: {
+            one: "Applied {count} setting.",
+            other: "Applied {count} settings.",
+        },
         exportFailed: "The settings could not be saved.",
         importFailed: "The file could not be read.",
         planSummary: "{change} to change, {same} already the same, {skipped} skipped.",
