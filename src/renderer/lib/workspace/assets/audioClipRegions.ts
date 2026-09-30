@@ -3,7 +3,8 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 
 /**
- * The in/out points marked on the project's audio assets, keyed by asset id.
+ * How the project's audio assets are played - marked points, file length where needed, gain - keyed
+ * by asset id.
  *
  * The editor's own equivalent of the bundle's `audio.clips`: Dev Mode and the packaged game read the
  * table the bundle assembler baked, while anything compiling in-process (the scene preview) reads the
@@ -14,7 +15,7 @@ export function collectAudioClipRegions(assets: AssetsService | null | undefined
     const clips: Record<string, AudioClipRegion> = {};
     const audio = assets?.getAssets()[AssetType.Audio];
     for (const [assetId, asset] of Object.entries(audio ?? {})) {
-        const region = normalizeAudioClipRegion(asset?.extras);
+        const region = normalizeAudioClipRegion(asset?.extras, asset?.hash);
         if (region) {
             clips[assetId] = region;
         }

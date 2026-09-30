@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { useProductIconSrc } from "@/lib/appearance/useProductIcon";
+import { PRODUCT_MARK_SRC } from "@/lib/appearance/productMark";
 import { cn } from "@/lib/utils/cn";
 import type { TranslationKey } from "@shared/i18n";
 import { useOnboardingPreferences } from "../onboardingPreferences";
@@ -99,7 +99,6 @@ export interface StudioPreviewProps {
 export function StudioPreview({ surface }: StudioPreviewProps) {
     const { t } = useTranslation();
     const preferences = useOnboardingPreferences();
-    const productIconSrc = useProductIconSrc();
     const projectName = t("onboarding.sample.projectName");
 
     // The version column is a column of the window rather than a page in it, which is also what
@@ -132,7 +131,7 @@ export function StudioPreview({ surface }: StudioPreviewProps) {
         >
             <div className="flex h-10 min-h-10 shrink-0 items-center border-b border-edge bg-surface-sunken">
                 <span className="flex h-full shrink-0 items-center px-4">
-                    <img src={productIconSrc} alt="" className="h-5 w-5" />
+                    <img src={PRODUCT_MARK_SRC} alt="" className="h-5 w-5" />
                 </span>
                 {/* The menu bar folded behind one button, which is how Studio leaves the factory. */}
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-fg-muted">

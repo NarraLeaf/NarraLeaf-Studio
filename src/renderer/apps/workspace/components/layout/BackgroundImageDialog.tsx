@@ -7,12 +7,17 @@ import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { Slider } from "@/lib/components/elements/Slider";
+import { Switch } from "@/lib/components/elements/Switch";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import {
     BACKGROUND_ANCHORS,
     BACKGROUND_BLUR_MAX,
     BACKGROUND_FILLS,
     BACKGROUND_KEYS,
+    BACKGROUND_PLATE_OPACITY_MAX,
+    BACKGROUND_PLATE_OPACITY_MIN,
+    BACKGROUND_PLATE_OPACITY_STEP,
     DEFAULT_BACKGROUND,
     readBackgroundSettings,
     type BackgroundAnchor,
@@ -23,13 +28,13 @@ import {
 /**
  * The background-image dialog, modeled on the JetBrains one: pick a file, set how strongly it
  * shows through, choose how it fills the area and where it sits. Every control writes global state
- * immediately so the change previews live — the picture is painted as the backdrop of the empty
- * editor area (see MainEditorEmptyDropZone), so the preview shows when no editor tab is open.
- * Cancel restores the values the dialog opened with, which is why the entry snapshot is kept.
+ * immediately so the change previews live behind the dialog. Cancel restores the values the dialog
+ * opened with, which is why the entry snapshot is kept.
  *
- * The picture is deliberately confined to that backdrop rather than overlaid on the whole window:
- * an on-top overlay tinted every panel and editor beneath it, making real content (a scene's
- * background image, toolbars) read as see-through. Behind opaque content it can never do that.
+ * The picture is a backdrop behind the chrome, never an overlay on it (see WorkspaceLayout), so it
+ * can only show where a surface lets it through. The last two rows decide how much the editor's
+ * reading surfaces and the docks let through: each is a plate that is either off (clear) or on at
+ * an opacity of its own.
  *
  * The setting is global (one background for the whole app), so there is no per-project scope and
  * no separate targets to configure.
@@ -150,7 +155,7 @@ export function BackgroundImageDialog() {
         >
             <div className="flex flex-col gap-5 text-sm">
                 <label className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 text-fg-muted">{t("workspace.shell.background.image")}</span>
+                    <span className="w-36 shrink-0 text-fg-muted">{t("workspace.shell.background.image")}</span>
                     <input
                         type="text"
                         readOnly
@@ -168,7 +173,7 @@ export function BackgroundImageDialog() {
                 </label>
 
                 <label className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 text-fg-muted">{t("workspace.shell.background.opacity")}</span>
+                    <span className="w-36 shrink-0 text-fg-muted">{t("workspace.shell.background.opacity")}</span>
                     <Slider
                         className="min-w-0 flex-1"
                         value={current.opacity}
@@ -181,7 +186,7 @@ export function BackgroundImageDialog() {
                 </label>
 
                 <label className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 text-fg-muted">{t("workspace.shell.background.blur")}</span>
+                    <span className="w-36 shrink-0 text-fg-muted">{t("workspace.shell.background.blur")}</span>
                     <Slider
                         className="min-w-0 flex-1"
                         value={current.blur}
@@ -196,7 +201,7 @@ export function BackgroundImageDialog() {
                 </label>
 
                 <div className="flex items-start gap-3">
-                    <span className="w-24 shrink-0 pt-1.5 text-fg-muted">{t("workspace.shell.background.fillMode")}</span>
+                    <span className="w-36 shrink-0 pt-1.5 text-fg-muted">{t("workspace.shell.background.fillMode")}</span>
                     <div className="flex flex-wrap gap-1.5">
                         {BACKGROUND_FILLS.map(fill => (
                             <button
@@ -216,7 +221,7 @@ export function BackgroundImageDialog() {
                 </div>
 
                 <div className="flex items-start gap-3">
-                    <span className="w-24 shrink-0 pt-1 text-fg-muted">{t("workspace.shell.background.anchor")}</span>
+                    <span className="w-36 shrink-0 pt-1 text-fg-muted">{t("workspace.shell.background.anchor")}</span>
                     <div
                         className={`grid grid-cols-3 gap-1 ${anchorEnabled ? "" : "pointer-events-none opacity-40"}`}
                         role="radiogroup"
@@ -239,7 +244,65 @@ export function BackgroundImageDialog() {
                         ))}
                     </div>
                 </div>
+
+                <PlateRow
+                    label={t("workspace.shell.background.editorPlate")}
+                    opacityLabel={t("workspace.shell.background.editorPlateOpacity")}
+                    on={current.editorFill}
+                    opacity={current.editorOpacity}
+                    onToggle={on => write("editorFill", on)}
+                    onOpacity={value => write("editorOpacity", value)}
+                />
+                <PlateRow
+                    label={t("workspace.shell.background.sidebarPlate")}
+                    opacityLabel={t("workspace.shell.background.sidebarPlateOpacity")}
+                    on={current.sidebarFill}
+                    opacity={current.sidebarOpacity}
+                    onToggle={on => write("sidebarFill", on)}
+                    onOpacity={value => write("sidebarOpacity", value)}
+                />
             </div>
         </Modal>
+    );
+}
+
+/**
+ * One plate: a switch, and the opacity it paints at while on. The slider stays in place, disabled,
+ * while the plate is off, so the row does not change shape under the pointer and the value the
+ * switch will bring back is in view.
+ */
+function PlateRow({
+    label,
+    opacityLabel,
+    on,
+    opacity,
+    onToggle,
+    onOpacity,
+}: {
+    label: string;
+    opacityLabel: string;
+    on: boolean;
+    opacity: number;
+    onToggle: (on: boolean) => void;
+    onOpacity: (value: number) => void;
+}) {
+    return (
+        <div className="flex items-center gap-3">
+            <span className="w-36 shrink-0 text-fg-muted">{label}</span>
+            <Switch size="sm" checked={on} onCheckedChange={onToggle} aria-label={label} />
+            <Slider
+                className="min-w-0 flex-1"
+                value={opacity}
+                min={BACKGROUND_PLATE_OPACITY_MIN}
+                max={BACKGROUND_PLATE_OPACITY_MAX}
+                step={BACKGROUND_PLATE_OPACITY_STEP}
+                disabled={!on}
+                onValueChange={onOpacity}
+                aria-label={opacityLabel}
+            />
+            <span className={cn("w-12 shrink-0 text-right tabular-nums text-fg-muted", !on && "opacity-50")}>
+                {opacity}%
+            </span>
+        </div>
     );
 }

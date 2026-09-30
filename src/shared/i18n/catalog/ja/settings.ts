@@ -120,11 +120,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "ウィンドウアイコン",
-            description: "Studio のウィンドウとタスクバーボタンに表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            label: "アプリアイコン",
+            description: "Studio がタスクバーと通知領域に表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            descriptionMac: "Studio の起動中に Dock に表示するアイコン。Finder と Launchpad はインストール時のアイコンのまま",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "白地のリーフ",
+                leaf: "リーフ",
             },
             unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
@@ -170,10 +172,6 @@ export const settings = {
                 serif: "セリフ",
                 monospace: "等幅",
             },
-        },
-        editorSurfaceOpacity: {
-            label: "エディタの面の不透明度",
-            description: "ストーリー文とインスペクタの項目の背後にある面の不透明度",
         },
         maxActiveEditors: {
             label: "同時に保持するエディタの数",

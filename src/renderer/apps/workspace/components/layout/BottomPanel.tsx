@@ -70,7 +70,7 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
         <div
             // No border at the seam: the `.nl-dock-divider` above this panel is the one line
             // drawn there. The (transparent) border box stays for the focus ring alone.
-            className={`bg-surface flex flex-col border transition-colors ${
+            className={`bg-surface nl-sidebar-surface flex flex-col border transition-colors ${
                 isFocused ? 'nl-dock-focused border-primary' : 'border-transparent'
             }`}
             // The dock cell (`height` px) also holds the 1px ResizableHandle divider above

@@ -1,4 +1,4 @@
-import type { AudioClipRegion } from "@shared/types/audio";
+import type { StoredAudioClipRegion, StoredAudioGain } from "@shared/types/audio";
 import { AssetCategory, AssetType } from "./assetTypes";
 
 export enum AssetSource {
@@ -71,15 +71,18 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
  * thing downstream wants to ask is "where does this loop", which a bag of markers cannot answer.
  * Any marker may stand alone while the author is still deciding.
  *
- * The same shape the game bundle carries ({@link AudioClipRegion}) - deliberately one type, because
+ * The markers are the same shape the game bundle carries (`AudioClipRegion`) - deliberately, because
  * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the
- * normalizer both sides read it with.
+ * normalizer both sides read it with, and the one stored-only field, the file length measured for a
+ * region with no out point.
  */
-export type AssetAudioLoop = AudioClipRegion;
+export type AssetAudioLoop = StoredAudioClipRegion;
 
 export interface AssetExtras {
     /** Audio only: the loop region shown and edited by the audio preview. */
     audioLoop?: AssetAudioLoop;
+    /** Audio only: the playback gain set in the audio preview, to balance loudness across clips. */
+    audioGain?: StoredAudioGain;
     /**
      * Model bundles only: the entry file the author chose, relative to the bundle root.
      *

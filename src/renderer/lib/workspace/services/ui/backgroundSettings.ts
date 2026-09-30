@@ -24,6 +24,23 @@ export type BackgroundAnchor = (typeof BACKGROUND_ANCHORS)[number];
 /** Largest blur the slider offers, in CSS pixels. 0 means the picture stays sharp. */
 export const BACKGROUND_BLUR_MAX = 40;
 
+/**
+ * Range of the two plate sliders, in percent. No 0: with a plate switched on, a fully clear plate
+ * would be the switch's off position under another name.
+ */
+export const BACKGROUND_PLATE_OPACITY_MIN = 10;
+export const BACKGROUND_PLATE_OPACITY_MAX = 100;
+export const BACKGROUND_PLATE_OPACITY_STEP = 5;
+
+/**
+ * The custom properties the two plates take their alpha from: `.nl-editor-surface` (the editor's
+ * reading surfaces) and `.nl-sidebar-surface` (the docks) in styles.css. Published on the workspace
+ * root next to `.nl-has-workspace-bg`, so they exist exactly where a wallpaper does and every other
+ * window keeps its opaque paint.
+ */
+export const BACKGROUND_EDITOR_ALPHA_VAR = "--nl-editor-surface-alpha";
+export const BACKGROUND_SIDEBAR_ALPHA_VAR = "--nl-sidebar-surface-alpha";
+
 export interface BackgroundSettings {
     /** File name inside the userData/backgrounds cache, or null when no background is set. */
     image: string | null;
@@ -33,6 +50,21 @@ export interface BackgroundSettings {
     anchor: BackgroundAnchor;
     /** Blur radius in CSS pixels, 0–40. 0 disables the filter entirely. */
     blur: number;
+    /**
+     * Whether the editor's reading surfaces (story prose, text editor) keep a plate of their own over
+     * the wallpaper. Off by default: the editor area is where the picture has room to be seen.
+     */
+    editorFill: boolean;
+    /** Percent, 10–100: the editor plate's opacity while `editorFill` is on. */
+    editorOpacity: number;
+    /**
+     * Whether the docks (left and right sidebars, bottom panel) keep a plate over the wallpaper. On
+     * by default: they hold trees, lists and fields in small, dim type that a photograph behind them
+     * swallows, and solid docks frame the picture instead of cutting it into strips.
+     */
+    sidebarFill: boolean;
+    /** Percent, 10–100: the dock plate's opacity while `sidebarFill` is on. */
+    sidebarOpacity: number;
 }
 
 export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
@@ -41,6 +73,10 @@ export const BACKGROUND_KEYS: Record<keyof BackgroundSettings, string> = {
     fill: "ui.backgroundFill",
     anchor: "ui.backgroundAnchor",
     blur: "ui.backgroundBlur",
+    editorFill: "ui.backgroundEditorFill",
+    editorOpacity: "ui.backgroundEditorOpacity",
+    sidebarFill: "ui.backgroundSidebarFill",
+    sidebarOpacity: "ui.backgroundSidebarOpacity",
 };
 
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
@@ -49,7 +85,23 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
     fill: "cover",
     anchor: "center center",
     blur: 0,
+    editorFill: false,
+    editorOpacity: 80,
+    sidebarFill: true,
+    sidebarOpacity: 100,
 };
+
+/** A stored switch, or the default when what is stored is not a boolean (absent, or hand-edited). */
+function readSwitch(value: unknown, fallback: boolean): boolean {
+    return typeof value === "boolean" ? value : fallback;
+}
+
+function readPlateOpacity(value: unknown, fallback: number): number {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0
+        ? Math.min(BACKGROUND_PLATE_OPACITY_MAX, Math.max(BACKGROUND_PLATE_OPACITY_MIN, Math.round(numeric)))
+        : fallback;
+}
 
 /** Normalize whatever is stored (older installs predate fill/anchor/blur) into a complete settings object. */
 export function readBackgroundSettings(get: (key: string) => unknown): BackgroundSettings {
@@ -67,6 +119,30 @@ export function readBackgroundSettings(get: (key: string) => unknown): Backgroun
             : DEFAULT_BACKGROUND.anchor,
         // 0 is a legitimate value here, so this checks finiteness rather than truthiness.
         blur: Number.isFinite(blur) ? Math.min(BACKGROUND_BLUR_MAX, Math.max(0, blur)) : DEFAULT_BACKGROUND.blur,
+        editorFill: readSwitch(get(BACKGROUND_KEYS.editorFill), DEFAULT_BACKGROUND.editorFill),
+        editorOpacity: readPlateOpacity(get(BACKGROUND_KEYS.editorOpacity), DEFAULT_BACKGROUND.editorOpacity),
+        sidebarFill: readSwitch(get(BACKGROUND_KEYS.sidebarFill), DEFAULT_BACKGROUND.sidebarFill),
+        sidebarOpacity: readPlateOpacity(get(BACKGROUND_KEYS.sidebarOpacity), DEFAULT_BACKGROUND.sidebarOpacity),
+    };
+}
+
+/**
+ * A plate's alpha as the custom property carries it: `"0"` with the plate off, and exactly `"1"` at
+ * the top of the slider, so a plate the author asked to be solid carries no faint wash of the
+ * picture behind it.
+ */
+export function backgroundPlateAlpha(on: boolean, opacity: number): string {
+    if (!on) {
+        return "0";
+    }
+    return opacity >= BACKGROUND_PLATE_OPACITY_MAX ? "1" : String(opacity / 100);
+}
+
+/** Both plate properties, for the workspace root's inline style. */
+export function backgroundPlateStyle(settings: BackgroundSettings): Record<string, string> {
+    return {
+        [BACKGROUND_EDITOR_ALPHA_VAR]: backgroundPlateAlpha(settings.editorFill, settings.editorOpacity),
+        [BACKGROUND_SIDEBAR_ALPHA_VAR]: backgroundPlateAlpha(settings.sidebarFill, settings.sidebarOpacity),
     };
 }
 

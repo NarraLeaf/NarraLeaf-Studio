@@ -107,6 +107,7 @@ import {
     type CompiledNlrStory,
     type NlrStoryCompileDiagnostic,
     type StoryEndingReach,
+    type VoicePlayback,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     createStudioPreloadScheduler,
@@ -167,7 +168,7 @@ import {
     restoreLiveGameToHistory,
     STUDIO_SKIP_KEY_BINDING,
 } from "./gameUiSlots";
-import { audioClipRegionToSoundConfig } from "@shared/types/audio";
+import { audioClipGain, audioClipRegionToSoundConfig } from "@shared/types/audio";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
@@ -417,6 +418,19 @@ export type GameAppProps = {
  * Studio Dev Mode and the standalone game runtime render this component and
  * differ only in the injected GameAppHost.
  */
+
+/**
+ * A fresh `Sound` for replaying one voice take: its speaker's bus, and its gain as the volume when it
+ * has one. Fresh rather than the scene table's instance, for the reason `playVoiceUnit` gives.
+ */
+function voiceReplaySound(playback: VoicePlayback): Sound {
+    return new Sound({
+        src: playback.src,
+        type: playback.busId,
+        ...(playback.volume !== undefined ? { volume: playback.volume } : {}),
+    });
+}
+
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -2225,6 +2239,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             volume,
             ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
         }),
+        // The clip's own gain, which the transport multiplies into every volume it writes.
+        getClipGain: assetId => audioClipGain(bundle.audio?.clips?.[assetId]),
         log: (level, message) => host.log(level, message),
     }), [bundle, host]);
 
@@ -2262,7 +2278,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             return false;
         }
         try {
-            await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+            await liveGame.playSound(voiceReplaySound(playback));
             return true;
         } catch (error) {
             reportVoicePlayFailure(unitId, error, "line");
@@ -2290,7 +2306,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 if (!liveGame || !playback) {
                     return null;
                 }
-                return await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+                return await liveGame.playSound(voiceReplaySound(playback));
             },
             onError: (error, unitId) => reportVoicePlayFailure(unitId, error, "option"),
         });

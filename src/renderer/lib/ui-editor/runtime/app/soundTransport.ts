@@ -94,6 +94,15 @@ export type SoundTransportOptions = {
         /** So the host can fold in the in/out points marked on this asset. */
         assetId: string;
     }) => unknown;
+    /**
+     * The linear gain set on an asset in the audio preview, 1 when it has none. Omitted by a host
+     * with no per-asset gains, which reads as unity.
+     *
+     * Multiplied into every volume this transport writes for a clip - the start, the fade-in and
+     * every later Set Sound Volume - because each of those replaces the token's volume outright: a
+     * gain applied once at creation is gone the moment the first of them runs.
+     */
+    getClipGain?: (assetId: string) => number;
     log: (level: "info" | "warning" | "error", message: string) => void;
 };
 
@@ -123,6 +132,11 @@ export function resolveSoundPlayback(
     return { ...playback, fadeInMs };
 }
 
+/** A gain the engine can play: a factor in `(0, 1]`, unity for anything else. */
+function clampGain(gain: number | undefined): number {
+    return typeof gain === "number" && Number.isFinite(gain) && gain > 0 ? Math.min(1, gain) : 1;
+}
+
 export type SoundTransport = {
     play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
     stop: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void>;
@@ -146,8 +160,10 @@ export type SoundTransport = {
 };
 
 export function createSoundTransport(options: SoundTransportOptions): SoundTransport {
-    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, log } = options;
+    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, getClipGain, log } = options;
     const tokens = new Map<string, EngineSoundToken>();
+    /** Each handle's clip gain, so a later volume change keeps the clip balanced. */
+    const gains = new Map<string, number>();
     let nextId = 0;
 
     const engine = (): EngineSoundHost | null => {
@@ -167,6 +183,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
     const forget = (handle: BlueprintSoundHandle | null): void => {
         if (handle) {
             tokens.delete(handle.id);
+            gains.delete(handle.id);
         }
     };
 
@@ -186,11 +203,13 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 return null;
             }
             const playback = resolveSoundPlayback(input, getAudioTracks?.());
+            const gain = clampGain(getClipGain?.(input.assetId));
+            const volume = playback.volume * gain;
             const sound = createSound({
                 src: url,
                 busId: playback.busId,
                 loop: playback.loop,
-                volume: playback.volume,
+                volume,
                 assetId: input.assetId,
             });
             const token = await host.playSound(sound);
@@ -206,15 +225,16 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             // fade-in is the same write with a ramp: start at silence, arrive at the authored level.
             if (playback.fadeInMs > 0 && token.fade) {
                 token.setVolume?.(0);
-                token.fade(0, playback.volume, playback.fadeInMs);
+                token.fade(0, volume, playback.fadeInMs);
             } else {
-                token.setVolume?.(playback.volume);
+                token.setVolume?.(volume);
             }
             const handle = toBlueprintSoundHandle(`sound:${nextId++}`);
             if (!handle) {
                 return null;
             }
             tokens.set(handle.id, token);
+            gains.set(handle.id, gain);
             return handle;
         },
 
@@ -226,6 +246,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                     token.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
                 }
                 tokens.clear();
+                gains.clear();
                 return;
             }
             tokenFor(handle)?.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
@@ -249,12 +270,14 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             if (!token) {
                 return;
             }
+            // The node's number is the author's level for this clip; the clip's gain rides on top.
+            const target = volume * (gains.get(handle.id) ?? 1);
             if (fadeMs > 0 && token.fade) {
                 const from = token.getVolume?.() ?? 1;
-                token.fade(from, volume, fadeMs);
+                token.fade(from, target, fadeMs);
                 return;
             }
-            token.setVolume?.(volume);
+            token.setVolume?.(target);
         },
 
         async seek(handle, timeMs) {
@@ -299,6 +322,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 token.stop?.();
             }
             tokens.clear();
+            gains.clear();
         },
     };
 }

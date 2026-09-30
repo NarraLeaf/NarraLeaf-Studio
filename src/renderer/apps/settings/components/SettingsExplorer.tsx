@@ -470,10 +470,15 @@ export function SettingsExplorer<T>({
             }
             case SettingValueType.Enum: {
                 const options = descriptor.options ?? [];
-                const selectOptions: SelectOption[] = options.map(option => ({
-                    value: option,
-                    label: descriptor.optionLabels?.[option] ?? option,
-                }));
+                const selectOptions: SelectOption[] = options.map(option => {
+                    const image = descriptor.optionImages?.[option];
+                    return {
+                        value: option,
+                        label: descriptor.optionLabels?.[option] ?? option,
+                        // Decorative: the label beside it already names the option.
+                        icon: image ? <img src={image} alt="" className="h-4 w-4 object-contain" /> : undefined,
+                    };
+                });
                 return (
                     <Select
                         size="sm"

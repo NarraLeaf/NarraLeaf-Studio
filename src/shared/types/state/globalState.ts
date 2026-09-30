@@ -163,6 +163,20 @@ export interface GlobalStateType extends Record<string, any> {
     /** Blur radius in CSS pixels; 0 (the default) leaves the picture sharp. Clamped to 0–40. */
     "ui.backgroundBlur": number;
     /**
+     * Whether the editor's reading surfaces (story prose, text editor) keep a plate over the
+     * wallpaper; absent means off. Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundEditorFill": boolean;
+    /** Opacity of that plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundEditorOpacity": number;
+    /**
+     * Whether the docks (sidebars, bottom panel) keep a plate over the wallpaper; absent means on.
+     * Meaningless without `ui.backgroundImage`.
+     */
+    "ui.backgroundSidebarFill": boolean;
+    /** Opacity of the dock plate while it is on, as a percentage; clamped to 10–100 when read. */
+    "ui.backgroundSidebarOpacity": number;
+    /**
      * User keybinding rebinds as one `catalogId -> chord` map. One key rather than one key per
      * binding because catalog ids contain dots, which the dotted-path settings store would split
      * into nested objects.
@@ -174,13 +188,6 @@ export interface GlobalStateType extends Record<string, any> {
     "editor.lineNumbers": boolean;
     /** Wrap long lines in the built-in text editor instead of scrolling horizontally. */
     "editor.softWrap": boolean;
-    /**
-     * Opacity (0-100) of the editor's reading surfaces — story prose area, inspector field area,
-     * Dev Mode debug panel. Published as `--nl-editor-surface-opacity` by lib/appearance; see
-     * lib/settings/editorSurfaceOptions. 100 (fully opaque) is the default and a no-op without a
-     * workspace wallpaper, which is the only thing an opaque plate can cut a seam into.
-     */
-    "editor.surfaceOpacity": number;
     "editor.maxActiveEditors": number;
     /**
      * Let "@" stand in for "/" as the trigger that opens the story editor's action creator.
@@ -553,7 +560,6 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "keybindings.overrides": {},
     "editor.fontSize": 14,
     "editor.fontFamily": "Default",
-    "editor.surfaceOpacity": 100,
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "editor.maxActiveEditors": 8,
@@ -626,4 +632,10 @@ export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
     "advanced.enableTelemetry",
     "advanced.enableDevTools",
     "advanced.experimentalFeatures",
+    // The reading surfaces' opacity, from when it was a row in the Settings window. The plate only
+    // exists under a wallpaper, so it moved into the background dialog as `ui.backgroundEditorFill`
+    // plus `ui.backgroundEditorOpacity`. Swept rather than migrated: the value it carried on nearly
+    // every profile was its default of 100, and carried over that would switch on a plate the new
+    // setting leaves off unless asked.
+    "editor.surfaceOpacity",
 ];

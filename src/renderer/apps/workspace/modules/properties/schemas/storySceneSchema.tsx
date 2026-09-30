@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Trash2 } from "lucide-react";
 import type { StoryScene, StorySceneBgm, StorySceneUpdate } from "@shared/types/story";
-import { normalizeAudioClipRegion } from "@shared/types/audio";
+import { hasClipMarkers, normalizeAudioClipRegion } from "@shared/types/audio";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import type { Translator } from "@shared/i18n";
@@ -300,7 +300,8 @@ function buildRegionHint(
     region: ReturnType<typeof normalizeAudioClipRegion>,
     loops: boolean,
 ): string {
-    if (!region) {
+    // A clip that carries only a gain is still the whole clip.
+    if (!region || !hasClipMarkers(region)) {
         return t("story.sceneEditor.sceneMusicWholeClip");
     }
     const from = formatSeconds(region.inMs ?? 0);
