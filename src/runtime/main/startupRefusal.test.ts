@@ -41,6 +41,14 @@ function recordingHost(options: { stderrThrows?: boolean } = {}) {
 const ALL_KINDS = Object.keys(STARTUP_EXIT_CODES) as StartupRefusalKind[];
 
 describe("refuseToStart", () => {
+    it("writes the reason to the log file without the console mirror, so standard error carries it once", () => {
+        // Where the console is live - a preview, a test run, a game started with the logs switch - the
+        // sink would print the line tagged, and the write to standard error would print it again.
+        const { host, log } = recordingHost();
+        refuseToStart(host, { kind: "commandLine", reason: "refusing to start: this build does not accept --x" });
+        expect(log).toHaveBeenCalledWith("error", "refusing to start: this build does not accept --x", { console: false });
+    });
+
     it("logs the reason, says it on standard error as one line, and exits with the kind's code", () => {
         const { host, events } = recordingHost();
         refuseToStart(host, {

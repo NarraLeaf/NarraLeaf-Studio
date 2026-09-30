@@ -30,8 +30,20 @@ export function runtimeLogPath(userDataDir: string): string {
     return path.join(userDataDir, "logs", RUNTIME_LOG_FILE_NAME);
 }
 
+/** How one line is written. */
+export interface RuntimeLogLineOptions {
+    /**
+     * `false` to write the line to the file and not to the console as well.
+     *
+     * For a caller that puts the same line on standard error itself, in its own shape - a launch that
+     * is being refused (see `startupRefusal`) - and would otherwise print it twice wherever the console
+     * is live: a preview, a test run, a shipped game started with the logs switch.
+     */
+    console?: boolean;
+}
+
 export interface RuntimeLogSink {
-    (level: RuntimeLogLevel, message: string): void;
+    (level: RuntimeLogLevel, message: string, options?: RuntimeLogLineOptions): void;
 }
 
 /**
@@ -67,11 +79,13 @@ export function installRuntimeLogSink(userDataDir: string): RuntimeLogSink {
         }
     };
 
-    return (level, message) => {
+    return (level, message, options) => {
         // Preview keeps its console: Studio reads the game's stdout to fill its own console panel,
         // and that is how an author sees a warning while they are still writing the scene.
-        const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
-        console[sink](`[GameRuntime] ${message}`);
+        if (options?.console !== false) {
+            const sink = level === "error" ? "error" : level === "warning" ? "warn" : "log";
+            console[sink](`[GameRuntime] ${message}`);
+        }
 
         if (!writable) {
             return;

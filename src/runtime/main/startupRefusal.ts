@@ -12,7 +12,8 @@ import type { RuntimeLogSink } from "./runtimeLog";
  *
  * Every way a launch is refused now ends here, and all of them end the same way:
  *
- *  - the reason goes to the game's log, as it always did;
+ *  - the reason goes to the game's log file, as it always did - and only there, not also to the
+ *    console the log sink mirrors to where one is live, which would put a second copy on stderr;
  *  - the same reason goes to standard error as one line, written straight to the file descriptor so
  *    that the silenced console does not swallow it and so that it is on its way before the process
  *    is - which, before the app is ready, is immediately;
@@ -81,7 +82,9 @@ export function startupRefusalLine(reason: string): string {
  */
 export function refuseToStart(host: StartupRefusalHost, refusal: StartupRefusal): void {
     const line = startupRefusalLine(refusal.reason);
-    host.log("error", refusal.detail ? `${line}\n${refusal.detail}` : line);
+    // To the file only. Where the console is live the sink would also print the line, tagged, and the
+    // write below would print it again: two lines for one refusal on the stream a script reads.
+    host.log("error", refusal.detail ? `${line}\n${refusal.detail}` : line, { console: false });
     try {
         host.writeStandardError(`${line}\n`);
     } catch {
