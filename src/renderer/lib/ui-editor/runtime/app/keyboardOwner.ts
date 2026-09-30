@@ -23,6 +23,33 @@
  * hands its key to nothing - applied to whichever entry holds the keys. A non-modal layer never owns
  * them, so the page beneath one keeps hearing its keys as it always did.
  *
+ * ## The stage
+ *
+ * With the story on screen and nothing drawn over it, no entry owns the keyboard: the pages a game
+ * hid when it took the screen are not drawn, so none of them is ready. The keys then belong to the
+ * stage - the dialogue box, the choice list, the quick menu the story put there - and every surface
+ * on it hears them as a page would: its key heads, and the actions it answers. That is where "Space
+ * advances" lives: the starter project's dialogue box answers Advance, and Advance is bound to a
+ * click, Space and Enter. Before the stage could own the keyboard, a key bound to an action a stage
+ * surface answered was a binding that looked wired and never fired - every key reached the window,
+ * and nothing on the stage was ever asked about it.
+ *
+ * "Nothing drawn over it" is the question the skip loop and the auto-forward hold already ask
+ * (`isStoryOnScreen`), so the keys leave the stage exactly when the story stops moving on its own: a
+ * page opened over it or a modal layer takes them, and the page or the layer answers them instead.
+ *
+ * ## What raises an action
+ *
+ * A key heard by its owner raises the actions bound to it, with two exceptions that keep one press
+ * meaning one thing:
+ *
+ *  - a key the focused control has spoken for raises none (`keyInputClaimedByControl`): Enter on a
+ *    button the player moved to with Tab presses that button and does not also advance the story;
+ *  - a key the system repeats because it is held down raises none. An action answers a gesture, and
+ *    holding a key is one gesture - the rule a wheel's inertia tail already follows. Held down, Space
+ *    would otherwise read every line at the keyboard's repeat rate, a skip that ignores the player's
+ *    "skip read text only". Holding to skip is the skip key's; the key heads still hear the repeats.
+ *
  * Comments in English per project convention.
  */
 
@@ -36,9 +63,11 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
+    keyInputClaimedByControl,
     resolveGlobalInputActionPayloads,
     resolveSurfaceInputActionHits,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -58,11 +87,30 @@ export type KeyboardOwnerCandidate<TEntry extends { key: string }> = {
     ready: boolean;
 };
 
-/** The entry that hears the keys, as a key press needs it: what it draws, and the host it runs on. */
-export type KeyboardOwner = {
-    surface: UISurface;
-    host: HostAdapterBundle;
-};
+/**
+ * Whoever hears the keys, as a key press needs it: an entry - what it draws, and the host it runs
+ * on - or the stage, as the surfaces the story has on it.
+ */
+export type KeyboardOwner =
+    | {
+          surface: UISurface;
+          host: HostAdapterBundle;
+      }
+    | {
+          /**
+           * The surfaces on the stage that take input, each on the host it is drawn with, one per
+           * runtime scope (see `AmbientSurfaceTargets`). Read as the key arrives, like the entry.
+           */
+          stage: readonly AmbientSurfaceTarget[];
+      };
+
+/** The surfaces an owner hears a key through: the entry's one, or every one on the stage. */
+function ownerSurfaces(owner: KeyboardOwner): readonly AmbientSurfaceTarget[] {
+    if ("stage" in owner) {
+        return owner.stage;
+    }
+    return [{ surface: owner.surface, hostAdapter: owner.host.hostAdapter, runtimeScopeId: owner.host.runtimeScopeId }];
+}
 
 /**
  * The entry the keys belong to, or none.
@@ -94,7 +142,7 @@ export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
     onError: (error: unknown) => void;
 };
 
-function surfaceStateOf(core: GameKeyboardDispatch["core"], host: HostAdapterBundle) {
+function surfaceStateOf(core: GameKeyboardDispatch["core"], host: { runtimeScopeId: string }) {
     const store = core.scopeBridge.getSurfaceStore(host.runtimeScopeId);
     return {
         getSurfaceState: (key: string) => store.get(key),
@@ -103,11 +151,12 @@ function surfaceStateOf(core: GameKeyboardDispatch["core"], host: HostAdapterBun
 }
 
 /**
- * The owner's half of one key press: its surface key heads, then - for a press - the input actions
- * it answers that this key is bound to.
+ * The owner's half of one key press, surface by surface: its key heads, then - for a press that
+ * may raise actions - the input actions it answers that this key is bound to.
  *
  * Nothing consumes here. See the module comment: a key has no lanes under it, so an action's
- * "stop" and "keep bubbling" read the same for a key, on a page and on a layer alike.
+ * "stop" and "keep bubbling" read the same for a key, on a page, a layer and the stage alike. Each
+ * surface on the stage answers for itself, the way each action a page answers does.
  */
 async function dispatchKeyToOwner(
     input: GameKeyboardDispatch,
@@ -115,43 +164,48 @@ async function dispatchKeyToOwner(
     eventName: "keyDown" | "keyUp",
     payload: Record<string, unknown>,
     eventControl: BehaviorGraphEventControl,
+    raisesActions: boolean,
 ): Promise<void> {
     const { blueprintDocument, persistentVariables, core } = input;
-    const { surface, host } = owner;
-    const state = surfaceStateOf(core, host);
-    await dispatchSurfaceBlueprintEvent({
-        blueprintDocument,
-        persistentVariables,
-        surfaceId: surface.id,
-        runtimeScopeId: host.runtimeScopeId,
-        eventName,
-        eventPayload: payload,
-        eventControl,
-        hostAdapter: host.hostAdapter,
-        debug: core.debug,
-        ...state,
-        executionManager: core.executionManager,
-    });
-    if (eventName !== "keyDown" || eventControl.isPropagationStopped()) {
-        return;
+    for (const { surface, hostAdapter, runtimeScopeId } of ownerSurfaces(owner)) {
+        if (eventControl.isPropagationStopped()) {
+            return;
+        }
+        const state = surfaceStateOf(core, { runtimeScopeId });
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            persistentVariables,
+            surfaceId: surface.id,
+            runtimeScopeId,
+            eventName,
+            eventPayload: payload,
+            eventControl,
+            hostAdapter,
+            debug: core.debug,
+            ...state,
+            executionManager: core.executionManager,
+        });
+        if (!raisesActions || eventControl.isPropagationStopped()) {
+            continue;
+        }
+        const actionHits = resolveSurfaceInputActionHits({
+            vocabulary: input.vocabulary,
+            enablements: surface.actions,
+            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+        });
+        await Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            persistentVariables,
+            surfaceId: surface.id,
+            runtimeScopeId,
+            eventName: UI_SURFACE_INPUT_ACTION_EVENT,
+            eventPayload: { ...hit.payload },
+            hostAdapter,
+            debug: core.debug,
+            ...state,
+            executionManager: core.executionManager,
+        })));
     }
-    const actionHits = resolveSurfaceInputActionHits({
-        vocabulary: input.vocabulary,
-        enablements: surface.actions,
-        signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
-    });
-    await Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
-        blueprintDocument,
-        persistentVariables,
-        surfaceId: surface.id,
-        runtimeScopeId: host.runtimeScopeId,
-        eventName: UI_SURFACE_INPUT_ACTION_EVENT,
-        eventPayload: { ...hit.payload },
-        hostAdapter: host.hostAdapter,
-        debug: core.debug,
-        ...state,
-        executionManager: core.executionManager,
-    })));
 }
 
 /**
@@ -191,6 +245,9 @@ export async function dispatchGameKey(
         return;
     }
     const owner = input.readKeyboardOwner();
+    // Decided once, as the key arrives, for the global blueprint and the owner alike - see the
+    // module comment. Read before any graph runs, because a graph can move the focus.
+    const raisesActions = eventName === "keyDown" && !event.repeat && !keyInputClaimedByControl(event);
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     await dispatchGlobalBlueprintEvent({
         blueprintDocument,
@@ -203,7 +260,7 @@ export async function dispatchGameKey(
         ...surfaceStateOf(core, globalHost),
         executionManager: core.executionManager,
     });
-    if (eventName === "keyDown" && !eventControl.isPropagationStopped()) {
+    if (raisesActions && !eventControl.isPropagationStopped()) {
         // The whole vocabulary, not the owner's list: see `globalInputActions`. Resolved by the same
         // rule the owner's are, so a binding the owner answers the global answers too.
         await answerGlobalInputActions(input, resolveGlobalInputActionPayloads({
@@ -214,7 +271,7 @@ export async function dispatchGameKey(
     if (!owner || eventControl.isPropagationStopped()) {
         return;
     }
-    await dispatchKeyToOwner(input, owner, eventName, payload, eventControl);
+    await dispatchKeyToOwner(input, owner, eventName, payload, eventControl, raisesActions);
 }
 
 /**
