@@ -66,8 +66,6 @@ export const widgets = {
         disableItalic: "イタリックをやめる",
     },
     localization: {
-        title: "ローカライズ",
-        textKey: "テキストのキー",
         translationKey: "翻訳キー",
         noSourceLanguage: "プロジェクトに原文の言語が設定されていない",
         none: "なし",

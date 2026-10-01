@@ -169,7 +169,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         // Preload the named-key registry: synchronous consumers (widget inspector
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
-        // The canvas draws a keyed text widget from the registry and edits it in place through it.
+        // The canvas draws a keyed text or button from the registry and edits it in place through it.
         this.events.on("configChanged", () => this.publishDesignTimeKeys());
         setDesignTimeLocalizationKeyWriter((name, sourceText) => {
             const existing = this.keysDocument?.keys[name];

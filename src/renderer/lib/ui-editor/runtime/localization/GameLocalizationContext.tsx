@@ -4,7 +4,7 @@
  * text-bearing widget renderers resolve their display text through
  * {@link useLocalizedWidgetText}. The editor canvas mounts no provider, so
  * design-time rendering always shows the source-language text - a keyed text
- * widget's from the key registry the editor publishes (`designTimeKeys.ts`).
+ * or button's from the key registry the editor publishes (`designTimeKeys.ts`).
  * Comments in English per project convention.
  */
 
@@ -53,9 +53,9 @@ export type LocalizedWidgetTextInput = {
     /**
      * Outside a game, draw a named key's source-language text rather than `sourceText`.
      *
-     * The text widget opts in: its key is one of the sources an author chooses between, and the
-     * canvas has to show what the game will. The other widgets still show their own text at design
-     * time, as they always have.
+     * The text widget and the button opt in: their key is one of the sources an author chooses
+     * between, and the canvas has to show what the game will. A text input's placeholder still shows
+     * its own words at design time.
      */
     resolveKeyAtDesignTime?: boolean;
 };

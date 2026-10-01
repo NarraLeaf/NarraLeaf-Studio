@@ -43,6 +43,12 @@ import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/ap
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import {
+    designTimeKeyOf,
+    designTimeTextOf,
+    writeDesignTimeLocalizationKeySourceText,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { buttonLabelPatch, getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
@@ -54,8 +60,23 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 const OPENING_BLUR_GRACE_MS = 300;
 const BUTTON_LABEL_PROP_PATH = "label";
 
+/**
+ * The words the canvas shows for a button - its key's, when it is read from one - and what an
+ * in-place edit starts from.
+ */
+function designTimeLabelOf(element: UIElement): string {
+    const props = getButtonProps(element);
+    return designTimeTextOf(props.localizationKey, props.label);
+}
+
 function commitButtonLabelEditValue(documentService: UIDocumentService, elementId: string, nextLabel: string): void {
     const docEl = documentService.getDocument().elements[elementId];
+    // Typed over a keyed button, the words are the key's: writing them onto the element would change
+    // nothing the game shows, and the canvas would go on drawing the key's text over them.
+    const key = docEl ? designTimeKeyOf(getButtonProps(docEl).localizationKey) : null;
+    if (key && writeDesignTimeLocalizationKeySourceText(key, nextLabel)) {
+        return;
+    }
     if (docEl?.valueBindings?.[BUTTON_LABEL_PROP_PATH]?.kind === "blueprintValue") {
         documentService.clearElementBlueprintValueBinding(elementId, BUTTON_LABEL_PROP_PATH);
     }
@@ -70,7 +91,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const editHost = resolveInlineTextEditHost(hostAdapter);
     const stateService = editHost?.stateService ?? null;
     const documentService = editHost?.documentService ?? null;
-    const initialLabel = getButtonProps(element).label;
+    const initialLabel = designTimeLabelOf(element);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService?.getInteractionOverride() ?? null);
     const [draftLabel, setDraftLabel] = useState(initialLabel);
     const draftRef = useRef(initialLabel);
@@ -107,7 +128,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
             if (isHere && !wasHere) {
                 const docEl = documentService.getDocument().elements[element.id];
-                const nextDraft = docEl ? getButtonProps(docEl).label : "";
+                const nextDraft = docEl ? designTimeLabelOf(docEl) : "";
                 draftRef.current = nextDraft;
                 setDraftLabel(nextDraft);
             }
@@ -175,7 +196,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         if (isEditing) {
             return;
         }
-        const nextDraft = getButtonProps(element).label;
+        const nextDraft = designTimeLabelOf(element);
         draftRef.current = nextDraft;
         setDraftLabel(nextDraft);
     }, [element, isEditing]);
@@ -259,13 +280,15 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         [BLUEPRINT_EVENTS_DISABLED_ATTR]: interactionDisabled || isEditing ? "true" : undefined,
     } as Record<string, string | undefined>;
 
-    // Localized display label (runtime only; design time and inline editing keep the source label).
+    // Localized display label. At design time the source language's: the button's own label, or its
+    // key's when it is read from one - the canvas shows what the game shows.
     const displayLabel = useLocalizedWidgetText({
         elementId: element.id,
         prop: "label",
         sourceText: p.label,
         localizable: p.localizable,
         localizationKey: p.localizationKey,
+        resolveKeyAtDesignTime: true,
     });
     const showLabel = displayLabel.trim().length > 0;
 

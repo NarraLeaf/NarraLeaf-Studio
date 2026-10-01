@@ -21,7 +21,8 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
-    getDesignTimeLocalizationKeys,
+    designTimeKeyOf,
+    designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
 } from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -75,29 +76,20 @@ function assignMotionTransition(
     target[property] = toRuntimeMotionTransition(transition);
 }
 
-/** The key a text element is read from on the canvas, or null when its own words are what show. */
-function designTimeKeyOf(element: UIElement): string | null {
-    const key = getTextProps(element).localizationKey?.trim();
-    return key && getDesignTimeLocalizationKeys() ? key : null;
-}
-
 /**
- * The words the canvas shows for a text element, and what an in-place edit starts from.
- *
- * A keyed element shows its key's source text, as the game does; a key the registry does not hold
- * falls back to the element's own text there too.
+ * The words the canvas shows for a text element - its key's, when it is read from one - and what an
+ * in-place edit starts from.
  */
-function designTimeTextOf(element: UIElement): string {
-    const key = designTimeKeyOf(element);
-    const own = getTextProps(element).text;
-    return key ? getDesignTimeLocalizationKeys()?.[key] ?? own : own;
+function designTimeTextOfElement(element: UIElement): string {
+    const props = getTextProps(element);
+    return designTimeTextOf(props.localizationKey, props.text);
 }
 
 function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
     const docEl = documentService.getDocument().elements[elementId];
     // Typed over a keyed text, the words are the key's: writing them onto the element would change
     // nothing the game shows, and the canvas would go on drawing the key's text over them.
-    const key = docEl ? designTimeKeyOf(docEl) : null;
+    const key = docEl ? designTimeKeyOf(getTextProps(docEl).localizationKey) : null;
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
         return;
     }
@@ -120,7 +112,7 @@ export function TextRenderer({
     const stateService = editHost?.stateService ?? null;
     const documentService = editHost?.documentService ?? null;
     useUIDocumentRevision(documentService);
-    const initialText = designTimeTextOf(element);
+    const initialText = designTimeTextOfElement(element);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService?.getInteractionOverride() ?? null);
     const [draftText, setDraftText] = useState(initialText);
     const draftRef = useRef(initialText);
@@ -158,7 +150,7 @@ export function TextRenderer({
             }
 
             if (isHere && !wasHere) {
-                const nextDraft = designTimeTextOf(documentService.getDocument().elements[element.id] ?? element);
+                const nextDraft = designTimeTextOfElement(documentService.getDocument().elements[element.id] ?? element);
                 draftRef.current = nextDraft;
                 setDraftText(nextDraft);
             }
@@ -228,7 +220,7 @@ export function TextRenderer({
         if (isEditing) {
             return;
         }
-        const nextDraft = designTimeTextOf(element);
+        const nextDraft = designTimeTextOfElement(element);
         draftRef.current = nextDraft;
         setDraftText(nextDraft);
     }, [element, isEditing]);

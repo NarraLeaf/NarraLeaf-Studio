@@ -95,6 +95,15 @@ function markedLabelNote(stringProp: string): string {
         + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
 }
 
+/** A translation key replaces a text's or a button's own words - in the game and on the canvas alike. */
+function keyedWordsNote(widget: string, stringProp: string): string {
+    return `A ${widget} with \`localizationKey\` is read from that translation key - in the game, and on the `
+        + `canvas in the project's source language - and its own \`${stringProp}\` is not shown at all. Its `
+        + "words are the key's source text in `editor/localization/keys.json`; writing "
+        + `\`${stringProp}\` changes nothing a player sees. Without the key, \`localizable = true\` translates `
+        + `\`${stringProp}\` through the element's own unit.`;
+}
+
 /**
  * Facts about a widget that no declaration in the repository states.
  *
@@ -118,6 +127,7 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
             + "flat prop alone leaves the variant row holding the old one; see the container note.",
         markedLabelNote("label"),
+        keyedWordsNote("button", "label"),
     ],
     "nl.image": [
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
@@ -125,10 +135,7 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     ],
     "nl.text": [
         markedLabelNote("text"),
-        "A text with `localizationKey` is read from that translation key - in the game, and on the canvas "
-            + "in the project's source language - and its own `text` is not shown at all. Its words are the "
-            + "key's source text in `editor/localization/keys.json`; writing `text` changes nothing a player "
-            + "sees. Without the key, `localizable = true` translates `text` through the element's own unit.",
+        keyedWordsNote("text", "text"),
     ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "

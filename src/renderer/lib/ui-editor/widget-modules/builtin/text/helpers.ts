@@ -6,6 +6,7 @@ import {
     plainTextEditPatch,
     type MarkedLabelProps,
 } from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
+import { labelSourceOf, type LabelSource } from "@/lib/ui-editor/widget-modules/shared/text/labelSource";
 import { defaultTextWidgetProps, type TextWidgetProps } from "./types";
 
 /**
@@ -49,38 +50,12 @@ export function getTextProps(element: UIElement): TextWidgetProps {
     };
 }
 
-/**
- * Where a text widget's words come from, as its inspector offers the choice.
- *
- * - `literal`: the element's own `text` (translated through its own unit when `localizable`).
- * - `key`: a named translation key; the game shows the key's text and never the element's own.
- * - `blueprint`: a Blueprint Value writes `text`.
- */
-export type TextSource = "literal" | "key" | "blueprint";
+/** Where a text widget's words come from; see {@link labelSourceOf}. */
+export type TextSource = LabelSource;
 
-/**
- * The source a stored text element is read from - derived, not stored.
- *
- * In the order the game resolves them: a key wins over everything (`useLocalizedWidgetText` reads
- * it before the text it was handed), so an element that also carries words of its own or a
- * Blueprint Value is a keyed one. `keysApply` is false while the project has no source language: a
- * build then carries no keys, and the game shows the element's own text.
- *
- * Null for a list template's text bound to a field of its row (and to no key), which is answered by
- * the row and offers none of the three.
- */
+/** The source a stored text element's `text` is read from - derived, not stored (`labelSourceOf`). */
 export function textSourceOf(element: UIElement, keysApply: boolean): TextSource | null {
-    if (keysApply && getTextProps(element).localizationKey?.trim()) {
-        return "key";
-    }
-    const binding = element.valueBindings?.text;
-    if (binding?.kind === "listItemField") {
-        return null;
-    }
-    if (binding?.kind === "blueprintValue") {
-        return "blueprint";
-    }
-    return "literal";
+    return labelSourceOf(element, "text", getTextProps(element).localizationKey, keysApply);
 }
 
 /** A text label keeps its string in `text` and its runs beside it in `rich`. */
