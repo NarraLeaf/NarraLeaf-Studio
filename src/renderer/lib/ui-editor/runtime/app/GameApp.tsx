@@ -206,6 +206,7 @@ import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocus
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
+import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -2740,7 +2741,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
                 try {
-                    capture = await liveGame.capturePng();
+                    // Kept at thumbnail size: the full-size picture was 99% of every save file, and a
+                    // save screen only ever draws it small (see `saveCapture`).
+                    capture = await shrinkSaveCapture(await liveGame.capturePng());
                 } catch (error) {
                     // The save itself still goes through — a failed preview must not lose progress.
                     reportSaveCaptureFailure(id, normalizeError(error));
