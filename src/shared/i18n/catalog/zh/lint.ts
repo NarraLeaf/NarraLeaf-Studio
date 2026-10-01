@@ -378,13 +378,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "缺少翻译",
-            description: "目标语言中没有该行的译文",
+            description: "目标语言中没有该行或界面文本的译文",
             message: "缺少 {locale} 译文",
+            messageInterface: "{text} 缺少 {locale} 译文",
         },
         localizationStale: {
             title: "译文过期",
             description: "原文在翻译之后发生过修改",
             message: "{locale} 译文比原文旧",
+            messageInterface: "{text} 的 {locale} 译文比原文旧",
         },
         localizationMarkup: {
             title: "译文未带样式",
