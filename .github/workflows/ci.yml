@@ -112,6 +112,15 @@ jobs:
       - name: Script API declarations
         run: yarn check:script-api
 
+      # The Chinese and Japanese starter projects are generated from the English
+      # one, and checked in. An edit to the English template that is not followed
+      # by regenerating them ships a starter whose pages, lines or translations
+      # differ by language - with nothing failing, because each tree is valid on its
+      # own. `--check` regenerates in memory and fails on any file that differs, or
+      # on an English string the translation tables have no entry for.
+      - name: Starter template translations
+        run: node scripts/gen-skeleton-locale.mjs --check
+
       # Regenerates the published plugin API declarations and fails if they no
       # longer compile on their own. Without this, a refactor that leaks an
       # unexportable internal type into the plugin surface would only be caught

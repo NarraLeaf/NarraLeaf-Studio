@@ -11,6 +11,7 @@ import {
     type LocalizedWidgetTextInput,
 } from "./GameLocalizationContext";
 import type { AssetVariantCarrier } from "@shared/types/assetSet";
+import { setDesignTimeLocalizationKeys } from "./designTimeKeys";
 
 const bundle: GameLocalizationBundle = {
     sourceLocale: "en",
@@ -165,5 +166,52 @@ describe("useLocalizedAssetId", () => {
         const runtime = createRuntime("en");
         const { getByTestId } = renderAsset(runtime, { carrier, assetId: null });
         expect(getByTestId("asset").textContent).toBe("(none)");
+    });
+});
+
+describe("useLocalizedWidgetText at design time", () => {
+    const keyed: LocalizedWidgetTextInput = {
+        elementId: "el-1",
+        prop: "text",
+        sourceText: "Leave",
+        localizationKey: "menu.quit",
+        resolveKeyAtDesignTime: true,
+    };
+
+    afterEach(() => {
+        cleanup();
+        setDesignTimeLocalizationKeys(null);
+    });
+
+    it("draws the key's source text from the editor's registry, as the game does in its source language", () => {
+        setDesignTimeLocalizationKeys({ "menu.quit": "Quit" });
+        const { getByTestId } = renderProbe(null, keyed);
+        expect(getByTestId("text").textContent).toBe("Quit");
+        const inGame = renderProbe(createRuntime("en"), { ...keyed, elementId: "el-2" });
+        expect(inGame.getAllByTestId("text")[1].textContent).toBe("Quit");
+    });
+
+    it("falls back to the widget's own text for a key the registry does not hold", () => {
+        setDesignTimeLocalizationKeys({ "menu.start": "Start" });
+        const { getByTestId } = renderProbe(null, keyed);
+        expect(getByTestId("text").textContent).toBe("Leave");
+    });
+
+    it("draws the widget's own text while nothing is published", () => {
+        const { getByTestId } = renderProbe(null, keyed);
+        expect(getByTestId("text").textContent).toBe("Leave");
+    });
+
+    it("leaves widgets that did not opt in on their own text", () => {
+        setDesignTimeLocalizationKeys({ "menu.quit": "Quit" });
+        const { getByTestId } = renderProbe(null, { ...keyed, resolveKeyAtDesignTime: false });
+        expect(getByTestId("text").textContent).toBe("Leave");
+    });
+
+    it("repaints when the registry changes", () => {
+        setDesignTimeLocalizationKeys({ "menu.quit": "Quit" });
+        const { getByTestId } = renderProbe(null, keyed);
+        act(() => setDesignTimeLocalizationKeys({ "menu.quit": "Exit" }));
+        expect(getByTestId("text").textContent).toBe("Exit");
     });
 });

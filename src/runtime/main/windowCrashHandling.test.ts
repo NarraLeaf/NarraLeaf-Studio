@@ -11,7 +11,16 @@ import { describeProcessDeath, installWindowCrashHandling, type WindowCrashHost 
  * decisions - which URL, how many times, when to stop - stay pinned without an Electron process.
  */
 function fakeWindow() {
-    const webContents = new EventEmitter();
+    const webContents = Object.assign(new EventEmitter(), {
+        /** What the page answers when asked whether its scripts ran; see `GAME_RUNTIME_PAGE_STARTED_KEY`. */
+        pageStarted: true as unknown,
+        /** Every script the window was asked to run. */
+        asked: [] as string[],
+        executeJavaScript(code: string) {
+            this.asked.push(code);
+            return Promise.resolve(this.pageStarted);
+        },
+    });
     const win = Object.assign(new EventEmitter(), {
         webContents,
         destroyed: false,
@@ -345,5 +354,83 @@ describe("a page that will not load", () => {
         installWindowCrashHandling(win, host);
         win.webContents.emit("did-navigate", {}, GAME_PAGE, 404, "Not Found");
         expect(notStarted).toEqual([]);
+    });
+});
+
+/**
+ * The game's page loading and its scripts never running.
+ *
+ * The page is an empty document until its script bundle runs, and every failure a player is shown -
+ * the crash screen included - is drawn by that bundle. A build missing it showed an empty window for
+ * as long as the process lived; nothing failed in a way any of the signals above report.
+ */
+describe("a page whose scripts never run", () => {
+    const GAME_PAGE = "nlgame://runtime/index.html?nlpolicy=details";
+
+    function loadedGame() {
+        const win = fakeWindow();
+        const probe = fakeHost();
+        installWindowCrashHandling(win, probe.host);
+        const load = async (started: unknown) => {
+            win.webContents.pageStarted = started;
+            win.webContents.emit("did-navigate", {}, GAME_PAGE, 200, "OK");
+            win.webContents.emit("did-finish-load");
+            await vi.waitFor(() => expect(win.webContents.asked.length).toBeGreaterThan(0));
+            await Promise.resolve();
+        };
+        return { win, load, ...probe };
+    }
+
+    it("asks the loaded page whether they ran, and leaves a page that started alone", async () => {
+        const { win, load, notStarted, crashed } = loadedGame();
+        await load(true);
+
+        expect(win.webContents.asked).toEqual(["window[\"__NLS_GAME_PAGE_STARTED__\"] === true"]);
+        expect(notStarted).toEqual([]);
+        expect(crashed).toEqual([]);
+    });
+
+    it("is a launch that did not start, told to the player, when the first page's scripts never ran", async () => {
+        const { load, notStarted, crashed, host } = loadedGame();
+        await load(undefined);
+
+        await vi.waitFor(() => expect(notStarted).toEqual([{
+            reason: "could not start: the game's page loaded, but its scripts never ran",
+            headline: host.text.pageDidNotStart,
+        }]));
+        expect(crashed).toEqual([]);
+    });
+
+    it("is a crash when a later page's scripts never ran, after the game had started", async () => {
+        const { load, notStarted, crashed, logged, host } = loadedGame();
+        await load(true);
+        await load(false);
+
+        await vi.waitFor(() => expect(crashed).toEqual([host.text.pageDidNotStart]));
+        expect(notStarted).toEqual([]);
+        expect(logged.at(-1)?.message).toBe("[Crash] The game's page loaded again, but its scripts never ran");
+    });
+
+    it("does not ask a page outside the game, or the error page of a load that failed", async () => {
+        const { win, notStarted, crashed } = loadedGame();
+        win.webContents.emit("did-navigate", {}, "https://example.com/", 200, "OK");
+        win.webContents.emit("did-finish-load");
+        win.webContents.emit("did-navigate", {}, GAME_PAGE, 200, "OK");
+        win.webContents.emit("did-fail-load", {}, -2, "ERR_FAILED", GAME_PAGE, true);
+        win.webContents.emit("did-finish-load");
+        await Promise.resolve();
+
+        expect(win.webContents.asked).toEqual([]);
+        // The failed load is reported once, as itself.
+        expect(notStarted).toEqual([]);
+        expect(crashed).toEqual(["The game window stopped working (ERR_FAILED (-2))."]);
+    });
+
+    it("says so in every language the shell speaks", () => {
+        const said = [["en"], ["zh"], ["ja"]].map(tags => resolveShellText(tags).pageDidNotStart);
+        expect(new Set(said).size).toBe(3);
+        for (const sentence of said) {
+            expect(sentence.trim().length).toBeGreaterThan(0);
+        }
     });
 });

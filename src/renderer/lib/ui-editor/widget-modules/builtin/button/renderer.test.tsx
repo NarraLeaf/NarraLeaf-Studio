@@ -30,6 +30,11 @@ import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import {
+    getDesignTimeLocalizationKeys,
+    setDesignTimeLocalizationKeys,
+    setDesignTimeLocalizationKeyWriter,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { ButtonRenderer } from "./renderer";
 
 const SURFACE: UISurface = {
@@ -279,5 +284,73 @@ describe("ButtonRenderer marked label", () => {
             { text: "Goodbye " },
             { text: "world", marks: { bold: true } },
         ]);
+    });
+});
+
+describe("ButtonRenderer read from a translation key", () => {
+    const written: Array<[string, string]> = [];
+    beforeEach(() => {
+        written.length = 0;
+        setDesignTimeLocalizationKeys({ "config.skipAllText": "All" });
+        setDesignTimeLocalizationKeyWriter((name, sourceText) => {
+            written.push([name, sourceText]);
+            setDesignTimeLocalizationKeys({ ...getDesignTimeLocalizationKeys(), [name]: sourceText });
+        });
+    });
+    afterEach(() => {
+        // Unmounted first: withdrawing the keys would otherwise repaint a mounted canvas outside act.
+        cleanup();
+        setDesignTimeLocalizationKeyWriter(null);
+        setDesignTimeLocalizationKeys(null);
+    });
+
+    function keyedDocument(): UIDocument {
+        return createDocument({ label: "All text", localizationKey: "config.skipAllText" });
+    }
+
+    it("draws the key's text on the canvas, as the game does, not the button's own label", () => {
+        const document = keyedDocument();
+        const { container } = renderButton(document.elements.button, document);
+        expect(container.querySelector("p")!.textContent).toBe("All");
+    });
+
+    it("draws the button's own label while the project carries no keys", () => {
+        setDesignTimeLocalizationKeys(null);
+        const document = keyedDocument();
+        const { container } = renderButton(document.elements.button, document);
+        expect(container.querySelector("p")!.textContent).toBe("All text");
+    });
+
+    it("repaints when the key's text changes elsewhere", () => {
+        const document = keyedDocument();
+        const { container } = renderButton(document.elements.button, document);
+        act(() => setDesignTimeLocalizationKeys({ "config.skipAllText": "Everything" }));
+        expect(container.querySelector("p")!.textContent).toBe("Everything");
+    });
+
+    it("edits the key's text in place, from the key's text, and leaves the button's own label alone", () => {
+        const document = keyedDocument();
+        const services = { stateService: createStateService(), documentService: createDocumentService(document) };
+        const hostAdapter: UIHostAdapter = {
+            host: "app",
+            editorStateService: services.stateService as never,
+            editorDocumentService: services.documentService as never,
+        };
+        const canvas = renderButton(document.elements.button, document, hostAdapter);
+
+        act(() => {
+            beginInlineTextEdit(services.stateService as never, SURFACE.id, "button");
+        });
+        const textarea = canvas.container.querySelector("textarea")!;
+        expect(textarea.value).toBe("All");
+        fireEvent.change(textarea, { target: { value: "All lines" } });
+        clockMs += 1_000;
+        act(() => {
+            fireEvent.blur(textarea);
+        });
+
+        expect(written).toEqual([["config.skipAllText", "All lines"]]);
+        expect(document.elements.button.props?.label).toBe("All text");
+        expect(canvas.container.querySelector("p")!.textContent).toBe("All lines");
     });
 });

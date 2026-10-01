@@ -1685,7 +1685,11 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
                 if (bundled) {
                     return serveBytes(bundled, getMimeType(wanted));
                 }
-                return serveFile(resolveRuntimeStaticPath(appDir, wanted));
+                // Awaited, so a file missing from the build is caught below and logged: returned as a
+                // bare promise, its rejection went past the handler and the request failed with no
+                // trace in the game's log - for the page's own script bundle, an empty window with
+                // nothing anywhere to say why.
+                return await serveFile(resolveRuntimeStaticPath(appDir, wanted));
             }
             if (url.hostname === "pack") {
                 return serveBytes(await runtimeResources().readPack(), "application/json");

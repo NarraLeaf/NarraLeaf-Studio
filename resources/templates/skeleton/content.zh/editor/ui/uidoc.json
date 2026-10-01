@@ -709,7 +709,7 @@
             "opacity": 1
           },
           "props": {
-            "text": "无数据",
+            "text": "无存档",
             "fontSize": 26,
             "color": "nlbrand:text.subtle",
             "fontWeight": "normal",
@@ -11614,7 +11614,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "文字",
+        "label": "文本",
         "fontSize": 25,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -16613,7 +16613,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "跳过间隔",
+        "text": "跳过等待时间",
         "fontSize": 25,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -18701,7 +18701,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "全部文本",
+        "label": "全部",
         "fontSize": 23,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -20085,7 +20085,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "开",
+        "label": "开启",
         "fontSize": 23,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -20309,7 +20309,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "关",
+        "label": "关闭",
         "fontSize": 23,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -23556,7 +23556,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "BGM",
+        "text": "背景音乐",
         "fontSize": 25,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -49371,7 +49371,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "开",
+        "label": "开启",
         "fontSize": 23,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -49595,7 +49595,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "关",
+        "label": "关闭",
         "fontSize": 23,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",

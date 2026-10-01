@@ -254,8 +254,11 @@ async function readSide(
  * can fail - and none of those is a story this surface should report, because the row it would be
  * reported on is about a different file entirely. What it costs is a name, and the absence of a name
  * is already said out loud on the row.
+ *
+ * Exported for the other sibling a comparison is named from - the asset folder lists
+ * (`assetFolderNames.ts`) - so both are read the same way and fail the same way.
  */
-async function readLibraries(
+export async function readLibraries(
     service: VersionControlService,
     side: ComparisonSide,
     paths: readonly string[],
