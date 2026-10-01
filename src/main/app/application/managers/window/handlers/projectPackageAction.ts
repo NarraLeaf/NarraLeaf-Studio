@@ -16,6 +16,7 @@ import {
     writeProjectPackage,
 } from "../../../utils/projectPackageFile";
 import { directoryHoldsNothing } from "../../../utils/directoryHoldsNothing";
+import { requireWindowProject } from "../../../utils/windowProject";
 import type { ProjectTrustManager } from "../../projectTrustManager";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
@@ -35,7 +36,20 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.workspaceExportProjectPackage]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportProjectPackage]["response"]>> {
-        const projectRoot = path.resolve(projectPath);
+        // Exporting is something a workspace does to the project it has open, and only that: the
+        // launcher has no export of its own, and a package is the whole tree - scripts, plugins,
+        // every asset - copied out to a folder the caller then chooses. So the path has to be the
+        // window's own project. A read grant alone would have let a workspace pack any tree it can
+        // read, including a folder it was once handed for some other purpose.
+        //
+        // Checked outside the `try` below so the refusal keeps its own code rather than passing
+        // through the pack-failure classifier, which only knows about file-system errors.
+        let projectRoot: string;
+        try {
+            projectRoot = path.resolve(requireWindowProject(window, projectPath));
+        } catch (error) {
+            return this.failed(error);
+        }
         try {
             if (!await window.app.storageManager.isPathAllowed(window, projectRoot, "read")) {
                 return this.failed(`File system access is not allowed for project: ${projectRoot}`);
