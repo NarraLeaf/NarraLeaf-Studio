@@ -663,12 +663,13 @@ function buildVariant(locale) {
 
     // --- The English the variant no longer says, as a translation of what it says instead.
     const sourceUnits = {};
+    //
+    // Including a word that reads the same in both languages - the characters are called Narra and
+    // Aoi either way, and the gallery's CG tab says CG in all three. The translation of such a word
+    // into itself is still a translation somebody decided on: without its unit the localization panel
+    // lists the word as untranslated and `localization/missing` reports it, on a project nobody has
+    // touched yet.
     for (const [unitId, { source, translated }] of [...flipped].sort(([a], [b]) => (a < b ? -1 : 1))) {
-        if (source === translated) {
-            // A name that reads the same in both languages (the characters are called Narra and
-            // Aoi either way). A unit here would be a translation of a word into itself.
-            continue;
-        }
         sourceUnits[unitId] = { sourceHash: hashSourceText(translated), status: "translated", target: source };
     }
     emit(`editor/localization/${table.sourceLocale}.json`, {

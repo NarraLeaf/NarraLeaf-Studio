@@ -346,6 +346,10 @@ export const documentDiff = {
         field: "{field} を変更",
         /** アセットの中身のファイルだが、この比較のどの記録もこれを指していない。名前は id の断片。 */
         orphanContent: "アセットの記録がないファイル",
+        fields: {
+            group: "グループ",
+            missingGroup: "存在しないグループ",
+        },
     },
     /**
      * 第 1 段階のプロジェクトのパレット。

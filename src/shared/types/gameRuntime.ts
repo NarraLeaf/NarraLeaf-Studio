@@ -43,6 +43,13 @@ export function newerRuntimePackSchemaVersion(pack: unknown): number | null {
 }
 
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
+/**
+ * Set on the game page's window by the first line of its own script bundle, and read by the game's
+ * process once the page has loaded: a page that loaded without it is one whose scripts never ran - a
+ * bundle missing from the build, or one that would not evaluate - and that page can draw nothing,
+ * its crash screen included. See `windowCrashHandling`.
+ */
+export const GAME_RUNTIME_PAGE_STARTED_KEY = "__NLS_GAME_PAGE_STARTED__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;

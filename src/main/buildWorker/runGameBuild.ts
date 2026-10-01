@@ -60,7 +60,8 @@ const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
     universal: Arch.universal,
 };
 
-function builderConfiguration(
+/** The electron-builder configuration for one desktop target. Exported for its own test. */
+export function builderConfiguration(
     config: GameBuildWorkerConfig,
     target: GameBuildWorkerTarget,
     log: GameBuildLogger,
@@ -133,7 +134,27 @@ function builderConfiguration(
         asarUnpack: config.asarUnpack,
         electronFuses: target.fuses,
         artifactName: gameBuildArtifactNamePattern(config.artifactBaseName),
-        npmRebuild: false,
+        /*
+         * The game has no dependency tree. Everything it loads is staged into the app directory by
+         * the compiler, deliberately outside `node_modules` (see buildAsarUnpackPatterns in
+         * GameBuildManager), and its package.json declares no dependencies.
+         *
+         * Left to itself, electron-builder collects a tree anyway. It searches the app directory,
+         * then the nearest workspace root above it - any folder with a package.json naming a
+         * package manager or workspaces - and, because the game declares nothing to check a tree
+         * against, accepts the first non-empty one it finds. The app directory is staged inside the
+         * project, so a project kept anywhere beneath a JavaScript repository shipped that
+         * repository's entire `node_modules`: hundreds of megabytes of somebody else's tooling in
+         * the package, and on a signed build every executable in it signed with the author's
+         * certificate.
+         *
+         * A `beforeBuild` that answers false is electron-builder's own way of saying the modules are
+         * handled outside it, which skips the collection as well as the rebuild. `npmRebuild` has to
+         * stay on for that question to be asked at all: `npmRebuild: false` returns before
+         * `beforeBuild` runs, and leaves the collection in place.
+         */
+        npmRebuild: true,
+        beforeBuild: async () => false,
         publish: null,
     };
 }

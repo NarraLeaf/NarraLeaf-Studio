@@ -34,6 +34,10 @@
  * surface answered was a binding that looked wired and never fired - every key reached the window,
  * and nothing on the stage was ever asked about it.
  *
+ * An NVL passage takes the dialogue box off the stage. A project that draws its own NVL page has a
+ * surface there instead, which hears the keys like any other; the engine's own page is not a surface,
+ * and stands in for the box: the keys that read the box on read it on (`engineNvlKeys`).
+ *
  * "Nothing drawn over it" is the question the skip loop and the auto-forward hold already ask
  * (`isStoryOnScreen`), so the keys leave the stage exactly when the story stops moving on its own: a
  * page opened over it or a modal layer takes them, and the page or the layer answers them instead.
@@ -68,6 +72,7 @@ import {
     resolveSurfaceInputActionHits,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
+import type { EngineNvlKeys } from "./engineNvlKeys";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -102,6 +107,11 @@ export type KeyboardOwner =
            * runtime scope (see `AmbientSurfaceTargets`). Read as the key arrives, like the entry.
            */
           stage: readonly AmbientSurfaceTarget[];
+          /**
+           * The engine's own NVL page, when it is up in place of the dialogue box: the keys that
+           * read the box on read it on too (see `engineNvlKeys`). Absent otherwise.
+           */
+          engineNvl?: EngineNvlKeys | null;
       };
 
 /** The surfaces an owner hears a key through: the entry's one, or every one on the stage. */
@@ -248,6 +258,14 @@ export async function dispatchGameKey(
     // Decided once, as the key arrives, for the global blueprint and the owner alike - see the
     // module comment. Read before any graph runs, because a graph can move the focus.
     const raisesActions = eventName === "keyDown" && !event.repeat && !keyInputClaimedByControl(event);
+    // Every action this key is bound to, whoever answers it: the global blueprint hears all of them,
+    // and the engine's NVL page reads on for the dialogue box's.
+    const raisedActions = raisesActions
+        ? resolveGlobalInputActionPayloads({
+            vocabulary: input.vocabulary,
+            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+        })
+        : [];
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     await dispatchGlobalBlueprintEvent({
         blueprintDocument,
@@ -263,15 +281,17 @@ export async function dispatchGameKey(
     if (raisesActions && !eventControl.isPropagationStopped()) {
         // The whole vocabulary, not the owner's list: see `globalInputActions`. Resolved by the same
         // rule the owner's are, so a binding the owner answers the global answers too.
-        await answerGlobalInputActions(input, resolveGlobalInputActionPayloads({
-            vocabulary: input.vocabulary,
-            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
-        }), eventControl);
+        await answerGlobalInputActions(input, raisedActions, eventControl);
     }
     if (!owner || eventControl.isPropagationStopped()) {
         return;
     }
     await dispatchKeyToOwner(input, owner, eventName, payload, eventControl, raisesActions);
+    const engineNvl = "stage" in owner ? owner.engineNvl : null;
+    if (engineNvl && !eventControl.isPropagationStopped()
+        && raisedActions.some(action => engineNvl.actionIds.has(action.actionId))) {
+        await engineNvl.advance();
+    }
 }
 
 /**
