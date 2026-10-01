@@ -398,6 +398,9 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                         blueprintLifecycleReady={widgetBlueprintLifecycleReady}
                         interactive={effectiveInteractive}
                         keyboardInteractive={effectiveKeyboardInteractive}
+                        // The entry that hears the keys holds the focus as well, so Tab starts on
+                        // the page the player is looking at (see `keyboardFocusHandover`).
+                        holdsKeyboardFocus={effectiveKeyboardInteractive}
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                         elementAnimations
                         reducedMotion={reducedMotion}

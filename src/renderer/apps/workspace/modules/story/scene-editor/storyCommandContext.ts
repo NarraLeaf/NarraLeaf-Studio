@@ -12,7 +12,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
-import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
+import { listDisplayableTargetsInScene } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
 import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVfxSources } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
@@ -128,11 +128,18 @@ function variableEntries(
  * The named objects on stage in this scene, per kind - the picker `/show`, `/swap`, `/stop` lead with
  * instead of a blind name field.
  *
- * image / text / layer come from {@link listSceneDisplayableTargets}, the same collector the
- * inspector's target picker reads, so the command line can never offer a name the inspector wouldn't.
+ * image / text / layer come from the collector the inspector's target picker reads
+ * (`listDisplayableTargetsInScene`), so the command line can never offer a name the inspector wouldn't.
  * video and sound handles are not displayable targets, so they are scanned directly off the scene's
  * action blocks. Scene-wide for now (`blockId` omitted): scoping the list to objects created *before*
  * the caret is the position-aware refinement, cheap to add once the slot's anchor is threaded here.
+ *
+ * Both halves read the scene this context was built for, never the document's copy of it. In the
+ * editor the two are the same scene; on the story command line they are not - its second reading of
+ * a `.story` file passes the scene the first reading built, rows the file adds included, while the
+ * document is still the one on disk. Reading image / text / layer off the document there made
+ * `/image poster` followed by `/hide poster` in one file fail on the second row, while the same pair
+ * written with `/video` resolved.
  */
 function collectStageObjects(document: StoryDocument | null, sceneId: StorySceneId | null | undefined, scene: StoryScene | null): StoryCommandStageObjects {
     const image = new Set<string>();
@@ -142,7 +149,8 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
     const audio = new Set<string>();
     const vfx = new Set<string>();
 
-    for (const ref of listSceneDisplayableTargets(document, sceneId ?? undefined, undefined)) {
+    const displayableScene = scene ?? (sceneId ? document?.scenes[sceneId] : undefined);
+    for (const ref of displayableScene ? listDisplayableTargetsInScene(displayableScene, undefined) : []) {
         if (ref.kind === "image") {
             image.add(ref.name);
         } else if (ref.kind === "text") {

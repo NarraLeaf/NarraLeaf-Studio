@@ -405,13 +405,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "Missing translation",
-            description: "A line with no translation in a target language",
+            description: "A line or interface text with no translation in a target language",
             message: "No {locale} translation",
+            messageInterface: "No {locale} translation of {text}",
         },
         localizationStale: {
             title: "Stale translation",
             description: "The source line changed after it was translated",
             message: "{locale} translation is older than the line",
+            messageInterface: "{locale} translation of {text} is older than the text",
         },
         localizationMarkup: {
             title: "Translation drops styling",

@@ -202,8 +202,11 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
+import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
+import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -245,7 +248,7 @@ import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
-import { StageCoveredByPageContext } from "./stageConcealment";
+import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -2738,7 +2741,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
                 try {
-                    capture = await liveGame.capturePng();
+                    // Kept at thumbnail size: the full-size picture was 99% of every save file, and a
+                    // save screen only ever draws it small (see `saveCapture`).
+                    capture = await shrinkSaveCapture(await liveGame.capturePng());
                 } catch (error) {
                     // The save itself still goes through — a failed preview must not lose progress.
                     reportSaveCaptureFailure(id, normalizeError(error));
@@ -5290,6 +5295,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [activeEntry, bootReporter, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
 
+    /**
+     * What the engine's NVL page reads on for while it stands in for the dialogue box: the actions the
+     * box answers with `Next`, and whether the project draws an NVL page of its own instead (see
+     * `engineNvlKeys`). Facts about the bundle, so worked out once per bundle.
+     */
+    const dialogueAdvanceActionIds = useMemo(
+        () => resolveDialogueAdvanceActionIds(bundle.ui.uidoc, bundle.ui.localBlueprints),
+        [bundle.ui.localBlueprints, bundle.ui.uidoc],
+    );
+    const drawsOwnNvlPage = useMemo(() => projectDrawsNvlPage(bundle.ui.uidoc), [bundle.ui.uidoc]);
+
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
             gameReady: Boolean(host.ready && core && hostAdapterBundle),
@@ -5312,11 +5328,41 @@ export function GameApp(props: GameAppProps): ReactNode {
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
             // player is looking at - the moment the skip loop and the auto-forward hold treat as the
             // story running, so the keys and the story's own motion leave the stage together.
-            readKeyboardOwner: () => keyboardOwnerRef.current
-                ?? (isStoryOnScreen() ? { stage: stageKeyboardSurfaces.list() } : null),
+            // The engine's NVL page, when it is up in place of the dialogue box, reads on for the keys
+            // the box does.
+            readKeyboardOwner: () => {
+                if (keyboardOwnerRef.current) {
+                    return keyboardOwnerRef.current;
+                }
+                if (!isStoryOnScreen()) {
+                    return null;
+                }
+                const stage = stageKeyboardSurfaces.list();
+                return {
+                    stage,
+                    engineNvl: resolveEngineNvlKeys({
+                        nvlActive: isNvlModeInGame(),
+                        projectDrawsNvlPage: drawsOwnNvlPage,
+                        stage,
+                        actionIds: dialogueAdvanceActionIds,
+                        advance: nextInGame,
+                    }),
+                };
+            },
             onError: err => host.log("error", normalizeError(err)),
         });
-    }, [bundle, core, host, hostAdapterBundle, isStoryOnScreen, stageKeyboardSurfaces]);
+    }, [
+        bundle,
+        core,
+        dialogueAdvanceActionIds,
+        drawsOwnNvlPage,
+        host,
+        hostAdapterBundle,
+        isNvlModeInGame,
+        isStoryOnScreen,
+        nextInGame,
+        stageKeyboardSurfaces,
+    ]);
 
     /**
      * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
@@ -6016,6 +6062,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
+                // Where this game's keyboard focus may be moved about: a focus outside it is the
+                // window's, and stays where it is (see `keyboardFocusHandover`).
+                {...{ [GAME_ROOT_ATTRIBUTE]: "" }}
                 // The keyboard focus is the keyboard's: a click on a control answers the click and
                 // leaves the next key to the game, see `pointerKeyboardFocus`.
                 onMouseDownCapture={keepPointerPressOffKeyboardFocus}
@@ -6026,7 +6075,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
                 <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
-                    {nlrStageLayer}
+                    <StageCoveredContext.Provider value={stageCovered}>
+                        {nlrStageLayer}
+                    </StageCoveredContext.Provider>
                 </StageCoveredByPageContext.Provider>
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
