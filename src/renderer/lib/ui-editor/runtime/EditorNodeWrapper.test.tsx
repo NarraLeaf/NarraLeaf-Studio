@@ -211,6 +211,30 @@ describe("EditorNodeWrapper motion handover", () => {
         expect(node.style.opacity).toBe("0.35");
     });
 
+    it("puts the pose back on the next render after something else wrote the transform", () => {
+        const store = new WidgetRuntimeStateStore();
+        const rotated = { ...element.layout, rotation: 15 };
+        const { view, node } = mountWrapper(store, rotated);
+        expect(node.style.transform).toBe("rotate(15deg)");
+
+        // What the editor's drag leaves behind when a gesture ends.
+        node.style.transform = "";
+        act(() => {
+            view.rerender(tree(store, { ...rotated, opacity: 0.5 }));
+        });
+        expect(node.style.transform).toBe("rotate(15deg)");
+
+        // The same once a motion has taken the channel.
+        act(() => {
+            store.setDisplayableMotion(KEY, { target: { x: [40, 80] }, transition: { type: "tween", durationMs: 5000 } });
+        });
+        node.style.transform = "";
+        act(() => {
+            view.rerender(tree(store, { ...rotated, opacity: 0.6 }));
+        });
+        expect(node.style.transform).toBe("translateX(40px) rotate(15deg)");
+    });
+
     it("starts a state's trip from where the element was, not from where React just put it", () => {
         const store = new WidgetRuntimeStateStore();
         const offset = (x: number) => ({ x, y: 0, durationMs: 400, easing: "easeOut" as const });

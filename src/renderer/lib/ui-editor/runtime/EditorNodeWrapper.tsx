@@ -828,6 +828,11 @@ export function EditorNodeWrapper({
 
     // Runs first in every commit: what was on screen before it, the handler a finishing motion reports
     // to, and the props-driven channels.
+    //
+    // It also puts the pose back on the node every commit, as the visual element did: the editor's
+    // drag writes `style.transform` itself while a gesture runs and leaves a bare rotation behind when
+    // it ends, and the next render is what restores a pose that carries more than that. React alone
+    // would not, because its own transform did not change.
     useLayoutEffect(() => {
         nodeMotion.startPose = nodeMotion.committedPose;
         nodeMotion.committedPose = restPose;
@@ -835,6 +840,12 @@ export function EditorNodeWrapper({
         const driver = nodeMotion.driver;
         if (driver) {
             syncMotionDriver(driver);
+            driver.writeAll();
+            return;
+        }
+        const node = containerRef.current;
+        if (node && hasMotionPose && typeof restTransform === "string" && node.style.transform !== restTransform) {
+            node.style.transform = restTransform;
         }
     });
 
