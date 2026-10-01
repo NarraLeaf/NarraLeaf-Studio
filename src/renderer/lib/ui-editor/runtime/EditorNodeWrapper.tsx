@@ -1,6 +1,15 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, {
+    useCallback,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
-import { animate, motion, useAnimationControls, useMotionValue, type MotionStyle, type TargetAndTransition } from "motion/react";
+import { MotionConfigContext } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
@@ -22,6 +31,7 @@ import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGestur
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { bindWidgetEventDispatch } from "./widgetEventDispatch";
+import { NodeWrapperMotionDriver, nodeWrapperTransform, type NodeWrapperPose } from "./nodeWrapperMotion";
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -138,6 +148,37 @@ function displayableOpacityKeysForElement(
 
 const NOOP_SUBSCRIBE = () => () => {};
 
+/** What a node wrapper keeps about its motion between commits; one object, made once per wrapper. */
+type NodeMotionState = {
+    /** Writes the channels once anything has animated them; null while React writes all of them. */
+    driver: NodeWrapperMotionDriver | null;
+    /** What React was last handed for each channel the driver has taken, so React never writes it again. */
+    handedOver: {
+        left: CSSProperties["left"];
+        top: CSSProperties["top"];
+        transform?: { value: CSSProperties["transform"] };
+        opacity?: { value: CSSProperties["opacity"] };
+    } | null;
+    /** The resting pose the latest commit put on screen. */
+    committedPose: NodeWrapperPose | null;
+    /** The one before it, which is what a channel taken over in this commit starts moving from. */
+    startPose: NodeWrapperPose | null;
+    mounted: boolean;
+    /** The completion handler as of the latest commit: a finishing motion reports to that one. */
+    onComplete: () => void;
+};
+
+function createNodeMotionState(): NodeMotionState {
+    return {
+        driver: null,
+        handedOver: null,
+        committedPose: null,
+        startPose: null,
+        mounted: false,
+        onComplete: () => {},
+    };
+}
+
 export function isElementHoveredByPointer(element: Element | null): boolean {
     if (!element) {
         return false;
@@ -191,7 +232,6 @@ export function EditorNodeWrapper({
                 ? widgetRuntimeStore.getDisplayableBaseTransform(runtimeElementKey)
                 : DEFAULT_DISPLAYABLE_BASE_TRANSFORM,
     );
-    const animationControls = useAnimationControls();
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
     const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
@@ -594,37 +634,8 @@ export function EditorNodeWrapper({
     /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
     const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
     const placedTop = enteredOffsetsInFlow ? 0 : layout.y + Math.min(0, layout.height) + placedEnteredOffsets.y;
-    // Placement moves through motion values so entering a state still plays the field's own
-    // transition here, the same one the running game uses.
-    const leftValue = useMotionValue(placedLeft);
-    const topValue = useMotionValue(placedTop);
     const lastPlacedOffsetsRef = useRef(placedEnteredOffsets);
     const lastPlacedStateKeyRef = useRef(enteredStateKey);
-    useEffect(() => {
-        const previous = lastPlacedOffsetsRef.current;
-        const previousStateKey = lastPlacedStateKeyRef.current;
-        const enteredMoved = previous.x !== placedEnteredOffsets.x || previous.y !== placedEnteredOffsets.y;
-        lastPlacedOffsetsRef.current = placedEnteredOffsets;
-        lastPlacedStateKeyRef.current = enteredStateKey;
-        const transition = enteredOffsetTransitionRef.current;
-        // Only a change of state is a trip. Moving the element *within* the state on screen - dragging
-        // it there, typing a number - is the author saying where it sits, not the element travelling:
-        // animating to it starts from where they just left, which reads as the element snapping back
-        // to its old spot for a frame and then sliding into place. It also leaves the selection frame
-        // measuring a position the element is only passing through.
-        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
-        if (!enteredMoved || !changedState || !transition) {
-            leftValue.set(placedLeft);
-            topValue.set(placedTop);
-            return undefined;
-        }
-        const runLeft = animate(leftValue, placedLeft, transition);
-        const runTop = animate(topValue, placedTop, transition);
-        return () => {
-            runLeft.stop();
-            runTop.stop();
-        };
-    }, [enteredStateKey, leftValue, placedEnteredOffsets, placedLeft, placedTop, topValue]);
 
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height } = layout;
@@ -678,44 +689,10 @@ export function EditorNodeWrapper({
         wrapperCursor,
     ]);
 
-    // The pose's own motion values, so entering a state can *move* the element instead of teleporting
-    // it: an author flipping between states is previewing the animation the player will see, and a
-    // plain style number would be written straight to the DOM. A blueprint animation owns the channel
-    // while it runs, so this stands aside for it.
-    const poseX = useMotionValue(displayableBaseTransform.offsetX + enteredOffsets.x);
-    const poseY = useMotionValue(displayableBaseTransform.offsetY + enteredOffsets.y);
-    const lastEnteredOffsetsRef = useRef(enteredOffsets);
-    const lastPoseStateKeyRef = useRef(enteredStateKey);
-    useEffect(() => {
-        const previous = lastEnteredOffsetsRef.current;
-        const previousStateKey = lastPoseStateKeyRef.current;
-        const enteredMoved = previous.x !== enteredOffsets.x || previous.y !== enteredOffsets.y;
-        lastEnteredOffsetsRef.current = enteredOffsets;
-        lastPoseStateKeyRef.current = enteredStateKey;
-        if (displayableMotion) {
-            return undefined;
-        }
-        const transition = enteredOffsetTransitionRef.current;
-        // Same rule as placement above: the trip is between states, never inside one.
-        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
-        if (!enteredMoved || !changedState || !transition) {
-            poseX.set(basePose.x);
-            poseY.set(basePose.y);
-            return undefined;
-        }
-        const runX = animate(poseX, basePose.x, transition);
-        const runY = animate(poseY, basePose.y, transition);
-        return () => {
-            runX.stop();
-            runY.stop();
-        };
-    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, enteredStateKey, poseX, poseY]);
-
     // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
-    // its transform must be owned by motion-managed style values: a raw `style.transform` string
-    // is discarded the moment motion renders its own transform, which silently dropped static
-    // rotation after the first animation. The latch keeps the channel stable for the element's
-    // lifetime so motion values are never torn down mid-flight.
+    // its transform is the pose's: an authored `transform` in the element's own style gives way to
+    // it, as it did to motion's. The latch keeps the channel with the pose for the element's lifetime,
+    // so it is never handed back mid-flight.
     const motionPoseLatchRef = useRef(false);
     const hasMotionPose =
         motionPoseLatchRef.current ||
@@ -725,17 +702,141 @@ export function EditorNodeWrapper({
         enteredOffsets.x !== 0 ||
         enteredOffsets.y !== 0;
     motionPoseLatchRef.current = hasMotionPose;
-    const motionStyle: MotionStyle = hasMotionPose
-        ? {
-              ...containerStyle,
-              left: leftValue,
-              top: topValue,
-              x: poseX,
-              y: poseY,
-              scale: basePose.scale,
-              rotate: basePose.rotate,
-          }
-        : { ...containerStyle, left: leftValue, top: topValue };
+
+    /**
+     * The node is a plain `div`, and until something animates it React writes all of it.
+     *
+     * Every channel here used to be a motion value on a `motion.div`, which gave every element on a
+     * page its own visual element, projection node and turn in the frame loop - about a third of
+     * what mounting a page cost, for the handful of elements anything ever moves. The resting
+     * values are what that `motion.div` drew: placement by `left`/`top` (an authored left/top in the
+     * element's style does not win over it), the pose by motion's own transform builder, and
+     * opacity as authored.
+     *
+     * The first time a channel has to *move* - a Displayable motion, or entering a state with a
+     * transition - a {@link NodeWrapperMotionDriver} takes over writing it, and React is handed the
+     * value it last committed for that channel from then on, so the two never write it in turn.
+     */
+    const restTransform = hasMotionPose
+        ? nodeWrapperTransform({ x: basePose.x, y: basePose.y, scale: basePose.scale, rotate: basePose.rotate })
+        : containerStyle.transform;
+    const restOpacity = containerStyle.opacity;
+    const restPose: NodeWrapperPose = {
+        left: placedLeft,
+        top: placedTop,
+        x: basePose.x,
+        y: basePose.y,
+        scale: basePose.scale,
+        rotate: basePose.rotate,
+        opacity: typeof restOpacity === "number" ? restOpacity : effectiveOpacity,
+    };
+    const nodeMotionRef = useRef<NodeMotionState | null>(null);
+    const nodeMotion = (nodeMotionRef.current ??= createNodeMotionState());
+    const reducedMotionConfig = useContext(MotionConfigContext).reducedMotion;
+
+    const handedOver = nodeMotion.handedOver;
+    const nodeStyle: CSSProperties = {
+        ...containerStyle,
+        left: handedOver ? handedOver.left : placedLeft,
+        top: handedOver ? handedOver.top : placedTop,
+    };
+    const transformForReact = handedOver?.transform ? handedOver.transform.value : restTransform;
+    if (transformForReact !== undefined) {
+        nodeStyle.transform = transformForReact;
+    }
+    if (handedOver?.opacity) {
+        nodeStyle.opacity = handedOver.opacity.value;
+    }
+
+    /**
+     * The channels a visual element took from the props as they changed: scale and rotation follow the
+     * pose until a Displayable motion has animated them, and opacity is React's until one takes it.
+     * The transform is taken over the moment the element carries a pose.
+     */
+    const syncMotionDriver = (driver: NodeWrapperMotionDriver) => {
+        if (!driver.hasMotionAnimated("scale")) {
+            driver.set("scale", basePose.scale);
+        }
+        if (!driver.hasMotionAnimated("rotate")) {
+            driver.set("rotate", basePose.rotate);
+        }
+        if (!driver.ownsOpacityChannel() && typeof restOpacity === "number") {
+            driver.set("opacity", restOpacity);
+        }
+        if (hasMotionPose) {
+            handOver("transform", driver);
+        }
+    };
+    const handOver = (channel: "transform" | "opacity", driver: NodeWrapperMotionDriver) => {
+        const handed = nodeMotion.handedOver;
+        if (!handed) {
+            return;
+        }
+        if (channel === "transform" && !handed.transform) {
+            handed.transform = { value: transformForReact };
+            driver.takeTransform();
+        }
+        if (channel === "opacity" && !handed.opacity) {
+            handed.opacity = { value: nodeStyle.opacity };
+        }
+    };
+    /** The driver, created from what was on screen before this commit the first time it is needed. */
+    const ensureMotionDriver = (): NodeWrapperMotionDriver => {
+        const existing = nodeMotion.driver;
+        if (existing) {
+            return existing;
+        }
+        const driver = new NodeWrapperMotionDriver(nodeMotion.startPose ?? restPose);
+        nodeMotion.driver = driver;
+        nodeMotion.handedOver = { left: nodeStyle.left, top: nodeStyle.top };
+        driver.attach(nodeMotion.mounted ? containerRef.current : null);
+        syncMotionDriver(driver);
+        return driver;
+    };
+    const claimOpacityIfTaken = (driver: NodeWrapperMotionDriver) => {
+        if (driver.ownsOpacityChannel()) {
+            handOver("opacity", driver);
+        }
+    };
+
+    const onAnimationComplete = () => {
+        if (!displayableMotion?.resetOnComplete) {
+            return;
+        }
+        if (!isResetPhase) {
+            setResetMotionId(displayableMotion.id);
+            return;
+        }
+        widgetRuntimeStore?.completeDisplayableMotion(runtimeElementKey, displayableMotion.id);
+        setResetMotionId(null);
+    };
+
+    useLayoutEffect(() => {
+        nodeMotion.mounted = true;
+        nodeMotion.driver?.attach(containerRef.current);
+        return () => {
+            nodeMotion.mounted = false;
+            const driver = nodeMotion.driver;
+            if (driver) {
+                // Nothing keeps moving a node that has left the page, and a motion that was still
+                // running reports nothing (its completion checks `mounted`).
+                driver.stop();
+                driver.attach(null);
+            }
+        };
+    }, []);
+
+    // Runs first in every commit: what was on screen before it, the handler a finishing motion reports
+    // to, and the props-driven channels.
+    useLayoutEffect(() => {
+        nodeMotion.startPose = nodeMotion.committedPose;
+        nodeMotion.committedPose = restPose;
+        nodeMotion.onComplete = onAnimationComplete;
+        const driver = nodeMotion.driver;
+        if (driver) {
+            syncMotionDriver(driver);
+        }
+    });
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {
@@ -788,9 +889,9 @@ export function EditorNodeWrapper({
 
     useLayoutEffect(
         () => () => {
-            // StrictMode's simulated unmount kills any in-flight controls animation; forget the
-            // last run key so the second mount's effect restarts the motion instead of skipping
-            // it via the mid-flight guard below.
+            // StrictMode's simulated unmount stops any in-flight motion (see the effect above); forget
+            // the last run key so the second mount's effect restarts the motion instead of skipping it
+            // via the mid-flight guard below.
             lastMotionRunKeyRef.current = null;
         },
         [],
@@ -800,15 +901,17 @@ export function EditorNodeWrapper({
         const { animate, initial, transition } = motionRunConfigRef.current;
         if (!motionRunKey || !animate) {
             lastMotionRunKeyRef.current = null;
-            animationControls.stop();
-            // A completed/stopped/replaced motion leaves its last frame on the motion values.
-            // Snap back to the persistent base pose in the same commit so a layout commit
-            // (hold animations fold their delta into left/top) is never painted while the
-            // transform still carries that delta (double offset) and later motions start from
-            // a clean baseline instead of the stale frame. Skipped until a motion has run:
-            // before that the base pose flows in via motion style values.
-            if (hasStartedMotionRef.current) {
-                animationControls.set({ ...basePoseRef.current } as TargetAndTransition);
+            const driver = nodeMotion.driver;
+            driver?.stop();
+            // A completed/stopped/replaced motion leaves its last frame on the channels. Snap back
+            // to the persistent base pose in the same commit so a layout commit (hold animations
+            // fold their delta into left/top) is never painted while the transform still carries
+            // that delta (double offset) and later motions start from a clean baseline instead of
+            // the stale frame. Skipped until a motion has run: before that the base pose is simply
+            // the node's style.
+            if (hasStartedMotionRef.current && driver) {
+                driver.setTarget({ ...basePoseRef.current });
+                claimOpacityIfTaken(driver);
             }
             return;
         }
@@ -819,42 +922,105 @@ export function EditorNodeWrapper({
         }
         lastMotionRunKeyRef.current = motionRunKey;
         hasStartedMotionRef.current = true;
+        const driver = ensureMotionDriver();
         if (initial && !isResetPhase) {
-            animationControls.set(initial as TargetAndTransition);
+            driver.setTarget(initial);
         }
-        void animationControls.start({
-            ...animate,
-            ...(transition ? { transition } : {}),
-        } as TargetAndTransition);
-    }, [animationControls, basePose, isResetPhase, motionRunKey]);
+        // Every motion reports when all of its channels have finished or been stopped - a newer
+        // motion replacing it stops the channels the two share, and the older one reports then.
+        const reduceMotion =
+            reducedMotionConfig === "always"
+            || (reducedMotionConfig === "user"
+                && typeof window !== "undefined"
+                && typeof window.matchMedia === "function"
+                && window.matchMedia("(prefers-reduced-motion)").matches);
+        void driver.start(animate, transition, reduceMotion).then(() => {
+            if (nodeMotion.mounted) {
+                nodeMotion.onComplete();
+            }
+        });
+        claimOpacityIfTaken(driver);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the driver helpers read this render's values on purpose
+    }, [basePose, isResetPhase, motionRunKey]);
 
-    const onAnimationComplete = useCallback(() => {
-        if (!displayableMotion?.resetOnComplete) {
-            return;
+    // Placement. A layout effect, after the motion above in the same commit: React has already
+    // written the new place, so a trip has to put the node back where it was before anything paints.
+    useLayoutEffect(() => {
+        const previous = lastPlacedOffsetsRef.current;
+        const previousStateKey = lastPlacedStateKeyRef.current;
+        const enteredMoved = previous.x !== placedEnteredOffsets.x || previous.y !== placedEnteredOffsets.y;
+        lastPlacedOffsetsRef.current = placedEnteredOffsets;
+        lastPlacedStateKeyRef.current = enteredStateKey;
+        const transition = enteredOffsetTransitionRef.current;
+        // Only a change of state is a trip. Moving the element *within* the state on screen - dragging
+        // it there, typing a number - is the author saying where it sits, not the element travelling:
+        // animating to it starts from where they just left, which reads as the element snapping back
+        // to its old spot for a frame and then sliding into place. It also leaves the selection frame
+        // measuring a position the element is only passing through.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
+            const driver = nodeMotion.driver;
+            if (driver) {
+                driver.set("left", placedLeft);
+                driver.set("top", placedTop);
+            }
+            return undefined;
         }
-        if (!isResetPhase) {
-            setResetMotionId(displayableMotion.id);
-            return;
+        const driver = ensureMotionDriver();
+        const runLeft = driver.animateChannel("left", placedLeft, transition);
+        const runTop = driver.animateChannel("top", placedTop, transition);
+        return () => {
+            runLeft.stop();
+            runTop.stop();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the driver helpers read this render's values on purpose
+    }, [enteredStateKey, placedEnteredOffsets, placedLeft, placedTop]);
+
+    // The pose's offsets, so entering a state can *move* the element instead of teleporting it: an
+    // author flipping between states is previewing the animation the player will see. A blueprint
+    // animation owns the channel while it runs, so this stands aside for it.
+    const lastEnteredOffsetsRef = useRef(enteredOffsets);
+    const lastPoseStateKeyRef = useRef(enteredStateKey);
+    useLayoutEffect(() => {
+        const previous = lastEnteredOffsetsRef.current;
+        const previousStateKey = lastPoseStateKeyRef.current;
+        const enteredMoved = previous.x !== enteredOffsets.x || previous.y !== enteredOffsets.y;
+        lastEnteredOffsetsRef.current = enteredOffsets;
+        lastPoseStateKeyRef.current = enteredStateKey;
+        if (displayableMotion) {
+            return undefined;
         }
-        widgetRuntimeStore?.completeDisplayableMotion(runtimeElementKey, displayableMotion.id);
-        setResetMotionId(null);
-    }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
+        const transition = enteredOffsetTransitionRef.current;
+        // Same rule as placement above: the trip is between states, never inside one.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
+            const driver = nodeMotion.driver;
+            if (driver) {
+                driver.set("x", basePose.x);
+                driver.set("y", basePose.y);
+            }
+            return undefined;
+        }
+        const driver = ensureMotionDriver();
+        const runX = driver.animateChannel("x", basePose.x, transition);
+        const runY = driver.animateChannel("y", basePose.y, transition);
+        return () => {
+            runX.stop();
+            runY.stop();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the driver helpers read this render's values on purpose
+    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, enteredStateKey]);
 
     return (
         <EnteredStateProvider value={broadcastState}>
-        <motion.div
+        <div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
             // Which drawing this is, for measuring one row or one placement rather than whichever
             // copy of the element the page happens to hold first. See `surfaceMeasurement`.
             data-ui-drawing={interactive && instanceKey ? uiDrawingAttributeValue(instanceKey) : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""} ${isEnteredHere ? "ui-editor-node-entered" : ""}`}
-            style={motionStyle}
-            initial={false}
-            // Bind the controls unconditionally: the reset-to-base set() above must still reach
-            // the element after its motion has been cleared from the store.
-            animate={animationControls}
-            onAnimationComplete={onAnimationComplete}
+            style={nodeStyle}
             onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
             onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}
             onPointerDown={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerDown : undefined}
@@ -869,7 +1035,7 @@ export function EditorNodeWrapper({
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
             {children}
-        </motion.div>
+        </div>
         </EnteredStateProvider>
     );
 }
