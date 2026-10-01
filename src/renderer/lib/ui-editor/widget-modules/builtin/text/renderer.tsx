@@ -18,7 +18,12 @@ import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import {
+    getDesignTimeLocalizationKeys,
+    writeDesignTimeLocalizationKeySourceText,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -70,8 +75,32 @@ function assignMotionTransition(
     target[property] = toRuntimeMotionTransition(transition);
 }
 
+/** The key a text element is read from on the canvas, or null when its own words are what show. */
+function designTimeKeyOf(element: UIElement): string | null {
+    const key = getTextProps(element).localizationKey?.trim();
+    return key && getDesignTimeLocalizationKeys() ? key : null;
+}
+
+/**
+ * The words the canvas shows for a text element, and what an in-place edit starts from.
+ *
+ * A keyed element shows its key's source text, as the game does; a key the registry does not hold
+ * falls back to the element's own text there too.
+ */
+function designTimeTextOf(element: UIElement): string {
+    const key = designTimeKeyOf(element);
+    const own = getTextProps(element).text;
+    return key ? getDesignTimeLocalizationKeys()?.[key] ?? own : own;
+}
+
 function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
     const docEl = documentService.getDocument().elements[elementId];
+    // Typed over a keyed text, the words are the key's: writing them onto the element would change
+    // nothing the game shows, and the canvas would go on drawing the key's text over them.
+    const key = docEl ? designTimeKeyOf(docEl) : null;
+    if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
+        return;
+    }
     if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
         documentService.clearElementBlueprintValueBinding(elementId, TEXT_VALUE_PROP_PATH);
     }
@@ -91,7 +120,7 @@ export function TextRenderer({
     const stateService = editHost?.stateService ?? null;
     const documentService = editHost?.documentService ?? null;
     useUIDocumentRevision(documentService);
-    const initialText = getTextProps(element).text;
+    const initialText = designTimeTextOf(element);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService?.getInteractionOverride() ?? null);
     const [draftText, setDraftText] = useState(initialText);
     const draftRef = useRef(initialText);
@@ -129,7 +158,7 @@ export function TextRenderer({
             }
 
             if (isHere && !wasHere) {
-                const nextDraft = getTextProps(documentService.getDocument().elements[element.id] ?? element).text;
+                const nextDraft = designTimeTextOf(documentService.getDocument().elements[element.id] ?? element);
                 draftRef.current = nextDraft;
                 setDraftText(nextDraft);
             }
@@ -199,7 +228,7 @@ export function TextRenderer({
         if (isEditing) {
             return;
         }
-        const nextDraft = getTextProps(element).text;
+        const nextDraft = designTimeTextOf(element);
         draftRef.current = nextDraft;
         setDraftText(nextDraft);
     }, [element, isEditing]);
@@ -221,13 +250,15 @@ export function TextRenderer({
     // stored string in as `hex` would leave `normalizeHex` to reject it and paint white.
     const color = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
-    // Localized display text (runtime only; design time and inline editing keep the source text).
+    // Localized display text. At design time the source language's: the element's own words, or
+    // its key's when it is read from one - the canvas shows what the game shows.
     const displayText = useLocalizedWidgetText({
         elementId: element.id,
         prop: "text",
         sourceText: p.text,
         localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
+        resolveKeyAtDesignTime: true,
     });
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`

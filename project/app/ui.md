@@ -128,6 +128,12 @@ The prop table is what a **new** widget of that type carries, not a closed set: 
 widget may hold keys its defaults do not name (`localizationKey` is the common
 one), which is why writing one is a note rather than a refusal.
 
+A text widget's words come from one of three places, which its inspector offers
+as one choice: its own `text`, a translation key, or a Blueprint Value. In a
+file the key is `localizationKey`, and it wins over the other two - the game and
+the canvas both show the key's source text, so a keyed text's own `text` is
+never seen. Change the words of a keyed text by changing the key, not `text`.
+
 `--json` on any of these.
 
 ```sh

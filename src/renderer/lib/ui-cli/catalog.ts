@@ -125,6 +125,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     ],
     "nl.text": [
         markedLabelNote("text"),
+        "A text with `localizationKey` is read from that translation key - in the game, and on the canvas "
+            + "in the project's source language - and its own `text` is not shown at all. Its words are the "
+            + "key's source text in `editor/localization/keys.json`; writing `text` changes nothing a player "
+            + "sees. Without the key, `localizable = true` translates `text` through the element's own unit.",
     ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "

@@ -38,6 +38,10 @@ import {
 } from "../autosave/SaveStatusService";
 import { markReportedToAuthor } from "../autosave/reportedFailure";
 import { describeDocumentReadFailure } from "../core/documentReadFailure";
+import {
+    setDesignTimeLocalizationKeys,
+    setDesignTimeLocalizationKeyWriter,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { translate } from "@/lib/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { storeWrite } from "../autosave/writeReport";
@@ -165,6 +169,12 @@ export class LocalizationService extends Service<LocalizationService> implements
         // Preload the named-key registry: synchronous consumers (widget inspector
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
+        // The canvas draws a keyed text widget from the registry and edits it in place through it.
+        this.events.on("configChanged", () => this.publishDesignTimeKeys());
+        setDesignTimeLocalizationKeyWriter((name, sourceText) => {
+            const existing = this.keysDocument?.keys[name];
+            this.setKey(name, { ...existing, sourceText });
+        });
     }
 
     public async dispose(): Promise<void> {
@@ -173,6 +183,29 @@ export class LocalizationService extends Service<LocalizationService> implements
         this.dirtyLocales.clear();
         this.keysDocument = null;
         this.keysDirty = false;
+        setDesignTimeLocalizationKeyWriter(null);
+        setDesignTimeLocalizationKeys(null);
+    }
+
+    /**
+     * Hand the registry to the canvas, as key name → source text.
+     *
+     * Withdrawn while the project has no source language, because a build carries no keys then and
+     * the game shows every widget's own text; the canvas follows it there too.
+     */
+    private publishDesignTimeKeys(): void {
+        let hasSourceLocale = false;
+        try {
+            hasSourceLocale = Boolean(this.getConfiguration().sourceLocale);
+        } catch {
+            hasSourceLocale = false;
+        }
+        const document = this.keysDocument;
+        setDesignTimeLocalizationKeys(
+            hasSourceLocale && document
+                ? Object.fromEntries(Object.entries(document.keys).map(([name, key]) => [name, key.sourceText]))
+                : null,
+        );
     }
 
     // --- Configuration (persisted in .nlproj via ProjectService) ---
@@ -508,6 +541,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         this.documents.clear();
         this.dirtyLocales.clear();
         this.keysDocument = null;
+        this.publishDesignTimeKeys();
         this.keysDirty = false;
 
         // One locale at a time, and a failure does not stop the others: a document that cannot be
@@ -590,6 +624,7 @@ export class LocalizationService extends Service<LocalizationService> implements
 
         const document = result.status === "missing" ? createEmptyLocalizationKeysDocument() : result.document;
         this.keysDocument = document;
+        this.publishDesignTimeKeys();
         return document;
     }
 
@@ -645,6 +680,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         this.keysDocument = next;
         this.keysDirty = true;
         this.scheduleAutoSave();
+        this.publishDesignTimeKeys();
         this.events.emit("keysChanged", next);
         return next;
     }
@@ -657,6 +693,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         this.keysDocument = next;
         this.keysDirty = true;
         this.scheduleAutoSave();
+        this.publishDesignTimeKeys();
         this.events.emit("keysChanged", next);
         return next;
     }
