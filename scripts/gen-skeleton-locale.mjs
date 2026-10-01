@@ -469,12 +469,17 @@ function buildVariant(locale) {
         // "Localize text") is translated by the project, like a story line: its words come from that
         // unit, and the English goes into the English translation file. Through the table instead,
         // the unit would keep the English as its source and every other language's translation of
-        // it would arrive stale. The prop is the one the runtime resolves for the widget type, and a
-        // named key wins over the unit there, so a keyed widget stays with the table.
+        // it would arrive stale. The prop is the one the runtime resolves for the widget type.
+        //
+        // A named key wins over the unit there, and over the widget's own words: the game shows the
+        // key's text, and so does the canvas for a text widget. The widget's own words are written
+        // as the key's in this language, so nothing reads one thing on the canvas and another in
+        // the game - which is what a separate table entry for the same label produced.
         const unitProp = UNIT_TEXT_PROP_BY_WIDGET[element.type];
+        const keyName = typeof props.localizationKey === "string" ? props.localizationKey.trim() : "";
         const ownsUnit = unitProp !== undefined
             && props.localizable === true
-            && !(typeof props.localizationKey === "string" && props.localizationKey.trim())
+            && !keyName
             && typeof props[unitProp] === "string"
             && props[unitProp].trim() !== "";
         for (const key of ["text", "label"]) {
@@ -485,6 +490,10 @@ function buildVariant(locale) {
                 const unitId = `ui:${element.id}.${key}`;
                 flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
                 props[key] = unitTarget(unitId);
+                continue;
+            }
+            if (keyName && key === unitProp) {
+                props[key] = unitTarget(`key:${keyName}`);
                 continue;
             }
             props[key] = say(props[key]);
