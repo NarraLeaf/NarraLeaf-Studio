@@ -298,7 +298,7 @@ export type StoryContainerHeaderInfo = {
      * Set for the seven containers an author can type into being (`/if` `/repeat` `/until` `/parallel`
      * `/race` `/sequence` `/nvl` `/menu`), and deliberately absent for the four header rows that no
      * line produces: the condition BRANCHES (if / else-if / else, which `/if` scaffolds and the
-     * footer's buttons add) and a choice OPTION. Those keep {@link pill} and its prose styling, on the
+     * condition header's buttons add) and a choice OPTION. Those keep {@link pill} and its prose styling, on the
      * rule the rest of the editor already follows — a row prints a command line only when it IS one,
      * and a header wearing `@否则` would teach a word the parser cannot take back.
      */
