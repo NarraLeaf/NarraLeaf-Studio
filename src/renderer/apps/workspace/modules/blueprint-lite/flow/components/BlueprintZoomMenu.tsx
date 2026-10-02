@@ -28,7 +28,8 @@ import {
     SurfaceToolbarPopoverSection,
     useSurfaceToolbarPopover,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarPopover";
-import { boundsOfMeasuredNodes, clampBlueprintZoom, computeBlueprintZoomViewport } from "../blueprintZoom";
+import { clampBlueprintZoom } from "../blueprintZoom";
+import { frameBlueprintGraph } from "../blueprintFraming";
 
 const FIT_MODE_LABEL_KEYS = {
     actual: "blueprint.zoom.actualSize",
@@ -62,21 +63,7 @@ export function BlueprintZoomMenu() {
 
     const applyMode = useCallback(
         (mode: CanvasFitMode) => {
-            const { nodeLookup, width, height, minZoom, maxZoom } = store.getState();
-            const bounds = boundsOfMeasuredNodes(
-                [...nodeLookup.values()].map(node => ({
-                    x: node.internals.positionAbsolute.x,
-                    y: node.internals.positionAbsolute.y,
-                    width: node.measured.width ?? 0,
-                    height: node.measured.height ?? 0,
-                })),
-            );
-            const next = computeBlueprintZoomViewport({
-                mode,
-                bounds,
-                container: { width, height },
-                range: { min: minZoom, max: maxZoom },
-            });
+            const next = frameBlueprintGraph(store.getState(), mode);
             if (next) {
                 setViewport(next, { duration: 220 });
             }

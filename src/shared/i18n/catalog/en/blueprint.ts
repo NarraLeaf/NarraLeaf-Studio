@@ -40,7 +40,6 @@ export const blueprint = {
         collapse: "Collapse side panel",
     },
     canvas: {
-        addLayer: "Add layer",
         selectLayer: "Select a layer on the left.",
         previewUnavailable: "Preview unavailable",
         unknownNode: "Unknown node",
@@ -302,6 +301,87 @@ export const blueprint = {
             one: "Already run by {count} layer",
             other: "Already run by {count} layers",
         },
+    },
+    /**
+     * What a blueprint with no layers shows: one tile per template that suits its owner, and a blank
+     * layer last. A template's title is also the name the layer it creates starts with.
+     */
+    layerTemplates: {
+        heading: "New layer",
+        description: "Start from a template or from a blank layer.",
+        listLabel: "Layer templates",
+        blank: {
+            title: "Blank layer",
+            description: "An empty canvas, or one of your own scripts.",
+        },
+        splash: {
+            title: "Splash screen",
+            description: "Fades in, holds, fades out and opens the next page. A click or any key skips ahead.",
+        },
+        pressAnyKey: {
+            title: "Press any key",
+            description: "Opens the next page on a click or any key.",
+        },
+        pageMusic: {
+            title: "Page music",
+            description: "Plays music while this page is shown and fades it out when the page closes.",
+        },
+        escapeBack: {
+            title: "Back on Escape",
+            description: "Escape closes this page and returns to the page beneath it.",
+        },
+        escapeMenu: {
+            title: "Menu on Escape",
+            description: "Escape opens a page on top of this one.",
+        },
+        confirmClose: {
+            title: "Confirm before closing",
+            description: "Asks the player before the game window closes.",
+        },
+        fullscreenKey: {
+            title: "Fullscreen key",
+            description: "F11 turns fullscreen on and off.",
+        },
+        screenshotKey: {
+            title: "Screenshot key",
+            description: "S saves a screenshot.",
+        },
+        openPage: {
+            title: "Open a page",
+            description: "Opens a page when clicked.",
+        },
+        startGame: {
+            title: "Start the game",
+            description: "Starts the story when clicked.",
+        },
+        goBack: {
+            title: "Go back",
+            description: "Closes the current page when clicked and returns to the page beneath it.",
+        },
+        overlayPage: {
+            title: "Page on top",
+            description: "Opens a page on top of the current one when clicked.",
+        },
+        quitApp: {
+            title: "Quit button",
+            description: "Asks for confirmation when clicked, then quits the game.",
+        },
+        clickSound: {
+            title: "Click sound",
+            description: "Plays a sound effect when clicked.",
+        },
+        hoverSound: {
+            title: "Hover sound",
+            description: "Plays a sound effect when the pointer moves over it.",
+        },
+        hoverGrow: {
+            title: "Grow on hover",
+            description: "Grows slightly under the pointer and returns to size when it leaves.",
+        },
+        // Written into the game by the quit templates, so they are what the player reads.
+        quitQuestion: "Quit the game?",
+        quitConfirm: "Quit",
+        quitCancel: "Cancel",
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
     owner: {
