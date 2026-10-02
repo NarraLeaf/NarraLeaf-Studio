@@ -46,6 +46,11 @@ import {
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
+import { editorSidebarCssWidth, useEditorSidebarWidth } from "@/apps/workspace/components/ui/EditorSidebar";
+import {
+    CANVAS_CORNER_CHROME_MAX_WIDTH,
+    EDITOR_SIDEBAR_INSET_PROPERTY,
+} from "@/lib/components/layout/editorSidebarInset";
 import { SurfaceZoomMenu } from "@/apps/workspace/modules/ui-editor/editors/SurfaceZoomMenu";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
@@ -356,6 +361,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // area and centred there, and keeps answering whichever mode is in force while that area
     // changes size - until the author zooms, pans or types a number, after which the view is theirs
     // and only the zoom menu in the tool bar below puts it back on a mode.
+    const outlineWidth = useEditorSidebarWidth("uiOutline");
     const zoom = useSurfaceViewportZoom({
         stateService,
         surfaceId,
@@ -363,6 +369,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         viewportRef,
         active,
         enabled: Boolean(surface && stateService),
+        outlineWidth,
     });
 
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
@@ -728,6 +735,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                 <div
                     ref={editorRootRef}
                     className="relative flex-1 bg-surface-canvas"
+                    style={{
+                        [EDITOR_SIDEBAR_INSET_PROPERTY]: zoom.outlineCollapsed
+                            ? "0px"
+                            : editorSidebarCssWidth("uiOutline", outlineWidth),
+                    } as CSSProperties}
                     onContextMenu={handleCanvasContextMenu}
                     onMouseDownCapture={focusSurfaceEditor}
                     onFocusCapture={focusSurfaceEditor}
@@ -743,8 +755,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         readOnly={readOnly}
                     />
 
-                    {/* Top toolbar */}
-                    <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1">
+                    {/* Top toolbar. Kept to the canvas the outline leaves free, wrapping onto a second
+                        row rather than covering the outline's title row when that is too narrow. */}
+                    <div
+                        className="absolute top-3 right-3 z-20 flex flex-wrap items-center justify-end gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1"
+                        style={{ maxWidth: CANVAS_CORNER_CHROME_MAX_WIDTH }}
+                    >
                         <SurfaceEditorToolbarButton
                             active={tool.kind === "select"}
                             onClick={handleSelectTool}
@@ -841,7 +857,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         {...surfaceImageDropTargetProps}
                     >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
-                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-2xs text-warning">
+                            <div
+                                className="absolute right-36 top-14 z-20 rounded-md border border-warning/35 bg-warning/10 px-3 py-2 text-2xs text-warning"
+                                style={{ left: editorSidebarCssWidth("uiOutline", outlineWidth) }}
+                            >
                                 <span className="font-medium text-warning">{t("uiEditor.editor.staticChecks")}</span>
                                 <span className="text-warning/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
                                 <span className="mt-1 block text-2xs text-fg-subtle">

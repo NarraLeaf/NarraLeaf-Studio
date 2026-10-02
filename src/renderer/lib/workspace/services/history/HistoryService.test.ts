@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranslationKey } from "@shared/i18n";
-import { HistoryService } from "./HistoryService";
+import { HistoryService, isHistoryEditCause, type HistoryChangeCause } from "./HistoryService";
 
 vi.mock("@/lib/app/writeFreeze", () => ({
     getProjectWriteFreeze: () => frozen,
@@ -31,6 +31,27 @@ describe("HistoryService", () => {
         frozen = null;
         history = new HistoryService();
         history.setContext({ project: {} as never, services: {} as never, commandLineRun: false });
+    });
+
+    it("says why a stack changed, so an edit can be told from bookkeeping", () => {
+        const doc = createDocumentScope(history);
+        const causes: string[] = [];
+        history.on("changed", event => causes.push(event.cause));
+
+        history.checkpoint(doc.id, { label: LABEL });
+        doc.state.text = "b";
+        history.undo(doc.id);
+        history.redo(doc.id);
+        history.setScopeLimit(doc.id, 5);
+        history.clearScope(doc.id);
+        history.withoutRecording(() => history.checkpoint(doc.id, { label: LABEL }));
+
+        expect(causes).toEqual(["record", "undo", "redo", "limit", "clear"]);
+        expect(causes.filter(cause => isHistoryEditCause(cause as HistoryChangeCause))).toEqual([
+            "record",
+            "undo",
+            "redo",
+        ]);
     });
 
     it("checkpoint + undo returns the state the checkpoint was taken at", () => {

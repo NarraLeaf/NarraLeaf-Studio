@@ -11,15 +11,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Images, Maximize2, Plus } from "lucide-react";
 import { ui, type PluginApp } from "narraleaf-studio/plugin";
 import { resolveCoverVariant, type GalleryEntryKind } from "./catalog";
-
-const PANEL_KIND_LABEL: Record<GalleryEntryKind, string> = {
-    cg: "CG",
-    scene: "Recollection",
-    music: "Music",
-    voice: "Voice",
-};
 import { GalleryThumb } from "./components";
+import { galleryCount, useGalleryTranslator, type GalleryMessageKey } from "./messages";
 import type { GalleryStore } from "./store";
+
+const PANEL_KIND_LABEL: Record<GalleryEntryKind, GalleryMessageKey> = {
+    cg: "kindCg",
+    scene: "kindScene",
+    music: "kindMusic",
+    voice: "kindVoice",
+};
 
 export function GalleryPanel({
     app,
@@ -32,6 +33,7 @@ export function GalleryPanel({
 }) {
     const [data, setData] = useState(() => store.getData());
     const [query, setQuery] = useState("");
+    const tr = useGalleryTranslator(app);
 
     useEffect(() => store.subscribe(() => setData({ ...store.getData() })), [store]);
 
@@ -53,14 +55,14 @@ export function GalleryPanel({
     return (
         <ui.Panel.Root>
             <ui.Panel.Header
-                title="Gallery"
-                description={`${data.items.length} ${data.items.length === 1 ? "entry" : "entries"}`}
+                title={tr.t("title")}
+                description={galleryCount(tr, "entryCountOne", "entryCountMany", data.items.length)}
                 actions={(
                     <ui.IconButton
                         size="sm"
                         variant="ghost"
-                        aria-label="Open gallery editor"
-                        title="Open gallery editor"
+                        aria-label={tr.t("openEditor")}
+                        data-tip={tr.t("openEditor")}
                         onClick={onOpenEditor}
                     >
                         <Maximize2 size={13} />
@@ -71,7 +73,7 @@ export function GalleryPanel({
                 <ui.SearchInput
                     size="sm"
                     fullWidth
-                    placeholder="Search gallery..."
+                    placeholder={tr.t("searchGallery")}
                     value={query}
                     onChange={event => setQuery(event.target.value)}
                 />
@@ -80,14 +82,12 @@ export function GalleryPanel({
                 {items.length === 0 ? (
                     <ui.Panel.EmptyState
                         icon={<Images size={22} />}
-                        title={data.items.length === 0 ? "Nothing yet" : "No matches"}
-                        description={data.items.length === 0
-                            ? "Open the editor to add CGs, recollections, music or voice."
-                            : "Try another search."}
+                        title={tr.t(data.items.length === 0 ? "panelEmptyTitle" : "noMatches")}
+                        description={tr.t(data.items.length === 0 ? "panelEmptyDetail" : "noMatchesDetail")}
                         actions={data.items.length === 0 ? (
                             <ui.Button size="sm" variant="secondary" onClick={onOpenEditor}>
                                 <Plus size={13} />
-                                Open editor
+                                {tr.t("openEditorButton")}
                             </ui.Button>
                         ) : undefined}
                     />
@@ -114,9 +114,11 @@ export function GalleryPanel({
                                             columns, and a track and a CG are
                                             otherwise indistinguishable here. */}
                                         <span className="block truncate text-2xs text-fg-subtle">
-                                            {PANEL_KIND_LABEL[artwork.kind]}
+                                            {tr.t(PANEL_KIND_LABEL[artwork.kind])}
                                             {groupName ? ` · ${groupName}` : ""}
-                                            {artwork.variants.length > 1 ? ` · ${artwork.variants.length} items` : ""}
+                                            {artwork.variants.length > 1
+                                                ? ` · ${galleryCount(tr, "itemCountOne", "itemCountMany", artwork.variants.length)}`
+                                                : ""}
                                         </span>
                                     </span>
                                 </button>

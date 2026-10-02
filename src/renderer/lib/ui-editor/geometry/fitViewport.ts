@@ -16,8 +16,14 @@ export type FitViewportInsets = {
     bottom: number;
 };
 
-/** Outline panel: `w-64` (256px) plus a hair of breathing room so the border is not flush. */
+/**
+ * Outline panel at its default 256px, plus a hair of breathing room so the seam is not flush. The
+ * outline can be dragged wider or narrower; the editor passes the width it is drawn at instead.
+ */
 export const SURFACE_FIT_OUTLINE_PANEL_INSET_PX = 264;
+
+/** The breathing room between the outline's drawn edge and the fitted interface. */
+const SURFACE_FIT_OUTLINE_GAP_PX = SURFACE_FIT_OUTLINE_PANEL_INSET_PX - 256;
 
 /** Outline panel collapsed: only its round re-open button is left, at `left-3` and `h-10 w-10`. */
 export const SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX = 60;
@@ -63,11 +69,16 @@ export const SURFACE_FIT_MAX_SCALE = 2;
 export type SurfaceFitChrome = {
     /** When the outline panel is collapsed only its re-open button occupies the left band. */
     outlineCollapsed: boolean;
+    /** The width the open outline panel is drawn at, when it is not the default. */
+    outlineWidth?: number;
 };
 
-export function resolveSurfaceFitInsets({ outlineCollapsed }: SurfaceFitChrome): FitViewportInsets {
+export function resolveSurfaceFitInsets({ outlineCollapsed, outlineWidth }: SurfaceFitChrome): FitViewportInsets {
+    const openOutlineInset = outlineWidth === undefined
+        ? SURFACE_FIT_OUTLINE_PANEL_INSET_PX
+        : outlineWidth + SURFACE_FIT_OUTLINE_GAP_PX;
     return {
-        left: outlineCollapsed ? SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX : SURFACE_FIT_OUTLINE_PANEL_INSET_PX,
+        left: outlineCollapsed ? SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX : openOutlineInset,
         top: SURFACE_FIT_TOOLBAR_INSET_PX,
         right: SURFACE_FIT_EDGE_INSET_PX,
         bottom: SURFACE_FIT_DOCKER_INSET_PX,

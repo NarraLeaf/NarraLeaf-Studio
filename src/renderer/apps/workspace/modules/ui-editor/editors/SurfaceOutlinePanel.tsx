@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { UILayersPanel } from "@/lib/ui-editor/interaction";
+import type { UILayersPanelHandle } from "@/lib/ui-editor/interaction/outline/LayerOutlinePanel";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -10,6 +11,11 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { OutlineElementBadgeProvider } from "@/lib/ui-editor/interaction/outline/outlineBadges";
 import { UIElementClaimMark, UIElementClaimsProvider, useUIElementClaim } from "../uiLiveSession";
+import {
+    EditorSidebarResizeHandle,
+    editorSidebarCssWidth,
+    useEditorSidebarWidth,
+} from "@/apps/workspace/components/ui/EditorSidebar";
 
 export type SurfaceOutlinePanelProps = {
     surfaceId: string;
@@ -58,6 +64,18 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
 }: SurfaceOutlinePanelProps) {
     const { t } = useTranslation();
     const [isCollapsed, setCollapsedState] = useState(() => stateService?.getOutlinePanelCollapsed() ?? false);
+    const width = useEditorSidebarWidth("uiOutline");
+    const layersRef = useRef<UILayersPanelHandle>(null);
+
+    // The outline sits over the canvas, inside the element the canvas menu listens on. Every right
+    // click in it is the outline's - the rows and the space under them answer for themselves, and the
+    // title row opens the outline's own menu - so none of them may reach the canvas and open a second
+    // menu there.
+    const handlePanelContextMenu = useCallback((event: MouseEvent<HTMLElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        layersRef.current?.openPanelMenu(event);
+    }, []);
 
     useEffect(() => {
         if (!stateService) {
@@ -85,7 +103,8 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
 
     // A column, so the header keeps its height and the tree gets whatever is left - without this the
     // tree's own `h-full` measured the whole panel and pushed its tail out of view with no way back.
-    const panelClasses = `absolute inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-edge-subtle bg-surface-sunken transition-transform duration-200 ease-out ${
+    // No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
+    const panelClasses = `absolute inset-y-0 left-0 z-10 flex flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
         isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -93,7 +112,11 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
 
     return (
         <>
-            <div className={panelClasses}>
+            <div
+                className={panelClasses}
+                style={{ width: editorSidebarCssWidth("uiOutline", width) }}
+                onContextMenu={handlePanelContextMenu}
+            >
                 <div className="shrink-0 px-3 py-2 border-b border-edge text-xs text-fg-subtle flex items-center justify-between">
                     <span>{t("uiEditor.editor.outlineTitle")}</span>
                     <button
@@ -114,6 +137,7 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                             <UIElementClaimsProvider>
                             <OutlineElementBadgeProvider value={SurfaceOutlineClaimBadge}>
                             <UILayersPanel
+                                ref={layersRef}
                                 surfaceId={surfaceId}
                                 stateService={stateService!}
                                 documentService={documentService!}
@@ -130,6 +154,7 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                         )}
                     </div>
                 )}
+                <EditorSidebarResizeHandle id="uiOutline" edge="right" />
             </div>
             {isCollapsed && (
                 <button

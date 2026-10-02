@@ -816,6 +816,9 @@ input[type="radio"]:focus {
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
+    /* While a context menu is open the title bar is not a drag region, so a press on it reaches the
+       page and closes the menu like a press anywhere else outside it. See `ContextMenu.tsx`. */
+    html[data-context-menu-open] .titlebar-drag { -webkit-app-region: no-drag; }
 
     .nl-selectable-text,
     .nl-selectable-text * {

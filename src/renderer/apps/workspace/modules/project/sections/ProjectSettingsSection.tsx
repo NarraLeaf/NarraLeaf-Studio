@@ -67,11 +67,22 @@ import {
 import { GAME_CRASH_POLICIES } from "@shared/types/gameRuntime";
 import type { ProjectSectionProps } from "./types";
 
+/**
+ * Every dropdown on this page is one size (`sm`, the panel size) and fills the box it is given, so
+ * no two of them end at different places. A dropdown inside a row sits underneath its label at the
+ * row's full width (`SettingStack`, as on the Game page): beside the label it would take the width
+ * of whichever option is showing, and each row's control would start and end somewhere different.
+ * The three compression modes sit on their part's heading row instead, in one fixed width shared by
+ * all three and ending on the heading row's right edge: the hover-revealed help glyph goes before
+ * them, since after them it left an empty slot that made the dropdown look as if it had stopped short.
+ */
+const HEADING_SELECT_CLASS = "w-28 shrink-0";
+
 export function ProjectSettingsSection(props: ProjectSectionProps) {
     const { projectService, uiService, config, onConfigChange } = props;
     const { t } = useTranslation();
-    // `SettingRow` reads the freeze itself; the orientation dropdown sits in a bare `SettingShell`, so
-    // it needs its own.
+    // `SettingRow` reads the freeze itself; the dropdowns and number fields sit in bare `SettingStack`
+    // and `SettingShell` frames, so they need their own.
     const freeze = useFreezeGuard();
     // Every group reads the panel's config and lays the author's changes still on their way over it
     // (see `useConfigSlice`): nothing on this page greys out, or refuses a second change, because a
@@ -271,6 +282,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 >
                     <Select
                         size="sm"
+                        fullWidth
+                        portalMenu
+                        className="min-w-0"
                         value={network.policy}
                         options={networkPolicyOptions}
                         disabled={freeze.writes().disabled}
@@ -334,6 +348,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 title={t("project.group.imageCompression")}
                 helpTopic="assetCompression"
                 trailing={<>
+                    <HelpTrigger topic="assetCompression" />
                     <Select
                         options={compressionModeOptions}
                         value={assetCompression.imageMode}
@@ -346,11 +361,11 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                             value as AssetCompressionMode,
                         )}
                         size="sm"
+                        fullWidth
                         portalMenu
-                        className="w-28 shrink-0"
+                        className={HEADING_SELECT_CLASS}
                         ariaLabel={t("project.settings.imageModeTitle")}
                     />
-                    <HelpTrigger topic="assetCompression" />
                 </>}
             >
                 <SettingRow
@@ -413,6 +428,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 title={t("project.group.audioCompression")}
                 helpTopic="assetCompression"
                 trailing={<>
+                    <HelpTrigger topic="assetCompression" />
                     <Select
                         options={compressionModeOptions}
                         value={assetCompression.audioMode}
@@ -425,11 +441,11 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                             value as AssetCompressionMode,
                         )}
                         size="sm"
+                        fullWidth
                         portalMenu
-                        className="w-28 shrink-0"
+                        className={HEADING_SELECT_CLASS}
                         ariaLabel={t("project.settings.audioModeTitle")}
                     />
-                    <HelpTrigger topic="assetCompression" />
                 </>}
             >
                 <SettingRow
@@ -492,6 +508,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 title={t("project.group.videoCompression")}
                 helpTopic="assetCompression"
                 trailing={<>
+                    <HelpTrigger topic="assetCompression" />
                     <Select
                         options={compressionModeOptions}
                         value={assetCompression.videoMode}
@@ -504,11 +521,11 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                             value as AssetCompressionMode,
                         )}
                         size="sm"
+                        fullWidth
                         portalMenu
-                        className="w-28 shrink-0"
+                        className={HEADING_SELECT_CLASS}
                         ariaLabel={t("project.settings.videoModeTitle")}
                     />
-                    <HelpTrigger topic="assetCompression" />
                 </>}
             >
                 <SettingRow
@@ -571,44 +588,52 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
             {/* Beside Crashes rather than with the compression groups above: both are about what a
                 player meets while the game is running, and neither changes what the package holds. */}
             <SettingsGroup title={t("project.group.loading")}>
-                <SettingShell
+                <SettingStack
                     title={t("project.settings.preloadBehaviorTitle")}
                     description={t(`project.settings.preloadBehaviorDetail.${preload.behavior}` as TranslationKey)}
                     tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
+                        size="sm"
+                        fullWidth
+                        portalMenu
+                        className="min-w-0"
                         options={preloadBehaviorOptions}
                         value={preload.behavior}
                         disabled={freeze.writes().disabled}
                         onChange={setPreloadBehavior}
                         ariaLabel={t("project.settings.preloadBehaviorTitle")}
                     />
-                </SettingShell>
+                </SettingStack>
             </SettingsGroup>
 
             {/* The one part of this page a player can end up looking at, so it gets a heading of
                 its own rather than being filed under Security because a stack trace is sensitive.
                 What is being chosen is who the build is for, not how much to hide. */}
             <SettingsGroup title={t("project.group.crash")}>
-                <SettingShell
+                <SettingStack
                     title={t("project.settings.crashPolicyTitle")}
                     description={t("project.settings.crashPolicyDescription")}
                     tooltip={freeze.writes()["data-tip"]}
                 >
                     <Select
+                        size="sm"
+                        fullWidth
+                        portalMenu
+                        className="min-w-0"
                         options={crashPolicyOptions}
                         value={crash.policy}
                         disabled={freeze.writes().disabled}
                         onChange={setCrashPolicy}
                         ariaLabel={t("project.settings.crashPolicyTitle")}
                     />
-                </SettingShell>
+                </SettingStack>
             </SettingsGroup>
 
             {/* Neither security nor size, and a heading of its own rather than filed under whichever
                 of the two it is closer to. The phone-only questions land here. */}
             <SettingsGroup title={t("project.group.mobile")}>
-                <SettingShell
+                <SettingStack
                     title={t("project.settings.orientationTitle")}
                     description={t("project.settings.orientationDescription")}
                     tooltip={freeze.writes()["data-tip"]}
@@ -619,12 +644,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         disabled={freeze.writes().disabled}
                         onChange={value => void commitMobile({ orientation: value as MobileOrientation })}
                         size="sm"
+                        fullWidth
                         portalMenu
-                        className="w-32 shrink-0"
+                        className="min-w-0"
                         ariaLabel={t("project.settings.orientationTitle")}
                     />
-                </SettingShell>
-                <SettingShell
+                </SettingStack>
+                <SettingStack
                     title={t("project.settings.stageFitTitle")}
                     description={t("project.settings.stageFitDescription")}
                     tooltip={freeze.writes()["data-tip"]}
@@ -635,18 +661,19 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                         disabled={freeze.writes().disabled}
                         onChange={value => void commitMobile({ fit: value as MobileViewportFit })}
                         size="sm"
+                        fullWidth
                         portalMenu
-                        className="w-32 shrink-0"
+                        className="min-w-0"
                         ariaLabel={t("project.settings.stageFitTitle")}
                     />
-                </SettingShell>
+                </SettingStack>
                 {/* Only under `cover`: with letterboxing nothing is cropped, so an anchor here would be
                     a control that cannot do anything — the failure mode this feature already had once.
                     Two rows rather than one because exactly one axis overflows and which one depends
                     on the handset: a phone in landscape crops vertically, a 4:3 tablet horizontally. */}
                 {mobile.fit === "cover" ? (
                     <>
-                        <SettingShell
+                        <SettingStack
                             title={t("project.settings.cropAnchorYTitle")}
                             description={t("project.settings.cropAnchorYDescription")}
                             tooltip={freeze.writes()["data-tip"]}
@@ -657,12 +684,13 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                                 disabled={freeze.writes().disabled}
                                 onChange={value => void commitMobile({ cropAnchorY: value as MobileCropAnchorY })}
                                 size="sm"
+                                fullWidth
                                 portalMenu
-                                className="w-32 shrink-0"
+                                className="min-w-0"
                                 ariaLabel={t("project.settings.cropAnchorYTitle")}
                             />
-                        </SettingShell>
-                        <SettingShell
+                        </SettingStack>
+                        <SettingStack
                             title={t("project.settings.cropAnchorXTitle")}
                             description={t("project.settings.cropAnchorXDescription")}
                             tooltip={freeze.writes()["data-tip"]}
@@ -673,11 +701,12 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                                 disabled={freeze.writes().disabled}
                                 onChange={value => void commitMobile({ cropAnchorX: value as MobileCropAnchorX })}
                                 size="sm"
+                                fullWidth
                                 portalMenu
-                                className="w-32 shrink-0"
+                                className="min-w-0"
                                 ariaLabel={t("project.settings.cropAnchorXTitle")}
                             />
-                        </SettingShell>
+                        </SettingStack>
                     </>
                 ) : null}
             </SettingsGroup>

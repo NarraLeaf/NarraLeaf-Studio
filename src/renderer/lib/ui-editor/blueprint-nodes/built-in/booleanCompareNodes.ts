@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL,
 } from "@shared/types/blueprint/graph";
+import type { TranslationKey } from "@shared/i18n";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -55,12 +56,14 @@ const booleanOut: BlueprintNodePinDef = {
 function pureNode(input: {
     type: string;
     displayName: string;
+    description?: TranslationKey;
     keywords: string[];
     pins: BlueprintNodePinDef[];
 }): BlueprintNodeDef {
     return {
         type: input.type,
         displayName: input.displayName,
+        description: input.description,
         category: "Math",
         keywords: input.keywords,
         graphKinds: [...GRAPH_KINDS],
@@ -95,40 +98,49 @@ export const booleanCompareBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["xor", "exclusive", "boolean", "logic"],
         pins: [booleanIn("a", "A"), booleanIn("b", "B"), booleanOut],
     }),
+    // The comparisons the palette offers. Their keywords carry every spelling of the operator an
+    // author might type - the symbol, its two-character form and the short names - because these
+    // stand alone now that the older symbol-titled `blueprint.math.*` set is kept out of the palette.
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
         displayName: "Equal",
-        keywords: ["equal", "strict", "same", "===", "compare"],
+        description: "blueprint.nodeDescription.compareEqual",
+        keywords: ["equal", "equals", "eq", "strict", "same", "compare", "=", "==", "==="],
         pins: [anyIn("a", "A"), anyIn("b", "B"), booleanOut],
     }),
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL,
         displayName: "Not Equal",
-        keywords: ["not equal", "strict", "different", "!==", "compare"],
+        description: "blueprint.nodeDescription.compareNotEqual",
+        keywords: ["not equal", "neq", "ne", "strict", "different", "compare", "≠", "!=", "!=="],
         pins: [anyIn("a", "A"), anyIn("b", "B"), booleanOut],
     }),
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN,
         displayName: "Greater Than",
-        keywords: ["greater", "more", "compare", ">"],
+        description: "blueprint.nodeDescription.compareGreaterThan",
+        keywords: ["greater", "more", "gt", "compare", ">"],
         pins: [floatIn("a", "A"), floatIn("b", "B"), booleanOut],
     }),
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL,
         displayName: "Greater Than Or Equal",
-        keywords: ["greater", "equal", "compare", ">="],
+        description: "blueprint.nodeDescription.compareGreaterThanOrEqual",
+        keywords: ["greater", "equal", "gte", "ge", "compare", ">=", "≥"],
         pins: [floatIn("a", "A"), floatIn("b", "B"), booleanOut],
     }),
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN,
         displayName: "Less Than",
-        keywords: ["less", "smaller", "compare", "<"],
+        description: "blueprint.nodeDescription.compareLessThan",
+        keywords: ["less", "smaller", "lt", "compare", "<"],
         pins: [floatIn("a", "A"), floatIn("b", "B"), booleanOut],
     }),
     pureNode({
         type: BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL,
         displayName: "Less Than Or Equal",
-        keywords: ["less", "equal", "compare", "<="],
+        description: "blueprint.nodeDescription.compareLessThanOrEqual",
+        keywords: ["less", "equal", "lte", "le", "compare", "<=", "≤"],
         pins: [floatIn("a", "A"), floatIn("b", "B"), booleanOut],
     }),
 ];

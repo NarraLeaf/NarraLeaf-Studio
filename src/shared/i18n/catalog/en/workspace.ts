@@ -701,6 +701,12 @@ export const workspace = {
                 one: "{count} more waiting",
                 other: "{count} more waiting",
             },
+            // Beside the time of an entry that was raised more than once. Read with
+            // translator.tn("workspace.shell.notifications.repeated", count).
+            repeated: {
+                one: "{count} time",
+                other: "{count} times",
+            },
         },
         // The custom background dialog (opened from Settings or the command palette).
         background: {

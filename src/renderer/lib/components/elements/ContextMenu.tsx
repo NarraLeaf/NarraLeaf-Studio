@@ -1,9 +1,49 @@
-import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { useHostWindow } from "../layout/hostWindow";
+
+/**
+ * True inside a menu's own subtree, which is where its submenus render.
+ *
+ * Only a top-level menu takes part in the one-menu rule and the window-level dismissals below; a
+ * submenu is part of the menu that opened it and closes through that menu's `onClose`.
+ */
+const InsideContextMenuContext = createContext(false);
+
+/**
+ * The top-level menus currently on screen, as their close functions.
+ *
+ * A right click is one gesture and gets one menu. Two used to open at the same point whenever a
+ * surface that offers a menu sat inside another one that also offers a menu and the inner handler let
+ * the event carry on: choosing a row closed only the menu on top, and the one underneath refused every
+ * click that landed inside a menu, so it could only be dismissed by clicking somewhere else - which
+ * reads as a menu that will not close. Each top-level menu that opens therefore closes whatever other
+ * top-level menu is open. Nested handlers still stop the event themselves (see `useContextMenu`), so
+ * the menu that opens is the innermost one; this is what keeps the count at one when they do not.
+ */
+const openTopLevelMenus = new Set<{ close: () => void }>();
+
+/**
+ * Marks the document while a top-level menu is open, for the title bar's drag region.
+ *
+ * A press on a drag region never reaches the page - the operating system takes it to move the
+ * window - so the outside-click that closes a menu never happens there, and a menu stayed open over
+ * an author clicking the title bar. While a menu is open the region stops being a drag region (see
+ * `styles.css`), so that press is an ordinary click outside the menu and closes it, the way a press
+ * anywhere outside a native menu does.
+ */
+const MENU_OPEN_ATTRIBUTE = "data-context-menu-open";
+
+function syncMenuOpenAttribute(doc: Document, open: boolean): void {
+    if (open) {
+        doc.documentElement.setAttribute(MENU_OPEN_ATTRIBUTE, "");
+    } else {
+        doc.documentElement.removeAttribute(MENU_OPEN_ATTRIBUTE);
+    }
+}
 
 // Menu item types
 export interface ContextMenuItemDef {
@@ -76,12 +116,58 @@ export function ContextMenu({
     iconsEnabled = false,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
+    const isSubmenu = useContext(InsideContextMenuContext);
     // Portalled to the body, so the `display: none` that puts a kept-alive tab or panel away leaves
     // this menu standing over whatever the author switched to.
     useDismissWhenHidden(onClose, visible);
     /** The window this menu is drawn in - the renderer's own, or a detached editor's. */
     const hostWindow = useHostWindow();
     const doc = hostWindow.document;
+    // Read through a ref by the window-level listeners below, which are installed once per opening
+    // and must not close over a callback the caller has since replaced.
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
+
+    // One top-level menu at a time; see `openTopLevelMenus`. A layout effect, so the menu it replaces
+    // is gone in the same frame this one is first painted in.
+    useLayoutEffect(() => {
+        if (!visible || isSubmenu) return;
+        const entry = { close: () => onCloseRef.current() };
+        for (const other of [...openTopLevelMenus]) {
+            openTopLevelMenus.delete(other);
+            other.close();
+        }
+        openTopLevelMenus.add(entry);
+        syncMenuOpenAttribute(doc, true);
+        return () => {
+            openTopLevelMenus.delete(entry);
+            syncMenuOpenAttribute(doc, openTopLevelMenus.size > 0);
+        };
+    }, [doc, isSubmenu, visible]);
+
+    // The ways a menu stops being what the author is looking at without a click anywhere: the window
+    // losing focus (Alt+Tab, a click in another application - the title-bar menus close the same
+    // way), the window changing size, and a wheel turned outside the menu. The menu is pinned to the
+    // point it was opened at, so once the content under it has scrolled or the window has reflowed it
+    // no longer points at what it is about; the scroll itself goes ahead. A wheel inside a menu scrolls
+    // that menu, which is why it is excepted.
+    useEffect(() => {
+        if (!visible || isSubmenu) return;
+        const close = () => onCloseRef.current();
+        const onWheel = (event: WheelEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest?.('[data-context-menu="true"]')) return;
+            close();
+        };
+        hostWindow.addEventListener("blur", close);
+        hostWindow.addEventListener("resize", close);
+        doc.addEventListener("wheel", onWheel, { capture: true, passive: true });
+        return () => {
+            hostWindow.removeEventListener("blur", close);
+            hostWindow.removeEventListener("resize", close);
+            doc.removeEventListener("wheel", onWheel, { capture: true });
+        };
+    }, [doc, hostWindow, isSubmenu, visible]);
     const [adjustedPosition, setAdjustedPosition] = useState(position);
     /**
      * The highlighted row, as an index into the *enabled* items. `-1` is "nothing highlighted", which is
@@ -237,6 +323,7 @@ export function ContextMenu({
     );
 
     const menuContent = (
+        <InsideContextMenuContext.Provider value={true}>
         <div
             ref={menuRef}
             data-context-menu="true"
@@ -280,6 +367,7 @@ export function ContextMenu({
                 );
             })}
         </div>
+        </InsideContextMenuContext.Provider>
     );
 
     if (typeof document === "undefined") {
@@ -436,6 +524,14 @@ export function useContextMenu() {
 
     const showMenu = (e: React.MouseEvent) => {
         e.preventDefault();
+        // A right click answered here is not offered to the surfaces this one sits inside: the
+        // innermost thing with a menu is the one the author pointed at, and an outer handler left
+        // running would open a second menu on the same spot - or, sharing this hook's state, replace
+        // this menu with its own. Only for the right click itself: a button that opens a menu on a
+        // left click is still a click its row may need to hear.
+        if (e.type === "contextmenu") {
+            e.stopPropagation();
+        }
         setMenuState({
             visible: true,
             position: { x: e.clientX, y: e.clientY },
