@@ -17,6 +17,16 @@ const GUIDE_OFFSET = 8;
 const OUTLINE_ACTIVE_GAP_HEIGHT = 8;
 const OUTLINE_TERMINAL_GAP_HEIGHT = 10;
 
+/**
+ * Shown while the pointer is over the row, or the keyboard is in it - and otherwise not laid out at
+ * all, so it holds no space. The widget type and the eye used to be merely transparent, which still
+ * kept their width at the end of every row: a layer name had to stop short of an empty slot and was
+ * cut off with room to spare. Only keyboard focus counts (`:focus-visible`), because a row keeps
+ * focus after it is clicked and would otherwise keep its name cut short for as long as it stays
+ * selected.
+ */
+const REVEAL_WITH_ROW = "hidden group-hover/outline-row:flex group-has-[:focus-visible]/outline-row:flex";
+
 export type OutlineGapIntent = "child" | "sibling" | "root";
 
 export type OutlineGapDropData = {
@@ -205,9 +215,11 @@ export function OutlineRow({
                     {/* Whatever the workspace put here - in a live session, who else has this
                         element open. Nothing at all in the runtime; see `outlineBadges`. */}
                     {Badge ? <Badge elementId={element.id} /> : null}
+                    {/* Gives way before the name does (`shrink-[100]`): on a row too short for both, the
+                        type is the one cut down, since the name is what the row is for. */}
                     {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                        <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle opacity-0 transition-opacity group-hover/outline-row:opacity-100">
-                            {element.type.replace(/^nl\./, "")}
+                        <span className={`min-w-0 max-w-[7rem] shrink-[100] font-mono text-2xs font-normal text-fg-subtle ${REVEAL_WITH_ROW}`}>
+                            <span className="min-w-0 truncate">{element.type.replace(/^nl\./, "")}</span>
                         </span>
                     ) : null}
                 </button>
@@ -215,8 +227,10 @@ export function OutlineRow({
                     type="button"
                     // `disabled:cursor-not-allowed` and not `disabled:pointer-events-none`: the read-only
                     // reason lives in `title`, and a button that ignores the pointer never shows one.
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
-                        visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
+                    // A hidden layer's eye is always there: it is the only sign on the row that the
+                    // layer is hidden, so it is state rather than a control waiting for the pointer.
+                    className={`h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
+                        visible ? REVEAL_WITH_ROW : "flex"
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
                     disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE || !visibilityEnabled}

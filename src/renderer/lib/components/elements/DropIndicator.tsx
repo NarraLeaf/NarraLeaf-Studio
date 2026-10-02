@@ -6,6 +6,11 @@ export type DropEdge = "before" | "after";
 export interface DropIndicatorProps {
     /** Which edge of the positioned parent the line sits on. */
     edge: DropEdge;
+    /**
+     * Which way the rows run. A list (the default) puts "before" on the top edge and draws the line
+     * across; a grid that reads left to right puts it on the left edge and draws the line down.
+     */
+    axis?: "vertical" | "horizontal";
     /** Extra classes for the rare caller that has to nudge it; the line itself is not negotiable. */
     className?: string;
 }
@@ -25,19 +30,23 @@ export interface DropIndicatorProps {
  * made the difference visible was two lines being on screen to compare - a list that draws one line
  * at a time has nothing to compare it against.
  *
- * The parent must be positioned (`relative`); this fills its width and hangs on the named edge.
+ * The parent must be positioned (`relative`); this fills its width (its height, on the horizontal
+ * axis) and hangs on the named edge.
  */
 // The return type is written out rather than inferred because this component is reachable from the
 // published plugin declarations, and the bundler that builds them prints an inferred JSX return as
 // `import("react").React.JSX.Element` after it has already renamed that namespace - a reference to
 // a member that does not exist, which fails the generated package's own typecheck.
-export function DropIndicator({ edge, className }: DropIndicatorProps): ReactElement {
+export function DropIndicator({ edge, axis = "vertical", className }: DropIndicatorProps): ReactElement {
     return (
         <div
             aria-hidden
             className={cn(
-                "pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-primary",
-                edge === "before" ? "top-0" : "bottom-0",
+                "pointer-events-none absolute z-10 rounded-full bg-primary",
+                axis === "vertical" ? "inset-x-0 h-0.5" : "inset-y-0 w-0.5",
+                axis === "vertical"
+                    ? edge === "before" ? "top-0" : "bottom-0"
+                    : edge === "before" ? "left-0" : "right-0",
                 className,
             )}
         />

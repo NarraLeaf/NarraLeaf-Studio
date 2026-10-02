@@ -90,6 +90,8 @@ export const WORKSPACE_LAYOUT_KEY_PREFIXES: readonly string[] = [
     "ui.leftSidebar.",
     "ui.rightSidebar.",
     "ui.bottomPanel.",
+    // The widths of the sidebars inside editors (the UI outline, the blueprint layer panel...).
+    "ui.editorSidebar.",
     "ui.editor.session",
     "ui.versionRail.",
     "uiEditor.",

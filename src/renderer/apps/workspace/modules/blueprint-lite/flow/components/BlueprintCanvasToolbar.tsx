@@ -16,6 +16,7 @@
 
 import { ChevronDown, Group, Hand, Map, MoveDown, MoveRight, MousePointer2, Wand2 } from "lucide-react";
 import { TooltipGroup } from "@/lib/tooltip";
+import { CANVAS_CORNER_CHROME_MAX_WIDTH } from "@/lib/components/layout/editorSidebarInset";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
@@ -84,7 +85,10 @@ export function BlueprintCanvasToolbar({
             // Below, not above: the toolbar sits against the top of the canvas, and a tip opening
             // upwards from here would be drawn over the editor's own header.
             side="bottom"
-            className="absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1"
+            // Kept clear of the layer panel drawn over the canvas's left edge, wrapping onto a second
+            // row rather than going under it when the panel has been dragged wide.
+            className="absolute right-3 top-3 z-[5] flex flex-wrap items-center justify-end gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1"
+            style={{ maxWidth: CANVAS_CORNER_CHROME_MAX_WIDTH }}
             // The canvas underneath treats a press as the start of a marquee or a pan.
             onPointerDown={e => e.stopPropagation()}
         >

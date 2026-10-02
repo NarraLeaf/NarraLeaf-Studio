@@ -6,6 +6,7 @@ import { Share2, Unlink } from "lucide-react";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
+import { useTranslation } from "@/lib/i18n";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -112,6 +113,7 @@ export function UIEditorInteractionLayer({
     openComponentEditor,
     readOnly = UI_EDITOR_WRITABLE,
 }: Props) {
+    const { t } = useTranslation();
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
     const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
@@ -416,7 +418,9 @@ export function UIEditorInteractionLayer({
                     kind: "button",
                     id: "open-linked-component",
                     icon: Share2,
-                    tooltip: component ? `Open ${component.name}` : "Open component",
+                    tooltip: component
+                        ? t("uiEditor.editor.openComponentNamed", { name: component.name })
+                        : t("uiEditor.editor.openComponent"),
                     disabled: !component || !openComponentEditor,
                     onClick: () => {
                         if (component) {
@@ -428,7 +432,7 @@ export function UIEditorInteractionLayer({
                     kind: "button",
                     id: "unlink-component",
                     icon: Unlink,
-                    tooltip: "Unlink component",
+                    tooltip: t("uiEditor.editor.unlinkComponent"),
                     onClick: () => {
                         const ids = documentService.unlinkComponentInstance(selectedSingleElement.id);
                         const primary = ids[0] ?? selectedSingleElement.id;
@@ -449,7 +453,7 @@ export function UIEditorInteractionLayer({
             surfaceId,
             openSurfaceEditor,
         }) ?? [];
-    }, [documentRevision, documentService, selectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
+    }, [documentRevision, documentService, selectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId, t]);
     const effectiveFloatingToolbarItems = useMemo(
         () => toReadOnlyFloatingToolbarItems(floatingToolbarItems, readOnly),
         [floatingToolbarItems, readOnly],
