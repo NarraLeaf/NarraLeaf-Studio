@@ -66,6 +66,9 @@
   .fact .col { flex: 1; min-width: 0; }
   .fact .k { font-size: 11px; color: var(--fg-subtle); }
   .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Why the location cannot be changed, or why the folder just picked was not taken. */
+  .fact .hint { margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--fg-subtle); }
+  .fact .hint[data-tone="danger"] { color: var(--danger); }
 
   #note { margin-top: 22px; color: var(--fg-muted); line-height: 1.6; }
   /* Pulled left by its own padding so the link's text starts on the same column as the line
@@ -141,6 +144,7 @@
         <div class="col">
           <div class="k" id="k-location"></div>
           <div class="v" id="v-location"></div>
+          <div class="hint" id="v-hint" hidden></div>
         </div>
         <button class="link" id="browse"></button>
       </div>
@@ -205,7 +209,9 @@
       confirm: "Install",
       launch: "Start",
       close: "Close",
-      docs: "Documentation"
+      docs: "Documentation",
+      locked: "{app} is already installed here. To install it elsewhere, uninstall it first.",
+      refused: "This folder cannot be written to. Choose another location."
     },
     zh: {
       name: "中文",
@@ -221,7 +227,9 @@
       confirm: "安装",
       launch: "启动",
       close: "关闭",
-      docs: "文档"
+      docs: "文档",
+      locked: "{app} 已安装在此位置。如需安装到其他位置，请先卸载",
+      refused: "无法写入该文件夹，请选择其他位置"
     },
     ja: {
       name: "日本語",
@@ -237,7 +245,9 @@
       confirm: "インストール",
       launch: "起動",
       close: "閉じる",
-      docs: "ドキュメント"
+      docs: "ドキュメント",
+      locked: "{app} はこの場所にインストールされています。別の場所にインストールするには、先にアンインストールしてください",
+      refused: "このフォルダーには書き込めません。別の場所を選択してください"
     }
   };
 
@@ -251,6 +261,10 @@
   var app = "";
   var dir = "";
   var state = "install";
+  // An existing install decides the folder; the host ignores "browse" while this is set.
+  var locked = false;
+  // The last folder picked was not taken; cleared by the next one that is.
+  var refused = false;
 
   function fill(template) {
     return (template || "").replace("{app}", app).replace("{dir}", dir);
@@ -265,8 +279,13 @@
 
     el("title").textContent = fill(text[state]);
     el("pct").hidden = !installing;
-    el("browse").hidden = state !== "install";
+    el("browse").hidden = state !== "install" || locked;
     el("facts").hidden = done || failed;
+
+    var hint = el("v-hint");
+    hint.hidden = state !== "install" || !(locked || refused);
+    hint.setAttribute("data-tone", refused ? "danger" : "");
+    hint.textContent = refused ? text.refused : (locked ? fill(text.locked) : "");
 
     // The finish screen says where it went; nothing else needs saying, and the facts it replaces
     // were the question, not the answer.
@@ -333,11 +352,12 @@
 
   // ---- host -> page ---------------------------------------------------------------------------
 
-  window.nlInit = function (initial, brand, product, directory, size) {
+  window.nlInit = function (initial, brand, product, directory, size, existing) {
     language = TEXT[initial] ? initial : "en";
     text = TEXT[language];
     app = product;
     dir = directory;
+    locked = existing === "1";
     el("brand").textContent = brand;
     el("v-location").textContent = directory;
     el("v-size").textContent = size;
@@ -347,8 +367,11 @@
   window.nlState = function (next) { state = next; apply(); };
   window.nlDir = function (directory) {
     dir = directory;
+    refused = false;
     el("v-location").textContent = directory;
+    apply();
   };
+  window.nlDirRefused = function () { refused = true; apply(); };
   window.nlMessage = function (message) { el("note").textContent = message; };
 
   // Called by the host's progress mirror, up to ten times a second.
