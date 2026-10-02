@@ -5,6 +5,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { IUIEditorStateService } from "@/lib/workspace/services/services";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import { useMoveableHandlers } from "@/lib/ui-editor/interaction/useMoveableHandlers";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import type { InteractionController } from "./types";
 
 interface TransformControllerConfig {
@@ -24,6 +25,32 @@ interface TransformControllerConfig {
     stateService: IUIEditorStateService;
     /** e.g. Alt key held - skip snapping for this gesture. */
     snapSuspended: () => boolean;
+}
+
+/** The resize handles that leave an element's top-left corner where it is. */
+export const ORIGIN_RESIZE_DIRECTIONS = ["e", "s", "se"];
+
+/**
+ * Whether a selection can be dragged, and which resize handles it gets.
+ *
+ * - Text being edited in place takes the pointer itself.
+ * - An element a stack or list places has its position decided by that parent.
+ * - The element at the origin - a component's root, in the editor for that component - is drawn
+ *   there because a placement draws it there, and the canvas is its size. A left or top handle would
+ *   have to move that corner, so the edge would follow the pointer and spring back on release; it is
+ *   offered the three handles that keep the corner instead.
+ *
+ * The handle list is only stated when it is narrowed: Moveable's default is every handle.
+ */
+export function resolveTransformGestures(selection: {
+    inlineTextEditing: boolean;
+    placedByParent: boolean;
+    holdsOrigin: boolean;
+}): { draggable: boolean; renderDirections?: string[] } {
+    return {
+        draggable: !selection.inlineTextEditing && !selection.placedByParent && !selection.holdsOrigin,
+        ...(selection.holdsOrigin ? { renderDirections: ORIGIN_RESIZE_DIRECTIONS } : {}),
+    };
 }
 
 export function useTransformController(config: TransformControllerConfig): InteractionController {
@@ -67,6 +94,12 @@ export function useTransformController(config: TransformControllerConfig): Inter
         });
     }, [config.documentService, config.selectionIds]);
 
+    // A component's frame, in the editor for that component - see `isComponentEditorRootElement`.
+    const selectionHasOriginElement = useMemo(() => {
+        const doc = config.documentService.getDocument();
+        return config.selectionIds.some(id => isComponentEditorRootElement(doc.elements[id]));
+    }, [config.documentService, config.selectionIds]);
+
     const isInlineTextEditing = Boolean(
         config.inlineTextEditElementId &&
             config.selectionIds.length === 1 &&
@@ -74,7 +107,11 @@ export function useTransformController(config: TransformControllerConfig): Inter
     );
 
     const moveableProps = useMemo<Partial<MoveableProps>>(() => ({
-        draggable: !isInlineTextEditing && !selectionHasFlowLayoutChild,
+        ...resolveTransformGestures({
+            inlineTextEditing: isInlineTextEditing,
+            placedByParent: selectionHasFlowLayoutChild,
+            holdsOrigin: selectionHasOriginElement,
+        }),
         resizable: !isInlineTextEditing,
         rotatable: !isInlineTextEditing,
         // Aspect ratio is enforced in useMoveableHandlers; Moveable keepRatio fights raw clientX/Y math.
@@ -101,7 +138,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
         onRotateGroupStart: handlers.handleRotateGroupStart,
         onRotateGroup: handlers.handleRotateGroup,
         onRotateGroupEnd: handlers.handleRotateGroupEnd,
-    }), [config.viewportScale, handlers, isInlineTextEditing, selectionHasFlowLayoutChild]);
+    }), [config.viewportScale, handlers, isInlineTextEditing, selectionHasFlowLayoutChild, selectionHasOriginElement]);
 
     return {
         id: "transform",

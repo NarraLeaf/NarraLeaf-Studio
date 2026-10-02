@@ -187,6 +187,34 @@ describe("runMobileRepack against the real shell templates", () => {
         expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(job.contentKey);
     });
 
+    it("stores every payload entry uncompressed and 4-byte aligned, because the shell opens each with openFd", async () => {
+        // The shell asks AssetManager.openFd for the length of every file it serves from wwwRoot,
+        // and openFd throws on a deflated entry; the shell turns that into a 404, so one deflated
+        // index.html is a game that never starts. The site deliberately has the text files the
+        // extension table would otherwise deflate (.html, .js), at the real template's offsets.
+        const job = await makeJob();
+        job.android!.outputs = { apk: "MyGame-1.2.3-android.apk" };
+        const outputDir = await tempDir("nls-out-");
+        await runMobileRepack(job, outputDir, log, MTIME);
+        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+        const { wwwRoot } = job.templateManifest.android;
+        const payload = parseZipIndex(apk).entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.isDirectory);
+        expect(payload.map(entry => entry.name)).toEqual(expect.arrayContaining([
+            `${wwwRoot}index.html`, `${wwwRoot}web.js`, `${wwwRoot}renderer.js`, `${wwwRoot}plugin-api/runtime.js`,
+        ]));
+        for (const entry of payload) {
+            // Both headers: the central directory is what the platform indexes, the local header
+            // is what a reader seeking to the data sees.
+            expect(entry.method, entry.name).toBe(ZIP_METHOD_STORE);
+            expect(apk.readUInt16LE(entry.localHeaderOffset + 8), entry.name).toBe(ZIP_METHOD_STORE);
+            expect(entry.compressedSize, entry.name).toBe(entry.uncompressedSize);
+            // Aligned as zipalign would, and still so after v2 signing moved nothing.
+            expect(readLocalEntryDataSpan(apk, entry).start % 4, entry.name).toBe(0);
+        }
+        expect(verifyApkV2(apk).verified).toBe(true);
+    });
+
     it("produces an AAB beside the APK, signed by the same identity", async () => {
         const job = await makeJob();
         const outputDir = await tempDir("nls-out-");

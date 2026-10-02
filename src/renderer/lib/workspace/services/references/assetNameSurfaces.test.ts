@@ -6,7 +6,7 @@ import { checkProjectDocument } from "@/lib/blueprint-cli/check";
 import { getLintRule } from "@/lib/lint/rules";
 import { createTestLintContext } from "@/lib/lint/testContext";
 import { resolveLintMessageParams } from "@/lib/lint/types";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import { createAssetNameDescriber } from "./assetNameCatalog";
 import { findAssetNameGaps, listAssetNameSinks, type AssetNameProject } from "./assetNameGaps";
 import { describeAssetNameGap, describeReferenceGapSites } from "./assetNameGapText";
@@ -225,7 +225,7 @@ describe("every surface, on the two shapes", () => {
             }),
         ]);
         const [finding] = findings;
-        expect(translate(finding.messageKey, resolveLintMessageParams(finding, translate)))
+        expect(translate(finding.messageKey, resolveLintMessageParams(finding, translate, translateN)))
             .toBe(describeAssetNameGap(gapsOf(CONCAT_BINDING)[0], translate));
 
         expect(await run(LITERAL_BINDING)).toEqual([]);

@@ -32,6 +32,7 @@ const translator: LabelTranslator = {
         params && Object.keys(params).length > 0
             ? `${key}(${Object.keys(params).sort().join(",")})`
             : String(key)) as LabelTranslator["t"],
+    tn: ((key: string, count: number) => `${key}[${count}]`) as LabelTranslator["tn"],
     has: () => true,
 };
 
@@ -113,6 +114,15 @@ describe("resolveMergeDecisionLabel", () => {
         );
 
         expect(view.primary).toBe("scenes / … / blocks / …");
+    });
+
+    it("spells a count the label carries with its noun", () => {
+        expect(resolveMergeDecisionLabel(decision("conflict", {
+            label: { key: "documentDiff.story.sceneAdded", params: { blocks: 1 } },
+        }), translator)).toEqual({
+            primary: "documentDiff.story.sceneAdded(blocks,rowCount)",
+            untranslated: false,
+        });
     });
 });
 

@@ -36,6 +36,17 @@ export function getSettingByKey(key: AppSettingDefinition["key"]): AppSettingDef
 }
 
 /**
+ * The value a row shows for what is stored under its key: the default when nothing is stored, and
+ * whatever the entry's `resolveStoredValue` makes of it when it declares one. The Settings window
+ * displays this and compares it against the default, so a value the product settles on one of the
+ * row's options reads as that option.
+ */
+export function shownSettingValue(setting: AppSettingDefinition, stored: unknown): unknown {
+    const value = stored ?? setting.defaultValue;
+    return setting.resolveStoredValue ? setting.resolveStoredValue(value) : value;
+}
+
+/**
  * Iterate every registered app-wide setting, `visible` included.
  *
  * Unfiltered on purpose. The callers are the scope walker (export, import, reset) and the Settings

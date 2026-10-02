@@ -1,4 +1,4 @@
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { Services } from "../../services";
 import { UIDocumentService } from "../../ui-editor/UIDocumentService";
@@ -59,6 +59,13 @@ export const surfaceSource: SearchSource = {
             })),
         );
     },
-    watch: (ctx, signal) =>
-        ctx.services.get<UIDocumentService>(Services.UIDocument).onDocumentChanged(() => signal.invalidate()),
+    // The kind label is translated into each entry, so the interface language is an input as well.
+    watch: (ctx, signal) => {
+        const edits = ctx.services.get<UIDocumentService>(Services.UIDocument).onDocumentChanged(() => signal.invalidate());
+        const locale = i18nStore.subscribe(() => signal.invalidate());
+        return () => {
+            edits();
+            locale();
+        };
+    },
 };

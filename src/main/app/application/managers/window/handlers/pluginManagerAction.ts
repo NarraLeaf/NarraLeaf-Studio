@@ -352,11 +352,15 @@ export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pl
             // here too: this handler is the trust boundary, and an incompatible
             // plugin that installs and then throws at load is far harder to
             // diagnose than one that refuses up front.
+            // Worded from the catalog, in the interface language, and without the entry's name: the
+            // author has just asked for this one plugin, and the registry's top-level name is in
+            // whatever language the plugin's own author wrote first.
             const studioVersion = window.app.getAppInfo().version;
             if (!satisfiesRange(studioVersion, entry.studioVersion)) {
-                throw new Error(
-                    `${entry.name} requires Studio ${entry.studioVersion} (this is ${studioVersion})`,
-                );
+                throw new Error(dialogTranslator(window).t("plugins.requiresStudio", {
+                    range: entry.studioVersion ?? "",
+                    version: studioVersion,
+                }));
             }
             const tempDir = path.join(
                 os.tmpdir(),

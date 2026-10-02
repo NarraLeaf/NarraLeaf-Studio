@@ -68,7 +68,7 @@ import {
 } from "@shared/build/variantPayload";
 import {
     materializeStoryAssetSets,
-    type AssetSetMaterializationProblem,
+    type AssetSetProblemDetail,
 } from "@shared/build/assetSetMaterialization";
 import {
     attachCharacterAssetSetVariants,
@@ -76,7 +76,8 @@ import {
 } from "@shared/build/characterAssetSets";
 import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
 import { attachBlueprintAssetSetVariants, blueprintGraphs } from "@shared/build/blueprintAssetSets";
-import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
+import { isAssetSetAxisKind, normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
+import { readAssetSetAxisValue, type AssetSetAxisNaming } from "@shared/types/assetSetLabels";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
@@ -87,7 +88,7 @@ import {
     type AppTagGraphFoldOptions,
     type UnfoldableAppTagGraph,
 } from "@shared/blueprint/appTagGraphFold";
-import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
+import { createTranslator, FALLBACK_LOCALE, type LocaleCode, type Translator } from "@shared/i18n";
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
@@ -692,13 +693,11 @@ async function materializeAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeAssetSetProblem(problem, storyLibrary, variantName);
-        if (context.packaging) {
-            throw new BuildRefusal(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    // Where a story row named the set is its scene, by name: the block id is nothing an author can
+    // find, and the scene's id is a uuid.
+    await reportAssetSetProblems(context, result.problems, localization, variantName, (problem, translator) =>
+        storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId]?.name?.trim()
+            || translator.t("story.sceneEditor.untitledScene"));
     if (result.collapsedBuildAxis) {
         // The caller has to narrow the library now, whichever edition this is. See
         // `AssetSetMaterializationResult.collapsedBuildAxis`.
@@ -734,13 +733,7 @@ async function resolveCharacterAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new BuildRefusal(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
@@ -771,13 +764,7 @@ async function resolveUiAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new BuildRefusal(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
@@ -808,72 +795,118 @@ async function resolveBlueprintAssetSets(
         localization,
         assetAxes: context.assetAxes,
     });
-    for (const problem of result.problems) {
-        const sentence = describeShippedAssetSetProblem(problem, variantName);
-        if (context.packaging) {
-            throw new BuildRefusal(sentence);
-        }
-        context.onNotice?.(sentence);
-    }
+    await reportAssetSetProblems(context, result.problems, localization, variantName, describeAssetSetSlice);
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
 }
 
 /**
- * The same sentence the story faults get, with the part of the project in place of the scene.
+ * Say each fault a pass found: a package refuses on the first, and anything else carries on with
+ * every one of them as a notice - the rule every pass above follows.
  *
- * The set's name is what the author acts on either way; what changes is where to go and look, and
- * "in the interface" is as precise as a scan of the document can honestly be.
+ * The sentence is written in the author's language, and names the set, where it is used and which of
+ * its values is at fault. The value is named the way the project names it - a language by its name,
+ * an edition by its name - because the value is stored as a language code or an edition id, and an
+ * edition's id is a uuid. The set's *members* are never named: a set is resolved by tag, so the file
+ * to import does not exist yet, and for a build axis the variants an edition did not take must not be
+ * named anywhere a log can reach.
+ *
+ * `locate` says where the set was named: a scene, or the part of the project a pass walks.
  */
-function describeShippedAssetSetProblem(problem: AssetSetRecordProblem, variantName: string): string {
-    const set = `Asset set "${problem.setName}", used in ${problem.slice}`;
-    if (problem.kind === "ambiguous") {
-        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+async function reportAssetSetProblems<P extends AssetSetProblemDetail>(
+    context: DevModeBundleLoadContext,
+    problems: readonly P[],
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+    locate: (problem: P, translator: Translator) => string,
+): Promise<void> {
+    if (problems.length === 0) {
+        return;
     }
-    if (problem.kind === "unsupported") {
-        const reason = problem.reason === "multipleAxes"
-            ? "has more than one axis, which this build cannot resolve yet"
-            : "declares no axis to resolve";
-        return `${set}, ${reason}.`;
+    const translator = createTranslator(context.locale ?? FALLBACK_LOCALE);
+    const naming = await loadAssetSetValueNaming(context.projectPath, localization, translator);
+    for (const problem of problems) {
+        const sentence = describeAssetSetProblem(problem, locate(problem, translator), variantName, naming, translator);
+        if (context.packaging) {
+            throw new BuildRefusal(sentence);
+        }
+        context.onNotice?.(sentence);
     }
-    if (problem.kind === "axisUnset") {
-        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
+}
+
+/** Where a pass with no rows found a set: a character, the interface, or a blueprint. */
+function describeAssetSetSlice(problem: AssetSetRecordProblem, translator: Translator): string {
+    switch (problem.slice) {
+        case "characters":
+            return translator.t("build.assetSet.inCharacters");
+        case "interface":
+            return translator.t("build.assetSet.inInterface");
+        case "blueprint":
+            return translator.t("build.assetSet.inBlueprint");
     }
-    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
-    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /**
- * What the author is told, naming the scene rather than the block id.
+ * What the project calls the values a set varies by: its languages, from the localization this
+ * bundle is built with, and its editions, from the variant list.
  *
- * A build failure has to be actionable from the sentence alone: which set, which coordinate, and
- * where it is used. The set's *members* are never named - a set is resolved by tag, so the file to
- * import does not exist yet and there is no name to print. For a build axis there is a second
- * reason: the variants an edition did not take must not be named anywhere a log can reach.
+ * Read only when a fault has to be put into words. A variant list that cannot be read leaves every
+ * edition but `main` named as deleted, which is still a sentence with no id in it.
  */
+async function loadAssetSetValueNaming(
+    projectPath: string,
+    localization: GameLocalizationBundle | undefined,
+    translator: Translator,
+): Promise<AssetSetAxisNaming> {
+    let editions: ReadonlyMap<string, string> = new Map();
+    try {
+        const document = await readProjectAppTagDocumentFromDir(projectPath);
+        editions = new Map(document.tags.map(tag => [tag.id, tag.name]));
+    } catch {
+        // Named as deleted, below; the fault being reported is the one that matters here.
+    }
+    return {
+        locales: new Map((localization?.locales ?? []).map(entry => [entry.code, entry.displayName])),
+        editions,
+        words: {
+            language: translator.t("assets.sets.axisWord.language"),
+            edition: translator.t("assets.sets.axisWord.variant"),
+            deletedEdition: translator.t("assets.sets.deletedVariant"),
+        },
+    };
+}
+
+/** One fault in one set, as the sentence a build refuses with. See {@link reportAssetSetProblems}. */
 function describeAssetSetProblem(
-    problem: AssetSetMaterializationProblem,
-    storyLibrary: DevModeStoryLibrary,
+    problem: AssetSetProblemDetail,
+    location: string,
     variantName: string,
+    naming: AssetSetAxisNaming,
+    translator: Translator,
 ): string {
-    const scene = storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId];
-    const where = scene?.name ? `"${scene.name}"` : problem.sceneId;
-    const set = `Asset set "${problem.setName}", used in ${where}`;
-    if (problem.kind === "ambiguous") {
-        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+    const where = { set: problem.setName, location };
+    const value = (axisKey: string, stored: string): string => {
+        if (!isAssetSetAxisKind(axisKey)) {
+            return stored;
+        }
+        const name = readAssetSetAxisValue(axisKey, stored, naming).value;
+        return axisKey === "locale"
+            ? translator.t("build.assetSet.language", { name })
+            : translator.t("build.assetSet.variant", { name });
+    };
+    switch (problem.kind) {
+        case "ambiguous":
+            return translator.t("build.assetSet.ambiguous", { ...where, value: value(problem.axisKey, problem.value) });
+        case "unsupported":
+            return translator.t(problem.reason === "multipleAxes" ? "build.assetSet.nested" : "build.assetSet.noValues", where);
+        case "axisUnset":
+            return translator.t("build.assetSet.variantUnset", { ...where, variant: variantName });
+        case "unfilled":
+            return problem.value
+                ? translator.t("build.assetSet.unfilled", { ...where, value: value(problem.axisKey, problem.value) })
+                : translator.t("build.assetSet.noLanguage", where);
     }
-    if (problem.kind === "unsupported") {
-        const reason = problem.reason === "multipleAxes"
-            ? "has more than one axis, which this build cannot resolve yet"
-            : "declares no axis to resolve";
-        return `${set}, ${reason}.`;
-    }
-    if (problem.kind === "axisUnset") {
-        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
-    }
-    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
-    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /** The sets the project declares. Absent or unreadable is "no sets", which changes nothing. */
@@ -985,10 +1018,8 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
     const clips: Record<string, AudioClipRegion> = {};
     if (record && typeof record === "object") {
         for (const [assetId, raw] of Object.entries(record)) {
-            const record = raw && typeof raw === "object" ? raw as { extras?: unknown; hash?: unknown } : undefined;
-            // The hash lets a stored file length through only when it was measured on this file.
-            const hash = typeof record?.hash === "string" ? record.hash : undefined;
-            const region = normalizeAudioClipRegion(record?.extras, hash);
+            const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
+            const region = normalizeAudioClipRegion(extras);
             if (region) {
                 clips[assetId] = region;
             }

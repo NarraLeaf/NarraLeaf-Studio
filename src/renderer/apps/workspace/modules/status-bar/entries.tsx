@@ -167,7 +167,7 @@ const sameScene = (a: SceneRef | null, b: SceneRef | null): boolean =>
  * on edits with a debounce — ambient information, not a live counter.
  */
 export function WordCountEntry() {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const [stats, setStats] = useState<SceneStats | null>(null);
 
@@ -298,10 +298,10 @@ export function WordCountEntry() {
             <BookText className="h-3 w-3 shrink-0" />
             <span className="max-w-[16ch] truncate">{stats.name}</span>
             <span className="tabular-nums">
-                {t("workspace.shell.statusBar.words", { count: stats.words.toLocaleString() })}
+                {tn("workspace.shell.statusBar.words", stats.words, { count: stats.words.toLocaleString() })}
             </span>
             <span className="tabular-nums">
-                {t("workspace.shell.statusBar.lines", { count: stats.lines.toLocaleString() })}
+                {tn("workspace.shell.statusBar.lines", stats.lines, { count: stats.lines.toLocaleString() })}
             </span>
         </StatusEntry>
     );

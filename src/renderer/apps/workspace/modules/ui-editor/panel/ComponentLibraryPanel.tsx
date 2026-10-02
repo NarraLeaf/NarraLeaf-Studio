@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { ChevronDown, Component, Copy, Edit3, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
 import { getUIComponentLink, type UIComponentDefinition } from "@shared/types/ui-editor/document";
@@ -9,9 +9,16 @@ import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/componen
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { LivePreviewFrame } from "./LivePreviewFrame";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { onComponentLibraryReveal } from "./componentLibraryReveal";
+import { linkedComponentIdsForSelection, scrollRowIntoListView } from "./selectionHighlights";
+import { useSelectionHighlight } from "./useSelectionHighlight";
+
+/** How long a card asked for by name stays marked, long enough to be found by eye. */
+const REVEAL_FLASH_MS = 1600;
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -71,6 +78,22 @@ export function ComponentLibraryPanel({
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
+    /**
+     * The components whose instances are selected on a canvas.
+     *
+     * Separate from `selectedIds` on purpose: those are the cards the author ticked to act on here,
+     * and these are the definitions behind what they are looking at elsewhere. A card can be both,
+     * and each draws its own mark - ticked cards are filled, these are framed.
+     */
+    const highlightedIds = useSelectionHighlight(uiService, documentService, linkedComponentIdsForSelection);
+    /** The card the inspector just asked for by name, marked for a moment on top of the frame. */
+    const [flashId, setFlashId] = useState<string | null>(null);
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const cardRefs = useRef(new Map<string, HTMLDivElement>());
+    /** A card that has to be brought into view once the render that shows it has landed. */
+    const scrollTargetRef = useRef<string | null>(null);
+    const componentsRef = useRef<UIComponentDefinition[]>([]);
+    const queryRef = useRef("");
 
     useEffect(() => {
         if (!documentService) {
@@ -97,6 +120,54 @@ export function ComponentLibraryPanel({
         }
         return components.filter(component => component.name.toLowerCase().includes(needle));
     }, [components, query]);
+    componentsRef.current = components;
+    queryRef.current = query;
+
+    // The inspector asked "where is this component": open the section, make sure the search is not
+    // hiding the card, bring it into view and mark it. The section opening and the search clearing
+    // are both renders, so the scroll waits for the layout effect below rather than happening here.
+    useEffect(() => onComponentLibraryReveal(componentId => {
+        const component = componentsRef.current.find(candidate => candidate.id === componentId);
+        if (!component) {
+            return;
+        }
+        const needle = queryRef.current.trim().toLowerCase();
+        if (needle && !component.name.toLowerCase().includes(needle)) {
+            setQuery("");
+        }
+        setOpen(true);
+        scrollTargetRef.current = componentId;
+        setFlashId(componentId);
+        window.setTimeout(() => {
+            setFlashId(current => (current === componentId ? null : current));
+        }, REVEAL_FLASH_MS);
+    }), []);
+
+    // Following the canvas: a newly highlighted card that is scrolled out of the list comes into
+    // view. Keyed on the set's identity, which only changes when its contents do, so editing the
+    // selected instance does not keep yanking the list back to it. A layout effect declared before
+    // the one that scrolls, so both run in the same commit and in this order.
+    useLayoutEffect(() => {
+        const first = components.find(component => highlightedIds.has(component.id));
+        if (first) {
+            scrollTargetRef.current = first.id;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [highlightedIds]);
+
+    useLayoutEffect(() => {
+        const targetId = scrollTargetRef.current;
+        if (!targetId || !open) {
+            return;
+        }
+        const list = listRef.current;
+        const card = cardRefs.current.get(targetId);
+        if (!list || !card) {
+            return;
+        }
+        scrollTargetRef.current = null;
+        scrollRowIntoListView(list, card);
+    });
 
     const selectedComponents = useMemo(
         () => components.filter(component => selectedIds.has(component.id)),
@@ -345,7 +416,7 @@ export function ComponentLibraryPanel({
                         </div>
                     ) : null}
 
-                    <div className="min-h-0 max-h-72 flex-1 overflow-y-auto space-y-2 pr-1">
+                    <div ref={listRef} className="min-h-0 max-h-72 flex-1 overflow-y-auto space-y-2 pr-1">
                         {filteredComponents.length === 0 ? (
                             <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                                 {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}
@@ -353,6 +424,7 @@ export function ComponentLibraryPanel({
                         ) : (
                             filteredComponents.map(component => {
                                 const selected = selectedIds.has(component.id);
+                                const highlighted = highlightedIds.has(component.id);
                                 const root = component.elements[component.rootElementId];
                                 const previewSize = getComponentPreviewSize(component);
                                 const renderPreview = () =>
@@ -364,11 +436,27 @@ export function ComponentLibraryPanel({
                                 return (
                                     <div
                                         key={component.id}
-                                        className={`group rounded-md border px-2 py-2 transition ${
+                                        ref={node => {
+                                            if (node) {
+                                                cardRefs.current.set(component.id, node);
+                                            } else {
+                                                cardRefs.current.delete(component.id);
+                                            }
+                                        }}
+                                        data-component-id={component.id}
+                                        data-canvas-highlight={highlighted ? "true" : undefined}
+                                        className={cn(
+                                            "group rounded-md border px-2 py-2 transition",
                                             selected
                                                 ? "border-primary/60 bg-primary/10"
-                                                : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill"
-                                        }`}
+                                                : "border-edge bg-fill-subtle hover:border-edge-strong hover:bg-fill",
+                                            // Framed, the way the canvas frames the instance: a
+                                            // second, inset hairline that adds to the border without
+                                            // moving the card's contents, and reads apart from the
+                                            // fill a ticked card gets.
+                                            highlighted && "border-primary ring-1 ring-inset ring-primary hover:border-primary",
+                                            flashId === component.id && "bg-primary/15",
+                                        )}
                                         onContextMenu={event => openContextMenu(event, component)}
                                         onClick={() => onOpenComponent(component)}
                                         onKeyDown={event => {
@@ -440,7 +528,7 @@ export function ComponentLibraryPanel({
                                             {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
                                             {documentService ? (
                                                 <span className="ml-2">
-                                                    {t("uiEditor.componentLibrary.refs", { count: usageCounts[component.id] ?? 0 })}
+                                                    {tn("uiEditor.componentLibrary.refs", usageCounts[component.id] ?? 0)}
                                                 </span>
                                             ) : null}
                                         </div>

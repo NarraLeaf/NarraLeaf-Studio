@@ -10,6 +10,10 @@ import { RendererError } from "@shared/utils/error";
 import { type UIGraph, type UIGraphDocument, UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import { ProjectDocumentTooNewError, readDocumentSchemaVersion, type ProjectDocumentKind } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { i18nStore } from "@/lib/i18n";
 import { createInitialBlueprintDocument, repairGlobalMainIfMissing } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "./blueprint/documentValidation";
 import { dropDisplacedEmptyBlueprints } from "./blueprint/ownerRecords";
@@ -310,7 +314,14 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
 
     private migrateIfNeeded(document: UIGraphDocument): UIGraphDocument {
         if (document.schemaVersion > UI_GRAPH_DOCUMENT_SCHEMA_VERSION) {
-            throw new RendererError("Graph document schema is newer than this Studio version");
+            throw this.tooNew("uiGraphs", document.schemaVersion, UI_GRAPH_DOCUMENT_SCHEMA_VERSION);
+        }
+        // The blueprint document is a field of this file with a version of its own, and the migration
+        // below refuses one past its band with a sentence that names the oldest version it reads -
+        // which, for a project a newer Studio has already saved, tells the author the file is too old.
+        const blueprintVersion = readDocumentSchemaVersion(document.blueprintDocument);
+        if (blueprintVersion !== undefined && blueprintVersion > BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
+            throw this.tooNew("blueprints", blueprintVersion, BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
         }
         if (document.schemaVersion !== UI_GRAPH_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError(
@@ -336,6 +347,17 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
             ...document,
             blueprintDocument: repaired,
         };
+    }
+
+    /** The one wording every reader of a project file from a newer Studio uses, with both versions. */
+    private tooNew(kind: ProjectDocumentKind, version: number, supported: number): RendererError {
+        const refusal = new ProjectDocumentTooNewError(
+            kind,
+            ProjectNameConvention.EditorUIGraphs.join("/"),
+            version,
+            supported,
+        );
+        return new RendererError(describeProjectDocumentTooNew(refusal, i18nStore.getLocale()), { cause: refusal });
     }
 
     private createEmptyDocument(): UIGraphDocument {

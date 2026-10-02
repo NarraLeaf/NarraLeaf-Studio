@@ -97,6 +97,8 @@ type PreparedSearchField = {
     normalized: string;
     compact: string;
     words: readonly string[];
+    /** Runs of operator characters, for a query that is nothing but one (`>`, `!=`, `≤`). */
+    symbols: readonly string[];
     /** First letter of each word, for the `madd` -> `Math Add` match. */
     acronym: string;
     weight: number;
@@ -134,13 +136,19 @@ export function filterPreparedBlueprintAddNodeEntries(
         token,
         compact: readSearchTextForms(token).compact,
     }));
-    if (queryTokens.length === 0) {
+    // A query with no letters or digits in it is still a question: `>` asks for Greater Than. Its
+    // operators are matched on their own, and only then - in a query that has words, a `-` or a `.`
+    // is a separator, and `save-slot` has to go on finding `Save Slot`.
+    const querySymbols = queryTokens.length === 0 ? readSearchTextForms(query).symbols : [];
+    if (queryTokens.length === 0 && querySymbols.length === 0) {
         return inCategory.map(item => item.entry);
     }
 
     const scored: Array<{ entry: BlueprintNodeEditorCatalogEntry; index: number; score: number }> = [];
     for (const item of inCategory) {
-        const score = scoreBlueprintAddNodeEntry(item, queryTokens);
+        const score = queryTokens.length > 0
+            ? scoreBlueprintAddNodeEntry(item, queryTokens)
+            : scoreBlueprintAddNodeEntryBySymbols(item, querySymbols);
         if (score !== null) {
             scored.push({ entry: item.entry, index: item.index, score });
         }
@@ -208,14 +216,52 @@ function searchFieldsFor(
 }
 
 function prepareSearchField(field: BlueprintAddNodeSearchField): PreparedSearchField {
-    const { normalized, compact, words } = readSearchTextForms(field.text);
+    const { normalized, compact, words, symbols } = readSearchTextForms(field.text);
     return {
         normalized,
         compact,
         words,
+        symbols,
         acronym: words.map(word => word[0]).join(""),
         weight: field.weight,
     };
+}
+
+/**
+ * Score an entry against a query made only of operators.
+ *
+ * Every operator in the query has to be one the entry carries: the same run scores best, a run that
+ * starts with it next (`>` finds `>=`), one that merely contains it last (`=` finds `>=`).
+ */
+function scoreBlueprintAddNodeEntryBySymbols(
+    item: PreparedBlueprintAddNodeEntry,
+    querySymbols: readonly string[],
+): number | null {
+    let totalScore = 0;
+    for (const symbol of querySymbols) {
+        let bestScore: number | null = null;
+        for (const field of item.fields) {
+            for (const candidate of field.symbols) {
+                const score = candidate === symbol
+                    ? 0
+                    : candidate.startsWith(symbol)
+                      ? 3
+                      : candidate.includes(symbol)
+                        ? 12
+                        : null;
+                if (score === null) {
+                    continue;
+                }
+                const weightedScore = field.weight + score;
+                bestScore = bestScore === null ? weightedScore : Math.min(bestScore, weightedScore);
+            }
+        }
+        if (bestScore === null) {
+            return null;
+        }
+        totalScore += bestScore;
+    }
+    return totalScore;
 }
 
 function scoreBlueprintAddNodeEntry(
@@ -316,11 +362,18 @@ function tokenizeSearchText(text: string): string[] {
     return [...readSearchTextForms(text).words];
 }
 
-/** The three shapes of one string the scorer compares against. */
+/** The shapes of one string the scorer compares against. */
 type SearchTextForms = {
     normalized: string;
     compact: string;
     words: string[];
+    /**
+     * The runs of characters that are neither letters, digits nor space - `>=`, `≠`, the `+` of
+     * `+1` - read through {@link foldOperatorText} rather than through the word folding, which
+     * decomposes `≠` into `=` and a combining stroke and then drops the stroke: Not Equal would
+     * answer a search for `=`.
+     */
+    symbols: string[];
 };
 
 /**
@@ -349,12 +402,27 @@ function readSearchTextForms(text: string): SearchTextForms {
         normalized,
         compact: normalized.replace(/[^\p{L}\p{N}]+/gu, ""),
         words: normalized.split(/[^\p{L}\p{N}]+/u).map(token => token.trim()).filter(Boolean),
+        symbols: foldOperatorText(text).match(/[^\p{L}\p{N}\p{M}\s]+/gu) ?? [],
     };
     if (searchTextForms.size >= SEARCH_TEXT_FORM_LIMIT) {
         searchTextForms.clear();
     }
     searchTextForms.set(text, forms);
     return forms;
+}
+
+/**
+ * Operators as a Chinese or Japanese keyboard types them, made the ones the catalogue spells.
+ *
+ * Compatibility folding turns the full-width `＞` and `＝` of a full-width input mode into `>` and
+ * `=`, and keeps `≠` and `≤` whole. The angle quotes are the other half: with Chinese punctuation
+ * switched on, the key that types `>` types `》`.
+ */
+function foldOperatorText(text: string): string {
+    return text
+        .normalize("NFKC")
+        .replace(/[《〈]/g, "<")
+        .replace(/[》〉]/g, ">");
 }
 
 function normalizeSearchText(text: string): string {

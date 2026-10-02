@@ -138,6 +138,8 @@ export type ZipWriteResult = {
  * Already-compressed formats ship stored: deflating them again wastes build
  * time for ~0 gain, and stored media is what the shells' Range serving reads
  * without inflation. Everything else (text, code, json, fonts) deflates.
+ * The Android payload does not consult this table: repackApk stores all of it,
+ * because the shell opens every payload file with openFd.
  */
 const STORED_EXTENSIONS = new Set([
     "png", "jpg", "jpeg", "webp", "gif", "avif",

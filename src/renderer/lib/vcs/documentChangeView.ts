@@ -1,5 +1,5 @@
 import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
-import type { TranslationKey, Translator } from "@shared/i18n";
+import type { PluralKey, TranslationKey, Translator } from "@shared/i18n";
 import { elideGeneratedIdentifiers } from "./identifierDisplay";
 
 /**
@@ -126,7 +126,35 @@ const LABEL_SUMMARY_COUNT = "documentDiff.summary.count";
 /** Where a count's own name is translated. Absent falls back to the raw identifier. */
 const COUNT_NAME_PREFIX = "documentDiff.count.";
 
-export type LabelTranslator = Pick<Translator, "t" | "has">;
+export type LabelTranslator = Pick<Translator, "t" | "tn" | "has">;
+
+/**
+ * Counts a label states with their noun: "Scene added (1 row)", not "(1 rows)".
+ *
+ * The producer has no locale, so it sends the bare number under its own name and it is spelled here,
+ * in the reader's plural, the way byte counts are formatted below. The spelled phrase goes under a
+ * name of its own, so a translation written against the bare number still reads that number.
+ */
+const COUNTED_LABEL_PARAMS: Readonly<Record<string, { name: string; key: PluralKey }>> = {
+    blocks: { name: "rowCount", key: "documentDiff.units.rows" },
+    elements: { name: "elementCount", key: "documentDiff.units.elements" },
+    nodes: { name: "nodeCount", key: "documentDiff.units.nodes" },
+};
+
+/** A label's parameters with each count in {@link COUNTED_LABEL_PARAMS} also spelled with its noun. */
+export function spellLabelCounts(
+    params: Readonly<Record<string, string | number>> | undefined,
+    translator: Pick<Translator, "tn">,
+): Record<string, string | number> {
+    const spelled: Record<string, string | number> = { ...params };
+    for (const [param, { name, key }] of Object.entries(COUNTED_LABEL_PARAMS)) {
+        const value = params?.[param];
+        if (typeof value === "number") {
+            spelled[name] = translator.tn(key, value);
+        }
+    }
+    return spelled;
+}
 
 /**
  * Read one change out loud.
@@ -145,7 +173,7 @@ export function resolveDocumentChangeLabel(
     translator: LabelTranslator,
 ): DocumentChangeLabelView {
     const params = change.label.params;
-    const interpolated: Record<string, string | number> = { ...params };
+    const interpolated = spellLabelCounts(params, translator);
 
     // Byte counts are the one parameter the author reads as a size rather than as a number. Formatted
     // here rather than in the producer, which has no locale and no idea how wide the column is.

@@ -213,6 +213,9 @@ function validateIcon(value: unknown): string | undefined | { error: string } {
  * `contributes.buildConfig` is absent for the same reason and a simpler one: a
  * declared field is a blank the author fills in, and filling it in gives the
  * plugin no reach it did not already have.
+ *
+ * `contributes.reservedSaveIds` is absent for that same reason: it only takes
+ * ids in the plugin's own namespace out of the player's save listing.
  */
 function derivePermissionsFromContributes(
     contributes: Required<PluginContributes>,
@@ -265,8 +268,8 @@ function hostnameOf(url: string): string | null {
     }
 }
 
-/** Contribution kinds whose value is an array of `<pluginId>.`-prefixed type strings. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests"] as const;
+/** Contribution kinds whose value is an array of `<pluginId>.`-prefixed identifiers. */
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests", "reservedSaveIds"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped ones. */
 const CONTRIBUTES_KEYS = [
@@ -332,6 +335,7 @@ const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], str
     widgets: "widget",
     runtimeData: "storage namespace",
     tests: "test",
+    reservedSaveIds: "reserved save id",
 };
 
 /** BCP-47-ish locale code: primary subtag plus optional hyphen-joined subtags. */
@@ -343,6 +347,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         widgets: [],
         runtimeData: [],
         tests: [],
+        reservedSaveIds: [],
         locales: [],
         runtimeCapabilities: [],
         sidecars: [],

@@ -380,6 +380,12 @@ export type RuntimePluginSaveMetadata = {
  * heavier capability.
  */
 export type RuntimePluginSaves = {
+    /**
+     * Every slot in the store, reserved ones included: the autosave ring, and any slot a plugin
+     * keeps for itself (`contributes.reservedSaveIds`). This is direct store access, not the
+     * player's view - `List Saves` is the one that leaves bookkeeping out - so a plugin can find its
+     * own reserved slot here.
+     */
     listIds(): Promise<string[]>;
     readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
     /** Present only with `saves.write`. Overwrites the slot. */

@@ -236,6 +236,12 @@ export const LORE_STRUCTS = {
         layerMessages: "LoreStringArray",
         stats: "uint8_t",
     },
+    /**
+     * No revision field: the CURRENT revision is the one rewritten. And no way to leave the
+     * message alone - v0.8.5 passes whatever is here as the new message, empty included - so a
+     * caller that means to keep it has to hand the old one back.
+     */
+    LoreRevisionAmendArgs: { message: "LoreString" },
     LoreRevisionHistoryArgs: {
         revision: "LoreString",
         branch: "LoreString",
@@ -701,6 +707,7 @@ export const LORE_VERBS = {
     fileStage: { symbol: "lore_file_stage", args: "LoreFileStageArgs" },
     fileUnstage: { symbol: "lore_file_unstage", args: "LoreFileUnstageArgs" },
     revisionCommit: { symbol: "lore_revision_commit", args: "LoreRevisionCommitArgs" },
+    revisionAmend: { symbol: "lore_revision_amend", args: "LoreRevisionAmendArgs" },
     revisionHistory: { symbol: "lore_revision_history", args: "LoreRevisionHistoryArgs" },
     revisionInfo: { symbol: "lore_revision_info", args: "LoreRevisionInfoArgs" },
     revisionDiff: { symbol: "lore_revision_diff", args: "LoreRevisionDiffArgs" },

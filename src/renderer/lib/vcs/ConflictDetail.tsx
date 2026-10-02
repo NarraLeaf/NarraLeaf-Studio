@@ -13,8 +13,18 @@ import {
     resolveMergeDecisionLabel,
     type MergeChangeChoices,
     type MergeDocumentEntry,
+    type MergeSidesView,
     type MergeValueView,
 } from "./mergeDecisionView";
+
+/**
+ * A format's own reading of a decision's two sides, or null where it has none and the generic
+ * field-by-field reading should draw them.
+ *
+ * Handed in rather than looked up here, because a format's reading can need the workspace - a
+ * story row's speaker is a name from the character list - and this surface takes plain props.
+ */
+export type MergeSidesDescriber = (decision: DocumentMergeDecision) => MergeSidesView | null;
 
 /**
  * The detail half of a merge: one conflicted file, change by change, with both sides' values.
@@ -36,10 +46,21 @@ export interface ConflictDetailProps {
     /** True while a finish or an abandon is out. Not the freeze: choosing writes nothing. */
     readonly disabled: boolean;
     onChooseChange(decision: DocumentMergeDecision, side: VcsMergeSideChoice): void;
+    /** This file's format reading its own rows, where it has a reading. See {@link MergeSidesDescriber}. */
+    readonly describeSides?: MergeSidesDescriber;
     readonly className?: string;
 }
 
-export function ConflictDetail({ path, name, entry, choices, disabled, onChooseChange, className }: ConflictDetailProps) {
+export function ConflictDetail({
+    path,
+    name,
+    entry,
+    choices,
+    disabled,
+    onChooseChange,
+    describeSides,
+    className,
+}: ConflictDetailProps) {
     const { t } = useTranslation();
 
     return (
@@ -87,6 +108,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                                 decision={decision}
                                 side={effectiveMergeSide(decision, choices)}
                                 disabled={disabled}
+                                describeSides={describeSides}
                                 onChoose={side => onChooseChange(decision, side)}
                             />
                         ))}
@@ -114,24 +136,27 @@ function MergeChangeRow({
     decision,
     side,
     disabled,
+    describeSides,
     onChoose,
 }: {
     decision: DocumentMergeDecision;
     side: "mine" | "theirs" | undefined;
     disabled: boolean;
+    describeSides?: MergeSidesDescriber;
     onChoose: (side: VcsMergeSideChoice) => void;
 }) {
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveMergeDecisionLabel(decision, translator);
     // Described once, for both: the two columns are rows of each other only if one field list built
-    // from both sides decides what each of them draws.
-    const values = describeMergeSides(decision.mine, decision.theirs);
+    // from both sides decides what each of them draws. The format's own reading first, where it has
+    // one - a line of a script reads as a line, not as the fields it is stored in.
+    const values = describeSides?.(decision) ?? describeMergeSides(decision.mine, decision.theirs);
     const conflict = decision.outcome === "conflict";
     const other = side === "mine" ? "theirs" : "mine";
 
     return (
-        <div className="group/change border-t border-edge/60 py-1 first:border-t-0">
+        <div className="group/change border-t border-edge-subtle py-1 first:border-t-0">
             <div className="flex items-baseline gap-1.5 overflow-hidden">
                 <span
                     className={cn(
@@ -185,7 +210,7 @@ function MergeChangeRow({
                     ))}
                 </div>
             ) : (
-                <div className="mt-0.5 min-w-0 rounded-md border border-edge/60 px-1.5 py-1">
+                <div className="mt-0.5 min-w-0 rounded-md border border-edge-subtle px-1.5 py-1">
                     <MergeValue view={values[side]} />
                 </div>
             )}

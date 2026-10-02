@@ -32,6 +32,7 @@ import {
     readMergeDecisionDraft,
     writeMergeDecisionDraft,
 } from "./mergeDecisionDraft";
+import { useStoryMergeSides } from "./useStoryMergeSides";
 
 /**
  * Finishing a merge: whole files from one side, and - where the format allows it - one change
@@ -220,10 +221,11 @@ export function VcsResolvePanel() {
      * What to call each conflicted document.
      *
      * Read from the working tree, which during a merge is the merge's own result for everything
-     * that merged cleanly - and the story index nearly always does, because it is a different file
-     * from the stories it names. Where it did not, it is one of the conflicted files and unparseable
-     * like the rest, and `documentName.ts` answers with a stand-in for what the thing is rather than
-     * inventing a title. There is no second side to read: a merge is not a comparison between two
+     * that merged - and the story library does, whatever the backend made of it: every save stamps
+     * it, so the backend conflicts on it whenever two people edited one story, and the sync settles
+     * it again because its format merges the stamp by itself. Where it holds a real question it is
+     * still conflicted, and its names are read from the author's own copy of it, as the editors read
+     * it (`nameSources.ts`). There is no second side to read: a merge is not a comparison between two
      * revisions, it is one tree with two answers in it.
      */
     const names = useDocumentNames(MERGE_NAME_SIDES);
@@ -326,6 +328,12 @@ export function VcsResolvePanel() {
             readDocument(selected);
         }
     }, [selected, documents, readDocument]);
+
+    /**
+     * A story's rows read as the story editor reads them - speaker and line - rather than as the
+     * fields a row is stored in. Undefined for every other format, which keeps the generic reading.
+     */
+    const describeSides = useStoryMergeSides(selected, selected !== null ? documents[selected] : undefined);
 
     /** Take a whole file from one side. Drops any per-change work on it - the two are exclusive. */
     const chooseWhole = (path: string, choice: VcsMergeSideChoice) => {
@@ -529,6 +537,7 @@ export function VcsResolvePanel() {
                     onChooseMerged={chooseMerged}
                     onChooseChange={chooseChange}
                     onChooseAll={chooseAll}
+                    describeSides={describeSides}
                 />
             ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">

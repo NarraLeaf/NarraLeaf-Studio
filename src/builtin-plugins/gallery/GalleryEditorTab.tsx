@@ -55,12 +55,14 @@ import {
 } from "./catalog";
 import { GalleryThumb, InlineNameInput, formatDuration, useAudioAudition } from "./components";
 import {
+    galleryCount,
+    galleryKindLabel,
     galleryNodeWord,
+    galleryTitle,
     useGalleryTranslator,
     type GalleryMessageKey,
     type GalleryTranslator,
 } from "./messages";
-import { GALLERY_KIND_LABELS } from "./nodes";
 import type { GalleryStore } from "./store";
 
 /** Sentinel group filters that are not real group ids. */
@@ -70,22 +72,23 @@ const GROUP_UNGROUPED = "__none";
 const DRAG_ENTRY_MIME = "application/x-narraleaf-gallery-entry";
 
 /**
- * A column's own words are message keys. Its name is not among them: that is the
- * Kind option the blueprint node offers, read through {@link kindLabel} so the two
- * cannot disagree.
+ * A column's own words are message keys. Its name is not among them: that is the `Kind` option the
+ * blueprint node offers, read through `galleryKindLabel` so the tab, the inspector and the idle
+ * inspector's step all say what the node's dropdown says.
  */
 type KindMeta = {
     /** The primary action's verb for this column. */
     createKey: GalleryMessageKey;
-    /** What the column says while it has no entries. */
+    /** What an empty column says it is for. */
     emptyKey: GalleryMessageKey;
     icon: typeof Images;
     /** Grid for kinds identified by a picture, list for kinds identified by sound or text. */
     layout: "grid" | "list";
-    /** What the idle inspector says a row of this kind carries. */
+    /** What the idle inspector says a row of this kind carries: field names, never translated. */
     rowFields: string;
     /**
-     * Message key naming what collects a row of this kind.
+     * Message key naming what collects a row of this kind. A `{node}` in it is filled with the
+     * `Unlock Gallery` node's title as its card shows it.
      *
      * Three of the four columns collect themselves while the player plays, and only CG needs the
      * story to say so. Without this line on the card that difference reads as a broken column.
@@ -127,11 +130,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         unlockKey: "unlockVoice",
     },
 };
-
-/** The column's name, as the Kind option on the blueprint node reads it. */
-function kindLabel(tr: GalleryTranslator, kind: GalleryEntryKind): string {
-    return galleryNodeWord(tr, GALLERY_KIND_LABELS[kind]);
-}
 
 type PickerTarget =
     | { kind: "importCgs" }
@@ -291,11 +289,11 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
             <header className="shrink-0 border-b border-edge">
                 <div className="flex items-center gap-2 px-3 pt-2">
                     <Images size={15} className="text-fg-muted" />
-                    <span className="text-sm">{tr.t("title")}</span>
+                    <span className="text-sm">{galleryTitle(tr)}</span>
                     <span className="text-2xs text-fg-subtle">
-                        {tr.t(data.items.length === 1 ? "entriesOne" : "entriesMany", { count: data.items.length })}
+                        {galleryCount(tr, "entryCountOne", "entryCountMany", data.items.length)}
                         {" · "}
-                        {tr.t(itemCount === 1 ? "itemsOne" : "itemsMany", { count: itemCount })}
+                        {galleryCount(tr, "itemCountOne", "itemCountMany", itemCount)}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
                         <ui.SearchInput
@@ -346,7 +344,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                                 }}
                             >
                                 <Icon size={12} />
-                                {kindLabel(tr, kind)}
+                                {galleryKindLabel(tr, kind)}
                                 <span className="tabular-nums text-fg-subtle">{countsByKind[kind]}</span>
                             </button>
                         );
@@ -452,7 +450,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                 assetType={pickerWantsAudio ? AssetType.Audio : AssetType.Image}
                 multiple={pickerWantsMany}
                 anchorRef={anchorRef}
-                title={pickerTitle(tr, picker)}
+                title={pickerTitle(picker, tr)}
                 onClose={() => setPicker(null)}
                 onConfirm={assets => onPickerConfirm(assets as Asset[])}
             />
@@ -497,26 +495,26 @@ function toggleSelection(
     });
 }
 
-function pickerTitle(tr: GalleryTranslator, target: PickerTarget | null): string {
+function pickerTitle(target: PickerTarget | null, tr: GalleryTranslator): string {
     switch (target?.kind) {
         case "importCgs":
             return tr.t("createCg");
         case "importTracks":
-            return tr.t("pickImportTracks");
+            return tr.t("pickerImportTracks");
         case "addImages":
-            return tr.t("pickAddDifferentials");
+            return tr.t("pickerAddDifferentials");
         case "addTracks":
-            return tr.t("pickAddTracks");
+            return tr.t("pickerAddTracks");
         case "coverImage":
-            return tr.t("pickCover");
+            return tr.t("pickerCover");
         case "variantImage":
-            return tr.t("pickVariantImage");
+            return tr.t("pickerImage");
         case "lockedImage":
-            return tr.t("pickLockedPlaceholder");
+            return tr.t("pickerLockedPlaceholder");
         case "defaultLockedImage":
-            return tr.t("pickDefaultPlaceholder");
+            return tr.t("pickerDefaultPlaceholder");
         default:
-            return tr.t("pickAsset");
+            return tr.t("pickerAsset");
     }
 }
 
@@ -542,7 +540,7 @@ function EmptyPane({
             <div className="flex flex-col items-center gap-3 text-center">
                 <Icon size={26} className="text-fg-subtle" />
                 <div className="text-sm text-fg-muted">
-                    {tr.t(filtered ? "nothingMatches" : meta.emptyKey)}
+                    {tr.t(filtered ? "noMatches" : meta.emptyKey)}
                 </div>
                 {/* Still rendered while frozen, greyed: the empty column's whole
                     job is to say what this column is for, and a missing button
@@ -645,7 +643,7 @@ function GroupChips({
                     <span
                         role="button"
                         tabIndex={-1}
-                        aria-label={tr.t("deleteGroup", { name: label })}
+                        aria-label={tr.t("groupDelete", { name: label })}
                         aria-disabled={freeze.frozen || undefined}
                         data-tip={freeze.frozen ? freeze.reason : undefined}
                         className={`hidden text-fg-subtle group-hover/chip:inline ${
@@ -689,13 +687,13 @@ function GroupChips({
                 ) : chip(group.id, group.name, countFor(group.id), { groupId: group.id, droppable: true })
             ))}
             {groups.length > 0 && ungrouped > 0
-                && chip(GROUP_UNGROUPED, tr.t("ungrouped"), ungrouped, { droppable: true })}
+                && chip(GROUP_UNGROUPED, tr.t("groupUngrouped"), ungrouped, { droppable: true })}
             <button
                 type="button"
-                aria-label={tr.t("newGroup")}
+                aria-label={tr.t("groupNew")}
                 className="rounded-full border border-dashed border-edge px-1.5 py-0.5 text-fg-subtle hover:border-edge-strong hover:text-fg disabled:opacity-40"
                 onClick={onCreate}
-                {...freeze.writes(busy, tr.t("newGroup"))}
+                {...freeze.writes(busy, tr.t("groupNew"))}
             >
                 <Plus size={10} />
             </button>
@@ -778,7 +776,7 @@ function EntryCard({
                 {entry.variants.length > 1 && (
                     <span
                         className="flex shrink-0 items-center gap-0.5 text-2xs text-fg-subtle"
-                        data-tip={tr.t("itemsMany", { count: entry.variants.length })}
+                        data-tip={galleryCount(tr, "itemCountOne", "itemCountMany", entry.variants.length)}
                     >
                         <Layers size={10} />
                         {entry.variants.length}
@@ -858,7 +856,7 @@ function EntryRow({
             ) : (
                 <span
                     className="grid h-6 w-6 shrink-0 place-items-center text-fg-subtle"
-                    data-tip={tr.t("itemsMany", { count: entry.variants.length })}
+                    data-tip={galleryCount(tr, "itemCountOne", "itemCountMany", entry.variants.length)}
                 >
                     <Layers size={12} />
                 </span>
@@ -877,7 +875,7 @@ function EntryRow({
                 )}
                 {entry.variants.length > 1 && (
                     <div className="text-2xs text-fg-subtle">
-                        {tr.t("itemsMany", { count: entry.variants.length })}
+                        {galleryCount(tr, "itemCountOne", "itemCountMany", entry.variants.length)}
                     </div>
                 )}
             </div>
@@ -939,7 +937,7 @@ function IdleInspector({ kind, meta, tr }: { kind: GalleryEntryKind; meta: KindM
                         1. <span className="text-fg-muted">{galleryNodeWord(tr, "Get Gallery")}</span>
                         {tr.t("idleSeparator")}
                         {galleryNodeWord(tr, "Kind")} ={" "}
-                        <span className="text-fg-muted">{kindLabel(tr, kind)}</span>
+                        <span className="text-fg-muted">{galleryKindLabel(tr, kind)}</span>
                     </li>
                     <li>
                         2. {tr.t("corePinEntries")} → <span className="text-fg-muted">{tr.t("coreSetListContent")}</span>
@@ -959,7 +957,9 @@ function IdleInspector({ kind, meta, tr }: { kind: GalleryEntryKind; meta: KindM
                     not know which is which reads the difference as a broken column. */}
                 <div className="text-2xs text-fg-subtle">
                     <span className="mr-1">{tr.t("idleUnlockedBy")}</span>
-                    <span className="text-fg-muted">{tr.t(meta.unlockKey)}</span>
+                    <span className="text-fg-muted">
+                        {tr.t(meta.unlockKey, { node: galleryNodeWord(tr, "Unlock Gallery") })}
+                    </span>
                 </div>
             </div>
         </div>
@@ -1001,7 +1001,7 @@ function EntryInspector({
         <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5">
                 <MetaIcon size={12} className="shrink-0 text-fg-subtle" />
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{kindLabel(tr, entry.kind)}</span>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{galleryKindLabel(tr, entry.kind)}</span>
                 <ui.IconButton size="sm" variant="ghost" aria-label={tr.t("closeInspector")} onClick={onClose}>
                     <X size={12} />
                 </ui.IconButton>
@@ -1072,7 +1072,7 @@ function EntryInspector({
                     readOnly={freeze.frozen}
                     value={entry.groupId ?? ""}
                     options={[
-                        { value: "", label: tr.t("ungrouped") },
+                        { value: "", label: tr.t("groupUngrouped") },
                         ...groups.map(group => ({ value: group.id, label: group.name })),
                     ]}
                     onChange={value => void onRun(() => store.patchArtworkFields(entry.id, {
@@ -1275,10 +1275,10 @@ function MemberList({
     const many = entry.variants.length > 1;
     const count = { count: entry.variants.length };
     const label = entry.kind === "music"
-        ? many ? tr.t("membersTracks", count) : tr.t("memberTrack")
+        ? many ? tr.t("membersTracks", count) : tr.t("membersTrack")
         : entry.kind === "voice"
-            ? many ? tr.t("membersLines", count) : tr.t("memberLine")
-            : many ? tr.t("membersDifferentials", count) : tr.t("memberImage");
+            ? many ? tr.t("membersLines", count) : tr.t("membersLine")
+            : many ? tr.t("membersDifferentials", count) : tr.t("membersImage");
 
     const add = () => {
         switch (entry.kind) {
@@ -1304,7 +1304,11 @@ function MemberList({
             </div>
             {entry.variants.length === 0 ? (
                 <p className="px-1 text-2xs text-fg-subtle">
-                    {tr.t(entry.kind === "voice" ? "noLines" : entry.kind === "music" ? "noTracks" : "noImage")}
+                    {tr.t(entry.kind === "voice"
+                        ? "noLines"
+                        : entry.kind === "music"
+                            ? "noTracks"
+                            : "noImage")}
                 </p>
             ) : (
                 <div className="space-y-1">
@@ -1478,7 +1482,7 @@ function BulkInspector({
                     value=""
                     options={[
                         { value: "", label: tr.t("pickGroup") },
-                        { value: GROUP_UNGROUPED, label: tr.t("ungrouped") },
+                        { value: GROUP_UNGROUPED, label: tr.t("groupUngrouped") },
                         ...groups.map(group => ({ value: group.id, label: group.name })),
                     ]}
                     onChange={async raw => {
@@ -1506,7 +1510,7 @@ function BulkInspector({
                 {...freeze.writes(busy)}
             >
                 <Trash2 size={12} />
-                {tr.t("deleteCount", { count: selection.length })}
+                {tr.t("deleteSelected", { count: selection.length })}
             </ui.Button>
         </div>
     );
@@ -1577,7 +1581,7 @@ function VoiceUnitPicker({
     }, [query, units]);
 
     return (
-        <ui.Modal isOpen title={tr.t("addVoiceLinesTitle")} onClose={onClose}>
+        <ui.Modal isOpen title={tr.t("voicePickerTitle")} onClose={onClose}>
             <ui.ModalBody>
                 <div className="space-y-2">
                     <ui.SearchInput
@@ -1590,7 +1594,9 @@ function VoiceUnitPicker({
                     {units === null ? (
                         <p className="py-6 text-center text-2xs text-fg-subtle">{tr.t("loading")}</p>
                     ) : units.length === 0 ? (
-                        <p className="py-6 text-center text-2xs text-fg-subtle">{tr.t("noVoice")}</p>
+                        <p className="py-6 text-center text-2xs text-fg-subtle">
+                            {tr.t("noRecordedVoice")}
+                        </p>
                     ) : (
                         <div className="max-h-72 space-y-0.5 overflow-y-auto">
                             {filtered.map(unit => {
@@ -1627,7 +1633,7 @@ function VoiceUnitPicker({
                                         <span className="shrink-0 tabular-nums text-fg-subtle">
                                             {formatDuration(unit.durationSec)}
                                         </span>
-                                        {isTaken && <span className="shrink-0 text-fg-subtle">{tr.t("added")}</span>}
+                                        {isTaken && <span className="shrink-0 text-fg-subtle">{tr.t("alreadyAdded")}</span>}
                                     </button>
                                 );
                             })}

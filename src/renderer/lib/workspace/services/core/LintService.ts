@@ -21,6 +21,7 @@ import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { storyUnreadableFinding } from "@/lib/lint/storyLoadFailure";
+import { formatLintFinishedLine } from "@/lib/lint/finishedLine";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -187,6 +188,7 @@ export class LintService extends Service<LintService> implements ILintService {
         ).nameCollisions;
 
         const localization = await this.buildLocalizationContext(localizationService);
+        const localizationKeys = await this.readLocalizationKeys(localizationService);
         const voice = await this.buildVoiceContext(voiceService);
 
         return {
@@ -219,15 +221,7 @@ export class LintService extends Service<LintService> implements ILintService {
             persistentNameCollisions,
             savedNameCollisions,
             localization,
-            // Loaded in the background from the service's own init, so it can genuinely be absent
-            // here on a sweep run seconds after a project opens - which is why the field is
-            // nullable rather than an empty set.
-            localizationKeys: safely(() => {
-                const keys = localizationService.getKeysIfLoaded()?.keys;
-                return keys
-                    ? new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]))
-                    : null;
-            }, null),
+            localizationKeys,
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
             io: this.createIo(assetsService, await this.mayProbeMedia()),
@@ -280,11 +274,7 @@ export class LintService extends Service<LintService> implements ILintService {
             consoleService.append(LINT_CONSOLE_CHANNEL, {
                 level: merged.counts.error > 0 ? "error" : merged.counts.warning > 0 ? "warning" : "success",
                 source: LINT_CONSOLE_SOURCE,
-                message: translate("lint.console.finished", {
-                    errors: merged.counts.error,
-                    warnings: merged.counts.warning,
-                    duration: `${((merged.finishedAt - merged.startedAt) / 1000).toFixed(1)}s`,
-                }),
+                message: formatLintFinishedLine(merged),
             });
             return merged;
         } finally {
@@ -457,6 +447,24 @@ export class LintService extends Service<LintService> implements ILintService {
             }
         }
         return { sourceLocale: config.sourceLocale, targetLocales, documents };
+    }
+
+    /**
+     * The named keys, waited for rather than read if already loaded.
+     *
+     * The service loads them in the background from its own init, so a sweep started seconds after
+     * a project opens - the command-line `--lint` is exactly that - would otherwise find them absent
+     * and every rule that reads a key's words would check nothing while reporting a pass. `null`
+     * still means the document could not be read, which a rule must not take for "no keys".
+     */
+    private async readLocalizationKeys(service: LocalizationService): Promise<LintContext["localizationKeys"]> {
+        try {
+            const { keys } = await service.loadKeys();
+            return new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]));
+        } catch (error) {
+            console.warn("[LintService] localization keys failed to load", error);
+            return null;
+        }
     }
 
     private async buildVoiceContext(service: VoiceService): Promise<LintContext["voice"]> {

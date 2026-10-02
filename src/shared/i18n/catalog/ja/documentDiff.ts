@@ -57,6 +57,17 @@ export const documentDiff = {
         element: "{index} 番目の要素",
         root: "ドキュメントそのもの",
     },
+    units: {
+        rows: {
+            other: "{count} 行",
+        },
+        elements: {
+            other: "要素 {count} 件",
+        },
+        nodes: {
+            other: "ノード {count} 件",
+        },
+    },
     /**
      * スペックの要約が数えているもの。`DocumentSummaryCount.key` が持つ安定したキーで引く。
      *
@@ -129,8 +140,8 @@ export const documentDiff = {
         /** 並べ替え、またはシーンの出入り。2 つの値はそれぞれの件数。 */
         chapterScenes: "シーンの一覧が変化",
         chapterOrder: "チャプターを並べ替え",
-        sceneAdded: "シーンを追加（{blocks} 行）",
-        sceneRemoved: "シーンを削除（{blocks} 行）",
+        sceneAdded: "シーンを追加（{rowCount}）",
+        sceneRemoved: "シーンを削除（{rowCount}）",
         sceneChanged: "シーンを変更",
         sceneRenamed: "名前を変更",
         sceneField: "シーンの {field}",
@@ -253,8 +264,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "インターフェースの名前を変更",
-        surfaceAdded: "サーフェスを追加（要素 {elements} 件）",
-        surfaceRemoved: "サーフェスを削除（要素 {elements} 件）",
+        surfaceAdded: "サーフェスを追加（{elementCount}）",
+        surfaceRemoved: "サーフェスを削除（{elementCount}）",
         surfaceChanged: "サーフェスを変更",
         surfaceRenamed: "名前を変更",
         /** サーフェスを組むための設計上の領域。描画の解像度ではない。 */
@@ -262,8 +273,8 @@ export const documentDiff = {
         surfaceSettings: "背景かページアニメーションを変更",
         surfaceRoot: "ルート要素が変わった",
         surfaceField: "{field} を変更",
-        componentAdded: "コンポーネントを追加（要素 {elements} 件）",
-        componentRemoved: "コンポーネントを削除（要素 {elements} 件）",
+        componentAdded: "コンポーネントを追加（{elementCount}）",
+        componentRemoved: "コンポーネントを削除（{elementCount}）",
         componentChanged: "コンポーネントを変更",
         componentRenamed: "名前を変更",
         componentField: "{field} を変更",
@@ -297,8 +308,8 @@ export const documentDiff = {
     uiGraphs: {
         /** ホストのスロットで今どのブループリントが効いているか。 */
         ownerRecord: "効いているブループリントが変わった",
-        blueprintAdded: "ブループリントを追加（ノード {nodes} 件）",
-        blueprintRemoved: "ブループリントを削除（ノード {nodes} 件）",
+        blueprintAdded: "ブループリントを追加（{nodeCount}）",
+        blueprintRemoved: "ブループリントを削除（{nodeCount}）",
         blueprintChanged: "ブループリントを変更",
         blueprintRenamed: "名前を変更",
         /** スクリプトがどのファイルを指すか。中身はディスク側にあり、この文書には入らない。 */
@@ -307,8 +318,8 @@ export const documentDiff = {
         scriptRemoved: "スクリプトを削除",
         scriptChanged: "スクリプトを変更",
         blueprintField: "{field} を変更",
-        graphAdded: "グラフを追加（ノード {nodes} 件）",
-        graphRemoved: "グラフを削除（ノード {nodes} 件）",
+        graphAdded: "グラフを追加（{nodeCount}）",
+        graphRemoved: "グラフを削除（{nodeCount}）",
         graphChanged: "グラフを変更",
         graphRenamed: "名前を変更",
         graphField: "{field} を変更",
@@ -335,6 +346,10 @@ export const documentDiff = {
         field: "{field} を変更",
         /** アセットの中身のファイルだが、この比較のどの記録もこれを指していない。名前は id の断片。 */
         orphanContent: "アセットの記録がないファイル",
+        fields: {
+            group: "グループ",
+            missingGroup: "存在しないグループ",
+        },
     },
     /**
      * 第 1 段階のプロジェクトのパレット。
@@ -748,7 +763,9 @@ export const documentDiff = {
         emptyWorkingTree: "直前のバージョンから変わっていない",
         readFailure: "この比較を読めなかった：{error}",
         incomplete: "変化した {total} 件のドキュメントのうち {shown} 件を比べた",
-        documentsOmitted: "ここに載っていないドキュメントがあと {count} 件ある",
+        documentsOmitted: {
+            other: "ここに載っていないドキュメントがあと {count} 件ある",
+        },
         unavailable: "このプロジェクトではバージョン管理を使えない",
     },
     /** 1 つのファイルの 2 つのバージョンを、専用のタブで並べて見る。ここには並べ方そのものの語だけを置く。 */
@@ -805,7 +822,9 @@ export const documentDiff = {
         takeTheirs: "相手のものを残す",
         takeAllMine: "すべて自分のものを残す",
         takeAllTheirs: "すべて相手のものを残す",
-        rowsOmitted: "ここに載っていないファイルがあと {count} 件ある。上の 2 つのリンクでまとめて選ぶ",
+        rowsOmitted: {
+            other: "ここに載っていないファイルがあと {count} 件ある。上の 2 つのリンクでまとめて選ぶ",
+        },
         /** 2 列。左が衝突しているファイル、右が選んだファイルの中の変更。 */
         fileList: "衝突しているファイル",
         decision: "どちらを残すか",

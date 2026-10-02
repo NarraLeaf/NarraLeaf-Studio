@@ -1,5 +1,5 @@
 import { resolveAssetSetForBuild } from "./assetSetMaterialization";
-import type { AssetSetRecordProblem } from "./characterAssetSets";
+import type { AssetSetRecordProblem, AssetSetRecordSlice } from "./characterAssetSets";
 import {
     blueprintAssetSlotAcceptsSets,
     forEachBlueprintAssetSlot,
@@ -38,8 +38,8 @@ export type BlueprintAssetSetResult = {
     collapsedBuildAxis: boolean;
 };
 
-/** The slice name blueprint faults report under, as an author reads it in a build console. */
-const BLUEPRINT_SLICE = "a blueprint";
+/** The part of the project blueprint faults report under. The build words it in the author's language. */
+const BLUEPRINT_SLICE: AssetSetRecordSlice = "blueprint";
 
 /**
  * Fill in a blueprint document's answers, in place.

@@ -35,6 +35,7 @@ export const properties = {
             addCreate: "创建意图",
             removeAction: "不再响应 {name}",
             answer: "响应 {name}",
+            reveal: "在输入意图中显示 {name}",
             bubble: "触发后",
             bubbleStop: "拦截冒泡",
             bubbleContinue: "继续冒泡",
@@ -64,6 +65,7 @@ export const properties = {
     linkedComponent: {
         missing: "组件缺失",
         info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转",
+        reveal: "在组件库中显示",
     },
     componentParams: {
         title: "参数",

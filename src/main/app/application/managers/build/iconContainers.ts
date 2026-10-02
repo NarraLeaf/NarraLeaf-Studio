@@ -33,15 +33,19 @@ export type IconImage = {
 };
 
 /**
- * The sizes a Windows `.ico` carries, smallest first.
+ * The sizes a Windows `.ico` carries, smallest first - every `.ico` Studio
+ * writes, the games it builds and its own icons under `resources/studio-icon`
+ * (`project/build/prepare-studio-icons.js`) alike.
  *
  * The small end is what Explorer's list view and the window's own title bar
- * draw; 256 is what the shell uses for large thumbnails and is the one size
- * electron-builder insists on - it refuses an `.ico` whose largest image is
- * under 256 with `ERR_ICON_TOO_SMALL`, so it is always written even when the
- * source is smaller and has to be upscaled to reach it.
+ * draw; 72 and 96 are the 48 and 64 icons at 150% scaling (and 96 the 48 at
+ * 200%), which the shell would otherwise shrink from 128; 256 is what the shell
+ * uses for large thumbnails and is the one size electron-builder insists on -
+ * it refuses an `.ico` whose largest image is under 256 with
+ * `ERR_ICON_TOO_SMALL`, so it is always written even when the source is smaller
+ * and has to be upscaled to reach it.
  */
-export const ICO_SIZES: readonly number[] = [16, 24, 32, 48, 64, 128, 256];
+export const ICO_SIZES: readonly number[] = [16, 24, 32, 48, 64, 72, 96, 128, 256];
 
 /**
  * Above this edge an `.ico` image is stored as a PNG rather than a bitmap.

@@ -152,7 +152,9 @@ export const uiEditor = {
         deleteReferencedDetail: {
             other: "リンクされた {count} 個のインスタンスは、リンクを外すか差し替えるまで「見つからない」と表示される",
         },
-        refs: "参照 {count}",
+        refs: {
+            other: "参照 {count}",
+        },
     },
     canvas: {
         unknownWidget: "不明なウィジェット",
@@ -176,6 +178,8 @@ export const uiEditor = {
         layerFallback: "レイヤー",
         openComponent: "コンポーネントを開く",
         unlinkComponent: "コンポーネントのリンクを外す",
+        openComponentNamed: "コンポーネント {name} を開く",
+        openPageNamed: "ページ {name} を開く",
     },
     zoom: {
         label: "拡大縮小",

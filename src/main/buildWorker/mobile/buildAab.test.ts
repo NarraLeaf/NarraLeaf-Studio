@@ -193,6 +193,23 @@ describe("buildAab", () => {
         expect(stringAt(messageAt(config, 1)!, 2)).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
+    it("tells bundletool to leave the payload uncompressed in the APKs it generates", async () => {
+        // The shell opens every payload file with AssetManager.openFd, which throws on a deflated
+        // entry. From a bundle, bundletool decides each entry's encoding, and it deflates an asset
+        // unless BundleConfig.compression (field 3) lists it in uncompressed_glob (field 1) - a
+        // glob over the APK path, without the module prefix.
+        const config = decodeMessage(bytesOf(await build(), "BundleConfig.pb"));
+        const compression = messageAt(config, 3);
+        expect(compression).toBeDefined();
+        const globs = (compression!.get(1) ?? []).map(value => {
+            if (value.wire !== "bytes") {
+                throw new Error("uncompressed_glob is not a string");
+            }
+            return value.value.toString("utf8");
+        });
+        expect(globs).toEqual(["assets/www/**"]);
+    });
+
     it("targets each native directory by its ABI", async () => {
         const directories = repeatedAt(decodeMessage(bytesOf(await build(), "base/native.pb")), 1);
         expect(directories.map(directory => stringAt(directory, 1))).toEqual(["lib/arm64-v8a", "lib/x86_64"]);

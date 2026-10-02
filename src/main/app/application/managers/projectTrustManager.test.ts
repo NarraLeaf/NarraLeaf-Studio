@@ -26,6 +26,14 @@ vi.mock("@shared/utils/persistentState", () => ({
     },
 }));
 
+// Every path below is spelled the Windows way, and what these tests pin is how the ledger keys
+// those spellings. The identity rules follow the host, so name Windows' rules here or the suite
+// asks a POSIX runner whether `D:\games\Mine\` and `d:/games/mine` are one folder.
+vi.mock("@shared/utils/recentProject", async importOriginal => {
+    const actual = await importOriginal<typeof import("@shared/utils/recentProject")>();
+    return { ...actual, normalizeProjectPath: (projectPath: string) => actual.projectPathIdentity(projectPath, true) };
+});
+
 const T1 = "2026-09-01T00:00:00.000Z";
 const T2 = "2026-09-02T00:00:00.000Z";
 
@@ -178,6 +186,23 @@ describe("ProjectTrustManager", () => {
 
         manager.revokeTrust("D:/games/imported");
         expect(manager.isTrusted("D:/games/imported/inner")).toBe(false);
+    });
+
+    it("records a yes given for a folder inside an arrival on the arrival's row", () => {
+        // The question is put for the folder the author opened, which has no row of its own inside
+        // a package or a clone; the answer has to land somewhere, or it is asked again every time.
+        manager.recordArrival("D:/imports/theirs", "package", T1);
+        expect(manager.recordArrival("D:/imports/theirs/mine", "opened", T1)).toBe(false);
+
+        expect(manager.grantTrust("D:/imports/theirs/mine", T2)).toBe(true);
+        expect(manager.isTrusted("D:/imports/theirs/mine")).toBe(true);
+        expect(manager.getRecord("D:/imports/theirs/mine")).toMatchObject({ trustedAt: T2, vouchedBy: "author" });
+        expect(manager.isTrusted("D:/imports/theirs")).toBe(true);
+    });
+
+    it("refuses a grant for a folder nothing governs", () => {
+        expect(manager.grantTrust("D:/never/met", T2)).toBe(false);
+        expect(manager.isTrusted("D:/never/met")).toBe(false);
     });
 
     it("adds no row for a folder opened inside a governed tree", () => {

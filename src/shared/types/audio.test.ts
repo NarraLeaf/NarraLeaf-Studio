@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { audioClipGain, audioClipRegionToSoundConfig, hasClipMarkers, normalizeAudioClipRegion } from "./audio";
+import {
+    AUDIO_GAIN_MIN_DB,
+    clipSoundConfig,
+    clipVolume,
+    hasClipMarkers,
+    LOOP_TO_END_OF_FILE_SECONDS,
+    normalizeAudioClipRegion,
+} from "./audio";
 
 /**
  * The region normalizer is the one place the editor and the game agree on what a clip's markers
@@ -154,65 +161,127 @@ describe("normalizeAudioClipRegion", () => {
     });
 });
 
-describe("audioClipRegionToSoundConfig", () => {
+describe("clipSoundConfig", () => {
+    const once = { volume: 1, loop: false };
+    const looping = { volume: 1, loop: true };
+
     it("seeks to the head when there is no region", () => {
-        expect(audioClipRegionToSoundConfig(null)).toEqual({ seek: 0 });
-        expect(audioClipRegionToSoundConfig(undefined)).toEqual({ seek: 0 });
+        expect(clipSoundConfig(null, looping)).toEqual({ volume: 1, seek: 0 });
+        expect(clipSoundConfig(undefined, once)).toEqual({ volume: 1, seek: 0 });
     });
 
     it("converts milliseconds to seconds", () => {
-        expect(audioClipRegionToSoundConfig({ inMs: 2400, outMs: 4960 })).toEqual({ seek: 2.4, endTime: 4.96 });
+        expect(clipSoundConfig({ inMs: 2400, outMs: 4960 }, looping)).toEqual({ volume: 1, seek: 2.4, endTime: 4.96 });
     });
 
-    it("leaves endTime off entirely when the out point is unmarked", () => {
-        const config = audioClipRegionToSoundConfig({ inMs: 2400 });
-        expect(config).toEqual({ seek: 2.4 });
+    it("leaves endTime off entirely for a clip that plays once with no out point", () => {
+        const config = clipSoundConfig({ inMs: 2400 }, once);
+        expect(config).toEqual({ volume: 1, seek: 2.4 });
         expect(config).not.toHaveProperty("endTime");
     });
 
     it("emits loopStart for an intro→loop", () => {
-        expect(audioClipRegionToSoundConfig({ inMs: 0, outMs: 84_000, loopStartMs: 12_000 })).toEqual({
+        expect(clipSoundConfig({ inMs: 0, outMs: 84_000, loopStartMs: 12_000 }, looping)).toEqual({
+            volume: 1,
             seek: 0,
             endTime: 84,
             loopStart: 12,
         });
     });
 
-    it("emits loopStart with no out point too - the file's tail is the turnaround", () => {
-        expect(audioClipRegionToSoundConfig({ inMs: 500, loopStartMs: 12_000 })).toEqual({
-            seek: 0.5,
-            loopStart: 12,
+    describe("a looping clip with no out point", () => {
+        /**
+         * The engine drops a loop point with no end time beside it and streams the clip through an
+         * element that loops from 0:00. The end of the file is the end time the author meant, and
+         * the buffer source clamps one past its buffer to that end - so the config says "past the
+         * end" and needs no measured length. Before, it carried one only for a clip whose preview had
+         * been opened.
+         */
+        it("turns around at the end of the file, from the loop point", () => {
+            expect(clipSoundConfig({ inMs: 500, loopStartMs: 12_000 }, looping)).toEqual({
+                volume: 1,
+                seek: 0.5,
+                endTime: LOOP_TO_END_OF_FILE_SECONDS,
+                loopStart: 12,
+            });
+            expect(clipSoundConfig({ loopStartMs: 12_000 }, looping)).toEqual({
+                volume: 1,
+                seek: 0,
+                endTime: LOOP_TO_END_OF_FILE_SECONDS,
+                loopStart: 12,
+            });
+        });
+
+        it("turns around at the end of the file, from the in point", () => {
+            expect(clipSoundConfig({ inMs: 2400 }, looping)).toEqual({
+                volume: 1,
+                seek: 2.4,
+                endTime: LOOP_TO_END_OF_FILE_SECONDS,
+            });
+        });
+
+        it("is past the end of any clip a game ships", () => {
+            expect(LOOP_TO_END_OF_FILE_SECONDS).toBeGreaterThanOrEqual(24 * 60 * 60);
+        });
+
+        it("stays a plain whole-file loop when it turns around at the head", () => {
+            // No end time keeps the streamed playback the engine gives a whole-file loop.
+            expect(clipSoundConfig({ inMs: 0 }, looping)).toEqual({ volume: 1, seek: 0 });
+            expect(clipSoundConfig({ inMs: 0, loopStartMs: 0 }, looping)).toEqual({ volume: 1, seek: 0 });
+            expect(clipSoundConfig({ gainDb: -6 }, looping)).not.toHaveProperty("endTime");
+        });
+
+        it("never replaces an out point the author marked", () => {
+            expect(clipSoundConfig({ inMs: 500, outMs: 60_000, loopStartMs: 12_000 }, looping)).toEqual({
+                volume: 1,
+                seek: 0.5,
+                endTime: 60,
+                loopStart: 12,
+            });
+        });
+
+        it("needs nothing but the markers, so a stored length from an earlier build changes nothing", () => {
+            const stored = { audioLoop: { inMs: 1000, loopStartMs: 5000, fileLength: { ms: 90_000, hash: "h1" } } };
+            const region = normalizeAudioClipRegion(stored);
+            expect(region).toEqual({ inMs: 1000, loopStartMs: 5000 });
+            expect(clipSoundConfig(region, looping)).toEqual({
+                volume: 1,
+                seek: 1,
+                endTime: LOOP_TO_END_OF_FILE_SECONDS,
+                loopStart: 5,
+            });
         });
     });
 
     describe("byte-for-byte compatibility with the two-marker era", () => {
         it("produces exactly the old output when the loop point is absent", () => {
-            expect(audioClipRegionToSoundConfig({ inMs: 100, outMs: 900 })).toEqual({ seek: 0.1, endTime: 0.9 });
-            expect(audioClipRegionToSoundConfig({ outMs: 900 })).toEqual({ seek: 0, endTime: 0.9 });
-            expect(audioClipRegionToSoundConfig({ inMs: 100 })).toEqual({ seek: 0.1 });
+            expect(clipSoundConfig({ inMs: 100, outMs: 900 }, looping)).toEqual({ volume: 1, seek: 0.1, endTime: 0.9 });
+            expect(clipSoundConfig({ outMs: 900 }, looping)).toEqual({ volume: 1, seek: 0, endTime: 0.9 });
+            expect(clipSoundConfig({ inMs: 100 }, once)).toEqual({ volume: 1, seek: 0.1 });
             for (const region of [{ inMs: 100, outMs: 900 }, { outMs: 900 }, { inMs: 100 }, {}]) {
-                expect(audioClipRegionToSoundConfig(region)).not.toHaveProperty("loopStart");
+                expect(clipSoundConfig(region, looping)).not.toHaveProperty("loopStart");
             }
         });
 
         it("omits loopStart when it says the same thing as seek", () => {
             // The engine returns to `seek` by default, so an equal loop point is not a difference
             // worth writing into the config.
-            const config = audioClipRegionToSoundConfig({ inMs: 2400, outMs: 4960, loopStartMs: 2400 });
-            expect(config).toEqual({ seek: 2.4, endTime: 4.96 });
+            const config = clipSoundConfig({ inMs: 2400, outMs: 4960, loopStartMs: 2400 }, looping);
+            expect(config).toEqual({ volume: 1, seek: 2.4, endTime: 4.96 });
             expect(config).not.toHaveProperty("loopStart");
         });
 
         it("omits loopStart when it is zero and the in point is unmarked", () => {
-            const config = audioClipRegionToSoundConfig({ outMs: 4960, loopStartMs: 0 });
-            expect(config).toEqual({ seek: 0, endTime: 4.96 });
+            const config = clipSoundConfig({ outMs: 4960, loopStartMs: 0 }, looping);
+            expect(config).toEqual({ volume: 1, seek: 0, endTime: 4.96 });
             expect(config).not.toHaveProperty("loopStart");
         });
     });
 
     it("survives the round trip from a stored record", () => {
         const stored = { audioLoop: { inMs: 1500, outMs: 96_000, loopStartMs: 18_500 } };
-        expect(audioClipRegionToSoundConfig(normalizeAudioClipRegion(stored))).toEqual({
+        expect(clipSoundConfig(normalizeAudioClipRegion(stored), looping)).toEqual({
+            volume: 1,
             seek: 1.5,
             endTime: 96,
             loopStart: 18.5,
@@ -221,35 +290,12 @@ describe("audioClipRegionToSoundConfig", () => {
 
     it("degrades to a plain loop when the stored loop point was out of window", () => {
         const stored = { audioLoop: { inMs: 1500, outMs: 96_000, loopStartMs: 120_000 } };
-        expect(audioClipRegionToSoundConfig(normalizeAudioClipRegion(stored))).toEqual({ seek: 1.5, endTime: 96 });
-    });
-});
-
-/**
- * The file length stands in for an out point the author did not mark, and only then: the engine
- * drops a loop point with no end time beside it, so without the length "loop back to the loop point
- * at the end of the file" reached the game as "loop the whole file".
- */
-describe("the file length a region is stored with", () => {
-    const stored = (fileLength?: { ms: number; hash: string }, extra: Record<string, number> = {}) => ({
-        audioLoop: { inMs: 1000, loopStartMs: 5000, ...extra, ...(fileLength ? { fileLength } : {}) },
+        expect(clipSoundConfig(normalizeAudioClipRegion(stored), looping)).toEqual({ volume: 1, seek: 1.5, endTime: 96 });
     });
 
-    it("stands in for the missing out point when it was measured on this file", () => {
-        const region = normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }), "h1");
-        expect(region).toEqual({ inMs: 1000, loopStartMs: 5000, lengthMs: 90_000 });
-        expect(audioClipRegionToSoundConfig(region)).toEqual({ seek: 1, endTime: 90, loopStart: 5 });
-    });
-
-    it("is ignored once the file has changed, or when the reader does not say which file it has", () => {
-        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }), "h2")).not.toHaveProperty("lengthMs");
-        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }))).not.toHaveProperty("lengthMs");
-    });
-
-    it("never overrides an out point the author marked, and never ends before a marker", () => {
-        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }, { outMs: 60_000 }), "h1"))
-            .not.toHaveProperty("lengthMs");
-        expect(normalizeAudioClipRegion(stored({ ms: 4000, hash: "h1" }), "h1")).not.toHaveProperty("lengthMs");
+    it("carries the caller's volume with the clip's gain folded in", () => {
+        expect(clipSoundConfig(null, { volume: 0.8, loop: false }).volume).toBe(0.8);
+        expect(clipSoundConfig({ gainDb: -6 }, { volume: 0.8, loop: false }).volume).toBeCloseTo(0.8 * Math.pow(10, -6 / 20), 9);
     });
 });
 
@@ -259,17 +305,34 @@ describe("the clip gain", () => {
         expect(normalizeAudioClipRegion({ audioGain: { db: 4 } })).toBeNull();
         expect(normalizeAudioClipRegion({ audioGain: { db: -120 } })).toEqual({ gainDb: -60 });
         expect(normalizeAudioClipRegion({ audioGain: { db: "loud" } })).toBeNull();
+        // An earlier build stored the loudness the gain was aligned to beside it; only the gain plays.
+        expect(normalizeAudioClipRegion({ audioGain: { db: -6, targetLufs: -16 } })).toEqual({ gainDb: -6 });
     });
 
     it("is not a marker: a clip with only a gain still plays whole", () => {
         const region = normalizeAudioClipRegion({ audioGain: { db: -6 } });
         expect(hasClipMarkers(region)).toBe(false);
-        expect(audioClipRegionToSoundConfig(region)).toEqual({ seek: 0 });
+        expect(clipSoundConfig(region, { volume: 1, loop: true })).toEqual({ volume: Math.pow(10, -6 / 20), seek: 0 });
     });
 
-    it("becomes the factor a volume is multiplied by", () => {
-        expect(audioClipGain(undefined)).toBe(1);
-        expect(audioClipGain({ gainDb: -6 })).toBeCloseTo(0.501, 3);
-        expect(audioClipGain({ gainDb: -20 })).toBeCloseTo(0.1, 6);
+    describe("clipVolume", () => {
+        it("folds the gain into a volume", () => {
+            expect(clipVolume({ gainDb: -6 }, 0.8)).toBeCloseTo(0.8 * 0.501, 3);
+            expect(clipVolume({ gainDb: -20 }, 1)).toBeCloseTo(0.1, 6);
+            // The volume defaults to unity: the clip's own level, as a voice take plays it.
+            expect(clipVolume({ gainDb: -20 })).toBeCloseTo(0.1, 6);
+        });
+
+        it("returns the volume untouched for a clip with no gain", () => {
+            expect(clipVolume(undefined, 0.8)).toBe(0.8);
+            expect(clipVolume(null, 0.35)).toBe(0.35);
+            expect(clipVolume({ inMs: 100 }, 0.35)).toBe(0.35);
+        });
+
+        it("never raises a clip, whatever the table says", () => {
+            expect(clipVolume({ gainDb: 6 }, 0.5)).toBe(0.5);
+            expect(clipVolume({ gainDb: Number.NaN }, 0.5)).toBe(0.5);
+            expect(clipVolume({ gainDb: -500 }, 1)).toBeCloseTo(Math.pow(10, AUDIO_GAIN_MIN_DB / 20), 9);
+        });
     });
 });

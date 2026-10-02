@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UPDATE_AUTO_CHECK_DELAY_MS, UPDATE_AUTO_CHECK_KEY } from "@shared/constants/update";
 import type { StartupExtras } from "../startupExtras";
 import type { BaseApp } from "../baseApp";
+import { autoUpdater } from "electron-updater";
 import { UpdateManager } from "./updateManager";
 
 // electron-updater reaches for Electron's app at import time, and none of the paths under test get
@@ -94,5 +95,52 @@ describe("UpdateManager.initialize", () => {
         vi.advanceTimersByTime(UPDATE_AUTO_CHECK_DELAY_MS * 4);
 
         expect(fetchCalls).toBe(0);
+    });
+});
+
+describe("UpdateManager.installNow", () => {
+    const realPlatform = process.platform;
+
+    beforeEach(() => {
+        // The self-updating path is the packaged Windows one; the test host may be anything.
+        Object.defineProperty(process, "platform", { value: "win32" });
+        vi.mocked(autoUpdater.on).mockClear();
+        vi.mocked(autoUpdater.quitAndInstall).mockClear();
+    });
+
+    afterEach(() => {
+        Object.defineProperty(process, "platform", { value: realPlatform });
+    });
+
+    function readyManager() {
+        const { app } = makeApp({ launchUpdateCheck: false });
+        (app as unknown as { isPackaged: () => boolean }).isPackaged = () => true;
+        const manager = new UpdateManager(app);
+        manager.initialize();
+        const downloaded = vi.mocked(autoUpdater.on).mock.calls.find(([event]) => event === "update-downloaded");
+        (downloaded?.[1] as (info: { version: string }) => void)({ version: "1.2.4" });
+        return manager;
+    }
+
+    it("runs the installer visibly and asks it to start Studio again", () => {
+        const manager = readyManager();
+        expect(manager.getState().status).toBe("ready");
+
+        manager.installNow();
+
+        // Not silent, so the installer shows its update window; and for a run that is not silent
+        // electron-updater puts --force-run on the command line from autoRunAppAfterInstall.
+        expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+        expect(autoUpdater.autoRunAppAfterInstall).toBe(true);
+    });
+
+    it("does nothing until an installer has been downloaded", () => {
+        const { app } = makeApp({ launchUpdateCheck: false });
+        const manager = new UpdateManager(app);
+        manager.initialize();
+
+        manager.installNow();
+
+        expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
     });
 });

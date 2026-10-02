@@ -57,7 +57,7 @@ vi.mock("@/lib/app/bridge", () => ({
 vi.mock("@/lib/i18n", () => ({
     translate: (key: string, params?: Record<string, unknown>) =>
         (params ? `${key}(${JSON.stringify(params)})` : key),
-    translateN: (key: string) => key,
+    translateN: (key: string, count: number) => `${key}(${JSON.stringify({ count })})`,
 }));
 
 const PROJECT_PATH = "D:/projects/demo";
@@ -366,7 +366,7 @@ describe("BuildService lint gate", () => {
 
         expect(gameBuild.start).toHaveBeenCalledTimes(1);
         expect(state.status).toBe("done");
-        expect(lines.some(line => line.level === "success" && line.message.includes("lint.console.finished")))
+        expect(lines.some(line => line.level === "success" && line.message.includes("lint.console.finishedCounts(")))
             .toBe(true);
     });
 

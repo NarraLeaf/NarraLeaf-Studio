@@ -2,10 +2,12 @@ import {
     startTransition,
     useCallback,
     useEffect,
+    useImperativeHandle,
     useMemo,
     useRef,
     useState,
     type MouseEvent,
+    type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
@@ -33,7 +35,6 @@ import { computeOutlineSignature } from "@/lib/ui-editor/interaction/outline/out
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
 import {
     isSurfaceGestureEnabled,
@@ -57,6 +58,16 @@ export type UILayersPanelProps = {
     allowAddSelectionToComponentLibrary?: boolean;
     /** Reorder, rename, visibility and every editing menu row go inert. Selection stays. */
     readOnly?: UIEditorReadOnly;
+    /**
+     * For the panel framing the outline, whose own chrome (its title row) belongs to the outline
+     * too: a right click there opens the menu a right click on the outline's empty space opens.
+     */
+    ref?: Ref<UILayersPanelHandle>;
+};
+
+export type UILayersPanelHandle = {
+    /** Open the outline's own menu - the one with no row under it - at the event's pointer. */
+    openPanelMenu: (event: MouseEvent<HTMLElement>) => void;
 };
 
 /**
@@ -165,6 +176,7 @@ export function UILayersPanel({
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
     readOnly = UI_EDITOR_WRITABLE,
+    ref,
 }: UILayersPanelProps) {
     const { t } = useTranslation();
     const [docVersion, setDocVersion] = useState(0);
@@ -213,18 +225,8 @@ export function UILayersPanel({
     const surface = document.surfaces.find(surf => surf.id === surfaceId);
     const effectiveRootId = surface ? resolveSurfaceRootElementId(document, surfaceId) : null;
     const root = effectiveRootId ? document.elements[effectiveRootId] : undefined;
-    const outlineRoot = useMemo(() => {
-        if (!root) {
-            return undefined;
-        }
-        if (root.type === OUTLINE_ROOT_WIDGET_TYPE && root.childrenIds.length === 1) {
-            const child = document.elements[root.childrenIds[0]];
-            if (isComponentEditorRootElement(child)) {
-                return child;
-            }
-        }
-        return root;
-    }, [document.elements, root]);
+    // A component's frame is the first row, like any layer: it is selected to size the component.
+    const outlineRoot = root;
     const outlineEffectiveRootId = outlineRoot?.id ?? effectiveRootId;
 
     const isLinkedTree =
@@ -291,7 +293,7 @@ export function UILayersPanel({
             if (!isSurfaceGestureEnabled("outlineVisibility", readOnly)) {
                 return;
             }
-            if (element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
+            if (element.type === OUTLINE_ROOT_WIDGET_TYPE) {
                 return;
             }
             const isHidden = element.layout.visible === false;
@@ -305,7 +307,7 @@ export function UILayersPanel({
             if (!isSurfaceGestureEnabled("outlineRename", readOnly)) {
                 return;
             }
-            if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
+            if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE) {
                 return;
             }
             void inputDialog
@@ -360,6 +362,8 @@ export function UILayersPanel({
         setMenuItems: setReadOnlyAwareMenuItems,
         allowAddSelectionToComponentLibrary,
     });
+
+    useImperativeHandle(ref, () => ({ openPanelMenu: openBlankContextMenu }), [openBlankContextMenu]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -502,7 +506,9 @@ export function UILayersPanel({
             : null;
 
     return (
-        <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
+        // `min-h-full`: the empty space under the last row is the outline's too, and a right click
+        // there is answered with the outline's menu rather than falling through to the canvas.
+        <div className="min-h-full space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
             <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
                 <div className="text-2xs leading-snug text-warning px-0.5">

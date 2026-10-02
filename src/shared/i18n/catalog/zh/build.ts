@@ -436,6 +436,19 @@ export const build = {
         one: "有 {count} 个脚本无法编译",
         other: "有 {count} 个脚本无法编译",
     },
+    assetSet: {
+        inCharacters: "角色",
+        inInterface: "界面",
+        inBlueprint: "蓝图",
+        language: "语言「{name}」",
+        variant: "变体「{name}」",
+        unfilled: "资产集「{set}」（用于 {location}）没有{value}的文件",
+        noLanguage: "资产集「{set}」（用于 {location}）没有本项目语言的文件",
+        ambiguous: "资产集「{set}」（用于 {location}）有多个{value}的文件",
+        nested: "资产集「{set}」（用于 {location}）的某个取值下还有资产集。构建不解析嵌套的资产集",
+        noValues: "资产集「{set}」（用于 {location}）没有声明变体",
+        variantUnset: "资产集「{set}」（用于 {location}）按变体变化，{variant} 没有指定所用的美术。请在 项目 ▸ 应用 ▸ 变体 中选择",
+    },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",
     contentCoverageSummary: {

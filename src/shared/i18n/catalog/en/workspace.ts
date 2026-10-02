@@ -22,7 +22,12 @@ export const workspace = {
             openTable: "Open translation table",
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
-            importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            // `{applied}` is a whole count with its noun, from `translationCount`.
+            importCounts: "Imported {applied} ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            translationCount: {
+                one: "{count} translation",
+                other: "{count} translations",
+            },
             // A language's table that could not be read, by the language's name; one of
             // `assets.reference.reason` follows it. Never the file's path.
             readFailed: "The translations for {name} could not be read.",
@@ -63,12 +68,18 @@ export const workspace = {
             scopeAll: "Everything",
             scopePending: "Untranslated and to review",
             exportAction: "Export",
-            exportDone: "Exported {count} lines to {path}",
+            exportDone: {
+                one: "Exported {count} line to {path}",
+                other: "Exported {count} lines to {path}",
+            },
             exportEmpty: "Nothing to export.",
             // Follows `workspace.shell.import.failed` as its reason.
             importUnsupported: "Studio reads CSV, XLIFF, PO and JSON.",
             // `{first}` is one of `workspace.shell.import.skipped`.
-            importWarnings: "{count} entries were skipped. First: {first}",
+            importWarnings: {
+                one: "{count} entry was skipped. First: {first}",
+                other: "{count} entries were skipped. First: {first}",
+            },
             localeMismatch: "This file is for {declared}. Import it into {name}?",
             localeMismatchDetail: "The translations are imported into the selected language regardless of what the file declares.",
         },
@@ -155,10 +166,20 @@ export const workspace = {
             importAudio: "Import audio…",
             exportDone: "Exported to {path}",
             pickupEmpty: "No outdated lines to re-record.",
-            importSummary: "Linked {linked} takes ({unmatched} unmatched, {failed} failed)",
+            // `{linked}` is a whole count with its noun, from `takeCount`.
+            importCounts: "Linked {linked} ({unmatched} unmatched, {failed} failed)",
+            takeCount: {
+                one: "{count} take",
+                other: "{count} takes",
+            },
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
-            importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
+            // `{applied}` is a whole count with its noun, from `scriptRowCount`.
+            importScriptCounts: "Applied {applied} ({unchanged} unchanged, {unknown} not voiced)",
+            scriptRowCount: {
+                one: "{count} row",
+                other: "{count} rows",
+            },
             // Beside the summary when rows of the script were skipped; the detail lists them by row.
             importScriptSkipped: {
                 one: "{count} row was skipped",
@@ -255,7 +276,7 @@ export const workspace = {
         },
         details: {
             noStories: "No stories in this project.",
-            storiesRead: "{count} story documents read.",
+            storiesRead: "Story documents read: {count}.",
         },
         tools: {
             title: "Tools",
@@ -680,6 +701,12 @@ export const workspace = {
                 one: "{count} more waiting",
                 other: "{count} more waiting",
             },
+            // Beside the time of an entry that was raised more than once. Read with
+            // translator.tn("workspace.shell.notifications.repeated", count).
+            repeated: {
+                one: "{count} time",
+                other: "{count} times",
+            },
         },
         // The custom background dialog (opened from Settings or the command palette).
         background: {
@@ -767,8 +794,14 @@ export const workspace = {
             retrySave: "Retry saving now",
             resetZoom: "Reset zoom to 100%",
             shortcuts: "Keyboard shortcuts",
-            words: "{count} words",
-            lines: "{count} lines",
+            words: {
+                one: "{count} word",
+                other: "{count} words",
+            },
+            lines: {
+                one: "{count} line",
+                other: "{count} lines",
+            },
             noStoryOpen: "No story open",
             openDashboard: "Open the project dashboard",
             openCurrentScene: "Open the current scene",
@@ -1214,7 +1247,10 @@ export const workspace = {
             // Nothing matched. Says how many were searched, because the history is paged and the
             // answer is only ever about what has been read - "Show older versions" below reaches
             // further, and this line is what tells the author that is still worth pressing.
-            filterNoMatch: "No match in the {count} versions read so far.",
+            filterNoMatch: {
+                one: "No match in the {count} version read so far.",
+                other: "No match in the {count} versions read so far.",
+            },
             today: "Today",
             yesterday: "Yesterday",
             // Comparing against a version the author picked, rather than against the row below.
@@ -1228,7 +1264,10 @@ export const workspace = {
                 compare: "Compare with {version}",
             },
             // Checkpoints are the ones Studio recorded on a timer; there are dozens on a writing day.
-            showCheckpoints: "Show {count} checkpoints",
+            showCheckpoints: {
+                one: "Show {count} checkpoint",
+                other: "Show {count} checkpoints",
+            },
             hideCheckpoints: "Hide checkpoints",
             // What a version Studio recorded on its own says, when it is read back rather than
             // written. The bytes in the repository stay English - they travel to collaborators and

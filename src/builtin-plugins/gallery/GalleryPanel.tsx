@@ -12,8 +12,7 @@ import { Images, Maximize2, Plus } from "lucide-react";
 import { ui, type PluginApp } from "narraleaf-studio/plugin";
 import { resolveCoverVariant } from "./catalog";
 import { GalleryThumb } from "./components";
-import { galleryNodeWord, useGalleryTranslator } from "./messages";
-import { GALLERY_KIND_LABELS } from "./nodes";
+import { galleryCount, galleryKindLabel, galleryTitle, useGalleryTranslator } from "./messages";
 import type { GalleryStore } from "./store";
 
 export function GalleryPanel({
@@ -49,14 +48,14 @@ export function GalleryPanel({
     return (
         <ui.Panel.Root>
             <ui.Panel.Header
-                title={tr.t("title")}
-                description={tr.t(data.items.length === 1 ? "entriesOne" : "entriesMany", { count: data.items.length })}
+                title={galleryTitle(tr)}
+                description={galleryCount(tr, "entryCountOne", "entryCountMany", data.items.length)}
                 actions={(
                     <ui.IconButton
                         size="sm"
                         variant="ghost"
                         aria-label={tr.t("openEditor")}
-                        title={tr.t("openEditor")}
+                        data-tip={tr.t("openEditor")}
                         onClick={onOpenEditor}
                     >
                         <Maximize2 size={13} />
@@ -77,11 +76,11 @@ export function GalleryPanel({
                     <ui.Panel.EmptyState
                         icon={<Images size={22} />}
                         title={tr.t(data.items.length === 0 ? "panelEmptyTitle" : "noMatches")}
-                        description={tr.t(data.items.length === 0 ? "panelEmptyHint" : "noMatchesHint")}
+                        description={tr.t(data.items.length === 0 ? "panelEmptyDetail" : "noMatchesDetail")}
                         actions={data.items.length === 0 ? (
                             <ui.Button size="sm" variant="secondary" onClick={onOpenEditor}>
                                 <Plus size={13} />
-                                {tr.t("openEditorShort")}
+                                {tr.t("openEditorButton")}
                             </ui.Button>
                         ) : undefined}
                     />
@@ -108,10 +107,10 @@ export function GalleryPanel({
                                             columns, and a track and a CG are
                                             otherwise indistinguishable here. */}
                                         <span className="block truncate text-2xs text-fg-subtle">
-                                            {galleryNodeWord(tr, GALLERY_KIND_LABELS[artwork.kind])}
+                                            {galleryKindLabel(tr, artwork.kind)}
                                             {groupName ? ` · ${groupName}` : ""}
                                             {artwork.variants.length > 1
-                                                ? ` · ${tr.t("itemsMany", { count: artwork.variants.length })}`
+                                                ? ` · ${galleryCount(tr, "itemCountOne", "itemCountMany", artwork.variants.length)}`
                                                 : ""}
                                         </span>
                                     </span>

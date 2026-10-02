@@ -1980,7 +1980,7 @@ function PuppetParamRows(props: {
                     // to its chevron, the number field left the panel, and the whole pane grew a
                     // horizontal scrollbar. `min-w-0` on each flex child is the other half of the fix -
                     // a flex item's default `min-width:auto` refuses to shrink below its content.
-                    <div key={id} className="rounded-md border border-edge/60 p-1.5">
+                    <div key={id} className="rounded-md border border-edge-subtle p-1.5">
                         <div className="flex items-end gap-1.5">
                             <div className="min-w-0 flex-1">
                                 <TextField

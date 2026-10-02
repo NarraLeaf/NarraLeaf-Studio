@@ -2555,6 +2555,11 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     // card it names looks like every other card is state that never reached the picture.
     const nodeIssue =
         nodeDiagnostics?.find(d => d.severity === "error") ?? nodeDiagnostics?.find(d => d.severity === "warning");
+    // The title's tooltip says what the node does. It sits nearer the pointer than the card's own
+    // tooltip, which carries the diagnostic, so it repeats the diagnostic first rather than hide it.
+    const titleTip = [nodeIssue?.message, catalog.description ? t(catalog.description) : undefined]
+        .filter(Boolean)
+        .join("\n\n") || undefined;
     const showEditSaveSchema = Boolean(catalog.supportsSaveSchemaPins) && Boolean(onEditSaveSchema);
     const showAddPinRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
@@ -2774,23 +2779,27 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
-                {isUnknown ? (
-                    <div className="flex items-center gap-1 text-2xs font-medium tracking-wide text-warning">
-                        <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
-                        <span>{t("blueprint.canvas.unknownNode")}</span>
+                {/* The category and title only: the fields below them in this header have their own
+                    tooltips, or none, and should not all answer with the node's description. */}
+                <div data-tip={titleTip}>
+                    {isUnknown ? (
+                        <div className="flex items-center gap-1 text-2xs font-medium tracking-wide text-warning">
+                            <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+                            <span>{t("blueprint.canvas.unknownNode")}</span>
+                        </div>
+                    ) : (
+                        <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                        <div
+                            className={`min-w-0 flex-1 leading-tight ${
+                                isUnknown ? "truncate font-mono text-2xs text-fg-muted" : "font-medium text-fg"
+                            }`}
+                        >
+                            {isUnknown ? catalog.type : resolveBlueprintNodeTitle(catalog.displayName, t)}
+                        </div>
+                        {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
                     </div>
-                ) : (
-                    <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
-                )}
-                <div className="flex items-center gap-1.5">
-                    <div
-                        className={`min-w-0 flex-1 leading-tight ${
-                            isUnknown ? "truncate font-mono text-2xs text-fg-muted" : "font-medium text-fg"
-                        }`}
-                    >
-                        {isUnknown ? catalog.type : resolveBlueprintNodeTitle(catalog.displayName, t)}
-                    </div>
-                    {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
                 </div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard

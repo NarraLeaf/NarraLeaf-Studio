@@ -176,11 +176,15 @@ export function useLayerOutlineContextMenus(params: {
     );
 
     const openBlankContextMenu = useCallback(
-        (event: MouseEvent<HTMLDivElement>) => {
+        (event: MouseEvent<HTMLElement>) => {
+            // The outline answers every right click inside it, menu or not. It sits over the
+            // canvas, inside the element the canvas menu listens on, so a click let through here
+            // opened the canvas's menu as well - on the same spot, on top of this one.
+            event.preventDefault();
+            event.stopPropagation();
             if (!effectiveRootId) {
                 return;
             }
-            event.preventDefault();
             const t = event.target as HTMLElement | null;
             if (t?.closest?.("[data-outline-row]")) {
                 return;

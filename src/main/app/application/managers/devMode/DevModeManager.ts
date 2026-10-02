@@ -23,6 +23,8 @@ import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { isProjectAssetPath } from "@shared/devMode/assetRevision";
+import type { LocaleCode } from "@shared/i18n";
+import { getMainLocale } from "../../i18n";
 
 type DevModeSession = {
     id: string;
@@ -569,6 +571,7 @@ export class DevModeManager {
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
+            const locale = this.interfaceLocale();
             const bundle = await this.bundleSource.load({
                 projectPath: session.sourcePath,
                 bundleId: session.id,
@@ -582,6 +585,10 @@ export class DevModeManager {
                 // DLC on expects the next reload to have it. Always stated, empty included - a Dev
                 // Mode run is the game a player bought until the author says which extras to add.
                 includedDlc: runDlc,
+                // The interface's language: a notice this assembly prints - an asset set it cannot
+                // resolve, a project file a newer Studio wrote - is the sentence a build would refuse
+                // with, and reads the way the rest of the window does.
+                ...(locale ? { locale } : {}),
                 onNotice: message => this.emitWorkspaceConsoleLog(session, {
                     level: "info",
                     source: "Dev Mode",
@@ -603,6 +610,19 @@ export class DevModeManager {
                 message: `Dev Mode bundle failed:\n${message}`,
             });
             this.queueSessionError(session, message);
+        }
+    }
+
+    /**
+     * The language the interface is shown in, or none when it cannot be read - an app a unit test
+     * stands up has no stored language and no Electron to ask. None leaves the assembly's sentences
+     * in the fallback language, which is what every Dev Mode run printed before it passed one.
+     */
+    private interfaceLocale(): LocaleCode | undefined {
+        try {
+            return getMainLocale(this.app);
+        } catch {
+            return undefined;
         }
     }
 

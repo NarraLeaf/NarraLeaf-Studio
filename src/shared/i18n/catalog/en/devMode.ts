@@ -56,8 +56,9 @@ export const devMode = {
         viaPlayHead: "where playback was",
         stack: "Stack",
         dismissAll: "Dismiss all ({count})",
-        // See `empty` above for why the run is named.
-        summary: "{errors} errors · {warnings} warnings in this run",
+        // See `empty` above for why the run is named. Each slot is one whole count with its noun,
+        // from `common.count.*`.
+        counts: "{errors} · {warnings} in this run",
     },
     // The drawer's panels are named for their SUBJECT, one word each: Story, Interface, Debugger.
     // They are parallel on purpose - "Story Runtime" and "Blueprint DevTools" beside each other read

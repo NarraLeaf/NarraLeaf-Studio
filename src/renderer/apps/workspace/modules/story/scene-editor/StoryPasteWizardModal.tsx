@@ -211,10 +211,10 @@ export function StoryPasteWizardModal(props: {
             footer={
                 <div className="flex w-full items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
-                        {t("story.paste.totals", {
+                        {t("story.paste.totalCounts", {
                             dialogue: plan.counts.dialogue,
                             narration: plan.counts.narration,
-                            created: plan.charactersToCreate.length,
+                            created: tn("story.paste.newCharacterCount", plan.charactersToCreate.length),
                         })}
                     </span>
                     <button

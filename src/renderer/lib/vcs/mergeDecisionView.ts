@@ -7,7 +7,7 @@ import type {
     VcsMergeSideChoice,
     VcsMergeState,
 } from "@shared/types/vcs";
-import type { LabelTranslator } from "./documentChangeView";
+import { spellLabelCounts, type LabelTranslator } from "./documentChangeView";
 import { documentNameOf, numberRepeatedNames, type DocumentName, type DocumentNameContext } from "./documentName";
 import { elideGeneratedIdentifiers, readableChangePath } from "./identifierDisplay";
 
@@ -205,7 +205,7 @@ export function resolveMergeDecisionLabel(
     }
     // Cast for `resolveDocumentChangeLabel`'s reason: a producer's key is a plain string by
     // contract, and one with no entry renders as itself rather than as nothing.
-    const text = translator.t(decision.label.key as TranslationKey, { ...decision.label.params });
+    const text = translator.t(decision.label.key as TranslationKey, spellLabelCounts(decision.label.params, translator));
     return decision.subject === undefined
         ? { primary: text, untranslated: false }
         : { primary: decision.subject, detail: text, untranslated: false };
@@ -246,6 +246,12 @@ export interface MergeValueView {
     readonly hidden: number;
 }
 
+/** Both sides of one decision, as the two boxes of its row draw them. */
+export interface MergeSidesView {
+    readonly mine: MergeValueView;
+    readonly theirs: MergeValueView;
+}
+
 /**
  * How far into a value the field names go before what is left becomes one line of JSON.
  *
@@ -278,7 +284,7 @@ export const MERGE_VALUE_MAX_DEPTH = 3;
 export function describeMergeSides(
     mine: DocumentMergeSide,
     theirs: DocumentMergeSide,
-): { readonly mine: MergeValueView; readonly theirs: MergeValueView } {
+): MergeSidesView {
     const ABSENT: MergeValueView = { absent: true, lines: [], hidden: 0 };
     if (!mine.present && !theirs.present) {
         return { mine: ABSENT, theirs: ABSENT };

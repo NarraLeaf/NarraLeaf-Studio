@@ -1,10 +1,16 @@
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { HelpTrigger } from "@/lib/help";
 import { DetachedTitleBarControls, useDetachedTitleBar } from "@/lib/components/layout";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import {
+    EditorSidebarResizeHandle,
+    editorSidebarCssWidth,
+    useEditorSidebarWidth,
+} from "@/apps/workspace/components/ui/EditorSidebar";
+import { EDITOR_SIDEBAR_INSET_PROPERTY } from "@/lib/components/layout/editorSidebarInset";
 
 type Props = {
     header: ReactNode;
@@ -56,6 +62,10 @@ export function BlueprintEditorLayout({
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
     const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
+    const panelWidth = editorSidebarCssWidth("blueprintLayers", useEditorSidebarWidth("blueprintLayers"));
+    // The canvas's margin follows the panel's slide when it opens and closes; while the panel is
+    // being dragged it has to follow the pointer instead, not trail 200ms behind it.
+    const [resizingPanel, setResizingPanel] = useState(false);
 
     const setLeftCollapsed = (collapsed: boolean) => {
         if (memberPanelCollapsed === undefined) {
@@ -87,7 +97,8 @@ export function BlueprintEditorLayout({
         };
     }, [onMemberPanelFocusContainedChange]);
 
-    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex w-56 shrink-0 flex-col border-r border-edge bg-surface-sunken transition-transform duration-200 ease-out ${
+    // No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
+    const leftPanelClasses = `absolute inset-y-0 left-0 z-10 flex shrink-0 flex-col bg-surface-sunken transition-transform duration-200 ease-out ${
         isLeftCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
     }`;
 
@@ -116,8 +127,15 @@ export function BlueprintEditorLayout({
                 {headerActions ? <div className="no-drag flex items-center">{headerActions}</div> : null}
                 <DetachedTitleBarControls />
             </header>
-            <div className="relative flex min-h-0 min-w-0 flex-1">
-                <aside className={leftPanelClasses}>
+            <div
+                className="relative flex min-h-0 min-w-0 flex-1"
+                // Over a graph the panel covers the canvas's left edge, and the canvas's tool bar keeps
+                // clear of it (see `editorSidebarInset`); beside a script it covers nothing.
+                style={{
+                    [EDITOR_SIDEBAR_INSET_PROPERTY]: canvasUnderPanel && !isLeftCollapsed ? panelWidth : "0px",
+                } as CSSProperties}
+            >
+                <aside className={leftPanelClasses} style={{ width: panelWidth }}>
                     <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
                         <span className="text-2xs font-medium text-fg-subtle">
                             {t("blueprint.panelLabel")}
@@ -134,6 +152,11 @@ export function BlueprintEditorLayout({
                     <div ref={memberPanelScrollRef} className="min-h-0 flex-1 overflow-y-auto p-2">
                         {memberTree}
                     </div>
+                    <EditorSidebarResizeHandle
+                        id="blueprintLayers"
+                        edge="right"
+                        onDraggingChange={setResizingPanel}
+                    />
                 </aside>
                 {isLeftCollapsed ? (
                     <button
@@ -150,9 +173,9 @@ export function BlueprintEditorLayout({
                         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface",
                         // Matches the panel's own slide, so the two move together rather than the
                         // canvas jumping to its new width a beat before or after.
-                        "transition-[margin] duration-200 ease-out",
-                        !canvasUnderPanel && !isLeftCollapsed && "ml-56",
+                        !resizingPanel && "transition-[margin] duration-200 ease-out",
                     )}
+                    style={!canvasUnderPanel && !isLeftCollapsed ? { marginLeft: panelWidth } : undefined}
                 >
                     {canvas}
                 </main>

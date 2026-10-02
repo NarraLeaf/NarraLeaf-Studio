@@ -21,7 +21,6 @@ import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { Select } from "@/lib/components/elements/Select";
 import { Component, MoreHorizontal, Search, X } from "lucide-react";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { useTranslation } from "@/lib/i18n";
 import {
     toReadOnlyDockerBarItems,
@@ -30,6 +29,10 @@ import {
 } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { TooltipGroup } from "@/lib/tooltip";
+import { CANVAS_FREE_CENTRE_LEFT } from "@/lib/components/layout/editorSidebarInset";
+
+/** The middle of the canvas the outline leaves free, which is the whole canvas where none is set. */
+const DOCKER_BAR_POSITION: React.CSSProperties = { left: CANVAS_FREE_CENTRE_LEFT };
 
 // Props
 type UIEditorDockerBarProps = {
@@ -903,9 +906,9 @@ export function UIEditorDockerBar({
         const doc = documentService.getDocument();
         return selection.data.elementIds
             .map((elementId) => doc.elements[elementId])
-            .filter((element): element is UIElement =>
-                Boolean(element) && element.type !== "nl.root" && !isComponentEditorRootElement(element)
-            );
+            // A component's frame gets its container's bar like any container; a page's root is not
+            // on the surface to be edited.
+            .filter((element): element is UIElement => Boolean(element) && element.type !== "nl.root");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selection, surfaceId, documentService, docVersion]);
     const selectedElement = selectedElements[selectedElements.length - 1] ?? null;
@@ -987,7 +990,8 @@ export function UIEditorDockerBar({
 
     return (
         <div className="pointer-events-none absolute inset-0 z-20">
-            <div className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2">
+            {/* Centred in the part of the canvas the outline leaves free; see `editorSidebarInset`. */}
+            <div className="pointer-events-auto absolute bottom-3 -translate-x-1/2" style={DOCKER_BAR_POSITION}>
                 <DockerBarAnimatedWidthShell>
                     {showMultiSelectDocker ? (
                         <MultiSelectDockerBar items={toReadOnlyDockerBarItems(multiSelectItems, readOnly)} />

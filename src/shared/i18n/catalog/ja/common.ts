@@ -76,4 +76,15 @@ export const common = {
     error: "エラー",
     warning: "警告",
     untitled: "無題",
+    count: {
+        errors: {
+            other: "エラー {count} 件",
+        },
+        warnings: {
+            other: "警告 {count} 件",
+        },
+        infos: {
+            other: "情報 {count} 件",
+        },
+    },
 } satisfies LocaleNamespace<"common">;

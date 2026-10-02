@@ -74,6 +74,14 @@ describe("installRuntimeLogSink", () => {
         expect(console.warn).toHaveBeenCalledWith("[GameRuntime] something to say");
     });
 
+    it("writes a line to the file alone when asked, for a caller that prints it itself", () => {
+        // A refused launch puts its line on stderr in its own shape; the mirror would print it twice.
+        installRuntimeLogSink(dir)("error", "refusing to start: this build does not accept --x", { console: false });
+
+        expect(fs.readFileSync(runtimeLogPath(dir), "utf-8")).toContain("[ERROR] refusing to start: this build does not accept --x");
+        expect(console.error).not.toHaveBeenCalled();
+    });
+
     it("does not throw when the log cannot be written at all", () => {
         // A profile directory that is really a file: nothing can be created under it.
         const blocked = path.join(dir, "blocked");

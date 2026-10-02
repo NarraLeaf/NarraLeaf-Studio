@@ -493,13 +493,16 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
  * narrowed context does not reach anyway, and a stray `scope` is worse than
  * ignored, since `resolveEffectiveBlueprintNodePins` reads the mere presence of
  * one as "widget-scoped variant" and strips the node's element pin.
+ *
+ * `description` goes too: it is a key into Studio's own catalog, and a plugin has no keys there -
+ * a string of its own would be looked up as one and drawn back raw.
  */
 function toEditorBlueprintNodeDef(
     def: PluginBlueprintNodeDef,
     game: RuntimePluginGame,
 ): BlueprintNodeDef {
-    const { scope: _scope, requiresHostApi: _requiresHostApi, ...declared } = def as PluginBlueprintNodeDef
-        & Partial<Pick<BlueprintNodeDef, "scope" | "requiresHostApi">>;
+    const { scope: _scope, requiresHostApi: _requiresHostApi, description: _description, ...declared } =
+        def as PluginBlueprintNodeDef & Partial<Pick<BlueprintNodeDef, "scope" | "requiresHostApi" | "description">>;
     return {
         ...declared,
         execute: hostCtx => def.execute({

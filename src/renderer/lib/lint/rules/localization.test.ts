@@ -3,6 +3,8 @@ import type { LocalizationDocument, LocalizationUnit } from "@shared/types/local
 import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION } from "@shared/types/localization";
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { StoryBlock } from "@shared/types/story";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { createTestLintContext } from "../testContext";
 import type { LintContext } from "../context";
 import type { LintFinding, LintRuleId } from "../types";
@@ -295,5 +297,182 @@ describe("localization/orphan", () => {
 
     it("is silent when the project has no localization", async () => {
         expect(await run("localization/orphan", createTestLintContext())).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Interface text: widgets reading their words through a named key or their own unit
+// ---------------------------------------------------------------------------
+
+function widget(id: string, type: string, props: Record<string, unknown>, name?: string): UIElement {
+    return {
+        id,
+        type,
+        parentId: "root",
+        childrenIds: [],
+        layout: { x: 0, y: 0, width: 10, height: 10 },
+        ...(name ? { name } : {}),
+        props,
+    } as UIElement;
+}
+
+/** One page per entry, each holding the given widgets under its own root, plus any components. */
+function interfaceDocument(
+    pages: Record<string, UIElement[]>,
+    components: UIDocument["components"] = [],
+): UIDocument {
+    const elements: Record<string, UIElement> = {};
+    const surfaces = Object.entries(pages).map(([name, children], index) => {
+        const rootId = `root-${index}`;
+        elements[rootId] = {
+            id: rootId,
+            type: "nl.root",
+            parentId: null,
+            childrenIds: children.map(child => child.id),
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+        } as UIElement;
+        for (const child of children) {
+            elements[child.id] = child;
+        }
+        return { id: index === 0 ? MAIN_APP_SURFACE_ID : `page-${index}`, kind: "appSurface", name, rootElementId: rootId };
+    });
+    return { surfaces, elements, components } as unknown as UIDocument;
+}
+
+function interfaceContext(
+    document: UIDocument,
+    units: Record<string, LocalizationUnit>,
+    keys: Record<string, string> | null = {},
+): LintContext {
+    return createTestLintContext({
+        uiDocument: document,
+        localizationKeys: keys ? new Map(Object.entries(keys)) : null,
+        localization: {
+            sourceLocale: "en",
+            targetLocales: ["en", "ja"],
+            documents: new Map([["ja", documentOf("ja", units)]]),
+        },
+    });
+}
+
+const TITLE_ID = "title";
+const TITLE_UNIT = `ui:${TITLE_ID}.text`;
+
+describe("localization/missing on interface text", () => {
+    it("reports a widget's own unit and a named key the target locale has no row for", async () => {
+        const document = interfaceDocument({
+            Title: [
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true }, "Game title"),
+                widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
+            ],
+        });
+        const findings = await run("localization/missing", interfaceContext(document, {}, { "nav.save": "Save" }));
+        expect(findings.map(entry => [entry.messageKey, entry.messageParams])).toEqual([
+            ["lint.rule.localizationMissing.messageInterface", { locale: "ja", text: "Summer Rain" }],
+            ["lint.rule.localizationMissing.messageInterface", { locale: "ja", text: "Save" }],
+        ]);
+        expect(findings[0].location).toMatchObject({ kind: "surface", elementId: TITLE_ID, elementName: "Game title" });
+        expect(findings[0].target).toEqual({ kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID });
+        // The key's translation is written in the key's row, so that is where the finding leads.
+        expect(findings[1].target).toEqual({ kind: "localizationKey", keyName: "nav.save" });
+    });
+
+    it("is quiet once both rows are translated", async () => {
+        const document = interfaceDocument({
+            Title: [
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true }),
+                widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
+            ],
+        });
+        const findings = await run(
+            "localization/missing",
+            interfaceContext(
+                document,
+                { [TITLE_UNIT]: unit("夏の雨", "Summer Rain"), "key:nav.save": unit("セーブ", "Save") },
+                { "nav.save": "Save" },
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("charges a key shared by several pages once, at the first widget that reads it", async () => {
+        const document = interfaceDocument({
+            Save: [widget("save-back", "nl.button", { label: "Back", localizationKey: "nav.back" })],
+            Load: [widget("load-back", "nl.button", { label: "Back", localizationKey: "nav.back" })],
+        });
+        const findings = await run("localization/missing", interfaceContext(document, {}, { "nav.back": "Back" }));
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ kind: "surface", elementId: "save-back" });
+    });
+
+    it("leaves out text nothing translates, a key with no registered words, and keys it could not read", async () => {
+        const document = interfaceDocument({
+            Title: [
+                widget("plain", "nl.text", { text: "Version 1.0" }),
+                widget("blank", "nl.text", { text: "  ", localizable: true }),
+                widget("dangling", "nl.button", { label: "Gallery", localizationKey: "nav.gallery" }),
+                widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
+            ],
+        });
+        expect(await run("localization/missing", interfaceContext(document, {}, {}))).toEqual([]);
+        expect(await run("localization/missing", interfaceContext(document, {}, null))).toEqual([]);
+    });
+
+    it("files a component definition's widget under the definition", async () => {
+        const card = {
+            id: "card",
+            name: "Slot card",
+            rootElementId: "card-empty",
+            elements: {
+                "card-empty": widget("card-empty", "nl.text", { text: "Empty", localizationKey: "slot.empty" }),
+            },
+        };
+        const document = interfaceDocument({ Title: [] }, [card] as unknown as UIDocument["components"]);
+        const findings = await run("localization/missing", interfaceContext(document, {}, { "slot.empty": "Empty" }));
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ kind: "component", componentId: "card", elementId: "card-empty" });
+    });
+
+    it("is silent when the project has no second language", async () => {
+        const document = interfaceDocument({
+            Title: [widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true })],
+        });
+        expect(await run("localization/missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+});
+
+describe("localization/stale on interface text", () => {
+    it("reports a translation made before the words were rewritten, and not an absent one", async () => {
+        const document = interfaceDocument({
+            Title: [
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain, Again", localizable: true }),
+                widget("load", "nl.button", { label: "Load", localizationKey: "nav.load" }),
+                widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
+            ],
+        });
+        const findings = await run(
+            "localization/stale",
+            interfaceContext(
+                document,
+                { [TITLE_UNIT]: unit("夏の雨", "Summer Rain"), "key:nav.load": unit("ロード", "Load game") },
+                { "nav.load": "Load", "nav.save": "Save" },
+            ),
+        );
+        expect(findings.map(entry => [entry.messageKey, entry.messageParams])).toEqual([
+            ["lint.rule.localizationStale.messageInterface", { locale: "ja", text: "Summer Rain, Again" }],
+            ["lint.rule.localizationStale.messageInterface", { locale: "ja", text: "Load" }],
+        ]);
+    });
+
+    it("hashes a named key against its registered words, not the literal left on the button", async () => {
+        // The button still says "Save game" from before it was bound; the game shows the key's words.
+        const document = interfaceDocument({
+            Title: [widget("save", "nl.button", { label: "Save game", localizationKey: "nav.save" })],
+        });
+        const findings = await run(
+            "localization/stale",
+            interfaceContext(document, { "key:nav.save": unit("セーブ", "Save") }, { "nav.save": "Save" }),
+        );
+        expect(findings).toEqual([]);
     });
 });

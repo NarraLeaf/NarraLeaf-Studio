@@ -14,18 +14,27 @@ function read(stored: Record<string, unknown>) {
 }
 
 describe("readBackgroundSettings: plates", () => {
-    it("leaves the editor clear and the docks solid on a profile that has never set them", () => {
+    it("keeps the editor and the docks solid on a profile that has never set them", () => {
+        // A wallpaper must not reach the text the author reads and writes until they ask it to.
         const settings = read({ [BACKGROUND_KEYS.image]: "a.png" });
-        expect(settings.editorFill).toBe(false);
+        expect(settings.editorFill).toBe(true);
+        expect(settings.editorOpacity).toBe(100);
         expect(settings.sidebarFill).toBe(true);
         expect(settings.sidebarOpacity).toBe(100);
     });
 
     it("keeps a stored switch and ignores anything that is not a boolean", () => {
-        expect(read({ [BACKGROUND_KEYS.editorFill]: true }).editorFill).toBe(true);
+        expect(read({ [BACKGROUND_KEYS.editorFill]: false }).editorFill).toBe(false);
         expect(read({ [BACKGROUND_KEYS.sidebarFill]: false }).sidebarFill).toBe(false);
-        expect(read({ [BACKGROUND_KEYS.editorFill]: "true" }).editorFill).toBe(false);
+        expect(read({ [BACKGROUND_KEYS.editorFill]: "false" }).editorFill).toBe(true);
         expect(read({ [BACKGROUND_KEYS.sidebarFill]: 0 }).sidebarFill).toBe(true);
+    });
+
+    it("reads what an old editor surface opacity was carried into", () => {
+        // `editor.surfaceOpacity` 5 is below the slider's floor; the plate comes back at the floor.
+        const settings = read({ [BACKGROUND_KEYS.editorFill]: true, [BACKGROUND_KEYS.editorOpacity]: 5 });
+        expect(settings.editorFill).toBe(true);
+        expect(settings.editorOpacity).toBe(10);
     });
 
     it("clamps an opacity into the slider's range", () => {
@@ -50,10 +59,14 @@ describe("backgroundPlateAlpha", () => {
         expect(backgroundPlateAlpha(true, 100)).toBe("1");
     });
 
-    it("publishes one property per plate", () => {
+    it("publishes one property per plate, both opaque by default", () => {
         expect(backgroundPlateStyle(DEFAULT_BACKGROUND)).toEqual({
-            [BACKGROUND_EDITOR_ALPHA_VAR]: "0",
+            [BACKGROUND_EDITOR_ALPHA_VAR]: "1",
             [BACKGROUND_SIDEBAR_ALPHA_VAR]: "1",
+        });
+        expect(backgroundPlateStyle({ ...DEFAULT_BACKGROUND, editorFill: false, sidebarOpacity: 60 })).toEqual({
+            [BACKGROUND_EDITOR_ALPHA_VAR]: "0",
+            [BACKGROUND_SIDEBAR_ALPHA_VAR]: "0.6",
         });
     });
 });

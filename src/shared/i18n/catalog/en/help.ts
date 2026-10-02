@@ -308,7 +308,7 @@ export const help = {
             title: "Asset sets",
             body:
                 "An asset set is one library entry standing for several files that differ by language or by "
-                + "build variant. A story row names the set instead of a file, and the game uses the file "
+                + "build variant. A field can name the set instead of a file, and the game uses the file "
                 + "that matches.\n"
                 + "\n"
                 + "A set stays in the folder it was created in, and its files are listed inside it rather "
@@ -320,8 +320,9 @@ export const help = {
                 + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
                 + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
-                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
-                + "appearances and interface widgets accept a file.",
+                + "- Story rows, character appearances and dialog avatars, images, backgrounds and videos in "
+                + "the interface, and image and sound fields in blueprints accept a set, and their pickers "
+                + "list sets under Asset sets. Font fields accept a file.",
         },
         assetSetAxes: {
             title: "What a set varies by",
@@ -415,8 +416,8 @@ export const help = {
                 + "- Under the waveform, the loop seam shows the end of the loop beside the point it returns to. "
                 + "Dragging either half sideways moves that mark. Audition seam plays a few seconds either side of it.\n"
                 + "- Levels lists the peak, the loudness, the silence at each end and any clipping.\n"
-                + "- Gain lowers the clip's volume wherever the game plays it. Align sets it from the measured "
-                + "loudness, so clips aligned to the same target play at the same level. A clip cannot be made louder.\n"
+                + "- Gain lowers the clip's volume wherever the game plays it. Align loudness sets it from the "
+                + "measured loudness, so every aligned clip plays at the same level. A clip cannot be made louder.\n"
                 + "- Clear all markers plays and loops the whole file again.\n"
                 + "- Scrolling with Option (Alt) held magnifies the waveform vertically. Only the display changes.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
@@ -537,7 +538,12 @@ export const help = {
                 + "\n"
                 + "A scrolling list is the one exception, and only for a scroll: it keeps the scroll while it "
                 + "has somewhere left to travel and lets it through once it does not. That is what lets one "
-                + "more pull at the bottom of a list close the page the list is in.",
+                + "more pull at the bottom of a list close the page the list is in.\n"
+                + "\n"
+                + "Keys go to one place at a time: the modal layer on top, or the page on top, or, while the "
+                + "story is on screen with nothing over it, the interfaces on the stage such as the dialogue "
+                + "box. A key held down fires its action once. When a button or list row has the keyboard "
+                + "focus, Enter and Space press it and fire no action.",
         },
         inputActionsInBlueprints: {
             title: "Actions in blueprints",
@@ -576,6 +582,7 @@ export const help = {
                 + "- A placement can be moved, resized and rotated. Changing anything else requires unlinking it "
                 + "first, after which it no longer follows the component.\n"
                 + "- The library states how many placements each component has.\n"
+                + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
                 + "unlinked.",
         },

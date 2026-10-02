@@ -330,7 +330,9 @@ export const assets = {
         noneFoundHint: "上で選んだ種類を確かめ、次にフォルダを確かめる。書き出し側が作ったフォルダである必要がある",
         entry: "エントリ",
         /** 行の副題。複製する前に、そのフォルダが何を持っているか。 */
-        fileSummary: "{count} ファイル · {size}",
+        fileSummary: {
+            other: "{count} ファイル · {size}",
+        },
         selectAll: "すべて選択",
         selectNone: "選択を解除",
         importAction: "読み込む",
@@ -387,6 +389,7 @@ export const assets = {
             locale: "言語",
             release: "バリアント",
         },
+        deletedVariant: "削除されたバリアント",
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",
@@ -464,7 +467,10 @@ export const assets = {
         success: {
             other: "{count} ファイルを書き出した",
         },
-        partial: "{exported} ファイルを書き出し、{failed} ファイルは書き出せなかった",
+        partialCounts: "{exported}を書き出し、{failed} ファイルは書き出せなかった",
+        fileCount: {
+            other: "{count} ファイル",
+        },
         partialTitle: "書き出せなかったファイルがある",
         failed: "書き出しに失敗：{error}",
         reason: {
@@ -496,8 +502,16 @@ export const assets = {
         categoryMapping: "タグの区分の割り当て",
         exampleFilename: "ファイル名の例：{filename}",
         categoryPlaceholder: "タグの区分（例：char、emo）",
-        moreFiles: "…ほか {count} ファイル",
-        summary: "{files} ファイルに合計 {tags} 個のタグを付ける",
+        moreFiles: {
+            other: "…ほか {count} ファイル",
+        },
+        tagCounts: "{files}に合計 {tags}を付ける",
+        tagCount: {
+            other: "{count} 個のタグ",
+        },
+        fileCount: {
+            other: "{count} ファイル",
+        },
         applying: "適用している…",
         applyTags: "タグを適用",
         parseFailedTitle: "マジックタグの解析に失敗",
@@ -536,9 +550,8 @@ export const assets = {
             clearMarkers: "すべてのマーカーを消す",
             gain: "ゲイン",
             gainTip: "ゲーム内でこのクリップの音量を下げる。上げることはできない",
-            target: "目標ラウドネス",
-            align: "合わせる",
-            alignTip: "このクリップが目標のラウドネスで鳴るようにゲインを決める。もともと小さいクリップはそのまま",
+            align: "ラウドネスを揃える",
+            alignTip: "測定したラウドネスからゲインを決め、揃えたクリップはすべて同じ大きさで鳴る。もともと小さいクリップはそのまま",
             seamEnd: {
                 out: "アウト点",
                 clipEnd: "クリップの末尾",

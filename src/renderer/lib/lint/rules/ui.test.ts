@@ -141,6 +141,33 @@ describe("ui/unlocalized-text", () => {
         expect(await run("ui/unlocalized-text", unlocalizedContext(byImplicitUnit))).toEqual([]);
     });
 
+    it("says nothing about a placeholder whose words come from a value binding", async () => {
+        // A backlog row's line, a choice row's text, an auto-save row's quote: the binding writes the
+        // prop before the widget draws it, so the literal is never read - and a key or the implicit
+        // unit put there would be resolved after the binding and replace the bound words.
+        const rowField = onePage(textWidget({ text: "Speaker" }));
+        rowField.elements.label.valueBindings = { text: { kind: "listItemField", fieldId: "character" } };
+        const valueBlueprint = onePage(
+            element({ id: "start", type: "nl.button", name: "Start", props: { label: "Continue" } }),
+        );
+        valueBlueprint.elements.start.valueBindings = {
+            label: { kind: "blueprintValue", blueprintId: "bp-label", valueType: "string" },
+        };
+
+        expect(await run("ui/unlocalized-text", unlocalizedContext(rowField))).toEqual([]);
+        expect(await run("ui/unlocalized-text", unlocalizedContext(valueBlueprint))).toEqual([]);
+    });
+
+    it("still reports a literal when only some other prop of the widget is bound", async () => {
+        // Binding whether a row shows the text is not binding what it says.
+        const document = onePage(textWidget({ text: "Locked" }));
+        document.elements.label.valueBindings = { "layout.visible": { kind: "listItemField", fieldId: "locked" } };
+
+        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
+
+        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Locked"]);
+    });
+
     it("says nothing about strings with no words in them", async () => {
         for (const text of ["", "   ", "1,250", "12:30", "…", "→", "100%"]) {
             expect(

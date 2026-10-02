@@ -339,6 +339,7 @@ class BlueprintNodeDefinitionsRegistry {
             throw new Error(`[BlueprintNodeRegistry] Duplicate node type: ${def.type}`);
         }
         this.validatePorts(def);
+        this.validateAlternativeInputs(def);
         this.validateDynamicInputPins(def);
         this.validateGraphKinds(def);
         this.byType.set(def.type, def);
@@ -500,6 +501,44 @@ class BlueprintNodeDefinitionsRegistry {
                         `[BlueprintNodeRegistry] allowInlineLiteral requires a supported inline valueType: ${def.type}.${p.id}`,
                     );
                 }
+            }
+        }
+    }
+
+    /**
+     * A group of alternative inputs names static data inputs only, at least two of them, and a pin
+     * belongs to one group at most. A misspelt member would otherwise turn the group into a single
+     * required pin, or into one that can never be answered, and the first anyone heard of it would
+     * be a warning on every graph using the node.
+     */
+    private validateAlternativeInputs(def: BlueprintNodeDef): void {
+        const groups = def.alternativeInputs;
+        if (!groups) {
+            return;
+        }
+        const dataInputIds = new Set(
+            def.pins.filter(p => p.kind === "input" && p.semantic === "data").map(p => p.id),
+        );
+        const grouped = new Set<string>();
+        for (const group of groups) {
+            const distinct = new Set(group);
+            if (distinct.size < 2 || distinct.size !== group.length) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} alternativeInputs group needs two or more distinct pins: ${group.join(", ")}`,
+                );
+            }
+            for (const pinId of group) {
+                if (!dataInputIds.has(pinId)) {
+                    throw new Error(
+                        `[BlueprintNodeRegistry] Node ${def.type} alternativeInputs names a pin that is not a data input: ${pinId}`,
+                    );
+                }
+                if (grouped.has(pinId)) {
+                    throw new Error(
+                        `[BlueprintNodeRegistry] Node ${def.type} alternativeInputs puts ${pinId} in two groups`,
+                    );
+                }
+                grouped.add(pinId);
             }
         }
     }

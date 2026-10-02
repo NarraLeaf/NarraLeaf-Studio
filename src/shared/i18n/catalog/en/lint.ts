@@ -52,8 +52,8 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
-            // The variant is named as the tags it is made of, because writing those tags on a file
-            // is the fix. The file that would resolve is not named: it does not exist yet.
+            // The variant is a language's code or an edition's name, never the tag it is stored as:
+            // an edition's id is a uuid. The file that would resolve is not named: it does not exist yet.
             message: "{set} has no file for {variant}",
             messageAmbiguous: "{set} has {count} files for {variant}",
             messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
@@ -380,7 +380,11 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "Condition nothing can change",
             description: "A variable a condition tests, that nothing in the project ever assigns",
-            message: "{variable} is tested by {count} condition(s) but nothing ever sets it",
+            message: "{variable} is tested by {conditions} but nothing ever sets it",
+            conditionCount: {
+                one: "{count} condition",
+                other: "{count} conditions",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "Random outside an assignment",
@@ -401,13 +405,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "Missing translation",
-            description: "A line with no translation in a target language",
+            description: "A line or interface text with no translation in a target language",
             message: "No {locale} translation",
+            messageInterface: "No {locale} translation of {text}",
         },
         localizationStale: {
             title: "Stale translation",
             description: "The source line changed after it was translated",
             message: "{locale} translation is older than the line",
+            messageInterface: "{locale} translation of {text} is older than the text",
         },
         localizationMarkup: {
             title: "Translation drops styling",
@@ -417,7 +423,11 @@ export const lint = {
         localizationOrphan: {
             title: "Orphan translation",
             description: "A translation whose line no longer exists",
-            message: "{count} {locale} translations have no line",
+            message: "{translations} with no line",
+            translationCount: {
+                one: "{count} {locale} translation",
+                other: "{count} {locale} translations",
+            },
         },
         voiceMissing: {
             title: "Missing voice",
@@ -432,7 +442,11 @@ export const lint = {
         voiceOrphan: {
             title: "Orphan voice",
             description: "A recording whose line no longer exists",
-            message: "{count} {locale} recordings have no line",
+            message: "{recordings} with no line",
+            recordingCount: {
+                one: "{count} {locale} recording",
+                other: "{count} {locale} recordings",
+            },
         },
         brandBrokenLink: {
             title: "Broken color link",
@@ -450,10 +464,18 @@ export const lint = {
             // The character itself, because nothing in the location can carry it and it is the only
             // thing that tells one of these findings from the next. Its count travels with it: one
             // finding per line would be thousands of them when the font is simply the wrong one.
-            message: "No project font can draw “{character}” ({count} times)",
-            messageInLanguage: "No project font can draw “{character}” in {language} ({count} times)",
-            messageMore: "{count} more characters no project font can draw",
-            messageMoreInLanguage: "{count} more characters no project font can draw in {language}",
+            message: "No project font can draw “{character}” ({occurrences})",
+            occurrenceCount: {
+                one: "{count} time",
+                other: "{count} times",
+            },
+            messageInLanguage: "No project font can draw “{character}” in {language} ({occurrences})",
+            messageMore: "{characters} no project font can draw",
+            moreCharacterCount: {
+                one: "{count} more character",
+                other: "{count} more characters",
+            },
+            messageMoreInLanguage: "{characters} no project font can draw in {language}",
             // Not a coverage finding at all: the check could not be made. Said out loud because a
             // check that quietly did not run reads on screen as a check that passed.
             messageUnreadable: "{font} could not be read, so glyph coverage was not checked",
@@ -512,7 +534,9 @@ export const lint = {
         title: "Problems",
         empty: "No problems found",
         running: "Checking…",
-        summary: "{errors} errors, {warnings} warnings, {infos} info",
+        // Each slot is one whole count with its noun, from `common.count.*`, so a count of one
+        // reads in the singular.
+        counts: "{errors}, {warnings}, {infos}",
         filtered: "{shown} of {total}",
         rerun: "Run again",
         filterAll: "All",
@@ -536,8 +560,13 @@ export const lint = {
         category: "Lint",
     },
     console: {
+        // The console tab a sweep writes to, and what hovering it says. The same word as the
+        // palette category above: it is one feature, and the tab sits among tabs named that way.
+        channel: "Lint",
+        channelDescription: "Project checks and the problems they find",
         started: "Check started",
-        finished: "{errors} errors, {warnings} warnings in {duration}",
+        // `{errors}` and `{warnings}` are whole counts with their nouns, from `common.count.*`.
+        finishedCounts: "{errors}, {warnings} in {duration}",
         // Site first, then what is wrong, then the rule that says so - a compiler's line, and the
         // order a reader scans in. No severity slot: the console prints the level in its own column
         // beside every line, and this used to repeat it inside the sentence.
@@ -557,7 +586,10 @@ export const lint = {
         // between the click and the first sign of a package, and the build channel is where an
         // author waiting for one is looking.
         started: "Checking the project…",
-        blocked: "Build stopped by {count} problems",
+        blocked: {
+            one: "Build stopped by {count} problem",
+            other: "Build stopped by {count} problems",
+        },
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"
         // would leave them looking for it.

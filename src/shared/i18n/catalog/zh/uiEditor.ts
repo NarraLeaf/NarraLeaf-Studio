@@ -150,7 +150,9 @@ export const uiEditor = {
             one: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
             other: "{count} 个关联实例在解除关联或替换之前将显示为缺失",
         },
-        refs: "{count} 处引用",
+        refs: {
+            other: "{count} 处引用",
+        },
     },
     canvas: {
         unknownWidget: "未知控件",
@@ -174,6 +176,8 @@ export const uiEditor = {
         layerFallback: "图层",
         openComponent: "打开组件",
         unlinkComponent: "解除组件关联",
+        openComponentNamed: "打开组件 {name}",
+        openPageNamed: "打开页面 {name}",
     },
     zoom: {
         label: "缩放",

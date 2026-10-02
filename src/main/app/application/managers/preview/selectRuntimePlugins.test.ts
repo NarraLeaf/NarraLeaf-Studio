@@ -17,6 +17,7 @@ function manifest(id: string, version: string, blueprintNodes: string[] = [], wi
             blueprintNodes,
             widgets,
             tests: [],
+            reservedSaveIds: [],
             runtimeData: [],
             locales: [],
             runtimeCapabilities: [],

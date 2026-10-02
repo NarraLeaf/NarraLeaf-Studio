@@ -73,15 +73,14 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
  *
  * The markers are the same shape the game bundle carries (`AudioClipRegion`) - deliberately, because
  * the region an author marks here is the region the engine plays. `@shared/types/audio` owns the
- * normalizer both sides read it with, and the one stored-only field, the file length measured for a
- * region with no out point.
+ * normalizer both sides read it with.
  */
 export type AssetAudioLoop = StoredAudioClipRegion;
 
 export interface AssetExtras {
     /** Audio only: the loop region shown and edited by the audio preview. */
     audioLoop?: AssetAudioLoop;
-    /** Audio only: the playback gain set in the audio preview, to balance loudness across clips. */
+    /** Audio only: the gain set in the audio preview, to balance loudness across clips. */
     audioGain?: StoredAudioGain;
     /**
      * Model bundles only: the entry file the author chose, relative to the bundle root.

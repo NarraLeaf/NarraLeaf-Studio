@@ -506,6 +506,11 @@
       "sourceHash": "fnv1a:8986903f",
       "status": "translated",
       "target": "廊下"
+    },
+    "ui:c6d9dc8d-9524-4102-985e-5612b971a776.text": {
+      "sourceHash": "fnv1a:327140fc",
+      "status": "translated",
+      "target": "あなたのゲーム"
     }
   }
 }

@@ -239,7 +239,9 @@ export const assets = {
         noneFound: "该文件夹中没有 {family} 模型",
         noneFoundHint: "确认上方所选的类型，并确认该文件夹是否为导出工具生成的文件夹",
         entry: "入口文件",
-        fileSummary: "{count} 个文件 · {size}",
+        fileSummary: {
+            other: "{count} 个文件 · {size}",
+        },
         selectAll: "全选",
         selectNone: "全不选",
         importAction: "导入",
@@ -294,6 +296,7 @@ export const assets = {
             locale: "语言",
             release: "变体",
         },
+        deletedVariant: "已删除的变体",
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",
@@ -374,7 +377,10 @@ export const assets = {
             one: "已导出 {count} 个文件",
             other: "已导出 {count} 个文件",
         },
-        partial: "已导出 {exported} 个文件，{failed} 个未能导出",
+        partialCounts: "已导出 {exported}，{failed} 个未能导出",
+        fileCount: {
+            other: "{count} 个文件",
+        },
         partialTitle: "部分文件未能导出",
         failed: "导出失败：{error}",
         reason: {
@@ -406,8 +412,16 @@ export const assets = {
         categoryMapping: "标签类别映射",
         exampleFilename: "示例文件名：{filename}",
         categoryPlaceholder: "标签类别（例如：char、emo）",
-        moreFiles: "…还有 {count} 个文件",
-        summary: "将为 {files} 个文件共添加 {tags} 个标签",
+        moreFiles: {
+            other: "…还有 {count} 个文件",
+        },
+        tagCounts: "将为 {files}共添加 {tags}",
+        tagCount: {
+            other: "{count} 个标签",
+        },
+        fileCount: {
+            other: "{count} 个文件",
+        },
         applying: "正在应用…",
         applyTags: "应用标签",
         parseFailedTitle: "魔法标签解析失败",
@@ -444,11 +458,10 @@ export const assets = {
             auditionSeam: "试听接缝",
             auditionSeamTip: "播放接缝前后各 {seconds} 秒",
             clearMarkers: "清除全部标记",
-            gain: "音量调整",
+            gain: "增益",
             gainTip: "降低该音频在游戏中的音量，不能调高",
-            target: "目标响度",
-            align: "对齐",
-            alignTip: "设置增益，使该音频以目标响度播放；本就更轻的音频保持原音量",
+            align: "对齐响度",
+            alignTip: "按测得的响度设置增益，使所有已对齐的音频响度一致；本就更轻的音频保持原音量",
             seamEnd: {
                 out: "出点",
                 clipEnd: "音频结尾",

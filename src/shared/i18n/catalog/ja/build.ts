@@ -477,6 +477,19 @@ export const build = {
     scriptsNotCompiled: {
         other: "コンパイルできないスクリプトが {count} 件ある",
     },
+    assetSet: {
+        inCharacters: "キャラクター",
+        inInterface: "インターフェース",
+        inBlueprint: "ブループリント",
+        language: "言語「{name}」",
+        variant: "バリアント「{name}」",
+        unfilled: "アセットセット「{set}」（{location} で使用）に{value}のファイルがない",
+        noLanguage: "アセットセット「{set}」（{location} で使用）にプロジェクトの言語のファイルがない",
+        ambiguous: "アセットセット「{set}」（{location} で使用）に{value}のファイルが複数ある",
+        nested: "アセットセット「{set}」（{location} で使用）のいずれかの値の下に別のセットがある。ビルドは入れ子のセットを解決しない",
+        noValues: "アセットセット「{set}」（{location} で使用）はバリアントを宣言していない",
+        variantUnset: "アセットセット「{set}」（{location} で使用）はバリアントによって変わるが、{variant} は使う素材を指定していない。「プロジェクト ▸ アプリ ▸ ビルドバリアント」で選ぶ",
+    },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",
     contentCoverageSummary: {

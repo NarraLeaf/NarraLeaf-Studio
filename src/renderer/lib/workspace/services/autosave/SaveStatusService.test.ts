@@ -14,6 +14,8 @@ import {
 } from "./SaveStatusService";
 import { itemWrite, storeWrite, type FsWriteReport } from "./writeReport";
 import { DocumentCorruptError } from "@shared/documents/types";
+import { NotificationService } from "../ui/NotificationService";
+import { UIStore } from "../ui/UIStore";
 
 type Harness = {
     service: SaveStatusService;
@@ -23,7 +25,8 @@ type Harness = {
     log: ReturnType<typeof vi.fn>;
 };
 
-async function makeHarness(): Promise<Harness> {
+/** `notifications` replaces the stubbed toast pair, for a test that reads the real notification centre. */
+async function makeHarness(options: { notifications?: NotificationService } = {}): Promise<Harness> {
     let observer: ((outcome: FsWriteOutcome) => void) | null = null;
     const showSticky = vi.fn(() => "toast-1");
     const close = vi.fn();
@@ -36,7 +39,7 @@ async function makeHarness(): Promise<Harness> {
                 return () => { observer = null; };
             },
         },
-        [Services.UI]: { notifications: { showSticky, close } },
+        [Services.UI]: { notifications: options.notifications ?? { showSticky, close } },
         [Services.Console]: { log },
     };
 
@@ -393,6 +396,33 @@ describe("what the save-failure notice says", () => {
         expect(close).not.toHaveBeenCalled();
         emitWrite({ path: ORDER_SHARD, ok: true });
         expect(close).toHaveBeenCalledWith("toast-1");
+    });
+
+    it("keeps a failure that comes and goes as one entry in the notification centre", async () => {
+        const notifications = new NotificationService(new UIStore());
+        const { emitWrite } = await makeHarness({ notifications });
+        const PANEL_STATE = "D:/projects/my-game/.nlstudio/services/panel_state.json";
+        const PANEL_LAYOUT = storeWrite("workspace.shell.save.stores.panelLayout", "notRetried");
+
+        // A file that refuses a write, takes the next one and refuses the one after.
+        for (let i = 0; i < 4; i++) {
+            emitWrite(failure(PANEL_STATE, FsRejectErrorCode.PERMISSION_DENIED, PANEL_LAYOUT));
+            emitWrite({ path: PANEL_STATE, ok: true });
+        }
+        emitWrite(failure(PANEL_STATE, FsRejectErrorCode.PERMISSION_DENIED, PANEL_LAYOUT));
+
+        const history = notifications.getHistory();
+        expect(history).toHaveLength(1);
+        expect(history[0]).toMatchObject({ message: "Could not save the panel layout", count: 5, read: false });
+        // The card is up for the failure that is still standing, and there is only the one.
+        expect(notifications.getAll()).toHaveLength(1);
+
+        // A different sentence is a different entry.
+        emitWrite(failure(PANEL_STATE, FsRejectErrorCode.NO_SPACE, PANEL_LAYOUT));
+        expect(notifications.getHistory()).toHaveLength(1);
+        emitWrite({ path: PANEL_STATE, ok: true });
+        emitWrite(failure(PANEL_STATE, FsRejectErrorCode.NO_SPACE, PANEL_LAYOUT));
+        expect(notifications.getHistory()).toHaveLength(2);
     });
 
     it("titles an asset's content by the asset's name, never by the tail of its id", async () => {

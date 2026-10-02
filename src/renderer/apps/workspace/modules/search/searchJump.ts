@@ -12,6 +12,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import { blueprintJumpOpenTarget } from "./blueprintJumpTarget";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { requestAssetSetReveal } from "../assets/assetSetReveal";
 import { createComponentEditorTab, createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
@@ -124,19 +125,9 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             if (!owner) {
                 return false;
             }
-            deps.openEditorTab(
-                createBlueprintEntryEditorTab({
-                    blueprintId: target.blueprintId,
-                    ownerKind: owner.ownerKind,
-                    surfaceId: owner.surfaceId,
-                    componentId: owner.componentId,
-                    elementId: owner.elementId,
-                    propPath: owner.propPath,
-                    focusEventId: target.focusEventId,
-                    focusFunctionId: target.focusFunctionId,
-                    focusNodeId: target.focusNodeId,
-                }),
-            );
+            // Keyed and named as every other way into the blueprint does it, so a hit lands on the
+            // tab that is already open, under the name it already has. See `blueprintJumpOpenTarget`.
+            deps.openEditorTab(createBlueprintEntryEditorTab(blueprintJumpOpenTarget(target, owner, deps.context)));
             return true;
         }
         case "localizationKey":

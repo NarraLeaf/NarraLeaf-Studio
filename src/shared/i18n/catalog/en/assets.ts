@@ -362,7 +362,10 @@ export const assets = {
         noneFoundHint: "Check the kind selected above, then the folder. It must be the folder the exporter wrote.",
         entry: "Entry",
         /** Row subtitle: what the folder holds, before any of it is copied. */
-        fileSummary: "{count} files · {size}",
+        fileSummary: {
+            one: "{count} file · {size}",
+            other: "{count} files · {size}",
+        },
         selectAll: "Select all",
         selectNone: "Select none",
         importAction: "Import",
@@ -427,6 +430,8 @@ export const assets = {
             locale: "Language",
             release: "Variant",
         },
+        /** A variant a set still names after it was deleted from the project. Its id is never shown. */
+        deletedVariant: "Deleted variant",
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",
@@ -537,7 +542,12 @@ export const assets = {
             one: "Exported {count} file.",
             other: "Exported {count} files.",
         },
-        partial: "Exported {exported} files, {failed} could not be exported.",
+        // `{exported}` is a whole count with its noun, from `fileCount`.
+        partialCounts: "Exported {exported}, {failed} could not be exported.",
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         partialTitle: "Some files were not exported",
         failed: "Export failed: {error}",
         // What the disk said when a copy failed, worded from its error code: the system's message
@@ -571,8 +581,20 @@ export const assets = {
         categoryMapping: "Tag Category Mapping",
         exampleFilename: "Example Filename: {filename}",
         categoryPlaceholder: "Tag Category (e.g.: char, emo)",
-        moreFiles: "… and {count} more files",
-        summary: "Will add a total of {tags} tags to {files} files",
+        moreFiles: {
+            one: "… and {count} more file",
+            other: "… and {count} more files",
+        },
+        // Both slots are whole counts with their nouns, from `tagCount` and `fileCount`.
+        tagCounts: "Will add a total of {tags} to {files}",
+        tagCount: {
+            one: "{count} tag",
+            other: "{count} tags",
+        },
+        fileCount: {
+            one: "{count} file",
+            other: "{count} files",
+        },
         applying: "Applying…",
         applyTags: "Apply Tags",
         parseFailedTitle: "Magic Tags parsing failed",
@@ -612,9 +634,8 @@ export const assets = {
             clearMarkers: "Clear all markers",
             gain: "Gain",
             gainTip: "Lowers this clip's volume in the game. It cannot raise it.",
-            target: "Target",
-            align: "Align",
-            alignTip: "Sets the gain so this clip plays at the target loudness. A clip that is already quieter keeps its level.",
+            align: "Align loudness",
+            alignTip: "Sets the gain from the measured loudness, so every aligned clip plays at the same level. A clip that is already quieter keeps its level.",
             seamEnd: {
                 out: "Out point",
                 clipEnd: "End of clip",

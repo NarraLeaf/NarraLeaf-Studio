@@ -305,7 +305,8 @@ export function normalizeListSlotsForMovedChildren(
  * True when `containerId` is a group that can be dissolved back into its parent.
  *
  * The exclusions are the places where a container is structure rather than a user's group: a
- * surface root (nothing to lift into), a component editor's stand-in root, and anything inside a
+ * surface root (nothing to lift into), a component's root in its own editor (the frame every
+ * placement draws, whatever it is called), and anything inside a
  * linked component instance, whose shape belongs to the component definition. A parent that does
  * not take user children - a slider's track, say - can only hold the parts it was built with, so a
  * group nested there stays put unless it is empty.

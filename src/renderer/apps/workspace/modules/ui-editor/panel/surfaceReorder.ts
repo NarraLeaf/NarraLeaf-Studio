@@ -16,6 +16,18 @@ export function surfaceHalfFromPointer(clientY: number, rect: { top: number; hei
     return clientY < rect.top + rect.height / 2 ? "top" : "bottom";
 }
 
+/**
+ * The same question for cards laid out in a grid, which read left to right before they wrap.
+ *
+ * The left half of a card is the gap before it and the right half the gap after it, so the answer
+ * is still one of the two halves the gap model counts in - "top" standing for the earlier side.
+ * Asking about the vertical halves of a grid card would put the gap after a card under the card
+ * below it rather than beside it.
+ */
+export function surfaceHalfFromPointerAcross(clientX: number, rect: { left: number; width: number }): SurfaceDropHalf {
+    return clientX < rect.left + rect.width / 2 ? "top" : "bottom";
+}
+
 /** The gap a pointer in this half of this card is aiming at. */
 export function surfaceGapForCard(cardIndex: number, half: SurfaceDropHalf): SurfaceDropGap {
     return half === "top" ? cardIndex : cardIndex + 1;

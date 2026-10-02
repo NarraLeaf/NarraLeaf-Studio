@@ -217,9 +217,10 @@ describe("the runtime issue catalog", () => {
      */
     it.each(LOCALES)("says the tally and the empty list are about this run, in %s", locale => {
         const runWord: Record<Locale, string> = { en: "in this run", zh: "本次运行", ja: "今回の実行" };
-        const { t } = createTranslator(locale);
-        for (const key of ["devMode.issues.empty", "devMode.issues.summary"] as TranslationKey[]) {
-            expect(t(key, { errors: 0, warnings: 20 }), key).toContain(runWord[locale]);
+        const { t, tn } = createTranslator(locale);
+        const counts = { errors: tn("common.count.errors", 0), warnings: tn("common.count.warnings", 20) };
+        for (const key of ["devMode.issues.empty", "devMode.issues.counts"] as TranslationKey[]) {
+            expect(t(key, counts), key).toContain(runWord[locale]);
         }
     });
 

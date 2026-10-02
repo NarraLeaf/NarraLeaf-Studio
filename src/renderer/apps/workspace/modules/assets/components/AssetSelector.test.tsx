@@ -71,7 +71,8 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 // One stub answers every `services.get` the picker makes: the asset library it imports through, the
-// panel state it remembers its expanded folders in, and the notice a dialog that would not open gets.
+// panel state it remembers its expanded folders in, the notice a dialog that would not open gets, and
+// the project's languages and editions a set member's tags are printed with.
 vi.mock("@/apps/workspace/context", () => {
     const services = {
         get: () => ({
@@ -79,6 +80,10 @@ vi.mock("@/apps/workspace/context", () => {
             showNotification,
             getPanelState: () => undefined,
             setPanelState: () => undefined,
+            getConfiguration: () => ({ sourceLocale: "en", locales: [] }),
+            onConfigChanged: () => () => undefined,
+            listTags: () => [],
+            onTagsChanged: () => () => undefined,
         }),
     };
     stable.context = { services };

@@ -13,7 +13,9 @@
  * (`GameConfig.audioBuses`, declared at boot from the same list), the clip is
  * routed into that bus's gain node, and every bus between it and the master
  * output multiplies live - so an author's `voice/alice` bus is a real slider.
- * The volume written onto the token is therefore the *action's own* number.
+ * The volume written onto the token is therefore the *action's own* number,
+ * with only the clip's own gain folded in (`clipVolume`, the same fold every
+ * other path that plays a clip goes through).
  *
  * What the host does own is the handle registry. A blueprint cannot hold an
  * engine `SoundToken` (it is not JSON-safe and must not cross into graph data),
@@ -35,6 +37,7 @@ import {
     type AudioTrackPlayback,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import { clipSoundConfig, clipVolume, type AudioClipRegion } from "@shared/types/audio";
 import type { BlueprintSoundPlayInput } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import type { StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
@@ -84,6 +87,10 @@ export type SoundTransportOptions = {
      * Builds the engine Sound element for a url + bus. Injected rather than
      * imported so this module stays free of a hard engine dependency and can be
      * unit-tested without one.
+     *
+     * Everything past the bus is the finished config: the volume already carries the clip's gain
+     * and the region is in the engine's seconds, both from `clipSoundConfig`. The host passes them
+     * through as they are.
      */
     createSound: (input: {
         src: string;
@@ -91,18 +98,16 @@ export type SoundTransportOptions = {
         busId: string;
         loop: boolean;
         volume: number;
-        /** So the host can fold in the in/out points marked on this asset. */
-        assetId: string;
+        seek: number;
+        endTime?: number;
+        loopStart?: number;
     }) => unknown;
     /**
-     * The linear gain set on an asset in the audio preview, 1 when it has none. Omitted by a host
-     * with no per-asset gains, which reads as unity.
-     *
-     * Multiplied into every volume this transport writes for a clip - the start, the fade-in and
-     * every later Set Sound Volume - because each of those replaces the token's volume outright: a
-     * gain applied once at creation is gone the moment the first of them runs.
+     * The markers and gain set on an asset in the audio preview - the bundle's `audio.clips` entry.
+     * Omitted by a host with no per-asset table, and absent for an asset with none, which plays
+     * whole and at the node's own volume.
      */
-    getClipGain?: (assetId: string) => number;
+    getClip?: (assetId: string) => AudioClipRegion | null | undefined;
     log: (level: "info" | "warning" | "error", message: string) => void;
 };
 
@@ -132,11 +137,6 @@ export function resolveSoundPlayback(
     return { ...playback, fadeInMs };
 }
 
-/** A gain the engine can play: a factor in `(0, 1]`, unity for anything else. */
-function clampGain(gain: number | undefined): number {
-    return typeof gain === "number" && Number.isFinite(gain) && gain > 0 ? Math.min(1, gain) : 1;
-}
-
 export type SoundTransport = {
     play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
     stop: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void>;
@@ -160,10 +160,13 @@ export type SoundTransport = {
 };
 
 export function createSoundTransport(options: SoundTransportOptions): SoundTransport {
-    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, getClipGain, log } = options;
+    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, getClip, log } = options;
     const tokens = new Map<string, EngineSoundToken>();
-    /** Each handle's clip gain, so a later volume change keeps the clip balanced. */
-    const gains = new Map<string, number>();
+    /**
+     * Each handle's clip, so a later Set Sound Volume folds the clip's gain into the node's number
+     * the same way the start did - through `clipVolume`, once.
+     */
+    const clips = new Map<string, AudioClipRegion | undefined>();
     let nextId = 0;
 
     const engine = (): EngineSoundHost | null => {
@@ -183,7 +186,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
     const forget = (handle: BlueprintSoundHandle | null): void => {
         if (handle) {
             tokens.delete(handle.id);
-            gains.delete(handle.id);
+            clips.delete(handle.id);
         }
     };
 
@@ -203,15 +206,12 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 return null;
             }
             const playback = resolveSoundPlayback(input, getAudioTracks?.());
-            const gain = clampGain(getClipGain?.(input.assetId));
-            const volume = playback.volume * gain;
-            const sound = createSound({
-                src: url,
-                busId: playback.busId,
-                loop: playback.loop,
-                volume,
-                assetId: input.assetId,
-            });
+            // The in/out points the author marked on the asset apply here exactly as they do in a
+            // story row, so a music page loops a track's body rather than the whole file; the gain
+            // rides in the volume.
+            const clip = getClip?.(input.assetId) ?? undefined;
+            const config = clipSoundConfig(clip, { volume: playback.volume, loop: playback.loop });
+            const sound = createSound({ src: url, busId: playback.busId, loop: playback.loop, ...config });
             const token = await host.playSound(sound);
             if (!token) {
                 return null;
@@ -223,18 +223,19 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
             // folded in here: they are gain nodes the token is routed through, and multiplying them
             // in as well would apply them twice and freeze them where a slider cannot reach. The
             // fade-in is the same write with a ramp: start at silence, arrive at the authored level.
+            // That level is the config's, gain included - folded in once, by `clipSoundConfig`.
             if (playback.fadeInMs > 0 && token.fade) {
                 token.setVolume?.(0);
-                token.fade(0, volume, playback.fadeInMs);
+                token.fade(0, config.volume, playback.fadeInMs);
             } else {
-                token.setVolume?.(volume);
+                token.setVolume?.(config.volume);
             }
             const handle = toBlueprintSoundHandle(`sound:${nextId++}`);
             if (!handle) {
                 return null;
             }
             tokens.set(handle.id, token);
-            gains.set(handle.id, gain);
+            clips.set(handle.id, clip);
             return handle;
         },
 
@@ -246,7 +247,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                     token.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
                 }
                 tokens.clear();
-                gains.clear();
+                clips.clear();
                 return;
             }
             tokenFor(handle)?.stop?.(fadeMs > 0 ? { fadeDuration: fadeMs } : undefined);
@@ -271,7 +272,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 return;
             }
             // The node's number is the author's level for this clip; the clip's gain rides on top.
-            const target = volume * (gains.get(handle.id) ?? 1);
+            const target = clipVolume(clips.get(handle.id), volume);
             if (fadeMs > 0 && token.fade) {
                 const from = token.getVolume?.() ?? 1;
                 token.fade(from, target, fadeMs);
@@ -322,7 +323,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 token.stop?.();
             }
             tokens.clear();
-            gains.clear();
+            clips.clear();
         },
     };
 }

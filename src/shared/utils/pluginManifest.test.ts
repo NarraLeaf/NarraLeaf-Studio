@@ -236,6 +236,62 @@ describe("validatePluginManifest", () => {
         expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
     });
 
+    it("normalizes reserved save ids, and defaults them to an empty list", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                reservedSaveIds: ["acme.sample-plugin.slot", " acme.sample-plugin.slot "],
+                runtimeCapabilities: ["saves.read", "saves.write"],
+            },
+        });
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: { contributes: { reservedSaveIds: ["acme.sample-plugin.slot"] } },
+        });
+
+        const without = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+        expect(without).toMatchObject({ ok: true, manifest: { contributes: { reservedSaveIds: [] } } });
+    });
+
+    it("refuses a reserved save id outside the plugin's own namespace", () => {
+        // An unprefixed reservation could name a slot the author's own Save Game writes - "1" is
+        // what the shipped skeleton's first slot is called - and take it off the player's screen.
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { reservedSaveIds: ["1"] },
+        });
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("Contributed reserved save id must be prefixed with the plugin id"),
+        });
+    });
+
+    it("derives no install permission from reserved save ids", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { reservedSaveIds: ["acme.sample-plugin.slot"] },
+        });
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+    });
+
     it("rejects contributed node types without the plugin id prefix", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,

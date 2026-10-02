@@ -22,7 +22,7 @@ import { PanelPosition, definePlugin } from "narraleaf-studio/plugin";
 import { disposeAssetUrls } from "./components";
 import { GalleryEditorTab } from "./GalleryEditorTab";
 import { GalleryPanel } from "./GalleryPanel";
-import { createGalleryTranslator } from "./messages";
+import { createGalleryTranslator, galleryTitle } from "./messages";
 import { createGalleryStore } from "./store";
 import {
     DYNAMIC_OPTIONS_SOURCE,
@@ -39,7 +39,7 @@ export default definePlugin({
     async setup(app) {
         const store = createGalleryStore(app);
         await store.load();
-        // One translator, read at render: `.t()` resolves against the LIVE editor locale, and both
+        // One translator, read at render: `.t()` and `.locale` follow the LIVE editor locale, and both
         // registrations below expose the title as a getter, so a language switch re-titles them on
         // the next render with no re-registration (the same shape the core panel modules use).
         const tr = createGalleryTranslator(app);
@@ -47,7 +47,7 @@ export default definePlugin({
         const openEditor = () => app.services.ui.editors.open({
             id: EDITOR_TAB_ID,
             get title() {
-                return tr.t("title");
+                return galleryTitle(tr);
             },
             icon: <Images size={14} />,
             closable: true,
@@ -75,7 +75,7 @@ export default definePlugin({
         const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
             get title() {
-                return tr.t("title");
+                return galleryTitle(tr);
             },
             icon: <Images size={16} />,
             position: PanelPosition.Left,

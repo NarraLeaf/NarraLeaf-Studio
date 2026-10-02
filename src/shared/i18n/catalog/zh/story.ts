@@ -228,7 +228,10 @@ export const story = {
     paste: {
         title: "粘贴为行",
         action: "粘贴",
-        totals: "对白 {dialogue} · 旁白 {narration} · 新建角色 {created}",
+        totalCounts: "对白 {dialogue} · 旁白 {narration} · {created}",
+        newCharacterCount: {
+            other: "新建角色 {count}",
+        },
         lineCount: {
             other: "{count} 行",
         },
@@ -1136,8 +1139,8 @@ export const story = {
         kindExpression: "表达式",
         expressionPlaceholder: "gold >= 100 && !met",
         expressionVariables: "可用变量：{names}",
-        opIsOn: "为开",
-        opIsOff: "为关",
+        opIsTrue: "为真",
+        opIsFalse: "为假",
         opEquals: "等于",
         opNotEquals: "不等于",
         opGreaterThan: "大于",
@@ -1147,8 +1150,8 @@ export const story = {
         opExists: "已设置",
         openGraphAria: "打开条件图",
         createGraphAria: "创建条件图",
-        valueTrue: "开",
-        valueFalse: "关",
+        valueTrue: "真",
+        valueFalse: "假",
         valuePlaceholder: "值",
         clear: "清除条件",
         summarySet: "设置条件…",

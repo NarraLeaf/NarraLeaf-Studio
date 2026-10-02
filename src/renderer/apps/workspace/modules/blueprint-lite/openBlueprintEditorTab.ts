@@ -1,4 +1,5 @@
 import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
+import { translate } from "@/lib/i18n";
 import { Workflow } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorTabDefinition } from "../../registry/types";
@@ -36,7 +37,9 @@ export function createBlueprintEntryEditorTab(
     };
     return {
         id: tabId,
-        title: target.title ?? "Blueprint",
+        // A caller with nothing better to call the tab gets the generic name, in the interface's
+        // language - a literal here put the English word on the tab strip of every locale.
+        title: target.title ?? translate("blueprint.tab.title"),
         icon: blueprintEntryTabIcon(),
         component: BlueprintEntryTab,
         payload,

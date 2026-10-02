@@ -411,6 +411,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
         displayName: "App Boot",
+        description: "blueprint.nodeDescription.appBoot",
         category: "Events",
         keywords: ["app", "boot", "startup", "global"],
         graphKinds: ["event"],
@@ -423,6 +424,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
         displayName: "On Game Ready",
+        description: "blueprint.nodeDescription.gameReady",
         category: "Events",
         keywords: ["game", "ready", "runtime", "preference", "global", "nlr"],
         graphKinds: ["event"],

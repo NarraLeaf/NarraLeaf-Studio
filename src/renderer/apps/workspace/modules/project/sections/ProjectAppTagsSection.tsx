@@ -31,7 +31,9 @@ import { Button, IconButton, Input, Select, type SelectOption } from "@/lib/comp
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
-import type { AssetSet } from "@shared/types/assetSet";
+import { isAssetSetAxisKind, type AssetSet } from "@shared/types/assetSet";
+import { readAssetSetAxisValue } from "@shared/types/assetSetLabels";
+import { useAssetSetNaming } from "../../assets/state/useAssetSetNaming";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
@@ -616,12 +618,18 @@ function AssetAxisField({
     disabled: boolean;
 }) {
     const { t } = useTranslation();
+    const { context, isInitialized } = useWorkspace();
+    const naming = useAssetSetNaming({ context, isInitialized });
     const stated = tag.builtin ? undefined : tag.assetAxes?.[axis.key];
     const effective = service?.resolveAssetAxes(tag.id)[axis.key] ?? "";
+    // Named the way a set's own rows name them: the axis by what it varies by, and each value - an
+    // edition id - by that edition's name.
+    const kind = isAssetSetAxisKind(axis.key) ? axis.key : null;
+    const label = kind ? t(`assets.sets.axisKind.${kind}`) : axis.key;
 
     return (
         <Field
-            label={axis.key}
+            label={label}
             trailing={stated === undefined ? undefined : (
                 <Button
                     size="sm"
@@ -639,10 +647,13 @@ function AssetAxisField({
                 fullWidth
                 value={effective}
                 disabled={disabled}
-                ariaLabel={axis.key}
+                ariaLabel={label}
                 options={[
                     { value: "", label: t("project.appTags.assetAxisUnset") },
-                    ...axis.values.map(value => ({ value, label: value })),
+                    ...axis.values.map(value => ({
+                        value,
+                        label: kind ? readAssetSetAxisValue(kind, value, naming).value : value,
+                    })),
                 ]}
                 onChange={value => {
                     const next = String(value);

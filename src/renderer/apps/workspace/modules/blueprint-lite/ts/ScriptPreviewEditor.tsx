@@ -183,7 +183,7 @@ export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
                     <button
                         type="button"
                         onClick={() => void read()}
-                        className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+                        className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         data-tip={t("common.refresh")}
                         aria-label={t("common.refresh")}
                     >

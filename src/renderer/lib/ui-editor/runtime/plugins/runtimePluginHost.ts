@@ -175,7 +175,20 @@ export type RuntimePluginProcessBackend = {
     memory(): Promise<GameProcessMemoryReading>;
 };
 
+/**
+ * Where the loader hands over the save ids each plugin's manifest keeps for itself
+ * (`contributes.reservedSaveIds`), so the game can leave them out of the player's save listing.
+ *
+ * Not a capability: nothing on `app.game` reaches it, and a plugin cannot add to it at run time. It
+ * rides the host because the host is what every shell already hands the loader, so a shell cannot
+ * load plugins without also honouring what they reserved.
+ */
+export type RuntimePluginSaveReservations = {
+    reserve(ids: readonly string[]): void;
+};
+
 export type RuntimePluginHost = {
+    saveReservations?: RuntimePluginSaveReservations;
     store?: RuntimePluginStoreBackend;
     events?: RuntimePluginEventBackend;
     state?: RuntimePluginStateBackend;

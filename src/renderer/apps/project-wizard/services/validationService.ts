@@ -3,17 +3,33 @@ import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRequestResult } from "@shared/types/os";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { getLocaleMeta, type LocaleCode } from "@shared/i18n";
 import { ProjectData, DirectoryValidationResult, ProjectFlow, ValidationErrors } from "../types";
+
+/** Han characters, which read differently in Chinese and in Japanese. */
+const HAN = /\p{Script=Han}/u;
+/** Hiragana and katakana: a name holding them is Japanese. */
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
 /**
  * Service for handling all validation logic in the project wizard
  */
 export class ValidationService {
     /**
-     * Generate a valid app ID from project name with transliteration
+     * The identifier suggested for a project name, or "" when the name cannot be spelled in ASCII
+     * without guessing how it is read.
+     *
+     * `transliterate` reads every Han character as Mandarin: right for a Chinese title, wrong for a
+     * Japanese one (放課後 is "houkago", not "fang-ke-hou"), and a name alone does not say which it
+     * is. So Han characters are read only for someone working in Chinese, and never beside kana,
+     * which only Japanese writes. Otherwise the field is left for the author, who knows how the
+     * title is read; it is required, so the wizard does not continue without one. Kana, Hangul and
+     * accented Latin romanize without ambiguity and are always suggested.
      */
-    static generateAppId(name: string): string {
-        // Use transliteration library to convert non-English characters
+    static generateAppId(name: string, locale: LocaleCode): string {
+        if (HAN.test(name) && (KANA.test(name) || !getLocaleMeta(locale).intl.toLowerCase().startsWith("zh"))) {
+            return "";
+        }
         const transliterated = transliterate(name);
 
         return transliterated

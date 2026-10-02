@@ -603,7 +603,10 @@ export type GameAppStoryRuntimeBridge = {
  * a code path no player ever takes.
  */
 export type GameAppSaveBridge = {
-    /** Player slot ids - the authoring view, with the reserved autosave slots filtered out. */
+    /**
+     * Player slot ids - the authoring view, with reserved slots (autosaves, a plugin's quick save)
+     * filtered out.
+     */
     listIds: () => Promise<string[]>;
     /** The stored record as written: author metadata plus the serialized game. */
     read: (id: string) => Promise<GameAppSaveRecord | null>;

@@ -51,7 +51,7 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "未完成のアセットセット",
             description: "宣言したバリアントのいずれかが、ちょうど 1 つのファイルに解決しないセット",
-            // バリアントは構成するタグの形で示す。そのタグをファイルに書くことが対処だから。
+            // バリアントは言語コードかバリアント名で示し、保存用のタグの形では書かない。バリアントの id は uuid だから。
             // 解決するはずのファイル名は書かない。そのファイルはまだ存在しない。
             message: "{set} の {variant} に対応するファイルがない",
             messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
@@ -358,7 +358,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "変化しない条件",
             description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
-            message: "{variable} を参照する条件が {count} 件ありますが、代入する箇所がありません",
+            message: "{variable} を参照する条件が {conditions}ありますが、代入する箇所がありません",
+            conditionCount: {
+                other: "{count} 件",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",
@@ -379,13 +382,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "翻訳の欠落",
-            description: "対象の言語に翻訳のない行",
+            description: "対象の言語に翻訳のない行またはインターフェースのテキスト",
             message: "{locale} の翻訳がない",
+            messageInterface: "{text} の {locale} の翻訳がない",
         },
         localizationStale: {
             title: "古い翻訳",
             description: "翻訳した後に原文が変わっている",
             message: "{locale} の翻訳が原文より古い",
+            messageInterface: "{text} の {locale} の翻訳が原文より古い",
         },
         localizationMarkup: {
             title: "訳文に文字装飾がない",
@@ -395,7 +400,10 @@ export const lint = {
         localizationOrphan: {
             title: "対応する行のない翻訳",
             description: "対応する行が存在しない翻訳",
-            message: "対応する行のない {locale} の翻訳が {count} 件ある",
+            message: "対応する行のない {locale} の翻訳が {translations}ある",
+            translationCount: {
+                other: "{count} 件",
+            },
         },
         voiceMissing: {
             title: "ボイスの欠落",
@@ -410,7 +418,10 @@ export const lint = {
         voiceOrphan: {
             title: "対応する行のない録音",
             description: "対応する行が存在しない録音",
-            message: "対応する行のない {locale} の録音が {count} 件ある",
+            message: "対応する行のない {locale} の録音が {recordings}ある",
+            recordingCount: {
+                other: "{count} 件",
+            },
         },
         brandBrokenLink: {
             title: "切れた色のリンク",
@@ -424,10 +435,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "グリフ不足",
             description: "プロジェクトのどのフォントにも無い文字を使っている",
-            message: "プロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{count} 箇所）",
-            messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
-            messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
+            message: "プロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 箇所",
+            },
+            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageMore: "他に {characters}、プロジェクトのフォントに無い",
+            moreCharacterCount: {
+                other: "{count} 文字",
+            },
+            messageMoreInLanguage: "{language}で他に {characters}、プロジェクトのフォントに無い",
             messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
             messageUnloadable: "{font} は .{format} フォントで、ゲームでは描画できない",
         },
@@ -469,7 +486,7 @@ export const lint = {
         title: "問題",
         empty: "問題は見つからなかった",
         running: "検査中…",
-        summary: "エラー {errors} 件、警告 {warnings} 件、情報 {infos} 件",
+        counts: "{errors}、{warnings}、{infos}",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
         filterAll: "すべて",
@@ -492,8 +509,10 @@ export const lint = {
         category: "検査",
     },
     console: {
+        channel: "検査",
+        channelDescription: "プロジェクトの検査と見つかった問題",
         started: "検査を開始",
-        finished: "エラー {errors} 件、警告 {warnings} 件（{duration}）",
+        finishedCounts: "{errors}、{warnings}（{duration}）",
         // 場所、次に何がおかしいか、最後にそう言っているルール。コンパイラの 1 行と同じ並びで、
         // 読み手が目で追う順でもある。重大度の枠は無い。コンソールは行ごとに別の列で出している。
         finding: "{location} {message}（{rule}）",
@@ -504,7 +523,9 @@ export const lint = {
     },
     build: {
         started: "プロジェクトを検査中…",
-        blocked: "問題 {count} 件のためビルドを中止した",
+        blocked: {
+            other: "問題 {count} 件のためビルドを中止した",
+        },
         // パネル → ページ → 項目まで書く。この関門は既定で有効なので、このパネルを開いたことのない
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
         blockedHint: "「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変更できる",

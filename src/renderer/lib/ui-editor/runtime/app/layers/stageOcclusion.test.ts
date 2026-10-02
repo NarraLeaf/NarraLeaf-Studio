@@ -5,7 +5,7 @@
  * stage does not change.
  */
 import { describe, expect, it } from "vitest";
-import { isPageEntryDrawn, isStageCovered } from "./stageOcclusion";
+import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage, isStageSlotConcealedByPage } from "./stageOcclusion";
 
 /** The page lane after a game took the screen: everything that was open is hidden. */
 function runningGame(entryKeys: readonly string[]) {
@@ -135,5 +135,48 @@ describe("isStageCovered counts what is on the screen", () => {
             layers: [{ modal: true, surfaceId: "confirm" }],
             drawableSurfaceIds: new Set(["confirm"]),
         })).toBe(true);
+    });
+});
+
+/**
+ * Which Game UI stays on screen under something drawn over the stage.
+ *
+ * The shipped defect: the Backlog opened mid-scene listed the line the dialogue box was showing, and
+ * the dialogue box went on showing it through the page's background, with the quick menu's buttons
+ * beside it - two sets of words on one screen.
+ */
+describe("isStageCoveredByPage", () => {
+    it("is true for a page opened over the game, and false once it closes", () => {
+        const opened = openOverGame(runningGame(["title:1"]), "log:2");
+        expect(isStageCoveredByPage(opened)).toBe(true);
+        expect(isStageCoveredByPage({ ...opened, pageEntries: opened.pageEntries.slice(0, 1) })).toBe(false);
+    });
+
+    it("does not count a layer, which floats over the screen the player is on", () => {
+        // A confirm question asked from the quick menu: the stage is covered for input, but it is
+        // still the screen, dialogue box and all.
+        const state = { ...runningGame(["title:1"]), layers: [{ modal: true, surfaceId: "confirm" }] };
+        expect(isStageCovered(state)).toBe(true);
+        expect(isStageCoveredByPage(state)).toBe(false);
+    });
+
+    it("says nothing covers a stage that is not there", () => {
+        expect(isStageCoveredByPage({
+            pageEntries: [{ key: "title:1" }, { key: "config:2" }],
+            pagesHiddenForGame: false,
+            gameHiddenKeys: new Set(),
+        })).toBe(false);
+    });
+});
+
+describe("isStageSlotConcealedByPage", () => {
+    it("takes the dialogue box, the NVL panel, a waiting choice and the on-stage controls off", () => {
+        for (const slot of ["dialog", "nvl", "choice", "onStage"] as const) {
+            expect(isStageSlotConcealedByPage(slot), slot).toBe(true);
+        }
+    });
+
+    it("leaves a notification, which is the game telling the player something", () => {
+        expect(isStageSlotConcealedByPage("notification")).toBe(false);
     });
 });

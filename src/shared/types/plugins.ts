@@ -301,6 +301,21 @@ export type PluginContributes = {
      */
     tests?: string[];
     /**
+     * Save ids the plugin keeps for its own bookkeeping - a quick-save slot, a checkpoint - rather
+     * than slots a player chose.
+     *
+     * The game leaves them out of `List Saves`, and so out of every save screen built on it, the way
+     * it leaves out its own autosave ring. Nothing else changes for them: the plugin still writes,
+     * loads and finds them through `app.game.saves` (whose `listIds` is the raw store listing and
+     * still includes them), and the explicit-id save nodes - `Load Save`, `Delete Save`, the
+     * `Get Save` readers - take them like any other id.
+     *
+     * Prefixed with the plugin id like the type lists above, so a plugin can only reserve ids in its
+     * own namespace and can never hide a slot the author's own `Save Game` wrote. That is also why it
+     * derives no install permission: it reaches nothing the plugin did not already own.
+     */
+    reservedSaveIds?: string[];
+    /**
      * Capability domains the `runtime` entry may use. Each maps 1:1 onto a
      * namespace on `app.game`, and an undeclared domain is absent from that
      * object rather than present-and-throwing — so what the install prompt

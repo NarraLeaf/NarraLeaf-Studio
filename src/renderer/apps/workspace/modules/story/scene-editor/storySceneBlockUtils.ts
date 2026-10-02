@@ -494,7 +494,7 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
  * Whether opening this block's property inspector shows anything worth a card.
  *
  * A condition container has nothing of its own to edit - its branches carry the logic, and its
- * add-branch affordances live in the footer - and a condition branch (if / else-if / else) authors
+ * add-branch affordances live on its header row - and a condition branch (if / else-if / else) authors
  * its condition inline through the header chip, not a card. Both would otherwise open a near-empty
  * placeholder card, which reads as broken. They are "card-less": {@link isTextEditableBlock} still
  * wins for text rows, so this is only consulted for the non-text action/control rows.

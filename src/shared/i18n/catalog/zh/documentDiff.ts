@@ -49,6 +49,17 @@ export const documentDiff = {
         element: "第 {index} 项",
         root: "文档本身",
     },
+    units: {
+        rows: {
+            other: "{count} 行",
+        },
+        elements: {
+            other: "{count} 个元素",
+        },
+        nodes: {
+            other: "{count} 个节点",
+        },
+    },
     count: {
         appTags: "变体",
         dlc: "DLC",
@@ -105,8 +116,8 @@ export const documentDiff = {
         chapterRenamed: "章节改名",
         chapterScenes: "场景列表改动",
         chapterOrder: "章节顺序调整",
-        sceneAdded: "新增场景（{blocks} 行）",
-        sceneRemoved: "删除场景（{blocks} 行）",
+        sceneAdded: "新增场景（{rowCount}）",
+        sceneRemoved: "删除场景（{rowCount}）",
         sceneChanged: "场景改动",
         sceneRenamed: "改名",
         sceneField: "场景 {field}",
@@ -210,8 +221,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "界面文档改名",
-        surfaceAdded: "新增界面（{elements} 个元素）",
-        surfaceRemoved: "删除界面（{elements} 个元素）",
+        surfaceAdded: "新增界面（{elementCount}）",
+        surfaceRemoved: "删除界面（{elementCount}）",
         surfaceChanged: "界面改动",
         surfaceRenamed: "改名",
         /** 界面排版所用的设计区域，不是渲染分辨率。 */
@@ -219,8 +230,8 @@ export const documentDiff = {
         surfaceSettings: "背景或页面动画改动",
         surfaceRoot: "根元素改变",
         surfaceField: "{field} 改动",
-        componentAdded: "新增组件（{elements} 个元素）",
-        componentRemoved: "删除组件（{elements} 个元素）",
+        componentAdded: "新增组件（{elementCount}）",
+        componentRemoved: "删除组件（{elementCount}）",
         componentChanged: "组件改动",
         componentRenamed: "改名",
         componentField: "{field} 改动",
@@ -253,8 +264,8 @@ export const documentDiff = {
     uiGraphs: {
         /** 一个宿主槽位当前生效的是哪个蓝图。 */
         ownerRecord: "生效蓝图改变",
-        blueprintAdded: "新增蓝图（{nodes} 个节点）",
-        blueprintRemoved: "删除蓝图（{nodes} 个节点）",
+        blueprintAdded: "新增蓝图（{nodeCount}）",
+        blueprintRemoved: "删除蓝图（{nodeCount}）",
         blueprintChanged: "蓝图改动",
         blueprintRenamed: "改名",
         /** 脚本指向哪个文件。文件内容在磁盘上，不属于这份文档。 */
@@ -263,8 +274,8 @@ export const documentDiff = {
         scriptRemoved: "删除脚本",
         scriptChanged: "脚本改动",
         blueprintField: "{field} 改动",
-        graphAdded: "新增图（{nodes} 个节点）",
-        graphRemoved: "删除图（{nodes} 个节点）",
+        graphAdded: "新增图（{nodeCount}）",
+        graphRemoved: "删除图（{nodeCount}）",
         graphChanged: "图改动",
         graphRenamed: "改名",
         graphField: "{field} 改动",
@@ -289,6 +300,10 @@ export const documentDiff = {
         field: "{field} 改动",
         /** 资产内容文件，本次对比里没有任何资产记录指向它。文件名是 id 的分片，说不出别的。 */
         orphanContent: "没有对应资产记录的文件",
+        fields: {
+            group: "分组",
+            missingGroup: "已不存在的分组",
+        },
     },
     /**
      * 项目配色。
@@ -692,7 +707,9 @@ export const documentDiff = {
         emptyWorkingTree: "自上一个版本以来没有改动",
         readFailure: "无法读取本次对比：{error}",
         incomplete: "{total} 份变更文档中比较了 {shown} 份",
-        documentsOmitted: "另有 {count} 份文档没有列出",
+        documentsOmitted: {
+            other: "另有 {count} 份文档没有列出",
+        },
         unavailable: "该项目没有可用的版本控制",
     },
     /** 把一份文件的两个版本放进各自的标签页并排看。这里只放并排排布本身用到的词。 */
@@ -747,7 +764,9 @@ export const documentDiff = {
         takeTheirs: "保留对方的",
         takeAllMine: "全部保留我的",
         takeAllTheirs: "全部保留对方的",
-        rowsOmitted: "另有 {count} 个文件未列出，可用上方的两个链接一次性选择",
+        rowsOmitted: {
+            other: "另有 {count} 个文件未列出，可用上方的两个链接一次性选择",
+        },
         /** 两栏：左边是有冲突的文件，右边是选中文件内部的变更。 */
         fileList: "有冲突的文件",
         decision: "保留哪一边",

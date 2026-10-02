@@ -4,6 +4,10 @@ interface ResizableHandleProps {
     direction: "horizontal" | "vertical";
     onResize: (delta: number) => number;
     className?: string;
+    /** Called when a drag begins, before the first `onResize`. */
+    onDragStart?: () => void;
+    /** Called when the button is released, after the last `onResize` - where a size is worth saving. */
+    onDragEnd?: () => void;
 }
 
 /**
@@ -14,13 +18,20 @@ interface ResizableHandleProps {
  * (that strip used to read as a gap, and picked up the wrong contrast against panel headers and
  * a custom workspace background). Its grab area and its hover glow are both pseudo-elements
  * that spill past the 1px box without occupying layout — see `.nl-dock-divider` in styles.css.
+ *
+ * The drag is followed on the document the handle is drawn in, which is not the renderer's own when
+ * the handle is inside a detached editor window: listening on the opener's document there would hear
+ * no movement at all and leave the drag stuck on.
  */
-export function ResizableHandle({ direction, onResize, className = "" }: ResizableHandleProps) {
-    const [isDragging, setIsDragging] = useState(false);
+export function ResizableHandle({ direction, onResize, className = "", onDragStart, onDragEnd }: ResizableHandleProps) {
+    const [dragDocument, setDragDocument] = useState<Document | null>(null);
+    const isDragging = dragDocument !== null;
     const startPosRef = useRef<number>(0);
+    const onDragEndRef = useRef(onDragEnd);
+    onDragEndRef.current = onDragEnd;
 
     useEffect(() => {
-        if (!isDragging) return;
+        if (!dragDocument) return;
 
         const handleMouseMove = (e: MouseEvent) => {
             const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
@@ -31,22 +42,24 @@ export function ResizableHandle({ direction, onResize, className = "" }: Resizab
         };
 
         const handleMouseUp = () => {
-            setIsDragging(false);
+            setDragDocument(null);
+            onDragEndRef.current?.();
         };
 
-        document.addEventListener("mousemove", handleMouseMove);
-        document.addEventListener("mouseup", handleMouseUp);
+        dragDocument.addEventListener("mousemove", handleMouseMove);
+        dragDocument.addEventListener("mouseup", handleMouseUp);
 
         return () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
+            dragDocument.removeEventListener("mousemove", handleMouseMove);
+            dragDocument.removeEventListener("mouseup", handleMouseUp);
         };
-    }, [isDragging, direction, onResize]);
+    }, [dragDocument, direction, onResize]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
         startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
-        setIsDragging(true);
+        onDragStart?.();
+        setDragDocument(e.currentTarget.ownerDocument);
     };
 
     const axisClass = direction === "horizontal" ? "nl-dock-divider--x" : "nl-dock-divider--y";

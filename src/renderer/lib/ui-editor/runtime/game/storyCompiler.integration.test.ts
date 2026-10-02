@@ -11,6 +11,7 @@ import {
     UNPLAYABLE_STORY_TRANSITION_KINDS,
 } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
+import { LOOP_TO_END_OF_FILE_SECONDS } from "@shared/types/audio";
 import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS, type StoryEndingReach } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
@@ -947,6 +948,19 @@ describe("compileStudioStoryToNlr", () => {
             const event = tokens[0].text as any;
             expect(event.config.sound).toBeTruthy();
             expect(event.config.expression).toBeUndefined();
+        });
+
+        it("plays a line's inline sound at its clip's gain", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(eventDialogue({ event: { sound: { assetId: "asset-sting" } } }), ["say"]),
+                sceneId: "scene-1",
+                characters: [alice],
+                audioClips: { "asset-sting": { gainDb: -6 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const event = sayWords(compiled).filter(word => word.isTextEvent?.())[0].text as any;
+            expect(event.config.sound.state.volume).toBeCloseTo(Math.pow(10, -6 / 20), 9);
         });
 
         it("warns and omits an event whose character image cannot be resolved", async () => {
@@ -2509,6 +2523,18 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(sentence.config?.voiceId ?? null).toBeNull();
     });
 
+    it("plays the legacy per-line voice at its clip's gain", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            audioClips: { "asset-voice": { gainDb: -6 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const voice = getSaySentence(compiled, "say").config?.voice as any;
+        expect(voice.state.volume).toBeCloseTo(Math.pow(10, -6 / 20), 9);
+    });
+
     it("compiles /camera onto story.camera and clamps every numeric input", async () => {
         // The clamp is the point: the engine's Darkness does not clamp, so an out-of-range darkness
         // compiles to an invalid filter and fails SILENTLY. Same reasoning for a zero/negative zoom.
@@ -4043,20 +4069,62 @@ describe("story audio", () => {
     /**
      * An in or loop point with no out point ends at the end of the file. The engine drops a loop
      * point with no end time beside it and streams the clip through an element that loops from 0:00,
-     * so the region has to carry the file's length as that end time.
+     * so a looping clip carries an end time past the end of any file, which the buffer source clamps
+     * to the file's own end. Nothing about the file is needed - the markers alone decide it, whether
+     * or not the clip's preview was ever opened.
      */
-    it("ends a region with no out point at the file's length", async () => {
-        const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(bgmRow("music", "asset-theme"), ["music"]),
-            sceneId: "scene-1",
-            audioClips: { "asset-theme": { inMs: 1000, loopStartMs: 5000, lengthMs: 90_000 } },
-            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+    describe("a looping region with no out point", () => {
+        it("turns a /bgm row around at the end of the file", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(bgmRow("music", "asset-theme"), ["music"]),
+                sceneId: "scene-1",
+                audioClips: { "asset-theme": { inMs: 1000, loopStartMs: 5000 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm") as any;
+            expect(sound.config.loop).toBe(true);
+            expect(sound.config.seek).toBe(1);
+            expect(sound.config.loopStart).toBe(5);
+            expect(sound.config.endTime).toBe(LOOP_TO_END_OF_FILE_SECONDS);
         });
 
-        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm") as any;
-        expect(sound.config.seek).toBe(1);
-        expect(sound.config.loopStart).toBe(5);
-        expect(sound.config.endTime).toBe(90);
+        it("turns the scene's own music around at the end of the file", async () => {
+            const document = baseDocument({}, []);
+            document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                audioClips: { "asset-theme": { inMs: 2000 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const music = (compiled.scene as any).state.backgroundMusic;
+            expect(music.config.seek).toBe(2);
+            expect(music.config.endTime).toBe(LOOP_TO_END_OF_FILE_SECONDS);
+        });
+
+        it("gives a clip that plays once no end time, so it runs to the end of the file", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "sting", assetId: "asset-sting", loop: false },
+                    },
+                }, ["se"]),
+                sceneId: "scene-1",
+                audioClips: { "asset-sting": { inMs: 250, loopStartMs: 900 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("sting") as any;
+            expect(sound.config.seek).toBe(0.25);
+            expect(sound.config.endTime).toBeUndefined();
+        });
     });
 
     it("plays an unmarked clip whole", async () => {

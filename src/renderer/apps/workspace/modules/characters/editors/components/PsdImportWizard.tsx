@@ -63,7 +63,7 @@ export function PsdImportWizard(props: {
     appearance: CharacterAppearance;
     characterName: string;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const [filePath, setFilePath] = useState<string | null>(null);
@@ -242,11 +242,13 @@ export function PsdImportWizard(props: {
                         <span className="min-w-0 flex-1 truncate font-medium">{document.fileName}</span>
                         {cost && (
                             <span
-                                aria-label={t("characters.editor.psd.cost")}
                                 data-psd-heavy={cost.heavy ? "true" : "false"}
                                 className={cost.heavy ? "text-warning" : "text-fg-subtle"}
                             >
-                                {t("characters.editor.psd.cost", { layers: cost.layers, megabytes: cost.megabytes })}
+                                {t("characters.editor.psd.costCounts", {
+                                    layers: tn("characters.editor.psd.layerCount", cost.layers),
+                                    megabytes: cost.megabytes,
+                                })}
                             </span>
                         )}
                         <span
@@ -325,7 +327,7 @@ export function PsdImportWizard(props: {
                                     <Layers className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                     <span className="min-w-0 flex-1 truncate">{slot.axis}</span>
                                     <span className="text-2xs text-fg-subtle">
-                                        {t("characters.editor.psd.axis", { count: slot.options.length })}
+                                        {tn("characters.editor.psd.axis", slot.options.length)}
                                     </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1 pl-5">

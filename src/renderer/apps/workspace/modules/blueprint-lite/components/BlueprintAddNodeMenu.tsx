@@ -31,10 +31,13 @@ import {
 } from "./BlueprintAddNodeMenuModel";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
+import { useCategoryRowScroll } from "./useCategoryRowScroll";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -138,7 +141,6 @@ export function BlueprintAddNodeMenu({
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const categoryListRef = useRef<HTMLDivElement>(null);
     const navStateRef = useRef({ activeFlatIndex: -1, itemCount: 0 });
 
     useEffect(() => {
@@ -163,6 +165,8 @@ export function BlueprintAddNodeMenu({
     }, [nodeCatalog, paletteContext, entryFilter]);
 
     const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
+    const categoryRow = useCategoryRowScroll([open, categories]);
+    const categoryListRef = categoryRow.rowRef;
     const categoriesRef = useRef(categories);
     categoriesRef.current = categories;
     const activeCategoryIdRef = useRef(activeCategoryId);
@@ -287,22 +291,32 @@ export function BlueprintAddNodeMenu({
         if (!open) {
             return;
         }
+        // Keys a text field answers for itself once there is text in it: the caret's. With the
+        // search box empty there is no caret to move, and ←/→ step through the categories and
+        // Home/End jump the list; with something typed, they edit what was typed.
+        const searchOwnsKey = (e: KeyboardEvent) => {
+            const input = inputRef.current;
+            return Boolean(input && e.target === input && input.value.length > 0);
+        };
         const onKey = (e: KeyboardEvent) => {
+            // Every key of a composition is the input method's: Enter commits the reading, the
+            // arrows walk the candidates.
+            if (isImeKeyEvent(e)) {
+                return;
+            }
+
             if (e.key === "Escape") {
                 e.preventDefault();
                 actionsRef.current.onClose();
                 return;
             }
 
-            if (e.key === "ArrowLeft") {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                if (searchOwnsKey(e)) {
+                    return;
+                }
                 e.preventDefault();
-                selectRelativeCategory(-1);
-                return;
-            }
-
-            if (e.key === "ArrowRight") {
-                e.preventDefault();
-                selectRelativeCategory(1);
+                selectRelativeCategory(e.key === "ArrowLeft" ? -1 : 1);
                 return;
             }
 
@@ -326,6 +340,10 @@ export function BlueprintAddNodeMenu({
                     }
                     return prev - 1;
                 });
+                return;
+            }
+
+            if ((e.key === "Home" || e.key === "End") && searchOwnsKey(e)) {
                 return;
             }
 
@@ -400,40 +418,56 @@ export function BlueprintAddNodeMenu({
                                 : undefined,
                         }}
                     />
-                    <div
-                        ref={categoryListRef}
-                        className="nl-no-scrollbar mt-3 flex gap-1 overflow-x-auto pb-0.5"
-                        onWheel={event => {
-                            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
-                                return;
-                            }
-                            event.preventDefault();
-                            event.currentTarget.scrollLeft += event.deltaY;
-                        }}
-                    >
-                        {categories.map((category, index) => {
-                            const active = activeCategoryId === category.id;
-                            const visual = getCategoryVisual(category.id);
-                            const Icon = visual.icon;
-                            return (
-                                <button
-                                    key={category.id}
-                                    type="button"
-                                    data-bp-add-node-category-idx={index}
-                                    className={[
-                                        "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
-                                        active
-                                            ? "border-primary/45 bg-primary/15 text-fg"
-                                            : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
-                                    ].join(" ")}
-                                    onClick={() => setActiveCategoryId(category.id)}
-                                >
-                                    <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
-                                    <span>{resolveBlueprintCategoryLabel(category.label, t)}</span>
-                                    <span className="text-2xs text-fg-subtle">{category.count}</span>
-                                </button>
-                            );
-                        })}
+                    {/* The fades are drawn on this wrapper rather than inside the row: a positioned
+                        child of a scroller is positioned against its content and would slide away
+                        with the chips. */}
+                    <div className="relative mt-3">
+                        <div
+                            ref={categoryListRef}
+                            className={cn(
+                                "nl-no-scrollbar flex gap-1 overflow-x-auto pb-0.5",
+                                categoryRow.dragging && "cursor-grabbing select-none",
+                            )}
+                            {...categoryRow.rowProps}
+                        >
+                            {categories.map((category, index) => {
+                                const active = activeCategoryId === category.id;
+                                const visual = getCategoryVisual(category.id);
+                                const Icon = visual.icon;
+                                return (
+                                    <button
+                                        key={category.id}
+                                        type="button"
+                                        data-bp-add-node-category-idx={index}
+                                        className={[
+                                            "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
+                                            active
+                                                ? "border-primary/45 bg-primary/15 text-fg"
+                                                : "border-edge bg-fill-subtle text-fg-muted hover:bg-fill hover:text-fg",
+                                        ].join(" ")}
+                                        onClick={() => setActiveCategoryId(category.id)}
+                                    >
+                                        <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
+                                        <span>{resolveBlueprintCategoryLabel(category.label, t)}</span>
+                                        <span className="text-2xs text-fg-subtle">{category.count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {categoryRow.overflow.left ? (
+                            <span
+                                data-bp-chip-fade="left"
+                                className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-surface to-transparent"
+                                aria-hidden
+                            />
+                        ) : null}
+                        {categoryRow.overflow.right ? (
+                            <span
+                                data-bp-chip-fade="right"
+                                className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface to-transparent"
+                                aria-hidden
+                            />
+                        ) : null}
                     </div>
                 </div>
 
@@ -504,11 +538,12 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     const subtitle = magicRef
         ? `${categoryLabel} -> ${magicRef.label}`
         : categoryLabel;
+    // What the node does is the one thing the row cannot show; its type id is already on the right
+    // of the row, and the search keywords say nothing about the node.
     const title = [
         nodeTitle,
-        props.entry.type,
+        props.entry.description ? t(props.entry.description) : "",
         magicRef ? t("blueprint.addNode.targetTooltip", { label: magicRef.label, type: magicRef.elementType }) : "",
-        props.entry.keywords?.length ? props.entry.keywords.join(", ") : "",
     ].filter(Boolean).join("\n");
 
     return (

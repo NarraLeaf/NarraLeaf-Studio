@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import React, { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAssetSetAxis, resolveAssetSetContents, validateAssetSet, type AssetSet } from "@shared/types/assetSet";
 import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset, type AssetGroup } from "@/lib/workspace/services/assets/types";
 import { AssetsPanelContext } from "../AssetsPanelContext";
@@ -97,7 +98,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unrea
         memberAssetIds: new Set<string>(),
         expandedAssetSets: new Set<string>(),
         setExpandedAssetSets: () => undefined,
-        assetSetNaming: { locales: new Map(), editions: new Map(), words: { language: "Language", edition: "Variant" } },
+        assetSetNaming: { locales: new Map(), editions: new Map(), words: { language: "Language", edition: "Variant", deletedEdition: "Deleted variant" } },
         handleAssetSetSelect: () => undefined,
         showAssetSetContextMenu: () => undefined,
         showAssetSetValueContextMenu: () => undefined,
@@ -205,6 +206,161 @@ describe("AssetsListView on a large library", () => {
         fireEvent.click(folder as HTMLElement);
 
         expect(drawnRows()).toBeLessThan(80);
+    });
+});
+
+/** A set resolved against a library the way the panel resolves one. */
+function resolvedSet(set: AssetSet, library: readonly Asset[]): ResolvedAssetSet {
+    const candidates = library.map(entry => ({ id: entry.id, type: entry.type, tags: entry.tags }));
+    const contents = resolveAssetSetContents(set, candidates, [set]);
+    const problems = validateAssetSet(set, [set]);
+    return {
+        set,
+        category: AssetCategory.Image,
+        contents,
+        problems,
+        incomplete: problems.length > 0 || contents.missing.length > 0 || contents.ambiguous.length > 0,
+    };
+}
+
+function member(id: string, name: string, tags: string[]): Asset {
+    return { ...asset(0), id, name, tags };
+}
+
+/**
+ * Two sets, both open: one whose `ja` has no file of its own and is answered by the fallback, and one
+ * whose fallback has no file, so its `main` is answered by nothing.
+ */
+function SetHarness({ publishRowOrder = () => undefined }: { publishRowOrder?: (keys: readonly string[]) => void }) {
+    const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+    const library = [
+        member("title-en", "title_en", ["set:s-title", "locale:en"]),
+        member("cover-demo", "cover_demo", ["set:s-cover", "release:demo"]),
+    ];
+    const sets = [
+        resolvedSet({
+            id: "s-title",
+            name: "Title card",
+            type: AssetType.Image,
+            filter: ["set:s-title"],
+            axis: makeAssetSetAxis("locale", ["en", "ja"], "en"),
+        }, library),
+        resolvedSet({
+            id: "s-cover",
+            name: "Cover",
+            type: AssetType.Image,
+            filter: ["set:s-cover"],
+            axis: makeAssetSetAxis("release", ["main", "demo"], "main"),
+        }, library),
+    ];
+    const assets = createEmptyAssetCategoryRecord<Asset>();
+    assets[AssetCategory.Image] = library;
+    const byCategory = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
+    byCategory[AssetCategory.Image] = sets;
+    const memberAssetIds = new Set(sets.flatMap(entry => entry.contents.cells.flatMap(cell => cell.assetIds)));
+
+    const contextValue = {
+        assets,
+        groups: createEmptyAssetCategoryRecord<AssetGroup>(),
+        filteredAssets: assets,
+        filteredGroups: createEmptyAssetCategoryRecord<AssetGroup>(),
+        matchedGroupIds: new Set<string>(),
+        selectedItems: new Set<string>(),
+        focusedItemId: null,
+        draggedItem: null,
+        dropTargetId: null,
+        clipboard: null,
+        isMultiSelectMode: false,
+        expandedGroups: new Set<string>(),
+        setExpandedGroups: () => undefined,
+        handleItemSelect: () => undefined,
+        publishRowOrder,
+        handleAssetClick: () => undefined,
+        handleAssetOpen: () => undefined,
+        handleGroupFocus: () => undefined,
+        showContextMenu: () => undefined,
+        assetSets: byCategory,
+        rootAssetSets: byCategory,
+        memberAssetIds,
+        expandedAssetSets: new Set(sets.map(entry => entry.set.id)),
+        setExpandedAssetSets: () => undefined,
+        assetSetNaming: {
+            locales: new Map([["en", "English"], ["ja", "日本語"]]),
+            editions: new Map([["main", "main"], ["demo", "Demo"]]),
+            words: { language: "Language", edition: "Variant", deletedEdition: "Deleted variant" },
+        },
+        handleAssetSetSelect: () => undefined,
+        showAssetSetContextMenu: () => undefined,
+        showAssetSetValueContextMenu: () => undefined,
+        handleImportToGroup: importToGroup,
+        isFocused: () => false,
+        isNarrowed: false,
+        compactToolbar: false,
+        setAssetsIconToolbarCenter: () => undefined,
+        mediaSupport: new Map(),
+        unreadableCategories: new Set<AssetCategory>(),
+        handleConvertMedia: () => undefined,
+        assetClaims: {},
+        assetTransfers: {},
+    };
+
+    return (
+        <AssetsPanelContext.Provider value={contextValue}>
+            <div ref={setScrollElement} style={{ overflowY: "auto" }}>
+                <AssetsListView
+                    dropTargetId={null}
+                    handleRootDrop={async () => undefined}
+                    handleImport={() => undefined}
+                    handleImportRemote={() => undefined}
+                    handleCreateGroup={() => undefined}
+                    actionLoading={false}
+                    setDropTargetId={() => undefined}
+                    openItems={[AssetCategory.Image]}
+                    onOpenChange={() => undefined}
+                    disableAnimation
+                    scrollElement={scrollElement}
+                />
+            </div>
+        </AssetsPanelContext.Provider>
+    );
+}
+
+/** The row a value of a set is drawn as, by the words on its right. */
+function valueRow(coordinate: string): HTMLElement {
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-index] > div")];
+    const row = rows.find(candidate => candidate.textContent?.endsWith(coordinate));
+    expect(row).toBeDefined();
+    return row as HTMLElement;
+}
+
+describe("a set's values in the tree", () => {
+    it("draws a value the fallback answers as the fallback's file, marked, and not as a hole", () => {
+        render(<SetHarness />);
+
+        // The same thing the set's count says - every value is answered - and the inspector says: the
+        // game shows title_en for Japanese.
+        const row = valueRow("Language: 日本語");
+        expect(row.hasAttribute("data-asset-set-inherited")).toBe(true);
+        expect(row.textContent).toContain("title_en");
+        expect(row.textContent).toContain("fallback");
+        expect(row.textContent).not.toContain("No file");
+        expect(row.querySelector(".text-warning")).toBeNull();
+    });
+
+    it("still draws a value nothing answers as a hole", () => {
+        render(<SetHarness />);
+
+        const row = valueRow("Variant: main");
+        expect(row.hasAttribute("data-asset-set-inherited")).toBe(false);
+        expect(row.textContent).toContain("No file");
+    });
+
+    it("keeps the fallback's file one row in a range, however many values it answers", () => {
+        const published: string[][] = [];
+        render(<SetHarness publishRowOrder={keys => published.push([...keys])} />);
+
+        const keys = published[published.length - 1];
+        expect(keys.filter(key => key.endsWith("title-en"))).toHaveLength(1);
     });
 });
 

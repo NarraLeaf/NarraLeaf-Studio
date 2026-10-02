@@ -28,7 +28,7 @@ function formatTime(timestamp: number, locale: string): string {
  * resets however the panel was reached (bell click or rail icon).
  */
 export function NotificationsPanel() {
-    const { t, locale } = useTranslation();
+    const { t, tn, locale } = useTranslation();
     const { context } = useWorkspace();
     const notifications = context ? context.services.get<UIService>(Services.UI).notifications : null;
 
@@ -81,8 +81,13 @@ export function NotificationsPanel() {
                                                 {entry.detail}
                                             </div>
                                         )}
+                                        {/* A notice said more than once is one entry: the time is the
+                                            latest, and the count says how often. */}
                                         <div className="mt-1 text-2xs text-fg-subtle">
                                             {formatTime(entry.timestamp, locale)}
+                                            {entry.count && entry.count > 1
+                                                ? ` · ${tn("workspace.shell.notifications.repeated", entry.count)}`
+                                                : null}
                                         </div>
                                     </div>
                                 </div>

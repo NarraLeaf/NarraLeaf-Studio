@@ -2,15 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SpriteCompositor, spriteCompositeKey } from "./spriteCompositor";
 
 /** The drawing is injected, so the cache and keys can be exercised without a canvas. */
-function build(options?: { limit?: number }) {
+function build(options?: { limit?: number; sizes?: Record<string, [number, number]> }) {
     const revoked: string[] = [];
     let created = 0;
     // Node has no object-URL support; the compositor only ever calls these two.
     globalThis.URL.createObjectURL = () => `blob:${++created}`;
     globalThis.URL.revokeObjectURL = (url: string) => { revoked.push(url); };
 
-    const decode = vi.fn(async (assetId: string) => ({ width: 10, height: 10, id: assetId } as unknown as ImageBitmap));
-    const render = vi.fn(async () => new Blob());
+    const decode = vi.fn(async (assetId: string) => {
+        const [width, height] = options?.sizes?.[assetId] ?? [10, 10];
+        return { width, height, id: assetId } as unknown as ImageBitmap;
+    });
+    const render = vi.fn(async (_bitmaps: readonly ImageBitmap[], _maxSize: number | undefined) => new Blob());
     const compositor = new SpriteCompositor(decode, render, options?.limit ?? 48);
     return { compositor, decode, render, revoked };
 }
@@ -35,7 +38,8 @@ describe("SpriteCompositor", () => {
         const { compositor, render } = build();
         const first = await compositor.composite("c1|tags:a=b", ["one", "two"]);
         const second = await compositor.composite("c1|tags:a=b", ["one", "two"]);
-        expect(first).toBe(second);
+        expect(first?.url).toMatch(/^blob:/);
+        expect(second).toBe(first);
         expect(render).toHaveBeenCalledTimes(1);
 
         // A different size is a different picture.
@@ -68,7 +72,19 @@ describe("SpriteCompositor", () => {
         await compositor.composite("c1|pose:a", ["x"]);
         await compositor.composite("c1|pose:c", ["x"]);
         expect(revoked).toHaveLength(1);
-        expect(revoked[0]).not.toBe(first);
+        expect(revoked[0]).not.toBe(first?.url);
+    });
+
+    it("reports the artwork's own size, not the size it drew the picture at", async () => {
+        // A body and a ribbon taller than it: the stack's canvas is the widest layer by the tallest.
+        const { compositor, render } = build({ sizes: { body: [1600, 1586], ribbon: [400, 1800] } });
+        const composite = await compositor.composite("c1|tags:", ["body", "ribbon"], 512);
+
+        // The picture is still asked for at 512 - a preview has no use for more...
+        expect(render.mock.calls[0][1]).toBe(512);
+        // ...but whoever places it on a stage needs the artwork's pixels, and the picture's are only
+        // what it was scaled to. A 1600px sprite composited at 512 is still a 1600px sprite.
+        expect(composite).toMatchObject({ width: 1600, height: 1800 });
     });
 
     it("invalidates one character without disturbing another", async () => {

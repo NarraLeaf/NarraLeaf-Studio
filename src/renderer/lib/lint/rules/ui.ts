@@ -237,6 +237,72 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     return sites;
 }
 
+/**
+ * The translation unit a widget's text is read through at run time, when it has one.
+ *
+ * `key` is a named key (`key:<name>`), whose source words live in the key registry rather than on
+ * the widget; `implicit` is the widget's own unit (`ui:<elementId>.<prop>`), whose source words are
+ * the literal the author typed.
+ */
+export type InterfaceTextUnitBinding =
+    | { kind: "key"; keyName: string }
+    | { kind: "implicit"; unitId: string; sourceText: string };
+
+/** One widget whose words a target locale is expected to translate, and where it lives. */
+export type InterfaceTextUnitSite = {
+    element: UIElement;
+    location: LintLocation;
+    target: SearchJumpTarget;
+    /** The widget's own literal, which is what renders when no translation is found. */
+    literal: string;
+    binding: InterfaceTextUnitBinding;
+};
+
+/**
+ * Every widget on a page or in a component definition that reads its words through a translation
+ * unit, in the order the pages and then the definitions are listed.
+ *
+ * The same precedence `useLocalizedWidgetText` applies: a named key wins over the opt-in, and the
+ * opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
+ * the localization panel leaves it out - there is no row for it to be translated in. Component
+ * definitions are walked once each, under the definition, for the reason the Page widget rules give;
+ * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
+ */
+export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
+    const sites: InterfaceTextUnitSite[] = [];
+    const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
+        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        if (!site || getUIComponentLink(element)) {
+            return;
+        }
+        const props = elementProps(element);
+        const literal = readStringProp(props, site.textProp);
+        const keyName = readStringProp(props, site.keyProp).trim();
+        if (keyName) {
+            sites.push({ element, location, target, literal, binding: { kind: "key", keyName } });
+            return;
+        }
+        if (site.optInProp !== undefined && props[site.optInProp] === true && literal.trim()) {
+            sites.push({
+                element,
+                location,
+                target,
+                literal,
+                binding: { kind: "implicit", unitId: uiTextUnitId(element.id, site.textProp), sourceText: literal },
+            });
+        }
+    };
+    for (const { surface, element } of listSurfaceElements(document)) {
+        read(element, surfaceLocation(surface, element), surfaceTarget(surface));
+    }
+    for (const component of document.components ?? []) {
+        for (const element of Object.values(component.elements ?? {})) {
+            read(element, componentLocation(component, element), componentTarget(component));
+        }
+    }
+    return sites;
+}
+
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;
 
@@ -252,7 +318,7 @@ function hasTranslatableWord(text: string): boolean {
     return /\p{L}/u.test(text);
 }
 
-function clipLiteral(text: string): string {
+export function clipLiteral(text: string): string {
     const flattened = text.replace(/\s+/g, " ").trim();
     return flattened.length > TEXT_EXCERPT_MAX_CHARS
         ? `${flattened.slice(0, TEXT_EXCERPT_MAX_CHARS - 1)}…`
@@ -272,6 +338,16 @@ function clipLiteral(text: string): string {
  * A widget that opted in through `localizable` is bound just as firmly as one naming a key: the
  * implicit unit `ui:<elementId>.<prop>` is a row in every target locale's document. Both are
  * "translatable"; neither is reported.
+ *
+ * **Nor is a prop whose words come from a value binding** - a list row's field or a value blueprint.
+ * The binding writes the prop before the widget draws it, so the literal is a placeholder no player
+ * reads (the inspector hides it for a row field for that reason), and the words that do arrive are
+ * translated where they come from: a backlog row's line is a story line, a choice row's text a
+ * choice. Following this rule's advice there would break the widget, not translate it: a key or the
+ * implicit unit is resolved after the binding has written the prop, so it replaces the bound words
+ * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
+ * no list draws the element, or the list no longer declares the field - leaves the literal on
+ * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
  */
 function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -298,7 +374,8 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
         }
         const boundToKey = readStringProp(props, site.keyProp).trim().length > 0;
         const boundToUnit = site.optInProp !== undefined && props[site.optInProp] === true;
-        if (boundToKey || boundToUnit) {
+        const boundToValue = element.valueBindings?.[site.textProp] !== undefined;
+        if (boundToKey || boundToUnit || boundToValue) {
             continue;
         }
         findings.push({

@@ -45,13 +45,20 @@ import type { GameLocalizationBundle } from "../types/localization";
  */
 
 /**
+ * The part of the project a set was named in, when it was not a story row.
+ *
+ * A key rather than a phrase: the caller turns it into words in the author's language.
+ */
+export type AssetSetRecordSlice = "characters" | "interface" | "blueprint";
+
+/**
  * A fault in one set, and the part of the project that named it.
  *
  * Declared here because characters were the first content without rows to report against; the
  * interface pass reports the same shape, so both are one thing for the caller that turns it into a
  * sentence.
  */
-export type AssetSetRecordProblem = AssetSetProblemDetail & { slice: string };
+export type AssetSetRecordProblem = AssetSetProblemDetail & { slice: AssetSetRecordSlice };
 
 export type CharacterAssetSetResult = {
     problems: AssetSetRecordProblem[];

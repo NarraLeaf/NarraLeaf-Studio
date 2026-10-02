@@ -52,7 +52,7 @@ export const test = {
         rerun: "重新运行",
         severityFilter: "级别",
         filterAll: "全部",
-        findings: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        findingCounts: "{errors}，{warnings}，{infos}",
         durationSeconds: "{seconds} 秒",
         durationMinutes: "{minutes} 分 {seconds} 秒",
     },
@@ -64,6 +64,7 @@ export const test = {
     },
     console: {
         channel: "测试",
+        channelDescription: "测试运行及其判定",
         started: "{title} 开始",
         finished: "{title} {status}，用时 {duration}",
         finding: "{severity} {message}",
