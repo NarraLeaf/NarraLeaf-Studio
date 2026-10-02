@@ -9,6 +9,7 @@
  * Comments in English per project convention.
  */
 
+import { createTranslator } from "@shared/i18n";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
@@ -211,6 +212,8 @@ export function resolveNodeType(input: string): string | null {
 export type NodeDetail = {
     type: string;
     displayName: string;
+    /** What the node does, in English: the sentence the palette and the card show an author. */
+    description?: string;
     category: string;
     keywords: string[];
     graphKinds: BlueprintGraphKind[];
@@ -280,6 +283,7 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
     return {
         type: def.type,
         displayName: def.displayName,
+        description: def.description ? createTranslator("en").t(def.description) : undefined,
         category: def.category,
         keywords: def.keywords ?? [],
         graphKinds: def.graphKinds,
@@ -396,6 +400,9 @@ export function formatNodeDetail(detail: NodeDetail): string {
     const lines: string[] = [];
     lines.push(`${detail.type}`);
     lines.push(`  name       ${detail.displayName}`);
+    if (detail.description) {
+        lines.push(`  about      ${detail.description}`);
+    }
     lines.push(`  category   ${detail.category}`);
     lines.push(`  graphs     ${detail.graphKinds.join(", ")}`);
     const traits = [
