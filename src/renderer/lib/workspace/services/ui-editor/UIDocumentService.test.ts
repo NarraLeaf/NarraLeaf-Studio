@@ -19,6 +19,7 @@ import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { IMPORT_PLACEMENT_FROM_SOURCE, UIDocumentService } from "./UIDocumentService";
 import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
@@ -1136,6 +1137,8 @@ describe("UIDocumentService component library", () => {
         }).graphs.events.click.graph.nodes.ref.params;
         expect(refParams.elementId).toBe(copy.id);
         expect(refParams.elementId).not.toBe(hit.id);
+        // Under the definition's own surface, which is what the runtime compares a reference against.
+        expect(refParams.surfaceId).toBe(buildUIComponentSurfaceId(component.id));
 
         // The original is untouched: extraction copies into the library, it does not move.
         expect(service.getDocument().elements[hit.id]).toBeTruthy();
@@ -1402,6 +1405,73 @@ describe("UIDocumentService template import: components and naming", () => {
         expect(cloned.id).not.toBe("tpl-bp");
         // The owner must point at the copied element, not the template's element id.
         expect(Object.keys(imported.elements)).toContain(cloned.owner.elementId);
+    });
+
+    it("points the copied component's element references at the copy, under either spelling", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const ref = (surfaceId: string) => ({
+            type: "blueprint.element.ref",
+            params: { surfaceId, elementId: "tpl-component-root", elementType: "nl.container" },
+        });
+        const graphs = {
+            blueprintDocument: {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                blueprints: {
+                    "tpl-bp": {
+                        id: "tpl-bp",
+                        name: "On click",
+                        owner: {
+                            kind: "componentWidgetMain",
+                            componentId: "tpl-component",
+                            elementId: "tpl-component-root",
+                        },
+                        graphs: {
+                            events: {
+                                click: {
+                                    id: "click",
+                                    graph: {
+                                        nodes: {
+                                            stored: { id: "stored", ...ref(buildUIComponentSurfaceId("tpl-component")) },
+                                            picked: { id: "picked", ...ref(buildUIComponentEditorSurfaceId("tpl-component")) },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                        members: { variables: {}, fields: {}, functions: {} },
+                        bindings: {},
+                    },
+                },
+                ownerRecords: {
+                    "componentWidgetMain:tpl-component:tpl-component-root": {
+                        blueprintId: "tpl-bp",
+                    },
+                },
+                persistentVariables: {},
+                meta: {},
+            },
+        };
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs,
+            placement: { kind: "appSurface" },
+        });
+
+        const imported = result.importedComponents[0]!;
+        const cloned = Object.values<any>(blueprintDocument.blueprints).find(
+            blueprint => blueprint.owner.kind === "componentWidgetMain"
+                && blueprint.owner.componentId === imported.id,
+        );
+        const nodes = cloned.graphs.events.click.graph.nodes;
+        // The template's own component id survives nowhere: a reference still naming it would point
+        // into a definition this project does not have.
+        expect(nodes.stored.params.surfaceId).toBe(buildUIComponentSurfaceId(imported.id));
+        expect(nodes.picked.params.surfaceId).toBe(buildUIComponentEditorSurfaceId(imported.id));
+        expect(nodes.stored.params.elementId).toBe(imported.rootElementId);
+        expect(nodes.picked.params.elementId).toBe(imported.rootElementId);
     });
 });
 

@@ -144,12 +144,7 @@ import {
     listCallableBlueprintFnOptions,
     resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
-import {
-    ELEMENT_REF_PARAM_ELEMENT_ID,
-    ELEMENT_REF_PARAM_ELEMENT_TYPE,
-    ELEMENT_REF_PARAM_SURFACE_ID,
-    readBlueprintElementRefParams,
-} from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
+import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
 import { FileCode2, PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -157,6 +152,7 @@ import {
     readElementBindingCompletion,
     startElementBindingSession,
     subscribeElementBindingSession,
+    withPickedElement,
 } from "../elementBindingSession";
 import {
     createComponentDocumentServiceAdapter,
@@ -168,6 +164,7 @@ import {
     listEffectiveBlueprintVariables,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { anchorElementId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
+import { isSameUIElementRefSurface } from "@shared/types/ui-editor/componentInstanceKey";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import { createElementCardTargetResolver } from "./elementCardTarget";
 import {
@@ -331,7 +328,9 @@ function collectMagicElementRefs(input: {
             continue;
         }
         const ref = readBlueprintElementRefParams(node.params);
-        if (!ref || ref.surfaceId !== input.surfaceId) {
+        // Either spelling of a component definition's surface: a definition's blueprint is opened under
+        // the component editor's, and its references are stored under the definition's own.
+        if (!ref || !isSameUIElementRefSurface(ref.surfaceId, input.surfaceId)) {
             continue;
         }
         const element = input.document.elements[ref.elementId];
@@ -774,12 +773,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (!node) {
                     return;
                 }
-                node.params = {
-                    ...(node.params ?? {}),
-                    [ELEMENT_REF_PARAM_SURFACE_ID]: target.surfaceId,
-                    [ELEMENT_REF_PARAM_ELEMENT_ID]: target.elementId,
-                    [ELEMENT_REF_PARAM_ELEMENT_TYPE]: target.elementType,
-                };
+                node.params = withPickedElement(node.params, target);
             };
             if (session.graphKind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, session.graphId, apply);

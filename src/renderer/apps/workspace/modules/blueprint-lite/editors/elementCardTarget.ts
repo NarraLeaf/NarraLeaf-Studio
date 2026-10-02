@@ -10,18 +10,18 @@
  * Such a reference is drawn here the way a placement draws the definition
  * (`buildUIComponentDocumentView`).
  *
- * Two spellings of a definition's surface are in stored blueprints. `buildUIComponentSurfaceId` is the
- * one the runtime compares against and the one the command-line tools write; the element picker
- * writes the component editor's own surface id (`getComponentEditorSurfaceId`), because that is the
- * surface it was picked on. Both name the same tree, so both are read.
+ * A reference saved under the component editor's spelling of that surface reads as the definition's
+ * (`normalizeUIElementRefSurfaceId`), as it does everywhere references are compared.
  *
  * Comments in English per project convention.
  */
 
 import { buildUIComponentDocumentView, type UIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
-import { readUIComponentSurfaceComponentId } from "@shared/types/ui-editor/componentInstanceKey";
+import {
+    normalizeUIElementRefSurfaceId,
+    readUIComponentSurfaceComponentId,
+} from "@shared/types/ui-editor/componentInstanceKey";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
-import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 export type ElementCardTarget = {
     /** The document the element is drawn against. */
@@ -74,8 +74,7 @@ export function createElementCardTargetResolver(
     };
 
     return ref => {
-        const componentId =
-            readUIComponentSurfaceComponentId(ref.surfaceId) ?? parseComponentEditorSurfaceId(ref.surfaceId);
+        const componentId = readUIComponentSurfaceComponentId(normalizeUIElementRefSurfaceId(ref.surfaceId));
         if (componentId) {
             const drawing = componentDrawing(componentId);
             // Only the definition's own elements: the view also carries every page's elements, and a

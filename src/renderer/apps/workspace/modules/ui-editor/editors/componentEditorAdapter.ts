@@ -10,19 +10,21 @@ import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditor
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { MoveUiElementsResult } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
+import {
+    buildUIComponentEditorSurfaceId,
+    readUIComponentEditorSurfaceComponentId,
+} from "@shared/types/ui-editor/componentInstanceKey";
 
 export const COMPONENT_TAB_PREFIX = "ui-editor:component:";
-export const COMPONENT_EDITOR_SURFACE_PREFIX = "component-editor:";
 
 export const getComponentTabId = (componentId: string) => `${COMPONENT_TAB_PREFIX}${componentId}`;
-export const getComponentEditorSurfaceId = (componentId: string) => `${COMPONENT_EDITOR_SURFACE_PREFIX}${componentId}`;
+// The editor surface id is spelled in shared, beside the definition's own surface id: element
+// references saved under it are read back by the runtime (`normalizeUIElementRefSurfaceId`).
+export const getComponentEditorSurfaceId = buildUIComponentEditorSurfaceId;
 export const getComponentEditorRootId = (componentId: string) => `${COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX}${componentId}`;
 
 export function parseComponentEditorSurfaceId(surfaceId: string | null | undefined): string | null {
-    if (!surfaceId?.startsWith(COMPONENT_EDITOR_SURFACE_PREFIX)) {
-        return null;
-    }
-    return surfaceId.slice(COMPONENT_EDITOR_SURFACE_PREFIX.length) || null;
+    return readUIComponentEditorSurfaceComponentId(surfaceId);
 }
 
 function cloneElement(element: UIElement): UIElement {
