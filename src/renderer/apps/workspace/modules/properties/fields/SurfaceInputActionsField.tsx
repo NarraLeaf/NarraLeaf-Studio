@@ -79,9 +79,22 @@ export function SurfaceInputActionsField({ data }: CustomFieldProps<SceneEditorC
                 answered.map(({ action, enablement }) => (
                     <div key={action.id} className="rounded-md border border-edge bg-surface px-2 py-2">
                         <div className="flex items-center gap-2">
-                            <div className="min-w-0 flex-1 truncate text-xs font-medium text-fg" data-tip={action.name}>
+                            {/*
+                              * The name is the way to the definition: the action is made and bound
+                              * in the Input Actions panel on the left, and this row is only this
+                              * interface's answer to it.
+                              */}
+                            <button
+                                type="button"
+                                className="min-w-0 flex-1 truncate rounded-md text-left text-xs font-medium text-fg transition-colors hover:text-primary"
+                                onClick={() => {
+                                    uiService?.panels.show(UI_SURFACES_PANEL_ID);
+                                    requestInputActionPanelFocus(action.id);
+                                }}
+                                data-tip={t("properties.scene.input.reveal", { name: action.name })}
+                            >
                                 {action.name}
-                            </div>
+                            </button>
                             <div className="shrink-0 truncate text-2xs text-fg-subtle">{bindingsOf(action)}</div>
                             <button
                                 type="button"

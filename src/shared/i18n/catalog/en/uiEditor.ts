@@ -190,6 +190,8 @@ export const uiEditor = {
         layerFallback: "Layer",
         openComponent: "Open component",
         unlinkComponent: "Unlink component",
+        openComponentNamed: "Open component {name}",
+        openPageNamed: "Open page {name}",
     },
     zoom: {
         label: "Zoom",

@@ -75,19 +75,79 @@ const CONDITION_OPERATORS_WITH_VALUE = new Set<ConditionOperator>(
     Object.keys(CONDITION_OPERATOR_SYMBOLS) as ConditionOperator[],
 );
 
-const ORDERED_OPERATORS: readonly ConditionOperator[] = ["greaterThan", "greaterOrEqual", "lessThan", "lessOrEqual"];
+/** Every operator the picker knows, in the order it lists them. */
+const ALL_OPERATORS: readonly ConditionOperator[] = [
+    "isTrue",
+    "isFalse",
+    "equals",
+    "notEquals",
+    "greaterThan",
+    "greaterOrEqual",
+    "lessThan",
+    "lessOrEqual",
+    "exists",
+];
 
 /**
- * Whether a variable of this type can be ordered.
+ * The operators the picker offers for a variable of this type, the first being the one a freshly
+ * chosen variable starts on.
  *
- * `boolean` cannot: the value control for one is a switch, so offering "is at least" put a threshold
- * operator above an on/off toggle - a test with no reading. `json` cannot either; it compares by
+ * A boolean has two values, so it is tested for one of them. "Equals true" is the same test spelled
+ * longer, and listing both put four ways to ask one question in front of the author. "Is set" stays:
+ * a flag declared without a default holds nothing until a row assigns it, and neither "is true" nor
+ * "is false" holds for it then.
+ *
+ * Every other type is compared against a value. "Is true" and "is false" are not offered for them:
+ * both test for the boolean itself (`=== true`), which no number, string or object ever is, so for
+ * those types they could only answer no. Thresholds apply to numbers and strings; `json` compares by
  * shape, and ordering it would answer through a numeric coercion of an object, which is `false` for
- * every pair. Numbers and strings can, and they are what a threshold is written against.
+ * every pair.
+ *
+ * `undefined` - no variable chosen, or one that no longer resolves - offers everything, because
+ * nothing is known about what the condition can mean.
  */
-function isOrderableType(valueType: StoryVariableValueType): boolean {
-    return valueType === "number" || valueType === "string";
+function operatorsForType(valueType: StoryVariableValueType | undefined): readonly ConditionOperator[] {
+    switch (valueType) {
+        case "boolean":
+            return ["isTrue", "isFalse", "exists"];
+        case "number":
+        case "string":
+            return ["equals", "notEquals", "greaterThan", "greaterOrEqual", "lessThan", "lessOrEqual", "exists"];
+        case "json":
+            return ["equals", "notEquals", "exists"];
+        default:
+            return ALL_OPERATORS;
+    }
 }
+
+/**
+ * What the operator dropdown lists for a variable of this type, in listing order.
+ *
+ * The stored operator is always among them, even where the type says otherwise: a condition written
+ * before the variable was retyped, or before the picker stopped offering that operator for the type,
+ * still means what it says and still runs as it did - and a dropdown that cannot show its own value
+ * reads as empty.
+ */
+export function listedConditionOperators(
+    valueType: StoryVariableValueType | undefined,
+    stored: ConditionOperator,
+): ConditionOperator[] {
+    const offered = operatorsForType(valueType);
+    return ALL_OPERATORS.filter(operator => offered.includes(operator) || operator === stored);
+}
+
+/** The operator a condition starts on once a variable of this type is chosen. */
+export function initialConditionOperator(valueType: StoryVariableValueType): ConditionOperator {
+    return operatorsForType(valueType)[0];
+}
+
+/** The type names the variables panel uses, so a variable is the same kind of thing in both places. */
+const VALUE_TYPE_LABEL_KEYS: Record<StoryVariableValueType, TranslationKey> = {
+    boolean: "storyVars.valueType.boolean",
+    number: "storyVars.valueType.number",
+    string: "storyVars.valueType.string",
+    json: "storyVars.valueType.json",
+};
 
 const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     kind: "variable",
@@ -208,8 +268,8 @@ export function ConditionEditor(props: {
         { value: "blueprint", label: t("story.condition.kindGraph") },
     ], [t]);
     const allOperatorOptions: SelectOption[] = useMemo(() => [
-        { value: "isTrue", label: t("story.condition.opIsOn") },
-        { value: "isFalse", label: t("story.condition.opIsOff") },
+        { value: "isTrue", label: t("story.condition.opIsTrue") },
+        { value: "isFalse", label: t("story.condition.opIsFalse") },
         { value: "equals", label: t("story.condition.opEquals") },
         { value: "notEquals", label: t("story.condition.opNotEquals") },
         // The four thresholds sit between the two matches and "is set", which is the order they are
@@ -270,22 +330,16 @@ export function ConditionEditor(props: {
         [allVariables, appTagService, blueprintService, props.document],
     );
 
-    const currentValueType: StoryVariableValueType =
-        allVariables.find(option => variableRefKey(variableValue.target) === option.key)?.valueType ?? "string";
+    /** The chosen variable's declared type, or `undefined` when none is chosen or it no longer resolves. */
+    const resolvedValueType: StoryVariableValueType | undefined =
+        allVariables.find(option => variableRefKey(variableValue.target) === option.key)?.valueType;
+    const currentValueType: StoryVariableValueType = resolvedValueType ?? "string";
 
-    /**
-     * The operators this variable can take. The stored one is always listed even when its type says
-     * otherwise: a condition written before the variable was retyped still means what it says, and a
-     * dropdown that cannot show its own value reads as empty.
-     */
-    const operatorOptions = useMemo(
-        () => (isOrderableType(currentValueType)
-            ? allOperatorOptions
-            : allOperatorOptions.filter(option =>
-                !ORDERED_OPERATORS.includes(option.value as ConditionOperator)
-                || option.value === variableValue.operator)),
-        [allOperatorOptions, currentValueType, variableValue.operator],
-    );
+    /** The operators this variable can take, plus the stored one (see {@link listedConditionOperators}). */
+    const operatorOptions = useMemo(() => {
+        const listed = listedConditionOperators(resolvedValueType, variableValue.operator);
+        return allOperatorOptions.filter(option => listed.includes(option.value as ConditionOperator));
+    }, [allOperatorOptions, resolvedValueType, variableValue.operator]);
 
     const setKind = (nextKind: ConditionKind) => {
         if (nextKind === kind) {
@@ -323,7 +377,16 @@ export function ConditionEditor(props: {
     const setVariableByKey = (key: string) => {
         const option = allVariables.find(v => v.key === key);
         if (!option) return;
-        props.onChange({ ...variableValue, target: makeVariableRef(option.scope, option.id) });
+        const target = makeVariableRef(option.scope, option.id);
+        if (option.valueType === resolvedValueType) {
+            // Another variable of the same type: the test the author built still reads the same.
+            props.onChange({ ...variableValue, target });
+            return;
+        }
+        // A different type asks a different question, so the comparison starts over on that type's
+        // first operator rather than keeping one its picker does not list (a boolean's "is true" on a
+        // number) or a value of the wrong type.
+        props.onChange({ kind: "variable", target, operator: initialConditionOperator(option.valueType) });
     };
 
     const openEditor = (options?: BlueprintOpenOptions) => {
@@ -340,7 +403,12 @@ export function ConditionEditor(props: {
     };
 
     const variableSelectOptions: SelectOption[] = allVariables.length
-        ? allVariables.map(option => ({ value: option.key, label: option.name, secondaryLabel: option.valueType }))
+        ? allVariables.map(option => ({
+            value: option.key,
+            label: option.name,
+            // A registry entry is read from disk, so its type is only as good as the file.
+            secondaryLabel: VALUE_TYPE_LABEL_KEYS[option.valueType] ? t(VALUE_TYPE_LABEL_KEYS[option.valueType]) : option.valueType,
+        }))
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 
     const showValueField = CONDITION_OPERATORS_WITH_VALUE.has(variableValue.operator);

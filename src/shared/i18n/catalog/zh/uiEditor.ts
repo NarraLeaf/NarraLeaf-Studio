@@ -176,6 +176,8 @@ export const uiEditor = {
         layerFallback: "图层",
         openComponent: "打开组件",
         unlinkComponent: "解除组件关联",
+        openComponentNamed: "打开组件 {name}",
+        openPageNamed: "打开页面 {name}",
     },
     zoom: {
         label: "缩放",
