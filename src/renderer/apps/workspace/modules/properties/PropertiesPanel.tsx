@@ -53,7 +53,6 @@ import {
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
-    getUIComponentLink,
     isLinkedUIComponentElement,
     type UIDocument,
     type UIElement,
@@ -122,6 +121,7 @@ import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoo
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
+import { LinkedComponentInfoField } from "./LinkedComponentInfoField";
 import { AssetSetInspector } from "./AssetSetInspector";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
@@ -681,23 +681,6 @@ function mergeInspectorWithLayoutSchema(
     });
 }
 
-function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
-    const { t } = useTranslation();
-    const link = getUIComponentLink(data.element);
-    const component = link ? data.documentService.getComponent(link.componentId) : null;
-    if (!link) {
-        return null;
-    }
-    return (
-        <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-fg">
-            <div className="font-medium">{component?.name ?? t("properties.linkedComponent.missing")}</div>
-            <div className="mt-1 text-2xs leading-snug text-fg-muted">
-                {t("properties.linkedComponent.info")}
-            </div>
-        </div>
-    );
-}
-
 /**
  * Declared at module scope, not inline in the schema below: the schema is rebuilt on every document
  * revision, and an inline component would be a new type each time - React would remount the field
@@ -726,11 +709,14 @@ function createLinkedComponentInspectorSchema(
                 component: LinkedComponentParamsSection,
                 order: 98,
             }),
+            // First, above the frame fields: which component this is decides what every field below
+            // may change, and the instance's own name sits close enough to the component's that the
+            // card has to be read before anything else on the panel.
             defineField<UIInspectorData, any>({
                 id: "component.linkInfo",
                 type: "custom",
                 component: LinkedComponentInfoField,
-                order: 99,
+                order: -1,
             }),
         ],
     });

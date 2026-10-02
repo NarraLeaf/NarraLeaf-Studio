@@ -582,6 +582,7 @@ export const help = {
                 + "- A placement can be moved, resized and rotated. Changing anything else requires unlinking it "
                 + "first, after which it no longer follows the component.\n"
                 + "- The library states how many placements each component has.\n"
+                + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
                 + "unlinked.",
         },
