@@ -1549,6 +1549,8 @@ export const blueprint = {
             other: "{count} 个蓝图",
         },
         noBlueprints: "没有蓝图",
+        search: "搜索蓝图",
+        noMatches: "没有匹配“{query}”的蓝图",
         nodes: {
             other: "{count} 个节点",
         },

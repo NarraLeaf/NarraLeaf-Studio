@@ -3,7 +3,7 @@ import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
-import { buildBlueprintWall, countBlueprintWallTiles, measureBlueprint } from "./blueprintWallModel";
+import { buildBlueprintWall, countBlueprintWallTiles, filterBlueprintWall, measureBlueprint } from "./blueprintWallModel";
 
 const t = (key: string, params?: Record<string, unknown>) =>
     params ? `${key}(${Object.values(params).join(",")})` : key;
@@ -149,6 +149,30 @@ describe("buildBlueprintWall", () => {
 
     it("counts only tiles", () => {
         expect(countBlueprintWallTiles(groups)).toBe(1 + 4 + 0 + 1 + 1);
+    });
+
+    it("leaves everything when the search is blank", () => {
+        expect(filterBlueprintWall(groups, "   ")).toEqual(groups);
+    });
+
+    it("finds a control by name, case aside, and drops the groups with nothing left", () => {
+        const found = filterBlueprintWall(groups, "QUIT");
+        expect(found.map(group => group.key)).toEqual(["surface:title"]);
+        expect(found[0].tiles.map(tile => tile.blueprintId)).toEqual(["quitLogic"]);
+    });
+
+    it("needs every word, across the control and the page it is on", () => {
+        expect(filterBlueprintWall(groups, "title start").flatMap(group => group.tiles.map(tile => tile.blueprintId)))
+            .toEqual(["startLogic", "startValue"]);
+        expect(filterBlueprintWall(groups, "dialog start")).toEqual([]);
+    });
+
+    it("keeps a whole group, empty or not, when its own name matches", () => {
+        const found = filterBlueprintWall(groups, "dialog");
+        expect(found.map(group => group.key)).toEqual(["surface:dialog"]);
+        expect(found[0].tiles).toEqual([]);
+        const title = filterBlueprintWall(groups, "Title").find(group => group.key === "surface:title");
+        expect(title?.tiles).toHaveLength(4);
     });
 });
 

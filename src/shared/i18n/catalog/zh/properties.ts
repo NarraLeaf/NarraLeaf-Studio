@@ -62,6 +62,17 @@ export const properties = {
         uiElement: "界面元素",
         linkedComponent: "关联组件",
     },
+    interactionSound: {
+        title: "音效",
+        hover: "悬停",
+        hoverTip: "指针移入元素时在音效音轨上播放。带悬停音效的元素相互嵌套时，只播放最内层元素的音效",
+        click: "点击",
+        clickTip: "点击元素时在音效音轨上播放。带点击音效的元素相互嵌套时，只播放最内层元素的音效",
+        none: "未选择音效",
+        chooseHover: "选择悬停音效",
+        chooseClick: "选择点击音效",
+        missing: "音效缺失",
+    },
     linkedComponent: {
         missing: "组件缺失",
         info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转",

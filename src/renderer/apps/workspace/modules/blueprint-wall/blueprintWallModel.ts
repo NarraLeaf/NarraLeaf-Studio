@@ -391,3 +391,28 @@ export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWall
 export function countBlueprintWallTiles(groups: readonly BlueprintWallGroup[]): number {
     return groups.reduce((sum, group) => sum + group.tiles.length, 0);
 }
+
+/**
+ * The groups and tiles a search leaves, by the words the wall itself shows: page and component
+ * names, control names, and the kind of logic. Node contents are the project search's job.
+ *
+ * Every word has to appear somewhere in a tile's own text or its group's, so "title start" finds the
+ * Start control on the Title page. A group whose own name or caption matches keeps all of its tiles,
+ * and keeps showing that it has none - searching a page's name is asking what that page holds.
+ */
+export function filterBlueprintWall(groups: readonly BlueprintWallGroup[], query: string): BlueprintWallGroup[] {
+    const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) {
+        return [...groups];
+    }
+    const matches = (text: string) => terms.every(term => text.includes(term));
+    return groups.flatMap(group => {
+        const groupText = `${group.title} ${group.caption}`.toLocaleLowerCase();
+        if (matches(groupText)) {
+            return [group];
+        }
+        const tiles = group.tiles.filter(tile =>
+            matches(`${groupText} ${tile.title} ${tile.kindLabel}`.toLocaleLowerCase()));
+        return tiles.length > 0 ? [{ ...group, tiles }] : [];
+    });
+}

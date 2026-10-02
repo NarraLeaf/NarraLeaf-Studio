@@ -1609,6 +1609,8 @@ export const blueprint = {
             other: "{count} blueprints",
         },
         noBlueprints: "No blueprints",
+        search: "Search blueprints",
+        noMatches: "No blueprints match “{query}”.",
         nodes: {
             one: "{count} node",
             other: "{count} nodes",
