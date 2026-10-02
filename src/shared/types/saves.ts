@@ -71,14 +71,21 @@ export function isAutoSaveId(id: string): boolean {
 export const LOCALE_RESTART_SAVE_ID = "@locale.restart";
 
 /**
- * Whether a save id is Studio's bookkeeping rather than a slot the player chose.
+ * Whether a save id is bookkeeping rather than a slot the player chose.
  *
  * Asked wherever a listing is offered to a player: an author's save screen draws what this refuses,
  * and nothing else. One predicate rather than a growing chain of comparisons at each call site,
  * because a reserved id nobody remembered to filter shows up as a mystery slot in a shipped game.
+ *
+ * Two owners reserve ids. Studio's are fixed and known here: the autosave ring and the run parked
+ * by a language restart. A plugin's are declared in its manifest (`contributes.reservedSaveIds` -
+ * the built-in Quick Save's one slot is the case that needed it) and only the running game knows
+ * which plugins it carries, so the caller passes them in. The parameter is required rather than
+ * defaulted so that a new listing has to say where its plugin reservations come from instead of
+ * quietly showing a plugin's slot as the player's.
  */
-export function isReservedSaveId(id: string): boolean {
-    return isAutoSaveId(id) || id === LOCALE_RESTART_SAVE_ID;
+export function isReservedSaveId(id: string, pluginReservedIds: ReadonlySet<string>): boolean {
+    return isAutoSaveId(id) || id === LOCALE_RESTART_SAVE_ID || pluginReservedIds.has(id);
 }
 
 /**

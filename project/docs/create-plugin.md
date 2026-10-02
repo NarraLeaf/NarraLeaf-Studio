@@ -84,7 +84,7 @@ Manifest 字段：
 | `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
 | `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
 
-`contributes` 的九个键：
+`contributes` 的键：
 
 | 键 | 类型 | 说明 |
 |---|---|---|
@@ -92,6 +92,7 @@ Manifest 字段：
 | `widgets` | `string[]` | widget type，同上。 |
 | `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
 | `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
+| `reservedSaveIds` | `string[]` | 插件留作自用的存档 id（如快速存档槽，必须以插件 ID 为前缀）。游戏的 `List Saves` 不列出它们，就像不列出自动存档一样；插件自己的 `app.game.saves.listIds` 仍是原始列表、照样看得到，`Load Save` / `Delete Save` / `Get Save` 系列按 id 也照常可用。**不派生安装权限**：它只能影响插件自己命名空间里的 id。 |
 | `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
 | `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，十三选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`。`menu` 是出货游戏的菜单栏（只在有菜单栏的宿主上存在，见 [runtime-api.md](./runtime-api.md#gamemenu)）；`diagnostics` 读引擎缓存，`process.memory` 读游戏各进程占用的内存，两者是分开授权的（见 [runtime-api.md](./runtime-api.md#gameprocess)）。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
 | `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的子进程。声明它本身就是权限请求，无需再声明能力。字段与两种 kind 的通道差异见下面的 [sidecars](#sidecars随游戏发布的子进程) 一节。 |

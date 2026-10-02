@@ -273,8 +273,17 @@ export type RuntimePluginMenuActions = {
 export class RuntimePluginHostController {
     public readonly host: RuntimePluginHost;
     public readonly overlays = new RuntimePluginOverlayStore();
+    /**
+     * Every save id a loaded plugin's manifest keeps for itself, for the game app's player listing
+     * to leave out (see `isReservedSaveId`). Filled by the loader through `host.saveReservations`
+     * before the shell reports its plugins ready, which is before the game app can list anything.
+     */
+    public get reservedSaveIds(): ReadonlySet<string> {
+        return this.pluginReservedSaveIds;
+    }
 
     private readonly hub: RuntimePluginEventHub;
+    private readonly pluginReservedSaveIds = new Set<string>();
     private readonly stateListeners = new Set<(change: RuntimePluginStateChange) => void>();
     private readonly sessionTokens: EngineToken[] = [];
 
@@ -710,6 +719,15 @@ export class RuntimePluginHostController {
 
     private buildHost(): RuntimePluginHost {
         const host: RuntimePluginHost = {
+            // Unconditional, unlike the capability backends below: it depends on nothing the shell
+            // brings, and a shell without it would show every plugin's reserved slot to the player.
+            saveReservations: {
+                reserve: ids => {
+                    for (const id of ids) {
+                        this.pluginReservedSaveIds.add(id);
+                    }
+                },
+            },
             events: {
                 on: (event, listener) => this.hub.on(event, listener),
                 supports: event => this.supportsEvent(event),
