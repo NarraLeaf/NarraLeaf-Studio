@@ -23,6 +23,7 @@ import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-ed
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -568,6 +569,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [isComponentDefinitionGraph, payload.componentId, uidoc],
     );
     const uiService = context.services.get<UIService>(Services.UI);
+    const historyService = context.services.get<HistoryService>(Services.History);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
@@ -2052,17 +2054,23 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             if (staleSnapshots.size === 0) {
                 continue;
             }
-            localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
-                for (const [nodeId, snapshot] of staleSnapshots) {
-                    const node = draft.nodes?.[nodeId];
-                    if (!node) {
-                        continue;
+            // Not an undo step, for the same reason it is deferred while frozen: the author did not
+            // make this change. Recorded, it was the first thing Ctrl+Z took back in a blueprint that
+            // had only just been opened, and it read as an edit - so a blueprint opened as a preview
+            // tab became an ordinary tab before the author had touched it.
+            historyService.withoutRecording(() => {
+                localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
+                    for (const [nodeId, snapshot] of staleSnapshots) {
+                        const node = draft.nodes?.[nodeId];
+                        if (!node) {
+                            continue;
+                        }
+                        node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
                     }
-                    node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
-                }
+                });
             });
         }
-    }, [freeze.frozen, localBp, payload.blueprintId]);
+    }, [freeze.frozen, historyService, localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
