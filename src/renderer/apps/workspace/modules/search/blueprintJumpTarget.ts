@@ -12,26 +12,45 @@ type BlueprintJumpTarget = Extract<SearchJumpTarget, { kind: "blueprint" }>;
 
 /**
  * Where a deep link into a blueprint - a search hit, a problem, a reference - lands: the blueprint
- * editor tab for that blueprint, addressed and named the way every other way into it does.
- *
- * **Addressed the same way.** A blueprint tab is keyed by its owner's surface slot, and two owners
- * have no real surface to put there: the global blueprint is keyed by the `globalMain` sentinel and
- * a component's widget by its component editor's pseudo surface, which is what the UI panel and the
- * property inspector open them with. Leaving the slot empty here gave the link a key of its own, so
- * following it opened a second editor on a blueprint that was already open.
- *
- * **Named the same way.** A tab that is already open keeps its name: the editor is opened under
- * several (the blueprint's own, the page's or control's logic), and following a link to it is not a
- * reason to rename it. A tab opened here is named after the blueprint, as quick open names it.
- * Without a workspace to ask, the title is left to the tab factory's generic one.
+ * editor tab for that blueprint, as {@link blueprintOwnerOpenTarget} addresses and names it, with
+ * the event, function or node the link points at to focus.
  */
 export function blueprintJumpOpenTarget(
     target: BlueprintJumpTarget,
     owner: ParsedBlueprintOwnerKey,
     context: WorkspaceContext | null | undefined,
 ): BlueprintEditorOpenTarget {
+    return {
+        ...blueprintOwnerOpenTarget(target.blueprintId, owner, context),
+        focusEventId: target.focusEventId,
+        focusFunctionId: target.focusFunctionId,
+        focusNodeId: target.focusNodeId,
+    };
+}
+
+/**
+ * The blueprint editor tab for one owner's blueprint, addressed and named the way every other way
+ * into it does. What a way in that knows only the blueprint and its owner - quick open, the project
+ * scripts list, a search hit - opens, so that it lands on the tab already open rather than beside it.
+ *
+ * **Addressed the same way.** A blueprint tab is keyed by its owner's surface slot, and two owners
+ * have no real surface to put there: the global blueprint is keyed by the `globalMain` sentinel and
+ * a component's widget by its component editor's pseudo surface, which is what the UI panel and the
+ * property inspector open them with. Leaving the slot empty gave the opener a key of its own, so it
+ * opened a second editor on a blueprint that was already open.
+ *
+ * **Named the same way.** A tab that is already open keeps its name: the editor is opened under
+ * several (the blueprint's own, the page's or control's logic), and reaching it again is not a
+ * reason to rename it. A tab opened here is named after the blueprint. Without a workspace to ask,
+ * the title is left to the tab factory's generic one.
+ */
+export function blueprintOwnerOpenTarget(
+    blueprintId: string,
+    owner: ParsedBlueprintOwnerKey,
+    context: WorkspaceContext | null | undefined,
+): BlueprintEditorOpenTarget {
     const place = {
-        blueprintId: target.blueprintId,
+        blueprintId,
         ownerKind: owner.ownerKind,
         surfaceId: blueprintTabSurfaceId(owner),
         componentId: owner.componentId,
@@ -40,10 +59,7 @@ export function blueprintJumpOpenTarget(
     };
     return {
         ...place,
-        focusEventId: target.focusEventId,
-        focusFunctionId: target.focusFunctionId,
-        focusNodeId: target.focusNodeId,
-        title: context ? blueprintTabTitle(context, getBlueprintEntryTabId(place), target.blueprintId) : undefined,
+        title: context ? blueprintTabTitle(context, getBlueprintEntryTabId(place), blueprintId) : undefined,
     };
 }
 
