@@ -16,13 +16,13 @@ import type {
     InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
-import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
+import type { BlueprintValueFieldConfig } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
+import { createLabelSourceField } from "@/lib/ui-editor/widget-modules/shared/text/LabelSourceField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import {
     createInitialButtonAppearance,
@@ -78,7 +78,7 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
-const ButtonLabelBlueprintValueField = createBlueprintValueField({
+const BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG: BlueprintValueFieldConfig = {
     propPath: "label",
     valueType: "string",
     valueLabel: "label",
@@ -98,14 +98,18 @@ const ButtonLabelBlueprintValueField = createBlueprintValueField({
             readOnly={readOnly}
         />
     ),
-});
+};
 
-const ButtonLocalizationKeyField = createLocalizationKeyField({
-    getKey: element => getButtonProps(element).localizationKey ?? "",
-    setKey: (data, value) => {
-        const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
-        data.documentService.updateElementProps(live.id, { localizationKey: value });
-    },
+/**
+ * The button's label, and where it comes from: its own words, a translation key, or a Blueprint
+ * Value - the same one choice a text's words are (`createLabelSourceField`).
+ */
+export const ButtonLabelSourceField = createLabelSourceField({
+    blueprint: BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG,
+    label: BUTTON_MARKED_LABEL,
+    getLocalizationKey: element => getButtonProps(element).localizationKey,
+    getLocalizable: element => Boolean(getButtonProps(element).localizable),
+    localizeLabel: "widgets.button.localizeLabel",
 });
 
 export function createButtonInspector(ctx: InspectorContext) {
@@ -139,11 +143,14 @@ export function createButtonInspector(ctx: InspectorContext) {
                                 type: "section",
                                 title: t("widgets.content"),
                                 fields: [
+                                    // Where the label comes from - its own words, a translation key or
+                                    // a Blueprint Value - is chosen inside this one field, so the box an
+                                    // author types into is always the one the game reads.
                                     defineField<D, any>({
                                         id: "button.label",
                                         type: "custom",
                                         label: t("widgets.textLabel"),
-                                        component: ButtonLabelBlueprintValueField,
+                                        component: ButtonLabelSourceField,
                                     }),
                                 ],
                             }),
@@ -384,28 +391,6 @@ export function createButtonInspector(ctx: InspectorContext) {
                                 label: t("widgets.button.interactionDisabled"),
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).interactionDisabled),
                                 setValue: (_d: D, v: boolean) => patch({ interactionDisabled: v }),
-                            }),
-                        ],
-                    }),
-                    defineField<D, any>({
-                        id: "section.localization",
-                        type: "section",
-                        title: t("widgets.localization.title"),
-                        collapsible: true,
-                        defaultCollapsed: true,
-                        fields: [
-                            defineField<D, any>({
-                                id: "button.localizable",
-                                type: "toggle",
-                                label: t("widgets.button.localizeLabel"),
-                                getValue: (d: D) => Boolean(getButtonProps(d.element).localizable),
-                                setValue: (_d: D, v: boolean) => patch({ localizable: v }),
-                            }),
-                            defineField<D, any>({
-                                id: "button.localizationKey",
-                                type: "custom",
-                                label: t("widgets.localization.textKey"),
-                                component: ButtonLocalizationKeyField,
                             }),
                         ],
                     }),

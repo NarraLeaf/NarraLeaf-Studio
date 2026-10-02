@@ -121,7 +121,7 @@ type MockRegistryEntry = {
     description?: string;
 };
 
-function createHarness() {
+function createHarness(options: { filesOnDisk?: string[] } = {}) {
     const graphDocument = { blueprintDocument: blueprintDocument() };
     const graphMutations = { count: 0 };
     let nextId = 0;
@@ -209,10 +209,26 @@ function createHarness() {
     // Blueprint undo stacks live in HistoryService now; this service supplies the snapshots.
     const historyService = new HistoryService();
     const service = new LocalBlueprintService();
+    // A project folder that holds `filesOnDisk` and remembers what was written into it.
+    const filesOnDisk = new Set(options.filesOnDisk ?? []);
+    const written = new Map<string, string>();
+    const fileSystem = {
+        async isFileExists(path: string) {
+            return { ok: true, data: filesOnDisk.has(path) };
+        },
+        async writeFileNoFollowOrCreate(path: string, data: string) {
+            written.set(path, data);
+            filesOnDisk.add(path);
+            return { ok: true, data: undefined };
+        },
+    };
     const context = {
-        project: {} as any,
+        project: { resolve: (segments: string[]) => ["/project", ...segments].join("/") } as any,
         services: {
             get(serviceId: Services) {
+                if (serviceId === Services.FileSystem) {
+                    return fileSystem;
+                }
                 if (serviceId === Services.History) {
                     return historyService;
                 }
@@ -246,7 +262,7 @@ function createHarness() {
     };
     historyService.setContext(context);
     service.setContext(context);
-    return { service, historyService, graphDocument, uidoc, registryService, graphMutations };
+    return { service, historyService, graphDocument, uidoc, registryService, graphMutations, written };
 }
 
 describe("LocalBlueprintService persistent variables (M-VAR registry)", () => {
@@ -810,5 +826,26 @@ describe("removing a registry variable inside a live session", () => {
         expect(nodes?.getSaved?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
         // A variable the sweep was not about keeps its node.
         expect(nodes?.setPersistent?.params?.persistentVariableId).toBe("v2");
+    });
+});
+
+describe("a new script's file", () => {
+    const owner = { kind: "surfaceMain", surfaceId: "surface-a" } as const;
+    const createStarterScriptFile = (service: LocalBlueprintService, name: string): Promise<string> =>
+        (service as unknown as { createStarterScriptFile(o: typeof owner, n: string): Promise<string> })
+            .createStarterScriptFile(owner, name);
+
+    it("is named after its slot", async () => {
+        const { service, written } = createHarness();
+        await expect(createStarterScriptFile(service, "Surface A")).resolves.toBe("scripts/surface-a.ts");
+        expect([...written.keys()]).toEqual(["/project/scripts/surface-a.ts"]);
+    });
+
+    it("counts past a file the author already has there, rather than writing over it", async () => {
+        // Nothing in the document names `surface-a.ts`: a helper the other scripts import, or a
+        // file left behind by a layer that was removed, is still the author's.
+        const { service, written } = createHarness({ filesOnDisk: ["/project/scripts/surface-a.ts"] });
+        await expect(createStarterScriptFile(service, "Surface A")).resolves.toBe("scripts/surface-a-2.ts");
+        expect([...written.keys()]).toEqual(["/project/scripts/surface-a-2.ts"]);
     });
 });

@@ -1,6 +1,6 @@
 # Skeleton template — asset provenance and licences
 
-The ten assets in this template's `content/assets/` travel inside Studio's
+The nine assets in this template's `content/assets/` travel inside Studio's
 installer, and every project made from the template gets a copy of them.
 Bundling is redistribution, so "free to use" was not enough: each licence had to
 permit passing the file on. This file is the record of which licence, and where
@@ -13,10 +13,9 @@ each file came from, so a later maintainer can re-verify rather than re-search.
 | `classroom` | [OpenGameArt · Classroom 002](https://opengameart.org/content/classroom-002) | midnight68 / MedicineStorm |
 | `corridor` | same submission (`lockers_0.jpg`) | midnight68 / MedicineStorm |
 | `room-warm` | same submission (`classroom4.png`) | midnight68 / MedicineStorm |
-| `washroom` | [OpenGameArt · Bathroom01](https://opengameart.org/content/bathroom01) | midnight68 / MedicineStorm |
 
 `corridor` was cropped to 1074×604 — 16:9, so it fills a 1920×1080 stage instead
-of letterboxing it. The other three ship at their original sizes.
+of letterboxing it. The other two ship at their original sizes.
 
 CC0 requires no attribution. The table is here anyway, for provenance.
 

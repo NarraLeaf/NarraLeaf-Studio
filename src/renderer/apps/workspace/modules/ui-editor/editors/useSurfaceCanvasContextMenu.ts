@@ -33,13 +33,12 @@ import type {
     EditorStateService,
     EditorUIService,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { translate } from "@/lib/i18n";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { editableTextTarget } from "@/apps/workspace/components/EditableTextContextMenu";
 
 /**
  * The canvas menu rows a frozen project keeps: the ones that only read the document.
@@ -92,17 +91,21 @@ export function useSurfaceCanvasContextMenu(params: {
             if (!surface || !documentService || !stateService || !localBlueprint || widgetModules.length === 0) {
                 return;
             }
+            // The tool bars drawn over the canvas carry text fields (a zoom percentage, a corner
+            // radius); a right click in one is a text gesture and gets cut, copy and paste, not rows
+            // about the canvas behind it.
+            if (editableTextTarget(event.target)) {
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
             lastContextPoint.current = { x: event.clientX, y: event.clientY };
             const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
             const hitElementId = hit?.dataset.uiElementId ?? null;
             const hitElement = hitElementId ? documentService.getDocument().elements[hitElementId] : null;
-            if (isComponentEditorRootElement(hitElement)) {
-                selectSurfaceForProperties(stateService, surface.id, uiService);
-            }
-            lastContextHitElementId.current =
-                hitElement && !isComponentEditorRootElement(hitElement) ? hitElementId : null;
+            // A component's frame is hit like any element: its menu offers what the frame allows and
+            // greys out what it refuses (see `isComponentEditorRootElement`).
+            lastContextHitElementId.current = hitElement ? hitElementId : null;
 
             const curSel = stateService.getSelection();
             if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
@@ -175,7 +178,7 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         const pid = menuSel.primaryId ?? menuSel.elementIds[0];
                         const el = doc.elements[pid];
-                        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
+                        if (!el || el.type === "nl.root") {
                             return;
                         }
                         void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
@@ -190,7 +193,7 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         for (const id of menuSel.elementIds) {
                             const el = doc.elements[id];
-                            if (el && el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
+                            if (el && el.type !== "nl.root") {
                                 documentService.updateElementLayout(id, { visible });
                             }
                         }

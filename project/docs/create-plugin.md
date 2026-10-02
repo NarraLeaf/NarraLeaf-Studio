@@ -546,6 +546,11 @@ const NODE_TRANSLATIONS = {
     "Inventory": "物品栏",
     "Item Id": "物品 Id",
   },
+  ja: {
+    "Use Item": "アイテムを使う",
+    "Inventory": "持ち物",
+    "Item Id": "アイテム Id",
+  },
 };
 
 {
@@ -562,9 +567,12 @@ const NODE_TRANSLATIONS = {
 - 同一个英文原文在同一种语言下只有一种译法。两个插件为同一个词写了不同译法时，以后注册的为准。
 - 当前语言没有对应的表时显示英文。
 - 该表只在 Studio 编辑器里生效（节点卡片、添加节点菜单、蓝图检查结果）；runtime 入口不读取它。
-- 插件面板自己的文字仍然用 `app.services.i18n.createTranslator`。
+- 插件面板自己的文字仍然用 `app.services.i18n.createTranslator`。面板里要提到节点上的词（节点名、选项）时，
+  按翻译器的 `locale` 从同一张表取，写法就与卡片一致。
+- 添加节点菜单和卡片标题悬停时显示的节点说明只有内建节点有，插件节点不显示说明。
 
-内建 Gallery 插件的 `GALLERY_NODE_TRANSLATIONS` 是参照实现，旁边的 `i18n.test.ts` 演示了怎样逐个检查节点用到的每一个词。
+内建 Gallery 插件的 `GALLERY_NODE_TRANSLATIONS` 是参照实现（面板与编辑器经 `galleryNodeWord` 读同一张表），
+旁边的 `i18n.test.ts` 演示了怎样逐个检查节点用到的每一个词。
 
 ### 控件属性的值绑定（Blueprint Value 图）
 

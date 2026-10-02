@@ -512,7 +512,9 @@ export const settings = {
         apply: "应用",
         exportHint: "将设置写入一个纯 JSON 文件；工作区背景图、提交版本的署名、最近项目、统计数据与窗口布局仅保留在本机",
         exported: "已保存到 {path}",
-        imported: "已应用 {count} 项设置",
+        imported: {
+            other: "已应用 {count} 项设置",
+        },
         exportFailed: "设置保存失败",
         importFailed: "无法读取该文件",
         planSummary: "{change} 项将变更，{same} 项已相同，{skipped} 项跳过",

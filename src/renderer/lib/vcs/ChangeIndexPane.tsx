@@ -51,7 +51,7 @@ export function ChangeIndexPane({
     className,
     style,
 }: ChangeIndexPaneProps) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     return (
         <nav
@@ -76,7 +76,7 @@ export function ChangeIndexPane({
                 // The count the budget left out, said once for the whole index. A list that stops at
                 // its limit in silence is read as the complete list.
                 <p className="px-2 pt-2 text-2xs text-fg-subtle">
-                    {t("documentDiff.tab.documentsOmitted", { count: String(index.omitted) })}
+                    {tn("documentDiff.tab.documentsOmitted", index.omitted)}
                 </p>
             )}
         </nav>

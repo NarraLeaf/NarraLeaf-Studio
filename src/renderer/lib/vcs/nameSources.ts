@@ -54,6 +54,9 @@ export const STORY_INDEX_PATH = "editor/story/index.json";
 /** The library a motion's name is read from. */
 export const ANIMATION_INDEX_PATH = "editor/story/animations/index.json";
 
+/** What a merge keeps beside a conflicted file as the author's own side of it (docs §4.23). */
+const MERGE_MINE_COPY = "~mine";
+
 /** One metadata shard per asset type. Every one is read: a content path does not say its type. */
 const ASSET_METADATA_SHARDS: readonly { readonly type: string; readonly path: string }[] =
     Object.values(AssetType).map(type => ({ type, path: `assets/assets.metadata.${type}.json` }));
@@ -251,8 +254,11 @@ async function readSide(
  * can fail - and none of those is a story this surface should report, because the row it would be
  * reported on is about a different file entirely. What it costs is a name, and the absence of a name
  * is already said out loud on the row.
+ *
+ * Exported for the other sibling a comparison is named from - the asset folder lists
+ * (`assetFolderNames.ts`) - so both are read the same way and fail the same way.
  */
-async function readLibraries(
+export async function readLibraries(
     service: VersionControlService,
     side: ComparisonSide,
     paths: readonly string[],
@@ -274,15 +280,27 @@ async function readLibraries(
         return texts;
     }
     const decoder = new TextDecoder();
-    await Promise.all(paths.map(async path => {
+    const readText = async (path: string): Promise<string | null> => {
         try {
             const bytes = await service.readWorkingFile(path);
-            if (bytes !== null) {
-                texts.set(path, decoder.decode(bytes));
-            }
+            return bytes === null ? null : decoder.decode(bytes);
         } catch {
             // Absent or unreadable; see above.
+            return null;
         }
+    };
+    await Promise.all(paths.map(async path => {
+        const text = await readText(path);
+        if (text === null) {
+            return;
+        }
+        // A library a merge left conflicted has diff3 markers in it and names nothing, which is how
+        // every story in the merge panel lost its title. The merge keeps the author's own side beside
+        // it (docs §4.23), and that is the side the editors read while the merge is open
+        // (`mergeConflictReads`), so it is the side the names come from - asked for only when the file
+        // on disk does not parse, which is the one case it can help.
+        const readable = parseJson(text) === null ? await readText(`${path}${MERGE_MINE_COPY}`) : null;
+        texts.set(path, readable ?? text);
     }));
     return texts;
 }

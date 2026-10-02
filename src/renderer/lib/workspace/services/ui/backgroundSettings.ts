@@ -52,7 +52,9 @@ export interface BackgroundSettings {
     blur: number;
     /**
      * Whether the editor's reading surfaces (story prose, text editor) keep a plate of their own over
-     * the wallpaper. Off by default: the editor area is where the picture has room to be seen.
+     * the wallpaper. On, and opaque, by default: prose on a photograph is hard to read, so a
+     * wallpaper shows around the text until the author thins or removes the plate here. It is also
+     * what those surfaces were before the plate had a switch - one opaque sunken paint.
      */
     editorFill: boolean;
     /** Percent, 10–100: the editor plate's opacity while `editorFill` is on. */
@@ -85,8 +87,8 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
     fill: "cover",
     anchor: "center center",
     blur: 0,
-    editorFill: false,
-    editorOpacity: 80,
+    editorFill: true,
+    editorOpacity: 100,
     sidebarFill: true,
     sidebarOpacity: 100,
 };

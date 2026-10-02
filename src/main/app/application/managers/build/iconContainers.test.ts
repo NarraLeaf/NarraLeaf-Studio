@@ -1,4 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { WINDOW_ICONS } from "@shared/constants/windowIcon";
 import {
     ICNS_MINIMUM_EDGE,
     ICNS_SIZES,
@@ -149,4 +152,30 @@ describe("encodeIcns", () => {
     it("refuses a set with no size it can carry", () => {
         expect(() => encodeIcns([image(48)])).toThrow(/at least one image/);
     });
+});
+
+describe("Studio's own icons", () => {
+    // The .ico files Studio wears and installs with (resources/studio-icon, written by
+    // project/build/prepare-studio-icons.js through `encodeIco`) have the frames a game's .ico has:
+    // one per `ICO_SIZES` entry, a 32-bit bitmap up to 128 and a PNG at 256. A drawing committed
+    // without a re-run of that script fails here rather than on the oldest reader in the chain.
+    const resourcesDir = path.resolve(__dirname, "../../../../../../resources");
+
+    for (const icon of WINDOW_ICONS) {
+        it(`lays out ${icon.ico} in the frame structure the encoder writes`, () => {
+            const ico = fs.readFileSync(path.join(resourcesDir, icon.ico));
+            const directory = readIcoDirectory(ico);
+
+            expect(directory.map(entry => entry.width)).toEqual([...ICO_SIZES]);
+            for (const entry of directory) {
+                const data = ico.subarray(entry.offset, entry.offset + entry.bytes);
+                const isPng = data.readUInt32BE(0) === 0x89504e47;
+                expect(isPng, `${entry.width} entry is a PNG`).toBe(entry.width >= 256);
+                if (!isPng) {
+                    expect([data.readUInt32LE(0), data.readInt32LE(4), data.readInt32LE(8), data.readUInt16LE(14)])
+                        .toEqual([40, entry.width, entry.width * 2, 32]);
+                }
+            }
+        });
+    }
 });

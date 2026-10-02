@@ -19,7 +19,10 @@ export const workspace = {
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
-            importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            importCounts: "已导入 {applied}（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            translationCount: {
+                other: "{count} 条翻译",
+            },
             readFailed: "{name} 的译文无法读取",
             alreadyAdded: "{name} 已在语言列表中",
             sourceLocked: "{name} 是源语言；请先移除其他语言，或将其他语言设为源语言",
@@ -54,10 +57,14 @@ export const workspace = {
             scopeAll: "全部",
             scopePending: "未翻译与待校对",
             exportAction: "导出",
-            exportDone: "已导出 {count} 条到 {path}",
+            exportDone: {
+                other: "已导出 {count} 条到 {path}",
+            },
             exportEmpty: "没有可导出的条目",
             importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
-            importWarnings: "有 {count} 条被跳过，第一条：{first}",
+            importWarnings: {
+                other: "有 {count} 条被跳过，第一条：{first}",
+            },
             localeMismatch: "该文件标注的语言是 {declared}，导入目标为 {name}",
             localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
         },
@@ -140,10 +147,16 @@ export const workspace = {
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
             pickupEmpty: "没有需要补录的对白",
-            importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
+            importCounts: "已关联 {linked}（{unmatched} 条未匹配，{failed} 条失败）",
+            takeCount: {
+                other: "{count} 条",
+            },
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
-            importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
+            importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
+            scriptRowCount: {
+                other: "{count} 行",
+            },
             importScriptSkipped: {
                 one: "有 {count} 行被跳过",
                 other: "有 {count} 行被跳过",
@@ -589,6 +602,9 @@ export const workspace = {
             queued: {
                 other: "还有 {count} 条",
             },
+            repeated: {
+                other: "共 {count} 次",
+            },
         },
         // 自定义背景对话框（从设置或命令面板打开）。
         background: {
@@ -672,8 +688,12 @@ export const workspace = {
             retrySave: "立即重试保存",
             resetZoom: "重置缩放到 100%",
             shortcuts: "快捷键速查",
-            words: "{count} 字",
-            lines: "{count} 行",
+            words: {
+                other: "{count} 字",
+            },
+            lines: {
+                other: "{count} 行",
+            },
             noStoryOpen: "未打开故事",
             openDashboard: "打开项目仪表盘",
             openCurrentScene: "打开当前场景",
@@ -1020,7 +1040,9 @@ export const workspace = {
                 compareChanges: "与上一个版本比较变更",
             },
             filterPlaceholder: "按名称或编号查找版本",
-            filterNoMatch: "已读取的 {count} 个版本里没有匹配",
+            filterNoMatch: {
+                other: "已读取的 {count} 个版本里没有匹配",
+            },
             today: "今天",
             yesterday: "昨天",
             compareBase: {
@@ -1029,7 +1051,9 @@ export const workspace = {
                 current: "正在与 {version} 比较",
                 compare: "与 {version} 比较",
             },
-            showCheckpoints: "显示 {count} 个检查点",
+            showCheckpoints: {
+                other: "显示 {count} 个检查点",
+            },
             hideCheckpoints: "隐藏检查点",
             systemMessage: {
                 unnamed: "未命名的版本",

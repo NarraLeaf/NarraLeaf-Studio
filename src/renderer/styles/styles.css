@@ -526,6 +526,38 @@ select:focus {
 }
 
 /*
+ * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
+ * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
+ *
+ * A game's interface is the author's, not Studio's, so this is not Studio's ring: it is the
+ * platform's own (`auto`), which the browser draws to be seen on any background. It is only there
+ * for the keyboard - `:focus-visible`, and a click does not focus these at all - so a player who
+ * never touches Tab never sees it.
+ *
+ * Drawn on a layer of its own over the control rather than as the control's outline, and inside its
+ * edge. The widgets inside a control are positioned, and a positioned child paints over its parent's
+ * outline: a choice row is one container filling the row from edge to edge, and an outline on the
+ * row was measured present and never seen. Inside, because a list clips its rows at its own edge. A
+ * row is a plain flex item until then, so it becomes the box its ring is drawn in only while it has
+ * the focus; its widgets are laid out inside their own boxes and do not move.
+ */
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible {
+    position: relative;
+}
+
+.ui-editor-surface [role="button"][tabindex]:focus-visible::after,
+.ui-editor-surface [role="switch"][tabindex]:focus-visible::after,
+.ui-editor-surface [data-ui-list-item-index][tabindex]:focus-visible::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    outline: -webkit-focus-ring-color auto 2px;
+    outline-offset: -2px;
+}
+
+/*
  * Custom workspace background reveal (see WorkspaceLayout). When a wallpaper is set the workspace
  * root carries `.nl-has-workspace-bg`, and a single pre-composited backdrop (surface colour +
  * wallpaper at its configured strength) sits behind the chrome. Making the base `bg-surface` fill
@@ -563,10 +595,11 @@ select:focus {
  * The editor's reading surfaces: the story editor's prose area, the inspector, the text editor and
  * the Dev Mode debug panel body. Without a wallpaper this is plain `bg-surface-sunken`.
  *
- * Under a wallpaper the plate is the author's choice, made in the background dialog: off by default,
- * so the picture runs behind the prose like behind the rest of the editor area, or on at an opacity
- * of their own. The workspace root publishes the resulting alpha as `--nl-editor-surface-alpha`
- * beside `.nl-has-workspace-bg`; the fallback only covers a frame where the class is set and the
+ * Under a wallpaper the plate is the author's choice, made in the background dialog: on and opaque
+ * by default, so the text the author reads and writes never sits on the photograph unasked, or
+ * thinner, or off so the picture runs behind the prose like behind the rest of the editor area. The
+ * workspace root publishes the resulting alpha as `--nl-editor-surface-alpha` beside
+ * `.nl-has-workspace-bg`; the fallback is that default, for a frame where the class is set and the
  * property is not yet. Two rules rather than one alpha that defaults to 1, so a window with no
  * wallpaper (Dev Mode, the launcher's previews) has nothing to read and cannot come out translucent.
  */
@@ -575,7 +608,7 @@ select:focus {
 }
 
 .nl-has-workspace-bg .nl-editor-surface {
-    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 0));
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 1));
 }
 
 /*
@@ -783,6 +816,9 @@ input[type="radio"]:focus {
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
+    /* While a context menu is open the title bar is not a drag region, so a press on it reaches the
+       page and closes the menu like a press anywhere else outside it. See `ContextMenu.tsx`. */
+    html[data-context-menu-open] .titlebar-drag { -webkit-app-region: no-drag; }
 
     .nl-selectable-text,
     .nl-selectable-text * {

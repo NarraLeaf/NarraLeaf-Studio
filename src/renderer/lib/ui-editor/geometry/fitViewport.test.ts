@@ -82,6 +82,24 @@ describe("computeFitViewportTransform", () => {
         expect(withoutPanel.scale).toBeGreaterThan(withPanel.scale);
     });
 
+    it("clears the outline at whatever width it has been dragged to", () => {
+        const atDefault = resolveSurfaceFitInsets({ outlineCollapsed: false });
+        expect(resolveSurfaceFitInsets({ outlineCollapsed: false, outlineWidth: 256 }).left).toBe(atDefault.left);
+
+        const wide = resolveSurfaceFitInsets({ outlineCollapsed: false, outlineWidth: 400 });
+        expect(wide.left).toBe(atDefault.left + 400 - 256);
+        const transform = computeFitViewportTransform({
+            container: { width: 1600, height: 900 },
+            designSize: DESKTOP_DESIGN,
+            insets: wide,
+        })!;
+        expect(transform.offsetX).toBeGreaterThanOrEqual(400);
+
+        // Collapsed, the width it would have is beside the point: only the re-open button is left.
+        expect(resolveSurfaceFitInsets({ outlineCollapsed: true, outlineWidth: 400 }).left)
+            .toBe(SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX);
+    });
+
     it("drops the insets rather than fit into a box smaller than they leave", () => {
         // A pane narrower than the outline panel: subtracting the chrome leaves nothing to fit into,
         // and an interface drawn under the panel but readable beats one beside it and microscopic.

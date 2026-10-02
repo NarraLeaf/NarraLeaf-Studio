@@ -42,16 +42,14 @@ import { createGalleryTranslator, type GalleryMessageKey } from "./messages";
 export type GalleryStore = ReturnType<typeof createGalleryStore>;
 
 /**
- * What a newly created entry of each kind is called before the author renames it.
- *
- * Written in the editor's language at the moment of creation. It is the author's text from then on,
- * so switching language later does not rename it.
+ * What a newly created entry of each kind is called before the author renames it. In the language
+ * the author is working in: it is their project's text from then on, like any name they typed.
  */
 const DEFAULT_ENTRY_NAME: Record<GalleryEntryKind, GalleryMessageKey> = {
-    cg: "defaultNameCg",
-    scene: "defaultNameScene",
-    music: "defaultNameMusic",
-    voice: "defaultNameVoice",
+    cg: "defaultCg",
+    scene: "defaultScene",
+    music: "defaultMusic",
+    voice: "defaultVoice",
 };
 
 const EMPTY_STORE: GalleryStoreData = {
@@ -212,7 +210,7 @@ export function createGalleryStore(app: PluginApp) {
          */
         async addArtwork(kind: GalleryEntryKind = "cg", groupId: string | null = null): Promise<string> {
             const count = data.items.filter(item => item.kind === kind).length;
-            const artwork = newArtwork(tr.t(DEFAULT_ENTRY_NAME[kind], { index: count + 1 }), groupId, [], kind);
+            const artwork = newArtwork(tr.t(DEFAULT_ENTRY_NAME[kind], { n: count + 1 }), groupId, [], kind);
             await commitItems([...data.items, artwork]);
             return artwork.id;
         },
@@ -253,7 +251,7 @@ export function createGalleryStore(app: PluginApp) {
                     ...assets.map((asset, index) => variantFromAsset(
                         artwork.id,
                         asset,
-                        tr.t("defaultNameVariant", { index: artwork.variants.length + index + 1 }),
+                        tr.t("defaultVariant", { n: artwork.variants.length + index + 1 }),
                     )),
                 ],
             }));
@@ -267,7 +265,7 @@ export function createGalleryStore(app: PluginApp) {
                     ...assets.map((asset, index) => variantFromAudio(
                         artwork.id,
                         asset,
-                        tr.t("defaultNameTrack", { index: artwork.variants.length + index + 1 }),
+                        tr.t("defaultTrack", { n: artwork.variants.length + index + 1 }),
                     )),
                 ],
             }));
@@ -307,7 +305,7 @@ export function createGalleryStore(app: PluginApp) {
         /** One album per picked file is rarely wanted; one album, many tracks is. */
         async importTracks(assets: Asset[], groupId: string | null = null): Promise<string> {
             const artwork = newArtwork(
-                tr.t("defaultNameMusic", { index: data.items.filter(item => item.kind === "music").length + 1 }),
+                tr.t("defaultMusic", { n: data.items.filter(item => item.kind === "music").length + 1 }),
                 groupId,
                 [],
                 "music",
@@ -315,7 +313,7 @@ export function createGalleryStore(app: PluginApp) {
             artwork.variants = assets.map((asset, index) => variantFromAudio(
                 artwork.id,
                 asset,
-                tr.t("defaultNameTrack", { index: index + 1 }),
+                tr.t("defaultTrack", { n: index + 1 }),
             ));
             // A single track reads better as its own entry than as a one-track
             // album, so it takes the file's name.
@@ -366,7 +364,7 @@ export function createGalleryStore(app: PluginApp) {
         async addGroup(name?: string): Promise<string> {
             const group: GalleryGroup = {
                 id: createGroupId(),
-                name: name?.trim() || tr.t("defaultNameGroup", { index: data.groups.length + 1 }),
+                name: name?.trim() || tr.t("defaultGroup", { n: data.groups.length + 1 }),
             };
             await commit({ groups: [...data.groups, group] });
             return group.id;

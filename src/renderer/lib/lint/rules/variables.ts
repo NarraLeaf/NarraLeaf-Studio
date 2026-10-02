@@ -865,6 +865,9 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 ruleId: "variables/read-never-written" as const,
                 messageKey: "lint.rule.variablesReadNeverWritten.message" as const,
                 messageParams: { variable: site.name, count: site.count },
+                messageParamCounts: {
+                    conditions: { key: "lint.rule.variablesReadNeverWritten.conditionCount" as const, count: site.count },
+                },
                 location: storyLocation(site.entry, site.scene, site.blockId),
                 target: blockTarget(site.entry, site.scene, site.blockId),
             }));

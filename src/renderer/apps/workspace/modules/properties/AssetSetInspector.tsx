@@ -63,7 +63,12 @@ import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
 import { useAssetSetNaming } from "@/apps/workspace/modules/assets/state/useAssetSetNaming";
-import { readAssetSetAxis } from "@shared/types/assetSetLabels";
+import {
+    formatAssetSetCoordinateReading,
+    readAssetSetAxis,
+    readAssetSetCoordinate,
+    readAssetTags,
+} from "@shared/types/assetSetLabels";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves.
@@ -192,6 +197,17 @@ export function AssetSetInspector({
     const sets = useMemo(() => service.listSets(), [service, revision]);
     const contents = useMemo(() => resolveAssetSetContents(set, candidates, sets), [set, candidates, sets]);
     const naming = useAssetSetNaming({ context, isInitialized: !!context });
+    /**
+     * What every member carries, in words.
+     *
+     * The set's own `set:` tag is left out, and so is a parent's: both are ids, and which set a file
+     * is in is what the library draws it inside. What stays is the value a sub-set hangs at, read the
+     * way the row it hangs under reads it, and any label an older set was declared with.
+     */
+    const filterReading = useMemo(
+        () => readAssetTags(set.filter, naming).map(entry => entry.label),
+        [naming, set.filter],
+    );
     // The set answers nothing at all while this is true, however many of the other values are
     // tagged - so it is said here, next to the control that fixes it.
     const fallbackMissing = useMemo(
@@ -297,9 +313,9 @@ export function AssetSetInspector({
                 )}
             </SectionCard>
 
-            {set.filter.length > 0 && (
+            {filterReading.length > 0 && (
                 <SectionCard title={t("assets.sets.inspector.filter")} bodyClassName="space-y-1">
-                    <p className="text-2xs text-fg-subtle break-words">{set.filter.join(" · ")}</p>
+                    <p className="text-2xs text-fg-subtle break-words">{filterReading.join(" · ")}</p>
                 </SectionCard>
             )}
 
@@ -314,16 +330,18 @@ export function AssetSetInspector({
                         // game will draw.
                         const missing = cell.assetId === null && !ambiguous;
                         const resolved = ambiguous || !cell.assetId ? null : assetsById.get(cell.assetId) ?? null;
+                        // The value as the fallback picker above names it: a language, or an edition.
+                        const valueName = readAssetSetAxis(set.axis, cell.value, naming).value;
                         return (
                             <div
                                 key={cell.label}
                                 className="flex items-center justify-between gap-2"
                                 data-asset-set-variant={cell.label}
                             >
-                                <FieldLabel as="span" className="mb-0 min-w-0 truncate">{cell.label}</FieldLabel>
+                                <FieldLabel as="span" className="mb-0 min-w-0 truncate">{valueName}</FieldLabel>
                                 <button
                                     type="button"
-                                    aria-label={cell.label}
+                                    aria-label={valueName}
                                     className={cn(
                                         "flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-0.5 text-2xs transition-colors",
                                         "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
@@ -344,7 +362,7 @@ export function AssetSetInspector({
                                             ? t("assets.sets.inspector.variantMissing")
                                             : ambiguous
                                                 ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                                : resolved?.name ?? cell.assetId}
+                                                : resolved?.name ?? ""}
                                     </span>
                                     {cell.inherited && (
                                         <span className="shrink-0 text-2xs text-fg-subtle">
@@ -364,7 +382,7 @@ export function AssetSetInspector({
                     assetType={set.type as AssetType}
                     selectedIds={picking.assetIds.slice(0, 1)}
                     anchorRef={pickerAnchor}
-                    title={picking.label}
+                    title={formatAssetSetCoordinateReading(readAssetSetCoordinate(set, picking.coordinate, naming))}
                     onClose={() => setPicking(null)}
                     onConfirm={assets => {
                         const chosen = assets[0];

@@ -9,7 +9,7 @@ import { buildAab, type BuildAabInput } from "./buildAab";
 import { convertArscToProto } from "./arscProto";
 import { convertBinaryManifestToProto } from "./axmlProto";
 import { summarizeResourceTable, summarizeXmlNode } from "./protobufTestReader";
-import { parseZipIndex, readEntryBytes } from "./zipModel";
+import { parseZipIndex, readEntryBytes, readLocalEntryDataSpan, ZIP_METHOD_STORE } from "./zipModel";
 
 /**
  * The App Bundle oracle: Google's own tools judging what Studio produced.
@@ -211,6 +211,29 @@ describe.skipIf(!oracleAvailable)("Google's tools on a Studio-built App Bundle",
         expect(badging).toContain(`versionCode='${VERSION_CODE}'`);
         expect(badging).toContain(`versionName='${VERSION_NAME}'`);
         expect(badging).toContain(`application-label:'${LABEL}'`);
+    });
+
+    it("leaves the payload stored in the APK it generates, as the shell's openFd needs", async () => {
+        // bundletool, not Studio, encodes the APKs Play serves, and it deflates any asset that
+        // shrinks unless BundleConfig says otherwise. Text that deflates well is the case that
+        // proves the glob is read: ciphertext would come out stored by bundletool's own
+        // low-ratio rule, and prove nothing.
+        const text = Buffer.from("const line = 'the same line, again and again';\n".repeat(200));
+        const bundle = await buildBundle([
+            { relativePath: "index.html", source: { kind: "buffer", data: text } },
+            { relativePath: "js/app.js", source: { kind: "buffer", data: text } },
+        ]);
+        const dir = await tempDir("nls-bundle-apks-");
+        const apks = path.join(dir, "out.apks");
+        bundletool(["build-apks", `--bundle=${bundle}`, `--output=${apks}`, "--mode=universal", "--overwrite"]);
+        const universal = entryBytes(await fs.readFile(apks), "universal.apk");
+
+        const payload = parseZipIndex(universal).entries.filter(entry => entry.name.startsWith("assets/www/"));
+        expect(payload.map(entry => entry.name).sort()).toEqual(["assets/www/index.html", "assets/www/js/app.js"]);
+        for (const entry of payload) {
+            expect(entry.method, entry.name).toBe(ZIP_METHOD_STORE);
+            expect(readLocalEntryDataSpan(universal, entry).start % 4, entry.name).toBe(0);
+        }
     });
 
     it("reads back the manifest Studio wrote", async () => {

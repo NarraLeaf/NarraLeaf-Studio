@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
     Blueprint,
     BlueprintVariable,
@@ -26,6 +26,7 @@ import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { cn } from "@/lib/utils/cn";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-edge-strong bg-fill-subtle px-2 py-1 text-2xs text-fg outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30";
@@ -377,6 +378,65 @@ function BlueprintPersistentVariableRow({
     );
 }
 
+/**
+ * A graph layer's name, being edited where it is shown.
+ *
+ * The same contract as a variable's name field above: Enter or leaving the field keeps the name,
+ * Escape puts the old one back, and an empty name is no rename. `onDone` is told whether a key ended
+ * it, so the row can take focus back - the editor's shortcuts answer to where focus is, and a field
+ * that vanished under the caret would leave it nowhere.
+ */
+function LayerNameField({
+    initialName,
+    ariaLabel,
+    placeholder,
+    onDone,
+}: {
+    initialName: string;
+    ariaLabel: string;
+    placeholder: string;
+    onDone: (name: string | null, endedByKey: boolean) => void;
+}) {
+    const [draft, setDraft] = useState(initialName);
+    // Enter blurs nothing, but the field unmounts right after it and React still delivers that
+    // blur; the first ending is the one that counts.
+    const doneRef = useRef(false);
+    const finish = (name: string | null, endedByKey: boolean) => {
+        if (doneRef.current) {
+            return;
+        }
+        doneRef.current = true;
+        onDone(name, endedByKey);
+    };
+    return (
+        <input
+            autoFocus
+            // The row's own height, so the list does not shift when the field opens in it.
+            className={cn(FIELD_INPUT, "h-6 min-w-0 flex-1 py-0 font-mono")}
+            value={draft}
+            maxLength={120}
+            aria-label={ariaLabel}
+            placeholder={placeholder}
+            onFocus={e => e.currentTarget.select()}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={() => finish(draft, false)}
+            onKeyDown={e => {
+                e.stopPropagation();
+                if (isImeKeyEvent(e)) {
+                    return;
+                }
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    finish(draft, true);
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    finish(null, true);
+                }
+            }}
+        />
+    );
+}
+
 function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
     return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -457,6 +517,9 @@ export function BlueprintMemberTree({
     const freeze = useFreezeGuard(BLUEPRINT_MEMBER_TREE_PATHS);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuLayerId, setMenuLayerId] = useState<string | null>(null);
+    // The graph layer whose name is being edited in its row, entered by double-clicking the row.
+    const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
+    const layerRowRefs = useRef(new Map<string, HTMLButtonElement>());
     const { context, isInitialized } = useWorkspace();
 
     const uiService = useMemo(() => {
@@ -747,6 +810,18 @@ export function BlueprintMemberTree({
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
 
+    const finishLayerRename = (id: string, name: string | null, endedByKey: boolean) => {
+        setRenamingLayerId(null);
+        const next = name?.trim() ?? "";
+        if (next && next !== (events[id]?.name ?? "")) {
+            // The same write the rename dialog makes, so it lands on the blueprint's undo stack.
+            localBp.renameEventGraph(blueprintId, id, next);
+        }
+        if (endedByKey) {
+            setTimeout(() => layerRowRefs.current.get(id)?.focus(), 0);
+        }
+    };
+
     const layerMenuItems: ContextMenuDef = useMemo(() => {
         if (!menuLayerId) {
             return [];
@@ -874,9 +949,29 @@ export function BlueprintMemberTree({
                         eventIds.map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);
                             const script = events[id]?.script;
+                            if (!script && renamingLayerId === id) {
+                                return (
+                                    <li key={id} className="flex items-center gap-1.5">
+                                        <LayerNameField
+                                            initialName={events[id]?.name ?? ""}
+                                            ariaLabel={t("blueprint.memberTree.renameLayerTitle")}
+                                            placeholder={t("blueprint.memberTree.layerNamePlaceholder")}
+                                            onDone={(name, endedByKey) => finishLayerRename(id, name, endedByKey)}
+                                        />
+                                        <BlueprintLayerKindBadge kind="graph" />
+                                    </li>
+                                );
+                            }
                             return (
                                 <li key={id} className="flex items-center gap-1.5">
                                     <button
+                                        ref={el => {
+                                            if (el) {
+                                                layerRowRefs.current.set(id, el);
+                                            } else {
+                                                layerRowRefs.current.delete(id);
+                                            }
+                                        }}
                                         type="button"
                                         className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-left font-mono text-2xs ${
                                             layerActive(id)
@@ -884,6 +979,14 @@ export function BlueprintMemberTree({
                                                 : "text-fg-muted hover:bg-fill-subtle"
                                         }`}
                                         onClick={() => onSelectLayer(id)}
+                                        // A graph layer's name is the layer's own and is edited where
+                                        // it is shown. A script layer is named by its file, which is
+                                        // the disk's to rename, not this row's.
+                                        onDoubleClick={() => {
+                                            if (!script && !freeze.frozen) {
+                                                setRenamingLayerId(id);
+                                            }
+                                        }}
                                         onContextMenu={e => {
                                             setMenuLayerId(id);
                                             showMenu(e);

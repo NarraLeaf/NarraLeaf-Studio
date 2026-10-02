@@ -15,16 +15,29 @@
 //
 //   narra.png                the .icns's own 1024 frame, lifted out for `app.dock.setIcon`,
 //                            which takes a bitmap and not an icon family
+//   narra.ico                the drawing, re-laid in the frame structure below; a size the drawing
+//                            lacks is area-averaged down from its 256 frame, and a size the table
+//                            does not carry is dropped
 //   leaf-white.ico           the leaf on a white tile cut to narra.ico's outline, frame for frame
 //   leaf.png                 the bare leaf placed on the Apple grid
 //
+// Every `.ico` Studio writes has one frame structure, and one writer: the encoder the game build uses
+// (src/main/app/application/managers/build/iconContainers.ts), loaded from its TypeScript below
+// rather than copied. Its `ICO_SIZES` are the frames - 16, 24, 32, 48, 64, 72, 96, 128 and 256 - and
+// it stores those up to 128 as 32-bit bitmaps and the 256 as a PNG. leaf.ico already has that shape
+// and is not touched. The PNGs go through the shared codec (src/shared/utils/pngOpaque.ts) for the
+// same reason.
+//
 // The results are committed, like the installer bitmaps (prepare-installer-bitmaps.js), because
 // electron-builder and the running app both resolve them by path, and a missing icon is skipped with
-// a log line rather than a failure.
+// a log line rather than a failure. A re-run that changed nothing writes the same bytes: narra.ico
+// is read back in either frame format, its 256 PNG is passed through as it is, and every PNG is
+// written with the same fixed filter.
 
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
+const esbuild = require("esbuild");
 
 const rootDir = path.resolve(__dirname, "..", "..");
 const iconDir = path.join(rootDir, "resources", "studio-icon");
@@ -43,7 +56,9 @@ const LEAF_ART_STROKE = 48;
  *
  * Measured off the macOS white icon (leaf-white.png's .icns), which already solved this: the leaf
  * is a thin outline, so a straight downscale fades to a smudge below 32px. The small frames give it
- * more of the tile and thicken the stroke, by the amounts that icon uses at the same sizes.
+ * more of the tile and thicken the stroke, by the amounts that icon uses at the same sizes. 72 and
+ * 96 have no counterpart there and sit on the line between 64 and 128, where the stroke no longer
+ * needs help.
  */
 const WHITE_TILE_RECIPE = {
     16: { leaf: 0.667, stroke: 1.9 },
@@ -51,6 +66,8 @@ const WHITE_TILE_RECIPE = {
     32: { leaf: 0.615, stroke: 1.4 },
     48: { leaf: 0.6, stroke: 1.15 },
     64: { leaf: 0.6, stroke: 1 },
+    72: { leaf: 0.598, stroke: 1 },
+    96: { leaf: 0.594, stroke: 1 },
     128: { leaf: 0.587, stroke: 1 },
     256: { leaf: 0.587, stroke: 1 },
 };
@@ -66,163 +83,56 @@ const APPLE_CANVAS = 1024;
 const APPLE_BODY = 824;
 
 // ---------------------------------------------------------------------------------------------
-// PNG
+// Studio's own codecs
 
 /**
- * Decode an 8-bit RGBA, non-interlaced PNG into `{ width, height, pixels }`.
+ * The `.ico` encoder and the PNG codec Studio ships, bundled from their TypeScript for this run.
  *
- * Only the one shape every input here has. Anything else is refused rather than guessed at, for
- * the reason prepare-installer-bitmaps.js gives: a lenient decoder produces a plausible icon.
+ * Both are pure functions over bytes with no imports of their own, so a bundle of the two is all it
+ * takes - and a second copy here would be free to disagree with the one that writes games' icons.
  */
+function loadStudioCodecs() {
+    const result = esbuild.buildSync({
+        stdin: {
+            contents: [
+                'export { ICO_SIZES, encodeIco } from "./src/main/app/application/managers/build/iconContainers";',
+                'export { decodePngToRgba, encodeRgbaPng } from "./src/shared/utils/pngOpaque";',
+            ].join("\n"),
+            resolveDir: rootDir,
+            sourcefile: "prepare-studio-icons.entry.ts",
+            loader: "ts",
+        },
+        bundle: true,
+        platform: "node",
+        format: "cjs",
+        target: "node20",
+        write: false,
+        logLevel: "silent",
+    });
+    const module = { exports: {} };
+    new Function("module", "exports", "require", result.outputFiles[0].text)(module, module.exports, require);
+    return module.exports;
+}
+
+const { ICO_SIZES, encodeIco, decodePngToRgba, encodeRgbaPng } = loadStudioCodecs();
+
+/** A PNG as `{ width, height, pixels }`, straight RGBA from the top row down. */
 function decodePng(buffer) {
-    if (buffer.readUInt32BE(0) !== 0x89504e47) {
-        throw new Error("Not a PNG file");
-    }
-
-    let header = null;
-    const idat = [];
-    let offset = 8;
-    while (offset < buffer.length) {
-        const length = buffer.readUInt32BE(offset);
-        const type = buffer.toString("ascii", offset + 4, offset + 8);
-        const body = buffer.subarray(offset + 8, offset + 8 + length);
-        if (type === "IHDR") {
-            header = {
-                width: body.readUInt32BE(0),
-                height: body.readUInt32BE(4),
-                depth: body[8],
-                colorType: body[9],
-                interlace: body[12],
-            };
-        } else if (type === "IDAT") {
-            idat.push(body);
-        } else if (type === "IEND") {
-            break;
-        }
-        offset += 12 + length;
-    }
-
-    if (!header) {
-        throw new Error("PNG has no IHDR");
-    }
-    if (header.depth !== 8 || header.colorType !== 6 || header.interlace !== 0) {
-        throw new Error(
-            `Unsupported PNG (depth ${header.depth}, color type ${header.colorType}, interlace ${header.interlace}); `
-            + "this script reads 8-bit RGBA only",
-        );
-    }
-
-    const { width, height } = header;
-    const raw = zlib.inflateSync(Buffer.concat(idat));
-    const stride = width * 4;
-    const pixels = Buffer.alloc(stride * height);
-
-    for (let y = 0; y < height; y += 1) {
-        const filter = raw[y * (stride + 1)];
-        const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-        const out = pixels.subarray(y * stride, (y + 1) * stride);
-        const prior = y > 0 ? pixels.subarray((y - 1) * stride, y * stride) : null;
-
-        for (let x = 0; x < stride; x += 1) {
-            const left = x >= 4 ? out[x - 4] : 0;
-            const up = prior ? prior[x] : 0;
-            const upLeft = prior && x >= 4 ? prior[x - 4] : 0;
-            let value;
-            switch (filter) {
-                case 0: value = line[x]; break;
-                case 1: value = line[x] + left; break;
-                case 2: value = line[x] + up; break;
-                case 3: value = line[x] + ((left + up) >> 1); break;
-                case 4: value = line[x] + paeth(left, up, upLeft); break;
-                default: throw new Error(`Unknown PNG filter ${filter} on row ${y}`);
-            }
-            out[x] = value & 0xff;
-        }
-    }
-
-    return { width, height, pixels };
+    const { width, height, rgba } = decodePngToRgba(buffer, data => zlib.inflateSync(data));
+    return { width, height, pixels: rgba };
 }
 
-function paeth(a, b, c) {
-    const p = a + b - c;
-    const pa = Math.abs(p - a);
-    const pb = Math.abs(p - b);
-    const pc = Math.abs(p - c);
-    if (pa <= pb && pa <= pc) {
-        return a;
-    }
-    return pb <= pc ? b : c;
-}
-
-const CRC_TABLE = (() => {
-    const table = new Uint32Array(256);
-    for (let n = 0; n < 256; n += 1) {
-        let c = n;
-        for (let k = 0; k < 8; k += 1) {
-            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-        }
-        table[n] = c >>> 0;
-    }
-    return table;
-})();
-
-function crc32(bytes) {
-    let crc = 0xffffffff;
-    for (let i = 0; i < bytes.length; i += 1) {
-        crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
-    }
-    return (crc ^ 0xffffffff) >>> 0;
-}
-
-function pngChunk(type, body) {
-    const chunk = Buffer.alloc(12 + body.length);
-    chunk.writeUInt32BE(body.length, 0);
-    chunk.write(type, 4, "ascii");
-    body.copy(chunk, 8);
-    chunk.writeUInt32BE(crc32(chunk.subarray(4, 8 + body.length)), 8 + body.length);
-    return chunk;
-}
-
-/**
- * Encode `{ width, height, pixels }` as an 8-bit RGBA PNG.
- *
- * Every row is Paeth-filtered rather than filtered by whichever heuristic an encoder prefers, so the
- * same pixels always come out as the same bytes - these files are committed, and a re-run that
- * changed nothing should leave nothing to commit.
- */
-function encodePng({ width, height, pixels }) {
-    const stride = width * 4;
-    const raw = Buffer.alloc((stride + 1) * height);
-    for (let y = 0; y < height; y += 1) {
-        const row = pixels.subarray(y * stride, (y + 1) * stride);
-        const prior = y > 0 ? pixels.subarray((y - 1) * stride, y * stride) : null;
-        const out = raw.subarray(y * (stride + 1), (y + 1) * (stride + 1));
-        out[0] = 4;
-        for (let x = 0; x < stride; x += 1) {
-            const left = x >= 4 ? row[x - 4] : 0;
-            const up = prior ? prior[x] : 0;
-            const upLeft = prior && x >= 4 ? prior[x - 4] : 0;
-            out[x + 1] = (row[x] - paeth(left, up, upLeft)) & 0xff;
-        }
-    }
-
-    const header = Buffer.alloc(13);
-    header.writeUInt32BE(width, 0);
-    header.writeUInt32BE(height, 4);
-    header[8] = 8;
-    header[9] = 6;
-    return Buffer.concat([
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-        pngChunk("IHDR", header),
-        pngChunk("IDAT", zlib.deflateSync(raw, { level: 9 })),
-        pngChunk("IEND", Buffer.alloc(0)),
-    ]);
+async function encodePng({ width, height, pixels }) {
+    return Buffer.from(await encodeRgbaPng(pixels, width, height, data => zlib.deflateSync(data, { level: 9 })));
 }
 
 // ---------------------------------------------------------------------------------------------
 // Icon containers
 
-/** The frames of an `.ico` whose images are all PNG-compressed, keyed by their pixel size. */
+/**
+ * The frames of an `.ico`, keyed by pixel size, as `{ image, png }`: `png` is the entry's own bytes
+ * when it is stored as a PNG, so it can be written back untouched, and null for a bitmap.
+ */
 function readIco(buffer) {
     if (buffer.readUInt16LE(0) !== 0 || buffer.readUInt16LE(2) !== 1) {
         throw new Error("Not an .ico file");
@@ -235,37 +145,64 @@ function readIco(buffer) {
         const length = buffer.readUInt32LE(entry + 8);
         const offset = buffer.readUInt32LE(entry + 12);
         const data = buffer.subarray(offset, offset + length);
-        if (data.readUInt32BE(0) !== 0x89504e47) {
-            throw new Error(`The ${size}px frame is a bitmap; this script reads PNG frames only`);
+        if (data.readUInt32BE(0) === 0x89504e47) {
+            const image = decodePng(data);
+            if (image.width !== size || image.height !== size) {
+                throw new Error(`The ${size}px frame holds a ${image.width}x${image.height} PNG`);
+            }
+            frames.set(size, { image, png: Buffer.from(data) });
+        } else {
+            frames.set(size, { image: decodeIcoBitmap(data, size), png: null });
         }
-        frames.set(size, data);
     }
     return frames;
 }
 
-/** An `.ico` holding one PNG frame per entry of `frames` (size -> PNG buffer), smallest first. */
-function writeIco(frames) {
-    const sizes = [...frames.keys()].sort((a, b) => a - b);
-    const header = Buffer.alloc(6 + sizes.length * 16);
-    header.writeUInt16LE(0, 0);
-    header.writeUInt16LE(1, 2);
-    header.writeUInt16LE(sizes.length, 4);
+/**
+ * A 32-bit bitmap entry as RGBA. The colour rows are stored bottom-up in BGRA; the AND mask after
+ * them is ignored, since with an alpha channel present it carries nothing. Any other kind of bitmap
+ * is refused rather than guessed at - these are files the encoder wrote, or a drawing in its shape.
+ */
+function decodeIcoBitmap(data, size) {
+    const headerSize = data.readUInt32LE(0);
+    const width = data.readInt32LE(4);
+    const height = data.readInt32LE(8);
+    const bitCount = data.readUInt16LE(14);
+    const compression = data.readUInt32LE(16);
+    if (headerSize !== 40 || width !== size || height !== size * 2 || bitCount !== 32 || compression !== 0) {
+        throw new Error(
+            `The ${size}px frame is a ${width}x${height} ${bitCount}-bit bitmap (compression ${compression}); `
+            + "this script reads uncompressed 32-bit ones only",
+        );
+    }
+    const pixels = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y += 1) {
+        const source = headerSize + (size - 1 - y) * size * 4;
+        for (let x = 0; x < size; x += 1) {
+            const from = source + x * 4;
+            const to = (y * size + x) * 4;
+            pixels[to] = data[from + 2];
+            pixels[to + 1] = data[from + 1];
+            pixels[to + 2] = data[from];
+            pixels[to + 3] = data[from + 3];
+        }
+    }
+    return { width: size, height: size, pixels };
+}
 
-    let offset = header.length;
-    sizes.forEach((size, i) => {
-        const entry = 6 + i * 16;
-        const data = frames.get(size);
-        // 256 does not fit in a byte; the format spells it 0.
-        header[entry] = size >= 256 ? 0 : size;
-        header[entry + 1] = size >= 256 ? 0 : size;
-        header.writeUInt16LE(1, entry + 4);
-        header.writeUInt16LE(32, entry + 6);
-        header.writeUInt32LE(data.length, entry + 8);
-        header.writeUInt32LE(offset, entry + 12);
-        offset += data.length;
-    });
+/** One frame as `encodeIco` takes it; `png` is the entry's existing bytes, when it has some to keep. */
+async function icoImage(image, png = null) {
+    return { size: image.width, rgba: image.pixels, png: png ?? await encodePng(image) };
+}
 
-    return Buffer.concat([header, ...sizes.map(size => frames.get(size))]);
+/** An `.ico` holding one frame per `ICO_SIZES` entry, from `frames` (size -> `{ image, png }`). */
+async function writeIco(frames) {
+    const images = [];
+    for (const size of ICO_SIZES) {
+        const frame = frames.get(size);
+        images.push(await icoImage(frame.image, frame.png));
+    }
+    return encodeIco(images);
 }
 
 /** One element of an `.icns` family, by its four-letter type. */
@@ -296,6 +233,19 @@ function plane(image, channel) {
         out[i] = channel === 3 ? alpha : (image.pixels[i * 4 + channel] / 255) * alpha;
     }
     return out;
+}
+
+/** Four premultiplied planes of a `size` square back into a straight RGBA image. */
+function fromPlanes(channels, size) {
+    const pixels = new Uint8Array(size * size * 4);
+    for (let i = 0; i < size * size; i += 1) {
+        const alpha = Math.min(1, channels[3][i]);
+        for (let channel = 0; channel < 3; channel += 1) {
+            pixels[i * 4 + channel] = alpha > 0 ? toByte(channels[channel][i] / channels[3][i]) : 0;
+        }
+        pixels[i * 4 + 3] = toByte(alpha);
+    }
+    return { width: size, height: size, pixels };
 }
 
 /**
@@ -332,6 +282,12 @@ function resampleAxis(source, lines, sourceLength, length, origin, scale, horizo
 function resample(source, size, target, originX, originY, scale) {
     const rows = resampleAxis(source, size, size, target, originX, scale, true);
     return resampleAxis(rows, target, size, target, originY, scale, false);
+}
+
+/** A square image area-averaged down to a `size` square, edge to edge. */
+function downscale(image, size) {
+    const scale = size / image.width;
+    return fromPlanes([0, 1, 2, 3].map(channel => resample(plane(image, channel), image.width, size, 0, 0, scale)), size);
 }
 
 /**
@@ -397,18 +353,33 @@ function toByte(value) {
 // The variants
 
 /**
+ * narra.ico's frames at every size the table carries: the drawn ones as they are, and the ones the
+ * drawing lacks area-averaged down from its largest.
+ */
+function narraTileFrames(drawn) {
+    const largest = Math.max(...drawn.keys());
+    if (largest < Math.max(...ICO_SIZES)) {
+        throw new Error(`narra.ico's largest frame is ${largest}px; it needs a ${Math.max(...ICO_SIZES)}px one`);
+    }
+    const frames = new Map();
+    for (const size of ICO_SIZES) {
+        frames.set(size, drawn.get(size) ?? { image: downscale(drawn.get(largest).image, size), png: null });
+    }
+    return frames;
+}
+
+/**
  * One frame of the white-tiled leaf, on the tile narra.ico uses at the same size.
  *
  * The tile is lifted from the default icon's own frame (its alpha is the tile's outline) rather than
  * redrawn from a radius, so the icons stay the same shape in the taskbar at every size the designer
  * drew - including the small ones, where that outline was adjusted by hand.
  */
-function whiteTileFrame(size, tileFrame, leafAlpha, leafSize, leafBox) {
+function whiteTileFrame(size, tile, leafAlpha, leafSize, leafBox) {
     const recipe = WHITE_TILE_RECIPE[size];
     if (!recipe) {
         throw new Error(`No white-tile recipe for ${size}px; add one to WHITE_TILE_RECIPE`);
     }
-    const tile = decodePng(tileFrame);
     if (tile.width !== size || tile.height !== size) {
         throw new Error(`narra.ico's ${size}px frame is ${tile.width}x${tile.height}`);
     }
@@ -438,7 +409,7 @@ function whiteTileFrame(size, tileFrame, leafAlpha, leafSize, leafBox) {
     work = dilate(work, canvas, ((recipe.stroke - 1) * LEAF_ART_STROKE * workScale) / 2);
     const leaf = resample(work, canvas, size, 0, 0, 1 / supersample);
 
-    const pixels = Buffer.alloc(size * size * 4);
+    const pixels = new Uint8Array(size * size * 4);
     for (let i = 0; i < size * size; i += 1) {
         const coverage = Math.min(1, leaf[i]);
         for (let channel = 0; channel < 3; channel += 1) {
@@ -446,25 +417,19 @@ function whiteTileFrame(size, tileFrame, leafAlpha, leafSize, leafBox) {
         }
         pixels[i * 4 + 3] = toByte(tileAlpha[i]);
     }
-    return encodePng({ width: size, height: size, pixels });
+    return { width: size, height: size, pixels };
 }
 
 /** The bare leaf on Apple's grid: the full-bleed art scaled into the 824px body, colours kept. */
 function appleGridLeaf(art) {
     const scale = APPLE_BODY / art.width;
     const inset = (APPLE_CANVAS - APPLE_BODY) / 2;
-    const channels = [0, 1, 2, 3].map(channel =>
-        resample(plane(art, channel), art.width, APPLE_CANVAS, -inset / scale, -inset / scale, scale));
-    const pixels = Buffer.alloc(APPLE_CANVAS * APPLE_CANVAS * 4);
-    for (let i = 0; i < APPLE_CANVAS * APPLE_CANVAS; i += 1) {
-        const alpha = Math.min(1, channels[3][i]);
-        for (let channel = 0; channel < 3; channel += 1) {
-            // Un-premultiply; the art is one flat colour, so its edge keeps that colour.
-            pixels[i * 4 + channel] = alpha > 0 ? toByte(channels[channel][i] / channels[3][i]) : 0;
-        }
-        pixels[i * 4 + 3] = toByte(alpha);
-    }
-    return encodePng({ width: APPLE_CANVAS, height: APPLE_CANVAS, pixels });
+    // The art is one flat colour, so un-premultiplying keeps its edge that colour.
+    return fromPlanes(
+        [0, 1, 2, 3].map(channel =>
+            resample(plane(art, channel), art.width, APPLE_CANVAS, -inset / scale, -inset / scale, scale)),
+        APPLE_CANVAS,
+    );
 }
 
 function write(name, data) {
@@ -472,9 +437,8 @@ function write(name, data) {
     console.log(`Wrote ${name} (${data.length} bytes)`);
 }
 
-function main() {
+async function main() {
     const narraIcns = fs.readFileSync(path.join(iconDir, "narra.icns"));
-    const narraIco = readIco(fs.readFileSync(path.join(iconDir, "narra.ico")));
     const art = decodePng(fs.readFileSync(leafArt));
     if (art.width !== art.height) {
         throw new Error(`app-icon.png is ${art.width}x${art.height}; expected a square`);
@@ -487,15 +451,24 @@ function main() {
     }
     write("narra.png", narraDock);
 
+    const narraFrames = narraTileFrames(readIco(fs.readFileSync(path.join(iconDir, "narra.ico"))));
+    write("narra.ico", await writeIco(narraFrames));
+
     const leafAlpha = plane(art, 3);
     const leafBox = extent(leafAlpha, art.width);
-    const frames = new Map();
-    for (const [size, frame] of narraIco) {
-        frames.set(size, whiteTileFrame(size, frame, leafAlpha, art.width, leafBox));
+    const whiteFrames = new Map();
+    for (const size of ICO_SIZES) {
+        whiteFrames.set(size, {
+            image: whiteTileFrame(size, narraFrames.get(size).image, leafAlpha, art.width, leafBox),
+            png: null,
+        });
     }
-    write("leaf-white.ico", writeIco(frames));
+    write("leaf-white.ico", await writeIco(whiteFrames));
 
-    write("leaf.png", appleGridLeaf(art));
+    write("leaf.png", await encodePng(appleGridLeaf(art)));
 }
 
-main();
+main().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+});

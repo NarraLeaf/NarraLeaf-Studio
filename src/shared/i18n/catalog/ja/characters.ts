@@ -190,9 +190,14 @@ export const characters = {
             title: "PSD を読み込む",
             choose: "PSD を選ぶ…",
             canvas: "ドキュメントの大きさ",
-            cost: "{layers} レイヤー · 約 {megabytes} MB",
+            costCounts: "{layers} · 約 {megabytes} MB",
+            layerCount: {
+                other: "{count} レイヤー",
+            },
             mapping: "レイヤー",
-            axis: "軸、タグ {count} 個",
+            axis: {
+                other: "軸、タグ {count} 個",
+            },
             blends: "エンジンが再現できないブレンドモード",
             merge: "下に統合",
             skip: "スキップ",

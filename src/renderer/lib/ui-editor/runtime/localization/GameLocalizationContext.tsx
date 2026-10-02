@@ -3,7 +3,8 @@
  * payload plus a reactive current-locale source (host persistence snapshot);
  * text-bearing widget renderers resolve their display text through
  * {@link useLocalizedWidgetText}. The editor canvas mounts no provider, so
- * design-time rendering always shows the source-language text.
+ * design-time rendering always shows the source-language text - a keyed text
+ * or button's from the key registry the editor publishes (`designTimeKeys.ts`).
  * Comments in English per project convention.
  */
 
@@ -14,6 +15,10 @@ import {
     type GameLocalizationBundle,
 } from "@shared/types/localization";
 import { resolveAssetVariantMember, type AssetVariantCarrier } from "@shared/types/assetSet";
+import {
+    getDesignTimeLocalizationKeys,
+    subscribeDesignTimeLocalizationKeys,
+} from "./designTimeKeys";
 
 export type GameLocalizationRuntime = {
     bundle: GameLocalizationBundle;
@@ -45,6 +50,14 @@ export type LocalizedWidgetTextInput = {
     localizable?: boolean;
     /** Named-key reference; takes precedence over the implicit unit. */
     localizationKey?: string;
+    /**
+     * Outside a game, draw a named key's source-language text rather than `sourceText`.
+     *
+     * The text widget and the button opt in: their key is one of the sources an author chooses
+     * between, and the canvas has to show what the game will. A text input's placeholder still shows
+     * its own words at design time.
+     */
+    resolveKeyAtDesignTime?: boolean;
 };
 
 /**
@@ -59,10 +72,18 @@ export function useLocalizedWidgetText(input: LocalizedWidgetTextInput): string 
         () => runtime?.getLocale() ?? "",
         () => "",
     );
-    if (!runtime) {
-        return input.sourceText;
-    }
+    const designTimeKeys = useSyncExternalStore(
+        !runtime && input.resolveKeyAtDesignTime ? subscribeDesignTimeLocalizationKeys : noopSubscribe,
+        getDesignTimeLocalizationKeys,
+        getDesignTimeLocalizationKeys,
+    );
     const keyName = input.localizationKey?.trim();
+    if (!runtime) {
+        // A key the registry does not hold falls back to the widget's own text, as it does in a game.
+        return keyName && input.resolveKeyAtDesignTime
+            ? designTimeKeys?.[keyName] ?? input.sourceText
+            : input.sourceText;
+    }
     if (keyName) {
         return resolveLocalizedUnitText(runtime.bundle, locale, localizationKeyUnitId(keyName))
             ?? runtime.bundle.keys?.[keyName]

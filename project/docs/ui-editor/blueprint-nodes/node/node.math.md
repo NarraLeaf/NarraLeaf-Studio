@@ -31,7 +31,7 @@ Math 节点用于纯数值计算、布尔逻辑和值比较。除非额外声明
 
 ## 兼容比较
 
-以下旧版 Math 比较节点保留在 Math 分类中，输出 `boolean`。`blueprint.compare.*` 严格比较节点也归入 Math 分类。
+以下旧版 Math 比较节点仍然注册，已有的图照常加载和运行，但添加节点面板不再列出它们；新图使用 `blueprint.compare.*`（见 [Compare 节点](node.compare.md)），在面板中搜索 `>`、`<=`、`≠` 这类符号即可找到。两组节点只有相等判断不同：这里的 `=` / `≠` 先把两边读作数字，所以文本 `"1"` 等于数字 `1`；`Equal` / `Not Equal` 是严格比较。四个大小比较的行为两组完全相同。输出均为 `boolean`。
 
 - `blueprint.math.equal` - 数值相等
 - `blueprint.math.notEqual` - 数值不相等

@@ -1,8 +1,9 @@
-import type { LocalizationUnit } from "@shared/types/localization";
+import { localizationKeyUnitId, type LocalizationUnit } from "@shared/types/localization";
 import { isSourceHashStale, segmentHasMarkup, validateMarkupParity } from "@shared/utils/localizationText";
 import { deriveUnitState } from "../../workspace/services/localization/localizationModel";
 import type { LintContext, LintLocalizationContext } from "../context";
-import type { LintFinding, LintRule } from "../types";
+import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
+import type { LintFinding, LintLocation, LintRule } from "../types";
 import {
     isBlankSegment,
     listLiveTextSegments,
@@ -11,6 +12,7 @@ import {
     storyLocation,
     type LintTextSegmentRef,
 } from "./text/textSegments";
+import { clipLiteral, listInterfaceTextUnitSites } from "./ui";
 
 /**
  * `localization` - whether the translation files still describe the script they were made from.
@@ -18,6 +20,12 @@ import {
  * All three return `[]` when `ctx.localization` is null (ruling R5): a project with no target
  * locales is not "passing" these checks, it simply has nothing to check. They stay on so the day a
  * locale is added, the findings appear without anyone revisiting a settings panel.
+ *
+ * `missing` and `stale` read two kinds of text: the story's lines, and the interface's words that a
+ * widget reads through a translation unit (a named key, or the widget's own opted-in unit). Both are
+ * rows of the same per-locale document and both fall back to the source words in game, so a missing
+ * Save-button translation is the same defect as a missing line. Orphan and markup stay story-only:
+ * an interface unit's orphan is a namespaced id, and a widget literal carries no run markup.
  *
  * Two shapes the whole file depends on:
  *
@@ -37,6 +45,86 @@ function targetLocales(localization: LintLocalizationContext): string[] {
 /** Live lines that carry something to translate. A blank line is `text/empty`'s finding, not this one. */
 function translatableSegments(ctx: LintContext): LintTextSegmentRef[] {
     return listLiveTextSegments(ctx).filter(ref => !isBlankSegment(ref.segment));
+}
+
+/** Interface words read through a translation unit: one row of the localization panel. */
+type InterfaceTextUnit = {
+    unitId: string;
+    /** What the unit is hashed against - the key's source words, or the widget's own literal. */
+    sourceText: string;
+    location: LintLocation;
+    target: SearchJumpTarget;
+};
+
+/**
+ * The interface text a target locale is expected to translate, one entry per unit.
+ *
+ * Read from the widgets the way the game reads them (`listInterfaceTextUnitSites`), and resolved
+ * against the same two sources the localization panel lists - the key registry for a named key, the
+ * widget's literal for its own unit - so a row the panel shows as untranslated is the row reported
+ * here, and nothing the panel has no row for is.
+ *
+ * **One entry per unit, not per widget.** The Save button of five pages reads one key, and the
+ * author translates it once; five findings for one missing row would be one defect charged five
+ * times. The first widget found carries the finding, so the locator still names a page and a widget
+ * the author can see.
+ *
+ * A widget naming a key the registry does not have is left out: there is no source to translate, and
+ * the dangling name is a different defect. So is every named key when the registry could not be read
+ * - `null` is "not known", and reading it as "no keys" would report a pass that was never checked.
+ */
+function interfaceTextUnits(ctx: LintContext): InterfaceTextUnit[] {
+    if (!ctx.uiDocument) {
+        return [];
+    }
+    const units: InterfaceTextUnit[] = [];
+    const seen = new Set<string>();
+    for (const site of listInterfaceTextUnitSites(ctx.uiDocument)) {
+        let unit: InterfaceTextUnit;
+        if (site.binding.kind === "key") {
+            const sourceText = ctx.localizationKeys?.get(site.binding.keyName);
+            if (sourceText === undefined || !sourceText.trim()) {
+                continue;
+            }
+            unit = {
+                unitId: localizationKeyUnitId(site.binding.keyName),
+                sourceText,
+                location: site.location,
+                // The key's row is where its translation is written; the page only shows it.
+                target: { kind: "localizationKey", keyName: site.binding.keyName },
+            };
+        } else {
+            unit = {
+                unitId: site.binding.unitId,
+                sourceText: site.binding.sourceText,
+                location: site.location,
+                target: site.target,
+            };
+        }
+        if (seen.has(unit.unitId)) {
+            continue;
+        }
+        seen.add(unit.unitId);
+        units.push(unit);
+    }
+    return units;
+}
+
+function interfaceFinding(
+    unit: InterfaceTextUnit,
+    messageKey: LintFinding["messageKey"],
+    locale: string,
+    ruleId: LintFinding["ruleId"],
+): LintFinding {
+    return {
+        ruleId,
+        messageKey,
+        // The words themselves, because a page location has no excerpt and they are what tells the
+        // Save button's finding from the Load button's.
+        messageParams: { locale, text: clipLiteral(unit.sourceText) },
+        location: unit.location,
+        target: unit.target,
+    };
 }
 
 /** A unit with no text renders as the source line - for authors that is "not translated yet". */
@@ -90,6 +178,15 @@ function runMissing(ctx: LintContext): LintFinding[] {
             findings.push(finding(ref, "lint.rule.localizationMissing.message", locale, "localization/missing"));
         }
     }
+    for (const unit of interfaceTextUnits(ctx)) {
+        for (const locale of locales) {
+            const stored = localization.documents.get(locale)?.units[unit.unitId];
+            if (deriveUnitState(stored, unit.sourceText) !== "untranslated") {
+                continue;
+            }
+            findings.push(interfaceFinding(unit, "lint.rule.localizationMissing.messageInterface", locale, "localization/missing"));
+        }
+    }
     return findings;
 }
 
@@ -114,6 +211,15 @@ function runStale(ctx: LintContext): LintFinding[] {
                 continue;
             }
             findings.push(finding(ref, "lint.rule.localizationStale.message", locale, "localization/stale"));
+        }
+    }
+    for (const unit of interfaceTextUnits(ctx)) {
+        for (const locale of locales) {
+            const stored = localization.documents.get(locale)?.units[unit.unitId];
+            if (!hasTranslation(stored) || !isSourceHashStale(stored.sourceHash, unit.sourceText)) {
+                continue;
+            }
+            findings.push(interfaceFinding(unit, "lint.rule.localizationStale.messageInterface", locale, "localization/stale"));
         }
     }
     return findings;
@@ -165,6 +271,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             ruleId: "localization/orphan",
             messageKey: "lint.rule.localizationOrphan.message",
             messageParams: { count, locale },
+            messageParamCounts: { translations: { key: "lint.rule.localizationOrphan.translationCount", count } },
             location: { kind: "project" },
         });
     }

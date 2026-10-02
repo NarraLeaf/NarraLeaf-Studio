@@ -37,7 +37,9 @@ import { FilterSystem, type ActiveFilter } from "./FilterSystem";
 import { ImportQueueStrip } from "./ImportQueueStrip";
 import { useAssetData } from "../state/useAssetData";
 import { useAssetFilters } from "../state/useAssetFilters";
+import { useAssetSetNaming } from "../state/useAssetSetNaming";
 import { useImportQueue } from "../state/useImportQueue";
+import { readAssetTag, readAssetTags } from "@shared/types/assetSetLabels";
 
 const ASSET_TYPE_ICONS = {
     [AssetType.Image]: Image,
@@ -119,6 +121,10 @@ export function AssetSelector({
     // The selector keeps its own search (it matches against virtual groups the library does not
     // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    // A member of an asset set carries the set's bookkeeping among its tags. The line under a file's
+    // name and the Tags filter both print tags the way the library does. See `readAssetTag`.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({
         assets,
         groups,
@@ -126,6 +132,7 @@ export function AssetSelector({
         query: "",
         bytesByAssetId: null,
         referencedAssetIds: null,
+        readTag,
     });
     const assetsService = useMemo(() => {
         if (!context) return null;
@@ -563,6 +570,7 @@ export function AssetSelector({
     const renderAssetRow = (asset: Asset, level: number) => {
         const isSelected = selection.has(asset.id);
         const ItemIcon = ASSET_TYPE_ICONS[asset.type] ?? File;
+        const tagLabels = readAssetTags(asset.tags ?? [], assetSetNaming).map(entry => entry.label);
         return (
             <button
                 key={asset.id}
@@ -579,7 +587,7 @@ export function AssetSelector({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{asset.name}</div>
                     <div className="text-2xs text-fg-subtle truncate">
-                        {asset.tags?.length ? asset.tags.join(", ") : t("assets.noTags")}
+                        {tagLabels.length ? tagLabels.join(", ") : t("assets.noTags")}
                     </div>
                 </div>
                 {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}

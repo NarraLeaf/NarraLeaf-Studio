@@ -34,7 +34,6 @@ import {
     SURFACE_WHEEL_PAN_DELTA_LIMIT_PX,
     SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
 } from "./surfaceWheelInput";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import {
     constrainPointToAspectRatio,
     resolveAspectRatio,
@@ -327,7 +326,7 @@ export function useSurfaceInteractionEvents({
                 if (elementId) {
                     const doc = documentService.getDocument();
                     const hitElement = doc.elements[elementId];
-                    if (!hitElement || hitElement.type === "nl.root" || isComponentEditorRootElement(hitElement)) {
+                    if (!hitElement || hitElement.type === "nl.root") {
                         selectSurfaceForProperties(stateService, surfaceId, uiService);
                         containerDrillLastPointerRef.current = null;
                         return;

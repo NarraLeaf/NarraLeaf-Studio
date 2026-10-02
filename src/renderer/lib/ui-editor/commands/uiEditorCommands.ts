@@ -23,18 +23,18 @@ import {
     resolveUiPasteSource,
 } from "./uiEditorClipboardBridge";
 import {
-    filterSelectionToTopLevelMovers,
+    filterToEditableTopLevel,
     getContainersToUngroup,
     getMoversToGroupIntoLeaderContainer,
     getSelectionLeaderId,
     getSelectionPrimaryId,
+    isSurfaceRootElement,
     selectSurfaceForProperties,
 } from "./uiEditorSelection";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
-import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export type { UIEditorAddTarget };
 
@@ -101,10 +101,10 @@ export function resolvePasteTargetAfterSelection(
     }
 
     const allowed = collectSubtreeElementIds(document, effectiveRootId);
-    const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter(id => {
-        const el = document.elements[id];
-        return el != null && el.type !== "nl.root" && !isComponentEditorRootElement(el) && allowed.has(id);
-    });
+    // Pasted things go inside a component's frame, never beside it: with only the frame selected
+    // there is no anchor, and the paste lands in the surface's root - which, in a component editor,
+    // is the frame.
+    const topLevelIds = filterToEditableTopLevel(document, selection.elementIds).filter(id => allowed.has(id));
     const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
     const anchor = anchorId ? document.elements[anchorId] : null;
     if (!anchor?.parentId) {
@@ -219,7 +219,7 @@ export function uiEditorCutSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -360,7 +360,7 @@ export function uiEditorDuplicateSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -390,7 +390,9 @@ export function uiEditorDeleteSelection(
         return false;
     }
     const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
+    // A component's frame is not deleted - it is what every placement draws - and asking leaves the
+    // selection where it was rather than clearing it for nothing.
+    const tops = filterToEditableTopLevel(doc, selection.elementIds);
     if (tops.length === 0) {
         return false;
     }
@@ -498,7 +500,8 @@ export function uiEditorSelectAllInSurface(
         if (!el || !allowed.has(id)) {
             return;
         }
-        if (el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
+        // Everything on the surface, and not the surface: a page's root, or a component's frame.
+        if (!isSurfaceRootElement(el)) {
             ids.push(id);
         }
         el.childrenIds.forEach(walk);

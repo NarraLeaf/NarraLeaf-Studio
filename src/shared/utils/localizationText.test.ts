@@ -173,6 +173,58 @@ describe("matchSystemLocale", () => {
         expect(matchSystemLocale(locales, ["ja-JP", "ko"])).toBeNull();
         expect(matchSystemLocale(locales, [])).toBeNull();
     });
+
+    describe("Chinese named by script on one side and by region on the other", () => {
+        // A project, and the system list on Windows and macOS, name Chinese by script; a Linux
+        // locale, and the Chromium locale that leads `navigator.languages`, name it by region.
+        const byScript = [
+            { code: "en", displayName: "English" },
+            { code: "zh-Hans", displayName: "简体中文" },
+            { code: "zh-Hant", displayName: "繁體中文" },
+        ];
+
+        it.each([
+            ["zh-CN", "zh-Hans"],
+            ["zh-SG", "zh-Hans"],
+            ["zh-MY", "zh-Hans"],
+            ["zh_CN", "zh-Hans"],
+            ["zh-TW", "zh-Hant"],
+            ["zh-HK", "zh-Hant"],
+            ["zh-MO", "zh-Hant"],
+        ])("serves a system that says %s the project's %s", (system, expected) => {
+            // What a Linux system's list is made of: region only, no script.
+            expect(matchSystemLocale(byScript, [system, "en-US"])).toBe(expected);
+        });
+
+        it("serves a project that names Chinese by region to a system that names it by script", () => {
+            const byRegion = [
+                { code: "en", displayName: "English" },
+                { code: "zh-CN", displayName: "简体中文" },
+                { code: "zh-TW", displayName: "繁體中文" },
+            ];
+            expect(matchSystemLocale(byRegion, ["zh-Hans-CN", "en-US"])).toBe("zh-CN");
+            expect(matchSystemLocale(byRegion, ["zh-Hant-HK", "en-US"])).toBe("zh-TW");
+            expect(matchSystemLocale(byRegion, ["zh-Hant", "en-US"])).toBe("zh-TW");
+        });
+
+        it("does not hand a reader of one script the other", () => {
+            // Two languages to a reader, as a project that lists them separately says.
+            const simplifiedOnly = [{ code: "en", displayName: "English" }, { code: "zh-Hans", displayName: "简体中文" }];
+            expect(matchSystemLocale(simplifiedOnly, ["zh-TW", "en-US"])).toBe("en");
+            expect(matchSystemLocale(simplifiedOnly, ["zh-HK"])).toBeNull();
+        });
+
+        it("still keeps to the player's order: a script match on the first language beats an exact one on a later", () => {
+            expect(matchSystemLocale(byScript, ["zh-CN", "en"])).toBe("zh-Hans");
+        });
+
+        it("still prefers the exact and the prefix match within one language", () => {
+            const both = [{ code: "zh-Hant", displayName: "繁體中文" }, { code: "zh-TW", displayName: "台灣" }];
+            expect(matchSystemLocale(both, ["zh-TW"])).toBe("zh-TW");
+            const bare = [{ code: "zh-Hans", displayName: "简体中文" }, { code: "zh", displayName: "中文" }];
+            expect(matchSystemLocale(bare, ["zh-HK"])).toBe("zh");
+        });
+    });
 });
 
 describe("resolveLocaleChain", () => {

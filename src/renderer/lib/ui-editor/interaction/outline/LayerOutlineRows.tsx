@@ -7,6 +7,7 @@ import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { isComponentEditorRootElement, isComponentEditorVirtualRootId } from "@/lib/ui-editor/componentEditorRoot";
 import { useOutlineElementBadge } from "./outlineBadges";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
@@ -15,6 +16,16 @@ const ROW_INDENT = 16;
 const GUIDE_OFFSET = 8;
 const OUTLINE_ACTIVE_GAP_HEIGHT = 8;
 const OUTLINE_TERMINAL_GAP_HEIGHT = 10;
+
+/**
+ * Shown while the pointer is over the row, or the keyboard is in it - and otherwise not laid out at
+ * all, so it holds no space. The widget type and the eye used to be merely transparent, which still
+ * kept their width at the end of every row: a layer name had to stop short of an empty slot and was
+ * cut off with room to spare. Only keyboard focus counts (`:focus-visible`), because a row keeps
+ * focus after it is clicked and would otherwise keep its name cut short for as long as it stays
+ * selected.
+ */
+const REVEAL_WITH_ROW = "hidden group-hover/outline-row:flex group-has-[:focus-visible]/outline-row:flex";
 
 export type OutlineGapIntent = "child" | "sibling" | "root";
 
@@ -81,13 +92,15 @@ export function OutlineRow({
     const { t } = useTranslation();
     const Badge = useOutlineElementBadge();
     const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
+    // A component's frame is not moved anywhere, so its row has nothing to drag by.
+    const isComponentFrame = isComponentEditorRootElement(element);
     const renameEnabled = isSurfaceGestureEnabled("outlineRename", readOnly);
     const visibilityEnabled = isSurfaceGestureEnabled("outlineVisibility", readOnly);
     // dnd-kit's own `disabled` rather than withholding the listeners: it also stops the sensor, so the
     // 4px activation constraint cannot half-start a drag that then has nowhere to land.
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
-        disabled: !reorderEnabled,
+        disabled: !reorderEnabled || isComponentFrame,
     });
 
     const hasChildren = element.childrenIds.length > 0;
@@ -164,18 +177,22 @@ export function OutlineRow({
                         <span className="w-3.5 h-3.5 inline-block" />
                     )}
                 </button>
-                <button
-                    type="button"
-                    ref={setActivatorNodeRef}
-                    className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
-                    aria-label={t("widgetChrome.outline.dragToReorder")}
-                    disabled={!reorderEnabled}
-                    data-tip={reorderEnabled ? undefined : readOnly.reason}
-                    {...attributes}
-                    {...listeners}
-                >
-                    <GripVertical className="h-3.5 w-3.5" />
-                </button>
+                {isComponentFrame ? (
+                    <span className="h-5 w-4 shrink-0" aria-hidden />
+                ) : (
+                    <button
+                        type="button"
+                        ref={setActivatorNodeRef}
+                        className="flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-fg-subtle/70 opacity-60 transition hover:text-fg hover:opacity-100 active:cursor-grabbing group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-fg-subtle/70"
+                        aria-label={t("widgetChrome.outline.dragToReorder")}
+                        disabled={!reorderEnabled}
+                        data-tip={reorderEnabled ? undefined : readOnly.reason}
+                        {...attributes}
+                        {...listeners}
+                    >
+                        <GripVertical className="h-3.5 w-3.5" />
+                    </button>
+                )}
                 {element.type === OUTLINE_ROOT_WIDGET_TYPE ? (
                     <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-hidden />
                 ) : (
@@ -198,9 +215,11 @@ export function OutlineRow({
                     {/* Whatever the workspace put here - in a live session, who else has this
                         element open. Nothing at all in the runtime; see `outlineBadges`. */}
                     {Badge ? <Badge elementId={element.id} /> : null}
+                    {/* Gives way before the name does (`shrink-[100]`): on a row too short for both, the
+                        type is the one cut down, since the name is what the row is for. */}
                     {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
-                        <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle opacity-0 transition-opacity group-hover/outline-row:opacity-100">
-                            {element.type.replace(/^nl\./, "")}
+                        <span className={`min-w-0 max-w-[7rem] shrink-[100] font-mono text-2xs font-normal text-fg-subtle ${REVEAL_WITH_ROW}`}>
+                            <span className="min-w-0 truncate">{element.type.replace(/^nl\./, "")}</span>
                         </span>
                     ) : null}
                 </button>
@@ -208,8 +227,10 @@ export function OutlineRow({
                     type="button"
                     // `disabled:cursor-not-allowed` and not `disabled:pointer-events-none`: the read-only
                     // reason lives in `title`, and a button that ignores the pointer never shows one.
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
-                        visible ? "opacity-0 group-hover/outline-row:opacity-100 group-focus-within/outline-row:opacity-100" : "opacity-100"
+                    // A hidden layer's eye is always there: it is the only sign on the row that the
+                    // layer is hidden, so it is state rather than a control waiting for the pointer.
+                    className={`h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-fill-subtle hover:text-fg disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-fg-subtle ${
+                        visible ? REVEAL_WITH_ROW : "flex"
                     }`}
                     aria-label={visible ? t("common.hide") : t("common.show")}
                     disabled={element.type === OUTLINE_ROOT_WIDGET_TYPE || !visibilityEnabled}
@@ -349,7 +370,10 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
     // part slots - offers no place to drop among them. Every such drop is refused by the move (see
     // `planMoveElementsInSurface`), and a drop line that lights up where nothing can land is the
     // outline promising what the document will not do.
-    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type);
+    //
+    // Nor beside a component's frame: the component editor's made-up root holds the frame and
+    // nothing else, and anything put there would be outside the component.
+    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type) && !isComponentEditorVirtualRootId(parent.id);
     return (
         <div
             className={`rounded-sm transition-colors duration-150 ease-out ${

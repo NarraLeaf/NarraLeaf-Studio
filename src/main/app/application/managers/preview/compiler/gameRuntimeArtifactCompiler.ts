@@ -94,7 +94,7 @@ import { isHostLitter } from "@shared/utils/hostLitter";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { legacyAsciiName } from "@shared/utils/nlproj";
 import {
     deriveGameAppId,
     totalShippedAssetBytes,
@@ -1134,7 +1134,10 @@ function buildAppManifest(
     }
     const identifier = pack.project.identifier ?? readString(projectConfig?.identifier);
     return {
-        name: sanitizeProjectFileName(identifier ?? pack.project.name),
+        // The ASCII spelling the name has always had: electron-builder names the Windows install
+        // folder and the Linux executable after it, and an update that moved either would leave the
+        // player's previous install behind.
+        name: legacyAsciiName(identifier ?? pack.project.name),
         productName: pack.project.name,
         version: pack.project.version ?? "0.0.0",
         description: readString(projectConfig?.metadata?.description),

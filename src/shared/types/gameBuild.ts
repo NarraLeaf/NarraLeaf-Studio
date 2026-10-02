@@ -1,4 +1,4 @@
-import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import { legacyAsciiName, sanitizeProjectFileName } from "@shared/utils/nlproj";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 
 /**
@@ -617,13 +617,17 @@ const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A
  * Shared rather than mirrored: the build dialog shows the user which app id
  * their game will ship with, and a second implementation would quietly disagree
  * with the one that actually packages.
+ *
+ * Spelled through `legacyAsciiName`, whose output never changes: without an
+ * identifier this id is derived from the project's name, and the players' save
+ * folder, the mobile package ids and the installer's GUID all follow it.
  */
 export function deriveGameAppId(identifier: string | undefined, projectName: string): string {
     const trimmed = identifier?.trim();
     if (trimmed && APP_ID_PATTERN.test(trimmed)) {
         return trimmed;
     }
-    const sanitized = sanitizeProjectFileName(trimmed || projectName)
+    const sanitized = legacyAsciiName(trimmed || projectName)
         .toLowerCase()
         .replace(/[^a-z0-9-]+/g, "-")
         .replace(/^-+|-+$/g, "") || "game";
@@ -714,10 +718,34 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
  *
  * `null` is the release variant, whose artifacts are named from the project alone. Its names are
  * therefore exactly what they were before variants existed.
+ *
+ * Both names keep the script they were written in (`放課後-体験版`), made safe for a file system
+ * by `sanitizeProjectFileName`. The build dialog predicts every artifact from this and the
+ * packaging worker writes every artifact from it, so the two cannot disagree.
  */
 export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
     const base = sanitizeProjectFileName(projectName);
     return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+}
+
+/** Characters every tool that opens a package accepts in a path segment. */
+const PORTABLE_PATH_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * The name of the `.app` directory inside an IPA.
+ *
+ * The one name in a package that no player and no author reads - the home screen shows the
+ * bundle's display name, and the IPA file itself carries the artifact name - so it is kept to ASCII
+ * rather than trusting every tool that unpacks, re-signs or uploads an IPA with a Unicode path: the
+ * artifact name where that is ASCII already (`My-Game`), otherwise the last segment of the app id,
+ * which comes from the identifier the author typed.
+ */
+export function iosAppDirectoryName(artifactBaseName: string, appId: string): string {
+    if (PORTABLE_PATH_SEGMENT.test(artifactBaseName)) {
+        return artifactBaseName;
+    }
+    const fromAppId = appId.split(".").pop() ?? "";
+    return PORTABLE_PATH_SEGMENT.test(fromAppId) ? fromAppId : "App";
 }
 
 /**

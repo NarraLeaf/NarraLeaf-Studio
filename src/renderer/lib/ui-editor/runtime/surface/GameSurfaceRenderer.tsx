@@ -26,6 +26,7 @@ import {
     takeGlobalInputTurn,
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { GlobalInputActionContext } from "@/lib/ui-editor/runtime/input/globalInputActionContext";
+import { releaseKeyboardFocus, takeKeyboardFocus } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { readPointerInputGesture, type UIPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
@@ -53,6 +54,16 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { getSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+
+/**
+ * How many frames a surface that owns the keys keeps asking for the focus while it cannot take it:
+ * about a second, far longer than any reveal takes, and short enough that a surface that never
+ * becomes focusable stops asking.
+ */
+const KEYBOARD_FOCUS_TAKE_FRAMES = 60;
+
+/** How long a concealed surface takes to fade out and back - about what a page takes to fade in. */
+const CONCEAL_FADE_MS = 200;
 
 /**
  * The part of an input event a lane step needs.
@@ -113,6 +124,14 @@ export type GameSurfaceRendererProps = {
      */
     passive?: boolean;
     /**
+     * The surface steps off the screen without leaving it: it fades out and takes no input, and
+     * everything on it stays mounted and running, so it comes back as it was. A Game UI slot does
+     * this while a page is drawn over the stage (see `isStageSlotConcealedByPage`).
+     *
+     * Left undefined by a host that never conceals its surface, which then gets no transition at all.
+     */
+    concealed?: boolean;
+    /**
      * Background the design-size layer paints, overriding the surface's authored colour.
      *
      * The app surface stack resolves the colour itself (an in-game overlay thins it, see
@@ -145,6 +164,14 @@ export type GameSurfaceRendererProps = {
     elementAnimations?: boolean;
     /** The player asked for less motion: no element animates, whatever the document says. */
     reducedMotion?: boolean;
+    /**
+     * This surface owns the keyboard, so it holds the keyboard focus as well (see
+     * `keyboardFocusHandover`): taken when this turns true, let go when it turns false.
+     *
+     * Left undefined by every host but the game's page and layer stack - a frame, a Game UI slot, a
+     * preview - which then never touches the focus.
+     */
+    holdsKeyboardFocus?: boolean;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -165,11 +192,13 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         onRuntimeSubscriptionsReady,
         surfacePointerEvents,
         passive = false,
+        concealed,
         backgroundColor,
         backgroundImageOpacity,
         staticDocument,
         elementAnimations = false,
         reducedMotion = false,
+        holdsKeyboardFocus,
     } = props;
     // Kept as values, not write-only tick setters: the element tree is memoised on its inputs, and
     // "a store I subscribed to fired" is an input that does not show up in any prop.
@@ -498,6 +527,45 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         return () => shell.removeEventListener(UI_TOUCH_GESTURE_EVENT, handleTouchGesture);
     }, [handleTouchGesture, hasRootElement, laneInteractive]);
 
+    /** The control that had the focus when this surface last let it go; see `releaseKeyboardFocus`. */
+    const rememberedFocusRef = useRef<HTMLElement | null>(null);
+    // A layout effect, so the focus moves in the same frame the surface starts or stops owning the
+    // keys: a key pressed in between would otherwise reach a control that is no longer the player's.
+    useLayoutEffect(() => {
+        const shell = shellRef.current;
+        if (holdsKeyboardFocus === undefined || !shell || !hasRootElement) {
+            return undefined;
+        }
+        if (!holdsKeyboardFocus) {
+            rememberedFocusRef.current = releaseKeyboardFocus(shell) ?? rememberedFocusRef.current;
+            return undefined;
+        }
+        // Asked again on the next frames while the surface cannot take it yet: a page starts owning
+        // the keys in the same commit that reveals it, and is hidden until that frame is painted.
+        let frame = 0;
+        let attempts = 0;
+        const take = () => {
+            const outcome = takeKeyboardFocus(shell, rememberedFocusRef.current);
+            if (outcome !== "refused") {
+                rememberedFocusRef.current = null;
+                return;
+            }
+            attempts += 1;
+            if (attempts < KEYBOARD_FOCUS_TAKE_FRAMES && typeof requestAnimationFrame === "function") {
+                frame = requestAnimationFrame(take);
+            }
+        };
+        take();
+        // Going away while it still owns the keys - a page replaced by the next one - lets go too,
+        // rather than leaving the focus on an element that is about to leave the document.
+        return () => {
+            if (frame && typeof cancelAnimationFrame === "function") {
+                cancelAnimationFrame(frame);
+            }
+            rememberedFocusRef.current = releaseKeyboardFocus(shell) ?? rememberedFocusRef.current;
+        };
+    }, [hasRootElement, holdsKeyboardFocus]);
+
     const shellStyle: CSSProperties = {
         position: "relative",
         width: scaledWidth,
@@ -506,6 +574,21 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // A surface that takes no input is click-through as well as inert, so the thing behind it is
         // reachable rather than merely unblocked-in-principle.
         ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        // Focusable so that it can hold the keyboard focus for its page, and never drawn as focused:
+        // it is where Tab starts from, not a control (see `keyboardFocusHandover`).
+        ...(holdsKeyboardFocus !== undefined ? { outline: "none" } : {}),
+        // Faded rather than cut, at about the pace a page fades in over it. `visibility` follows the
+        // fade out so nothing on the surface is left focusable; on the way back it is simply not
+        // set, because setting it to `visible` would outrank the hidden stage this surface sits in
+        // before the game reveals it.
+        ...(concealed ? { opacity: 0, visibility: "hidden" } : {}),
+        ...(concealed !== undefined && !reducedMotion
+            ? {
+                transition: concealed
+                    ? `opacity ${CONCEAL_FADE_MS}ms ease-out, visibility 0s linear ${CONCEAL_FADE_MS}ms`
+                    : `opacity ${CONCEAL_FADE_MS}ms ease-out`,
+            }
+            : {}),
     };
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -529,8 +612,11 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
             style={shellStyle}
-            // Display-only, all the way down: see `passive`.
-            inert={passive}
+            // Display-only, all the way down: see `passive`. A concealed surface is off the screen,
+            // so it takes nothing either.
+            inert={passive || concealed === true}
+            aria-hidden={concealed === true ? true : undefined}
+            tabIndex={holdsKeyboardFocus !== undefined ? -1 : undefined}
             onClick={laneInteractive ? handleSurfaceClick : undefined}
             onDoubleClick={laneInteractive ? handleSurfaceDoubleClick : undefined}
             onAuxClick={laneInteractive ? handleSurfaceAuxClick : undefined}

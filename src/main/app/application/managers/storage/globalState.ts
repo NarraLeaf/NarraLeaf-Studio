@@ -5,7 +5,8 @@ import {
     GlobalStateKeys,
     GlobalStateType,
     GlobalStateValue,
-    RETIRED_GLOBAL_STATE_KEYS
+    RETIRED_GLOBAL_STATE_KEYS,
+    carriedRetiredValues
 } from "@shared/types/state/globalState";
 import path from "path";
 import { PersistentState } from "../../../../../shared/utils/persistentState";
@@ -82,8 +83,15 @@ export class GlobalStateManager {
      * Runs once at startup, before any window exists, so there is nothing to broadcast to.
      * Returns the keys actually removed for the log line - on a profile that never had them
      * this is empty and says nothing.
+     *
+     * A retired key whose value still means something to the key that replaced it hands it over
+     * first (`carriedRetiredValues`); deleting it straight after is what makes that happen once.
      */
     public sweepRetiredKeys(): string[] {
+        for (const [key, value] of Object.entries(carriedRetiredValues(this.state.raw()))) {
+            this.set(key, value);
+        }
+
         const removed: string[] = [];
         for (const key of RETIRED_GLOBAL_STATE_KEYS) {
             if (this.has(key)) {

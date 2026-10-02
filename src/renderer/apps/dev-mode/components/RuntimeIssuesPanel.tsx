@@ -47,7 +47,7 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
         className,
         chrome,
     } = props;
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
 
     const { errors, warnings } = countRuntimeIssues(issues);
     const empty = !sessionError && issues.length === 0;
@@ -80,7 +80,12 @@ export function RuntimeIssuesPanel(props: RuntimeIssuesPanelProps): ReactNode {
                 <div className="flex min-w-0 items-baseline gap-2">
                     <span className="text-xs font-medium text-fg">{t("devMode.issues.title")}</span>
                     {issues.length > 0 ? (
-                        <span className="truncate">{t("devMode.issues.summary", { errors, warnings })}</span>
+                        <span className="truncate">
+                            {t("devMode.issues.counts", {
+                                errors: tn("common.count.errors", errors),
+                                warnings: tn("common.count.warnings", warnings),
+                            })}
+                        </span>
                     ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

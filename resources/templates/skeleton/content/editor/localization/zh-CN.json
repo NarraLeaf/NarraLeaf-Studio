@@ -516,6 +516,11 @@
       "sourceHash": "fnv1a:a2523866",
       "status": "translated",
       "target": "走廊"
+    },
+    "ui:c6d9dc8d-9524-4102-985e-5612b971a776.text": {
+      "sourceHash": "fnv1a:4f4dbf34",
+      "status": "translated",
+      "target": "你的游戏"
     }
   }
 }

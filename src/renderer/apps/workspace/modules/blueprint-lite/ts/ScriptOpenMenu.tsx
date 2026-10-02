@@ -103,7 +103,7 @@ export function ScriptOpenMenu({ projectPath, scriptRef, compact }: Props) {
                 data-tip={compact ? t("blueprint.script.open") : undefined}
                 className={
                     compact
-                        ? "flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+                        ? "flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
                         : "flex items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5 text-2xs text-fg hover:bg-fill"
                 }
             >

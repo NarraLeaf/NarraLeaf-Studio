@@ -34,7 +34,8 @@ import {
  * The picture is a backdrop behind the chrome, never an overlay on it (see WorkspaceLayout), so it
  * can only show where a surface lets it through. The last two rows decide how much the editor's
  * reading surfaces and the docks let through: each is a plate that is either off (clear) or on at
- * an opacity of its own.
+ * an opacity of its own. Both start on and opaque, so picking a wallpaper never puts it behind the
+ * text being edited; thinning either plate is the author's call.
  *
  * The setting is global (one background for the whole app), so there is no per-project scope and
  * no separate targets to configure.

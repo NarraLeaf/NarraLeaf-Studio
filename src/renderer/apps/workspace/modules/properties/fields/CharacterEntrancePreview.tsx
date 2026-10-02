@@ -7,7 +7,10 @@ import { SampleSubject } from "@/lib/story/previewSubject";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
-/** Longest edge of the composite asked for; the preview box is never wider than this. */
+/**
+ * Longest edge of the picture asked for, which is plenty for a box the width of a side panel. It sets
+ * how sharply she is drawn and never how big: her size comes from the artwork's own pixels.
+ */
 const SPRITE_COMPOSITE_PX = 512;
 /** Screen pixels of horizontal drag per 1.0 of zoom - the sensitivity the Story Motion stage uses. */
 const ZOOM_DRAG_PX = 180;
@@ -24,15 +27,18 @@ function clampAlign(value: number): number {
  * dragging, and read the numbers off the channel list underneath.
  *
  * **The mapping is the runtime's, not an approximation.** The box is the project's own resolution in
- * shape; a sprite is drawn at its artwork's pixels IN DESIGN SPACE, so its share of the box is its
- * pixel width over the design width; `xalign`/`yalign` are percentages of the stage with the origin
- * at the bottom left, centred by a `-50%/+50%` translate; `zoom` multiplies both scale axes. Same
- * rules the Story Motion stage and the camera viewfinder draw with - see
- * `nlr-displayable-css-mapping` for where each is verified against the engine.
+ * shape; a sprite is drawn at its artwork's pixels IN DESIGN SPACE, so its share of the box is the
+ * artwork's pixel width over the design width - the artwork's, not the picture's: the picture drawn
+ * here is a composite scaled down to a preview's size. `xalign`/`yalign` are percentages of the stage
+ * with the origin at the bottom left, and `xoffset`/`yoffset` are design pixels the engine folds into
+ * them as a share of the design size; the result is centred by a `-50%/+50%` translate; `zoom`
+ * multiplies both scale axes. Same rules the Story Motion stage and the camera viewfinder draw with -
+ * see `nlr-displayable-css-mapping` for where each is verified against the engine.
  *
- * A drag writes nothing until it is released. The pose is rendered from a local draft while the
- * pointer is down, so one placement is one entry in the undo history rather than one per frame -
- * the rule `useSliderDraft` exists for.
+ * A drag places her where the pointer is. The offsets she carries are hers and stay as they are, so
+ * the alignment takes up the difference. It writes nothing until it is released: the pose is rendered
+ * from a local draft while the pointer is down, so one placement is one entry in the undo history
+ * rather than one per frame - the rule `useSliderDraft` exists for.
  */
 export function CharacterEntrancePreview(props: {
     character: Character;
@@ -43,8 +49,9 @@ export function CharacterEntrancePreview(props: {
     const { t } = useTranslation();
     const boxRef = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState<StoryTransformProps | null>(null);
-    const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
     const shown = draft ?? props.value;
+    const stageWidth = Math.max(1, props.stageSize.width);
+    const stageHeight = Math.max(1, props.stageSize.height);
 
     // Her own picture, composited the way the editor's other previews get one - a preset character's
     // default pose, a layered character's default tag on every axis. A runtime-drawn character has no
@@ -57,27 +64,31 @@ export function CharacterEntrancePreview(props: {
     const scaleX = typeof nlr.scaleX === "number" ? nlr.scaleX : 1;
     const scaleY = typeof nlr.scaleY === "number" ? nlr.scaleY : 1;
     const rotation = typeof nlr.rotation === "number" ? nlr.rotation : 0;
-    const xalign = shown?.position?.xalign ?? 0.5;
-    const yalign = shown?.position?.yalign ?? 0.5;
+    // Where the engine puts her, as shares of the stage: the alignment, plus the offsets folded in as
+    // design pixels over the design size (`PositionUtils.calc` in narraleaf-react).
+    const left = (shown?.position?.xalign ?? 0.5) + (shown?.position?.xoffset ?? 0) / stageWidth;
+    const bottom = (shown?.position?.yalign ?? 0.5) + (shown?.position?.yoffset ?? 0) / stageHeight;
 
     const frameStyle = useMemo<CSSProperties>(() => ({
-        left: `${xalign * 100}%`,
-        bottom: `${yalign * 100}%`,
+        left: `${left * 100}%`,
+        bottom: `${bottom * 100}%`,
         transform: `translate(-50%, 50%) rotate(${rotation}deg) scale(${zoom * scaleX}, ${zoom * scaleY})`,
         // The artwork's own pixels, as a share of the design width - which is what the stage draws
-        // when nothing asks for `autoFit`. Until the picture has loaded there is no share to take,
-        // so the placeholder gets a portrait-shaped half of the stage rather than a guess at pixels.
-        ...(naturalSize
+        // when nothing asks for `autoFit`. The size is the artwork's rather than the loaded picture's:
+        // the picture is scaled down to SPRITE_COMPOSITE_PX, so its pixels say nothing about hers.
+        // With no picture there is no share to take, so the placeholder gets a portrait-shaped third
+        // of the stage rather than a guess at pixels.
+        ...(sprite.size
             ? {
-                width: `${(naturalSize.width / Math.max(1, props.stageSize.width)) * 100}%`,
-                aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
+                width: `${(sprite.size.width / stageWidth) * 100}%`,
+                aspectRatio: `${sprite.size.width} / ${sprite.size.height}`,
             }
             : { width: "33%", aspectRatio: "2 / 3" }),
         opacity: typeof nlr.opacity === "number" ? nlr.opacity : 1,
         filter: typeof nlr.filter === "string" ? nlr.filter : undefined,
         mixBlendMode: nlr.mixBlendMode as CSSProperties["mixBlendMode"],
         clipPath: typeof nlr.clipPath === "string" ? nlr.clipPath : undefined,
-    }), [naturalSize, nlr, props.stageSize.width, rotation, scaleX, scaleY, xalign, yalign, zoom]);
+    }), [bottom, left, nlr, rotation, scaleX, scaleY, sprite.size, stageWidth, zoom]);
 
     const withProps = useCallback((patch: StoryTransformProps): StoryTransformProps => ({
         ...(props.value ?? {}),
@@ -89,15 +100,20 @@ export function CharacterEntrancePreview(props: {
         if (!rect || rect.width <= 0 || rect.height <= 0) {
             return null;
         }
+        const position = props.value?.position ?? {};
+        // She is drawn at alignment + offset, and the pointer says where she is drawn. The offsets
+        // stay hers, so the alignment is the part solved for.
+        const xoffset = (position.xoffset ?? 0) / stageWidth;
+        const yoffset = (position.yoffset ?? 0) / stageHeight;
         return withProps({
             position: {
-                ...(props.value?.position ?? {}),
-                xalign: Number(clampAlign((event.clientX - rect.left) / rect.width).toFixed(4)),
+                ...position,
+                xalign: Number(clampAlign((event.clientX - rect.left) / rect.width - xoffset).toFixed(4)),
                 // Measured up from the bottom, matching the engine's default origin.
-                yalign: Number(clampAlign(1 - (event.clientY - rect.top) / rect.height).toFixed(4)),
+                yalign: Number(clampAlign(1 - (event.clientY - rect.top) / rect.height - yoffset).toFixed(4)),
             },
         });
-    }, [props.value?.position, withProps]);
+    }, [props.value?.position, stageHeight, stageWidth, withProps]);
 
     const dragPlacement = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0) {
@@ -163,10 +179,6 @@ export function CharacterEntrancePreview(props: {
                         alt=""
                         className="h-full w-full object-contain"
                         draggable={false}
-                        onLoad={event => setNaturalSize({
-                            width: event.currentTarget.naturalWidth || 1,
-                            height: event.currentTarget.naturalHeight || 1,
-                        })}
                     />
                 ) : (
                     <SampleSubject />

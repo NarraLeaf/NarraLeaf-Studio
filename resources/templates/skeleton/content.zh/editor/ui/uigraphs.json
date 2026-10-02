@@ -9160,299 +9160,6 @@
           "functions": {}
         }
       },
-      "13e08ddc-7f8a-490c-b571-57fddd761b1b": {
-        "id": "13e08ddc-7f8a-490c-b571-57fddd761b1b",
-        "name": "组件库",
-        "owner": {
-          "kind": "surfaceMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "f886fc8f-791a-46bb-bcda-ef52f99b75f1": {
-        "id": "f886fc8f-791a-46bb-bcda-ef52f99b75f1",
-        "name": "弹窗面板",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "fc17c8c1-0dcf-489d-853b-fcb368b9d267"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "1a698a80-393e-4402-9de8-5c855c3241a1": {
-        "id": "1a698a80-393e-4402-9de8-5c855c3241a1",
-        "name": "标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "a2222ed0-0212-406e-b405-f2ea4c13e809"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "50868caf-110d-492b-862c-603108b5d67b": {
-        "id": "50868caf-110d-492b-862c-603108b5d67b",
-        "name": "副标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "f85be567-1db0-4a2a-b1a3-37689751458b"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "657329f0-9e36-41cb-9ec7-76eaed2bbe59": {
-        "id": "657329f0-9e36-41cb-9ec7-76eaed2bbe59",
-        "name": "分隔线",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "65826581-b1ae-460e-88ba-70ec0a522681"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "b4573084-fc7f-44a9-83f0-281f19840182": {
-        "id": "b4573084-fc7f-44a9-83f0-281f19840182",
-        "name": "存档位说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "1ced151b-c0ef-4732-b54e-90dafafd7e9c"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "45f81838-3fa7-4b93-951b-2249a62d1ca9": {
-        "id": "45f81838-3fa7-4b93-951b-2249a62d1ca9",
-        "name": "画廊缩略图说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "b3dba00f-c94c-4ec5-be9d-187045a5cc1a"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "53c55190-1b6e-48ea-bf3e-7a5038f122e4": {
-        "id": "53c55190-1b6e-48ea-bf3e-7a5038f122e4",
-        "name": "导航条条目说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "caa7258c-59d2-4d3f-87ba-a04f78f49ceb"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "543c3d6b-7abc-41ec-99ad-2af1f84ecb81": {
-        "id": "543c3d6b-7abc-41ec-99ad-2af1f84ecb81",
-        "name": "分页标签说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "c8b1060e-2216-48e9-b20e-ef624228369b"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "31f6e6a6-1340-44c3-86bb-c24cf7210fbd": {
-        "id": "31f6e6a6-1340-44c3-86bb-c24cf7210fbd",
-        "name": "快捷菜单按钮说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "26d4c687-8b34-4113-b3df-23c28b02c1ae"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "cb4387ce-e019-46f1-8a5e-24b9c32d3fee": {
-        "id": "cb4387ce-e019-46f1-8a5e-24b9c32d3fee",
-        "name": "标题菜单项说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "3902a77f-b704-4494-b44f-0aeb97337d86"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "de08db90-9320-4cfb-9a8a-d1b99f2aa830": {
-        "id": "de08db90-9320-4cfb-9a8a-d1b99f2aa830",
-        "name": "设置行 · 滑块说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "6ad89311-5c29-425f-9349-f95fdd996ca0"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "491e8442-4edb-40a7-a9fe-04fa02174c43": {
-        "id": "491e8442-4edb-40a7-a9fe-04fa02174c43",
-        "name": "设置行 · 选项说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "da4c5408-55e0-4bed-bbf0-ed4e34e1494f"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
-      "db459880-86bb-492b-b32e-736b5657f202": {
-        "id": "db459880-86bb-492b-b32e-736b5657f202",
-        "name": "回想条目说明",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "4999c96e-a866-4035-bbba-1a58e6a8f5d6"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
-      },
       "36f206a2-84fb-4c20-aa02-a801378ab6e6": {
         "id": "36f206a2-84fb-4c20-aa02-a801378ab6e6",
         "name": "加载",
@@ -12745,12 +12452,6 @@
           "surfaceId": "narraleaf-studio:main-surface",
           "elementId": "ac7c2f86-e356-4592-9dbf-04c0e55154da"
         },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
         "graphs": {
           "eventIds": [
             "a1a0e2ea-6c1b-4034-ac33-9ce70c9952d0"
@@ -12809,7 +12510,7 @@
                   },
                   "n5": {
                     "id": "n5",
-                    "type": "blueprint.math.greater",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -13260,7 +12961,13 @@
           },
           "functionIds": [],
           "functions": {}
-        }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       },
       "7c97b092-6675-4b6e-8726-1569cc3e0fe9": {
         "id": "7c97b092-6675-4b6e-8726-1569cc3e0fe9",
@@ -14214,12 +13921,6 @@
           "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
           "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74"
         },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
         "graphs": {
           "eventIds": [
             "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a"
@@ -14278,7 +13979,7 @@
                   },
                   "sfx.notFirst": {
                     "id": "sfx.notFirst",
-                    "type": "blueprint.math.greater",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -14455,7 +14156,13 @@
           },
           "functionIds": [],
           "functions": {}
-        }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       },
       "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b": {
         "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b",
@@ -23560,6 +23267,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的 CG 条目。新项目没有条目，列表为空。锁定的条目显示为带锁的暗色格子，由故事中的 Unlock Gallery 节点解锁；点击已解锁的条目，以全尺寸打开图片。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -23751,7 +23473,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -24496,6 +24218,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的回想条目。新项目没有条目，列表为空。锁定的条目显示为带锁的暗色格子，故事进入对应场景时解锁；点击已解锁的条目，重播该场景。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -24687,7 +24424,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -25153,6 +24890,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的音乐条目。新项目没有条目，列表为空。锁定的行显示一把锁，故事中播放该曲目时解锁；点击已解锁的行，播放该曲目。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -25344,7 +25096,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -25738,6 +25490,21 @@
               "name": "填充列表",
               "graph": {
                 "nodes": {
+                  "about": {
+                    "id": "about",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "此列表显示左侧图标栏「画廊」面板中的语音条目。新项目没有条目，列表为空。锁定的行显示一把锁，故事中播放该对白时解锁；点击已解锁的行，播放该对白。",
+                      "width": 900,
+                      "height": 140
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -260
+                      }
+                    }
+                  },
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.event.head.init",
@@ -25929,7 +25696,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -26478,7 +26245,7 @@
                   },
                   "back": {
                     "id": "back",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -27239,48 +27006,6 @@
       "componentWidgetMain:14c6bee0-3a44-42ae-99d3-8883bd9410b7:b015aeef-3676-478b-9a5a-6d8836867564": {
         "blueprintId": "55bee0a0-72c9-4ec9-bfa2-6acd450171b2"
       },
-      "surfaceMain:2334bffd-671e-42f4-a1f5-b652b585b92a": {
-        "blueprintId": "13e08ddc-7f8a-490c-b571-57fddd761b1b"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:fc17c8c1-0dcf-489d-853b-fcb368b9d267": {
-        "blueprintId": "f886fc8f-791a-46bb-bcda-ef52f99b75f1"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:a2222ed0-0212-406e-b405-f2ea4c13e809": {
-        "blueprintId": "1a698a80-393e-4402-9de8-5c855c3241a1"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:f85be567-1db0-4a2a-b1a3-37689751458b": {
-        "blueprintId": "50868caf-110d-492b-862c-603108b5d67b"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:65826581-b1ae-460e-88ba-70ec0a522681": {
-        "blueprintId": "657329f0-9e36-41cb-9ec7-76eaed2bbe59"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:1ced151b-c0ef-4732-b54e-90dafafd7e9c": {
-        "blueprintId": "b4573084-fc7f-44a9-83f0-281f19840182"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:b3dba00f-c94c-4ec5-be9d-187045a5cc1a": {
-        "blueprintId": "45f81838-3fa7-4b93-951b-2249a62d1ca9"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:caa7258c-59d2-4d3f-87ba-a04f78f49ceb": {
-        "blueprintId": "53c55190-1b6e-48ea-bf3e-7a5038f122e4"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:c8b1060e-2216-48e9-b20e-ef624228369b": {
-        "blueprintId": "543c3d6b-7abc-41ec-99ad-2af1f84ecb81"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:26d4c687-8b34-4113-b3df-23c28b02c1ae": {
-        "blueprintId": "31f6e6a6-1340-44c3-86bb-c24cf7210fbd"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:3902a77f-b704-4494-b44f-0aeb97337d86": {
-        "blueprintId": "cb4387ce-e019-46f1-8a5e-24b9c32d3fee"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:6ad89311-5c29-425f-9349-f95fdd996ca0": {
-        "blueprintId": "de08db90-9320-4cfb-9a8a-d1b99f2aa830"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:da4c5408-55e0-4bed-bbf0-ed4e34e1494f": {
-        "blueprintId": "491e8442-4edb-40a7-a9fe-04fa02174c43"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:4999c96e-a866-4035-bbba-1a58e6a8f5d6": {
-        "blueprintId": "db459880-86bb-492b-b32e-736b5657f202"
-      },
       "surfaceMain:001a962d-b7c3-4773-b474-4d123df81402": {
         "blueprintId": "36f206a2-84fb-4c20-aa02-a801378ab6e6"
       },
@@ -27622,6 +27347,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-24T04:19:26.058Z"
+    "updatedAt": "2026-10-02T16:11:11.310Z"
   }
 }

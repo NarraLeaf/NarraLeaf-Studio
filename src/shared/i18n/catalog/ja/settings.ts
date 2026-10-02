@@ -531,7 +531,9 @@ export const settings = {
         apply: "適用",
         exportHint: "設定をそのままの JSON ファイルとして書き出す。ワークスペースの背景、コミットに記録する名前、最近のプロジェクト、統計、ウィンドウのレイアウトはこの端末に残る",
         exported: "{path} に保存した",
-        imported: "設定 {count} 件を適用した",
+        imported: {
+            other: "設定 {count} 件を適用した",
+        },
         exportFailed: "設定を保存できなかった",
         importFailed: "ファイルを読めなかった",
         planSummary: "変更 {change} 件、すでに同じ {same} 件、対象外 {skipped} 件",

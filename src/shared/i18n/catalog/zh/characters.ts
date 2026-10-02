@@ -169,9 +169,14 @@ export const characters = {
             title: "导入 PSD",
             choose: "选择 PSD…",
             canvas: "文档尺寸",
-            cost: "{layers} 层 · 约 {megabytes} MB",
+            costCounts: "{layers} · 约 {megabytes} MB",
+            layerCount: {
+                other: "{count} 层",
+            },
             mapping: "层",
-            axis: "轴，{count} 个差分",
+            axis: {
+                other: "轴，{count} 个差分",
+            },
             blends: "引擎无法还原的混合模式",
             merge: "向下合并",
             skip: "跳过",

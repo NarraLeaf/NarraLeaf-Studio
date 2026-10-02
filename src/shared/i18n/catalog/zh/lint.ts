@@ -44,7 +44,7 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "未完成的资产集",
             description: "声明的变体中存在未恰好对应一个文件的变体",
-            // 变体按组成它的标签写出来，因为把这些标签写到文件上就是解决办法。
+            // 变体写成语言代码或变体名称，不写存储用的标签：变体的 id 是 uuid。
             // 不写会解析到的文件名：那个文件还不存在。
             message: "{set} 的 {variant} 没有对应文件",
             messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",
@@ -354,7 +354,10 @@ export const lint = {
         variablesReadNeverWritten: {
             title: "永远不会变的条件",
             description: "条件判断读取了某个变量，而整个项目从来没有给它赋过值",
-            message: "{count} 处条件判断读取了 {variable}，但没有任何地方给它赋值",
+            message: "{conditions}读取了 {variable}，但没有任何地方给它赋值",
+            conditionCount: {
+                other: "{count} 处条件判断",
+            },
         },
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
@@ -375,13 +378,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "缺少翻译",
-            description: "目标语言中没有该行的译文",
+            description: "目标语言中没有该行或界面文本的译文",
             message: "缺少 {locale} 译文",
+            messageInterface: "{text} 缺少 {locale} 译文",
         },
         localizationStale: {
             title: "译文过期",
             description: "原文在翻译之后发生过修改",
             message: "{locale} 译文比原文旧",
+            messageInterface: "{text} 的 {locale} 译文比原文旧",
         },
         localizationMarkup: {
             title: "译文未带样式",
@@ -391,7 +396,10 @@ export const lint = {
         localizationOrphan: {
             title: "孤立的译文",
             description: "对应的原文已不存在",
-            message: "{count} 条 {locale} 译文没有对应的行",
+            message: "{translations}没有对应的行",
+            translationCount: {
+                other: "{count} 条 {locale} 译文",
+            },
         },
         voiceMissing: {
             title: "缺少语音",
@@ -406,7 +414,10 @@ export const lint = {
         voiceOrphan: {
             title: "孤立的语音",
             description: "对应的对白已不存在",
-            message: "{count} 条 {locale} 录音没有对应的行",
+            message: "{recordings}没有对应的行",
+            recordingCount: {
+                other: "{count} 条 {locale} 录音",
+            },
         },
         brandBrokenLink: {
             title: "断开的颜色链接",
@@ -420,10 +431,16 @@ export const lint = {
         typographyGlyphCoverage: {
             title: "缺少字形",
             description: "文本用到了项目里任何字体都画不出的字符",
-            message: "项目字体画不出“{character}”（{count} 处）",
-            messageInLanguage: "{language}中项目字体画不出“{character}”（{count} 处）",
-            messageMore: "另有 {count} 个字符项目字体画不出",
-            messageMoreInLanguage: "{language}中另有 {count} 个字符项目字体画不出",
+            message: "项目字体画不出“{character}”（{occurrences}）",
+            occurrenceCount: {
+                other: "{count} 处",
+            },
+            messageInLanguage: "{language}中项目字体画不出“{character}”（{occurrences}）",
+            messageMore: "另有 {characters}项目字体画不出",
+            moreCharacterCount: {
+                other: "{count} 个字符",
+            },
+            messageMoreInLanguage: "{language}中另有 {characters}项目字体画不出",
             messageUnreadable: "{font} 读不出来，未检查字形覆盖",
             messageUnloadable: "{font} 是 .{format} 字体，游戏无法用它绘制文字",
         },
@@ -465,7 +482,7 @@ export const lint = {
         title: "问题",
         empty: "未发现问题",
         running: "检查中…",
-        summary: "{errors} 个错误，{warnings} 个警告，{infos} 个提示",
+        counts: "{errors}，{warnings}，{infos}",
         filtered: "显示 {shown} / {total}",
         rerun: "重新检查",
         filterAll: "全部",
@@ -488,8 +505,10 @@ export const lint = {
         category: "检查",
     },
     console: {
+        channel: "检查",
+        channelDescription: "项目检查及其发现的问题",
         started: "开始检查",
-        finished: "{errors} 个错误，{warnings} 个警告，用时 {duration}",
+        finishedCounts: "{errors}，{warnings}，用时 {duration}",
         // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。
         // 不再留严重级别的位：控制台每一行左边本来就有一列级别，写在句子里是重复。
         finding: "{location} {message}（{rule}）",
@@ -500,7 +519,9 @@ export const lint = {
     },
     build: {
         started: "正在检查项目…",
-        blocked: "{count} 个问题中止了构建",
+        blocked: {
+            other: "{count} 个问题中止了构建",
+        },
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
         blockedHint: "可在「项目 ▸ 项目 ▸ 构建前检查」中调整",

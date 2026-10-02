@@ -45,6 +45,8 @@
  * Comments in English per project convention.
  */
 
+import type { UIStageSlotId } from "@shared/types/ui-editor/document";
+
 /** A page-lane entry. Only its key matters here. */
 export type StageOcclusionPageEntry = {
     key: string;
@@ -95,19 +97,53 @@ export function isPageEntryDrawn(input: {
  * stack are the app, not something over it.
  */
 export function isStageCovered(input: StageOcclusionInput): boolean {
+    return isStageCoveredByPage(input) || input.layers.some(layer => layer.modal && isLayerDrawn({
+        surfaceId: layer.surfaceId,
+        drawableSurfaceIds: input.drawableSurfaceIds,
+    }));
+}
+
+/**
+ * Whether a page - a whole screen, rather than a layer floating over one - is drawn over the stage.
+ *
+ * The page half of {@link isStageCovered}, asked on its own by the one thing that treats the two
+ * lanes differently: which Game UI stays on screen underneath (see
+ * {@link isStageSlotConcealedByPage}).
+ */
+export function isStageCoveredByPage(
+    input: Pick<StageOcclusionInput, "pageEntries" | "pagesHiddenForGame" | "gameHiddenKeys">,
+): boolean {
     if (!input.pagesHiddenForGame) {
         return false;
     }
     const settling = input.pageEntries[input.pageEntries.length - 1] ?? null;
-    const coveredByPage = settling !== null && isPageEntryDrawn({
+    return settling !== null && isPageEntryDrawn({
         entryKey: settling.key,
         pagesHiddenForGame: true,
         gameHiddenKeys: input.gameHiddenKeys,
     });
-    return coveredByPage || input.layers.some(layer => layer.modal && isLayerDrawn({
-        surfaceId: layer.surfaceId,
-        drawableSurfaceIds: input.drawableSurfaceIds,
-    }));
+}
+
+/**
+ * Whether a Game UI slot steps off the screen while a page is drawn over the stage.
+ *
+ * A page opened over a running game - Backlog, Save, Config from the quick menu - shows the scene
+ * through its own background on purpose (see `GAME_OVERLAY_BACKGROUND_ALPHA`): it is what tells the
+ * player they are still in it. The game's controls are not the scene. Left under the page, the
+ * dialogue box repeated the line the Backlog was listing and the quick menu's buttons showed through
+ * the page's own, two sets of words competing for one screen - the very thing the page background is
+ * thinned only as far as it is to avoid. Nothing on them can be used while the page is up either:
+ * the page takes the input, and the story holds.
+ *
+ * So the dialogue box, the NVL panel, a choice waiting for an answer and the On-Stage controls step
+ * off while a page is up and come back as it closes. A notification stays: it is something the game
+ * is telling the player, and one raised while the Save page is open is about what they just did.
+ *
+ * Pages only. A layer is drawn over the screen rather than instead of it - a confirm question, a
+ * toast - and the stage behind it is still the screen the player is on.
+ */
+export function isStageSlotConcealedByPage(slotId: UIStageSlotId): boolean {
+    return slotId !== "notification";
 }
 
 /**

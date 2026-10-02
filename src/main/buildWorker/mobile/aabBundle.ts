@@ -80,10 +80,32 @@ export function bundleModulePath(apkEntryName: string): string {
     return `root/${apkEntryName}`;
 }
 
-/** BundleConfig{ bundletool: Bundletool{ version } }. */
-export function encodeBundleConfig(version: string = BUNDLETOOL_FORMAT_VERSION): Buffer {
-    // Bundletool.version is field 2, not 1: field 1 is reserved in config.proto.
-    return encodeMessage(config => config.message(1, bundletool => bundletool.string(2, version)));
+/**
+ * BundleConfig{ bundletool: Bundletool{ version }, compression: Compression{ uncompressed_glob } }.
+ *
+ * The globs are the bundle's half of the shell's openFd rule. The APK path writes every payload
+ * entry stored itself, but from a bundle it is bundletool - on Play's servers - that decides how
+ * each entry of the APKs it generates is encoded, and it deflates an asset unless a glob here
+ * says otherwise. That it would currently store a sealed payload anyway, because ciphertext does
+ * not shrink, is a heuristic of the tool rather than a promise, so the bundle states it.
+ */
+export function encodeBundleConfig(
+    uncompressedGlobs: readonly string[] = [],
+    version: string = BUNDLETOOL_FORMAT_VERSION,
+): Buffer {
+    return encodeMessage(config => {
+        // Bundletool.version is field 2, not 1: field 1 is reserved in config.proto.
+        config.message(1, bundletool => bundletool.string(2, version));
+        if (uncompressedGlobs.length > 0) {
+            // BundleConfig.compression is field 3; Compression.uncompressed_glob is field 1,
+            // matched against the path in the APK (no module prefix), where "**" crosses "/".
+            config.message(3, compression => {
+                for (const glob of uncompressedGlobs) {
+                    compression.string(1, glob);
+                }
+            });
+        }
+    });
 }
 
 /** The distinct `lib/<abi>` directories the module's files live in, in order. */

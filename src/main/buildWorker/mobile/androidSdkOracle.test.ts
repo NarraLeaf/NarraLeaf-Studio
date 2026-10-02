@@ -8,6 +8,7 @@ import { wrapPackKey } from "@narraleaf/bindings";
 import { validateMobileShellManifest } from "./mobileShellManifest";
 import { runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
+import { parseZipIndex, readLocalEntryDataSpan } from "./zipModel";
 import {
     ANDROID_KEYSTORE_ALIAS,
     ANDROID_KEYSTORE_PASSWORD,
@@ -164,11 +165,17 @@ describe.skipIf(!buildTools)("Google's tools on a Studio-built APK", () => {
         // protecting only the shell it came from.
         const apk = await buildApk();
         const bytes = await fs.readFile(apk);
-        // The ogg payload is stored uncompressed and far from any header, so
-        // this corrupts game content and nothing structural.
-        const marker = bytes.indexOf(Buffer.alloc(64, 9));
-        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
-        bytes[marker] ^= 0xff;
+        // The payload is sealed into the mobile container, so its plaintext is
+        // not in the APK: the entry is found by name, and one byte of its stored
+        // data - game content, well clear of any header - is flipped.
+        const { wwwRoot } = validateMobileShellManifest(
+            JSON.parse(await fs.readFile(path.join(TEMPLATE_DIR, "manifest.json"), "utf8")),
+        ).android;
+        const entry = parseZipIndex(bytes).entries.find(candidate => candidate.name === `${wwwRoot}assets/bgm.ogg`);
+        expect(entry, "payload entry not found in the APK").toBeDefined();
+        const { start, end } = readLocalEntryDataSpan(bytes, entry!);
+        expect(end - start).toBeGreaterThan(128);
+        bytes[start + 64] ^= 0xff;
         const tampered = path.join(path.dirname(apk), "tampered.apk");
         await fs.writeFile(tampered, bytes);
 

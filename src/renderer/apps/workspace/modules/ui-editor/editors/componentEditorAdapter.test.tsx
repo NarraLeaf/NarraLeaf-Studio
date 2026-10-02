@@ -108,6 +108,75 @@ describe("the component editor's document", () => {
 });
 
 /**
+ * The canvas is the component, not a page with the component in its corner.
+ *
+ * The definition's surface used to take the project's page size and the page's white fill, so a
+ * 456x348 save slot sat in the top-left of a 1920x1080 white rectangle - which read as the component
+ * being a page, or as something being broken. A placement draws the root from its own top-left corner
+ * at its own size, over whatever page it is put on, and the editor now draws it the same way.
+ */
+describe("the component editor's canvas", () => {
+    function offsetRootDocument(): UIDocument {
+        const copy = structuredClone(document);
+        const card = copy.components![0]!;
+        card.elements.cardRoot = {
+            ...card.elements.cardRoot!,
+            layout: { x: 30, y: 40, width: 456, height: 348 },
+        };
+        return copy;
+    }
+
+    function recordingBase(source: UIDocument) {
+        const writes: Array<{ elementId: string; patch: Record<string, unknown> }> = [];
+        const service = {
+            getDocument: () => source,
+            getRevision: () => 1,
+            getComponent: (componentId: string) => source.components?.find(component => component.id === componentId),
+            updateComponentElementLayout: (_componentId: string, elementId: string, patch: Record<string, unknown>) => {
+                writes.push({ elementId, patch });
+            },
+        } as unknown as UIDocumentService;
+        return { service, writes };
+    }
+
+    it("is the size of the definition's root, whatever size the project's pages are", () => {
+        const { service } = recordingBase(offsetRootDocument());
+        const edited = createComponentDocumentServiceAdapter(service, "cardDef").getDocument();
+        const surface = edited.surfaces[0]!;
+
+        expect(surface.designSize).toEqual({ width: 456, height: 348 });
+        expect(edited.elements[surface.rootElementId]?.layout).toMatchObject({ width: 456, height: 348 });
+    });
+
+    it("draws the root at the origin, where a placement draws it", () => {
+        const { service } = recordingBase(offsetRootDocument());
+        const edited = createComponentDocumentServiceAdapter(service, "cardDef").getDocument();
+
+        expect(edited.elements.cardRoot?.layout).toMatchObject({ x: 0, y: 0, width: 456, height: 348 });
+    });
+
+    it("paints no background of its own", () => {
+        const edited = createComponentDocumentServiceAdapter(base, "cardDef").getDocument();
+
+        expect(edited.surfaces[0]!.settings?.backgroundColor).toBe("transparent");
+    });
+
+    it("takes a size for the root but no position, and leaves everything else's position alone", () => {
+        const { service, writes } = recordingBase(offsetRootDocument());
+        const adapter = createComponentDocumentServiceAdapter(service, "cardDef");
+
+        adapter.updateElementLayout("cardRoot", { x: 12, y: 8 });
+        adapter.updateElementLayout("cardRoot", { x: -20, width: 500, height: 360 });
+        adapter.updateElementLayouts({ window: { x: 12, y: 8 } });
+
+        expect(writes).toEqual([
+            { elementId: "cardRoot", patch: { width: 500, height: 360 } },
+            { elementId: "window", patch: { x: 12, y: 8 } },
+        ]);
+    });
+});
+
+/**
  * The editor tab reads this document on every render and keys what it does per surface on the
  * surface object. Built afresh on every read, that object was new each time, so everything the tab
  * keeps per surface ran again on every render - including, while that was keyed on the object, taking

@@ -1,4 +1,7 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { TranslationKey } from "@shared/i18n";
+import type { DevModeStatus } from "@shared/types/devMode";
+import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
@@ -106,6 +109,17 @@ export const MAX_CONSOLE_ENTRY_CHARS = 8192;
 const TRUNCATED_ENTRY_SUFFIX = "... [truncated]";
 /** Console chrome the service emits itself; follows the theme like the rest of the panel. */
 const MUTED_SEGMENT_COLOR = "rgb(var(--nl-fg-muted))";
+
+/**
+ * The `source` this service stamps on the lines it writes itself. Fixed words rather than
+ * translations, like every producer's: the panel names them in the interface language when it
+ * draws a line (see the console module's `consoleSourceLabel`).
+ */
+export const BLUEPRINT_CONSOLE_SOURCE = "Blueprint";
+/** A line a blueprint wrote through its Log node, as opposed to the runtime's own blueprint lines. */
+export const BLUEPRINT_LOG_CONSOLE_SOURCE = "Blueprint Log";
+/** What Dev Mode reports about itself, and a Dev Mode line that names no source of its own. */
+export const DEV_MODE_CONSOLE_SOURCE = "Dev Mode";
 
 /**
  * Always-present channels seeded at startup. Additional channels (e.g. the story preview's "Story"
@@ -227,6 +241,23 @@ function normalizeBlueprintLevel(level: string): ConsoleLogLevel {
     return "info";
 }
 
+/**
+ * What a Dev Mode line on the Build tab calls the state the session has just entered.
+ *
+ * The line is already prefixed with where it came from, so it names the state and nothing else, in
+ * the words the status bar's run cell uses for the same states. Written in the interface language of
+ * the moment it was logged, like the rest of that tab's history.
+ */
+const DEV_MODE_STATUS_KEYS: Record<DevModeStatus, TranslationKey> = {
+    idle: "console.devModeStatus.idle",
+    starting: "workspace.shell.statusBar.phase.starting",
+    compiling: "workspace.shell.statusBar.phase.compiling",
+    running: "workspace.shell.statusBar.phase.running",
+    reloading: "workspace.shell.statusBar.phase.reloading",
+    error: "console.devModeStatus.error",
+    stopping: "workspace.shell.statusBar.phase.stopping",
+};
+
 function devModeStatusLevel(status: string): ConsoleLogLevel {
     if (status === "error") {
         return "error";
@@ -301,11 +332,8 @@ export class ConsoleService extends Service<ConsoleService> {
         this.devModeStatusUnsubscribe = devMode.onStatusChanged(status => {
             this.append("build", {
                 level: devModeStatusLevel(status),
-                source: "Dev Mode",
-                segments: [
-                    { text: "status changed: ", color: MUTED_SEGMENT_COLOR },
-                    { text: status, bold: true },
-                ],
+                source: DEV_MODE_CONSOLE_SOURCE,
+                segments: [{ text: translate(DEV_MODE_STATUS_KEYS[status]), bold: true }],
             });
         });
 
@@ -313,7 +341,7 @@ export class ConsoleService extends Service<ConsoleService> {
         const consoleLogToken = getInterface().devMode.onConsoleLog(payload => {
             this.append("build", {
                 level: payload.level,
-                source: payload.source ?? "Dev Mode",
+                source: payload.source ?? DEV_MODE_CONSOLE_SOURCE,
                 message: payload.message,
                 timestamp: payload.timestamp,
             });
@@ -439,7 +467,7 @@ export class ConsoleService extends Service<ConsoleService> {
 
         return this.append("blueprint", {
             level,
-            source: event.type === "devtools.log" ? "Blueprint Log" : "Blueprint",
+            source: event.type === "devtools.log" ? BLUEPRINT_LOG_CONSOLE_SOURCE : BLUEPRINT_CONSOLE_SOURCE,
             message: formatBlueprintDebugEvent(event),
         });
     }

@@ -1,4 +1,5 @@
-import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, migrateAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
+import type { TranslationKey } from "@shared/i18n";
 import {
     resolveAssetSetContents,
     validateAssetSet,
@@ -410,22 +411,26 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
                 }
                 const contents = resolveAssetSetContents(set, candidates, ctx.assetSets);
                 for (const cell of contents.missing) {
+                    const variant = assetSetValueParam(set, cell.value, ctx);
                     findings.push({
                         ruleId: "assets/group-incomplete",
                         messageKey: "lint.rule.assetsGroupIncomplete.message",
-                        messageParams: { set: assetSetLabel(set), variant: cell.label },
+                        messageParams: { set: assetSetLabel(set), variant: variant.name },
+                        ...(variant.key ? { messageParamKeys: { variant: variant.key } } : {}),
                         location: { kind: "project" },
                     });
                 }
                 for (const cell of contents.ambiguous) {
+                    const variant = assetSetValueParam(set, cell.value, ctx);
                     findings.push({
                         ruleId: "assets/group-incomplete",
                         messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
                         messageParams: {
                             set: assetSetLabel(set),
-                            variant: cell.label,
+                            variant: variant.name,
                             count: String(cell.assetIds.length),
                         },
+                        ...(variant.key ? { messageParamKeys: { variant: variant.key } } : {}),
                         location: { kind: "project" },
                     });
                 }
@@ -438,6 +443,31 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
 /** What `{set}` renders as. Falls back to the id only for a set whose name never got typed. */
 function assetSetLabel(set: AssetSet): string {
     return set.name.trim() || set.id;
+}
+
+/**
+ * What `{variant}` renders as for one value of a set: a language's code, or an edition's name.
+ *
+ * Never the tag the value is stored as, and never an edition's id - an author edition's id is a
+ * uuid. An edition the project no longer has is named by the catalogue's word for one, as a key so
+ * it reads in the reader's language.
+ */
+function assetSetValueParam(
+    set: AssetSet,
+    value: string,
+    ctx: LintContext,
+): { name: string; key?: TranslationKey } {
+    if (set.axis.kind === "locale") {
+        return { name: value };
+    }
+    const id = migrateAppTagId(value);
+    const edition = ctx.appTags.find(tag => tag.id === id);
+    if (edition) {
+        return { name: edition.name };
+    }
+    return id === APP_TAG_ID_RELEASE
+        ? { name: RELEASE_APP_TAG.name }
+        : { name: "", key: "assets.sets.deletedVariant" };
 }
 
 /**

@@ -163,7 +163,10 @@ export const uiEditor = {
             one: "{count} linked instance will show as missing until unlinked or replaced.",
             other: "{count} linked instances will show as missing until unlinked or replaced.",
         },
-        refs: "{count} refs",
+        refs: {
+            one: "{count} ref",
+            other: "{count} refs",
+        },
     },
     canvas: {
         unknownWidget: "Unknown widget",
@@ -187,6 +190,8 @@ export const uiEditor = {
         layerFallback: "Layer",
         openComponent: "Open component",
         unlinkComponent: "Unlink component",
+        openComponentNamed: "Open component {name}",
+        openPageNamed: "Open page {name}",
     },
     zoom: {
         label: "Zoom",

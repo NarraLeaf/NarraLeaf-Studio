@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
@@ -437,6 +438,17 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * neither - it is a property of how the graph is called.
      */
     requiresHostApi?: boolean;
+    /**
+     * What the node does, in a sentence or two an author can act on - as a catalog key, not text.
+     * The add-node palette and the card header resolve it in the interface language when they draw
+     * it, the moment the title is resolved too. Written first for the nodes an author can mistake for
+     * another one: `Return` beside `Return Value`, `App Boot` beside `On Game Ready`.
+     *
+     * Here rather than on {@link BlueprintNodeDeclaration} for the reason `scope` is: the key names a
+     * string in Studio's own catalog, and a published type carrying it would hand plugins the host's
+     * key union.
+     */
+    description?: TranslationKey;
     execute: BlueprintNodeExecuteFn;
 };
 
@@ -556,6 +568,8 @@ export type BlueprintNodeEditorCatalogEntry = {
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /** Carried through from the definition; see {@link BlueprintNodeDef.description}. */
+    description?: TranslationKey;
     /**
      * True when the node type is not in the editor registry: the plugin that contributed it is
      * uninstalled, disabled, or failed to load. The entry is then a placeholder stub - the pins are

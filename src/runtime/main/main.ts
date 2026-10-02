@@ -97,6 +97,8 @@ import { buildGameMenuTemplate } from "./gameMenu";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
+import { refuseToStart, type StartupRefusalHost } from "./startupRefusal";
+import { createCrashTeardown, describeRuntimeError, installMainProcessErrorReporting } from "./mainProcessErrors";
 import {
     currentWindowScale,
     fitInside,
@@ -109,7 +111,7 @@ import {
     writeWindowGeometry,
     type WindowChrome,
 } from "./windowGeometry";
-import { installWindowCrashHandling } from "./windowCrashHandling";
+import { installWindowCrashHandling, type WindowCrashHandle } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
     hasStartupSwitch,
@@ -360,6 +362,8 @@ let loadedBuildIdentity: CrashReportBuild | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The main window's crash handling, which also decides what a page that will not load means. */
+let mainWindowCrashHandling: WindowCrashHandle | null = null;
 /** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
 let displaySleep: DisplaySleepInhibitor | null = null;
 /** What the project says its window may do; settled from the pack as the window is built. */
@@ -420,6 +424,9 @@ const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
  * `unload` into the page and waits for the answer, and the page is a running game - the busiest
  * thread in the process. A renderer that has stopped answering would otherwise leave a window
  * ordered off screen that is never destroyed, which is a leak nobody can see.
+ *
+ * A crash gives the save and persistence stores the same time to write out what they hold before
+ * the game closes (see the error reporting below).
  */
 const CLOSE_TEARDOWN_DEADLINE_MS = 3000;
 
@@ -506,15 +513,50 @@ if (testDriven) {
 }
 
 /**
+ * How every launch that does not go ahead ends: the log, one line on standard error, a code that is
+ * not 0. See `startupRefusal`.
+ *
+ * Standard error is written through its descriptor rather than through `process.stderr`: the write
+ * has to be complete before `app.exit`, which before app-ready ends the process on the spot.
+ */
+const startupRefusalHost: StartupRefusalHost = {
+    log: logRuntime,
+    writeStandardError: text => {
+        fsSync.writeSync(2, text);
+    },
+    exit: code => {
+        app.exit(code);
+    },
+};
+
+/**
+ * The line a refused command line is logged and reported with.
+ *
+ * The fixed half is masked in the bundle (it would otherwise be a plaintext beacon pointing a search
+ * straight at this refusal) and reconstructed here, so the log and standard error still read plainly.
+ * `REFUSAL_LOG_PREFIX` is "refusing to start: this build does not accept ". What follows it is only
+ * what the caller put on the command line - never what the game does accept.
+ */
+function commandLineRefusalReason(refused: readonly string[]): string {
+    return `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`;
+}
+
+/**
  * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
  * before any window or session exists. The post-pack-read check below stays as the authoritative
  * (tamper-resistant on asar-integrity platforms) second gate.
  *
- * Both halves matter and they are not the same half. Quitting states the policy; taking the
+ * Both halves matter and they are not the same half. Stopping states the policy; taking the
  * switches off the command line is what stops them being acted on, because Chromium reads several
  * of them after this script has run. Measured on Electron 38: a launch with
  * `--remote-debugging-port` that only quit here still had the port accepting connections about
- * 130ms later, and the same launch with the switch removed here never listened at all.
+ * 130ms later, and the same launch with the switch removed here never listened at all. The exit is
+ * immediate now (`app.exit` before app-ready ends the process where it stands), and the switches are
+ * still taken off first, so nothing depends on how quickly that happens.
+ *
+ * Said on standard error as well as in the log, with exit code 2. It used to be the log alone and an
+ * ordinary quit, which exits 0 - so the player who typed a switch into a launcher, and the launcher
+ * itself, were both told the game had run.
  */
 function refuseStartupArguments(): boolean {
     const refused = refusedStartupArguments();
@@ -524,14 +566,7 @@ function refuseStartupArguments(): boolean {
     for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
         app.commandLine.removeSwitch(name);
     }
-    // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
-    // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing. The fixed half of the line is masked in the bundle (it would otherwise
-    // be a plaintext beacon pointing a search straight at this refusal) and reconstructed here, so
-    // the log file still reads plainly. `REFUSAL_LOG_PREFIX` is "refusing to start: this build does
-    // not accept ".
-    logRuntime("error", `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`);
-    app.quit();
+    refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refused) });
     return true;
 }
 
@@ -547,6 +582,10 @@ const startupBlocked = shellMode === "production" && !shellDebuggable && refuseS
  *
  * After the command-line gate above, so a launch this build refuses is refused for that reason
  * rather than reported as a second copy.
+ *
+ * Not a refusal, and so an ordinary quit with exit code 0 rather than `refuseToStart`: what was asked
+ * for was the game on screen, and the copy that is running puts it there. A launcher that reads the
+ * code gets the same answer every single-instance application gives.
  */
 const secondCopy = shellMode === "production" && !startupBlocked && !claimSingleInstance({
     requestLock: () => app.requestSingleInstanceLock(),
@@ -567,77 +606,121 @@ void app.whenReady().then(async () => {
         return;
     }
     appReadyAt = Date.now();
-    resources = await createRuntimeResources(appDir, {
-        // Where a player puts a patch: the folder their copy of the game sits in,
-        // which is the first place anyone looks for one. The same folder the
-        // player's files may sit in, resolved by the same function, so a player
-        // told where their saves are has been told where a patch goes.
-        gameRootDir,
-        // Searched as well, so a patch can outlive reinstalling the game.
-        userDataDir,
-        // What applied, and what did not, is the only trace a patch leaves.
-        log: logRuntime,
-        // A build made to be inspected says why a patch was refused; a shipped one names the file
-        // and stops, because the reason describes how a patch is bound to its build.
-        explainRefusedPatches: shellMode !== "production" || shellDebuggable,
-        // Content the player installed that this build cannot read. Told to them rather than only
-        // logged: the game is about to run exactly as it did before, and "nothing happened" is the
-        // one answer they cannot act on.
-        onContentTooNew: reportContentTooNew,
-    });
-    const pack = await readPack();
-    // The game's own content, from inside its own archive, written by a Studio this build does not
-    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
-    // the pack's own bundle - so this is the native box and a clean exit, which is the same last
-    // resort a crash loop ends at.
-    const packVersion = newerRuntimePackSchemaVersion(pack);
-    if (packVersion !== null) {
-        logRuntime(
-            "error",
-            `refusing to start: game content schema v${packVersion} is newer than this build reads`
-            + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
-        );
-        reportFatalRuntimeError(shellText().contentTooNew);
+    let pack: GameRuntimePackV1;
+    try {
+        resources = await createRuntimeResources(appDir, {
+            // Where a player puts a patch: the folder their copy of the game sits in,
+            // which is the first place anyone looks for one. The same folder the
+            // player's files may sit in, resolved by the same function, so a player
+            // told where their saves are has been told where a patch goes.
+            gameRootDir,
+            // Searched as well, so a patch can outlive reinstalling the game.
+            userDataDir,
+            // What applied, and what did not, is the only trace a patch leaves.
+            log: logRuntime,
+            // A build made to be inspected says why a patch was refused; a shipped one names the file
+            // and stops, because the reason describes how a patch is bound to its build.
+            explainRefusedPatches: shellMode !== "production" || shellDebuggable,
+            // Content the player installed that this build cannot read. Told to them rather than only
+            // logged: the game is about to run exactly as it did before, and "nothing happened" is the
+            // one answer they cannot act on.
+            onContentTooNew: reportContentTooNew,
+        });
+        pack = await readPack();
+    } catch (error) {
+        // The game's own content would not open: a store that is damaged or incomplete, a pack that
+        // is missing or does not parse. Left to propagate, this was an unhandled rejection, which
+        // Electron's main process only warns about - measured on Electron 38, the error monitor
+        // below never saw it, so nothing reached the log or the player, and the process stayed up
+        // with no window, for nobody, until it was killed. There is nothing to run, so it is a launch
+        // that did not start.
+        const described = describeRuntimeError(error);
         isQuitting = true;
-        app.quit();
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's content could not be read: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
         return;
     }
-    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
+    // The game's own content, from inside its own archive, written by a Studio this build does not
+    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
+    // the pack's own bundle - so this is the native box and an exit that says the game did not
+    // start, which is the same last resort a crash loop ends at.
+    const packVersion = newerRuntimePackSchemaVersion(pack);
+    if (packVersion !== null) {
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "contentTooNew",
+            reason: `refusing to start: game content schema v${packVersion} is newer than this build reads`
+                + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
+            tellPlayer: () => reportFatalRuntimeError(shellText().contentTooNew),
+        });
+        return;
+    }
+    const refusedByPack = pack.mode === "production" && !packDebuggable(pack) ? refusedStartupArguments() : [];
+    if (refusedByPack.length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
-        // rewritten shell manifest does not get past on the platforms that validate one.
-        app.quit();
+        // rewritten shell manifest does not get past on the platforms that validate one. It is only
+        // reached when the first gate stood aside, which the manifest told it to; the switches were
+        // not taken off in time for that, and this stops the launch as the first gate would have.
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refusedByPack) });
         return;
     }
     if (packDebuggable(pack)) {
         console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
-    const allowHttp = pack.network?.allowHttp === true;
-    const networkAllowlist = packNetworkAllowlist(pack);
-    applyRuntimeAppIdentity(pack);
-    applyRuntimeMenu();
-    registerRuntimeProtocol(allowHttp, networkAllowlist);
-    sidecarHost = createSidecarHost(pack);
-    registerRuntimeIpc();
-    startPreviewControlServer(pack);
-    // Confine the renderer to the app protocol before it loads any document
-    // unless the project opted into HTTP - and unconditionally when a test asked
-    // for a network-less run, which overrides the project's own flag.
-    installRuntimeNetworkPolicy(session.defaultSession, {
-        allowHttp,
-        allowlist: networkAllowlist,
-        blockAll: testNetworkBlocked,
-    });
-    mainWindow = createWindow(pack);
+    let window: BrowserWindow;
+    let sidecars: SidecarHost;
+    try {
+        const allowHttp = pack.network?.allowHttp === true;
+        const networkAllowlist = packNetworkAllowlist(pack);
+        applyRuntimeAppIdentity(pack);
+        applyRuntimeMenu();
+        registerRuntimeProtocol(allowHttp, networkAllowlist);
+        sidecars = createSidecarHost(pack);
+        sidecarHost = sidecars;
+        registerRuntimeIpc();
+        startPreviewControlServer(pack);
+        // Confine the renderer to the app protocol before it loads any document
+        // unless the project opted into HTTP - and unconditionally when a test asked
+        // for a network-less run, which overrides the project's own flag.
+        installRuntimeNetworkPolicy(session.defaultSession, {
+            allowHttp,
+            allowlist: networkAllowlist,
+            blockAll: testNetworkBlocked,
+        });
+        window = createWindow(pack);
+        mainWindow = window;
+    } catch (error) {
+        // A pack that opened but that the window cannot be set up from - measured: an entry that
+        // names no surface kind threw from inside `createWindow`. This function is async, so a throw
+        // here is a rejection, which the game records and survives (see `mainProcessErrors`) - and
+        // survived with no window, for nobody, until it was killed. Nothing here has run yet that
+        // the player could lose, so it is a launch that did not start, like a pack that would not
+        // open.
+        const described = describeRuntimeError(error);
+        isQuitting = true;
+        refuseToStart(startupRefusalHost, {
+            kind: "failed",
+            reason: `could not start: the game's window could not be set up: ${described.message}`,
+            ...(described.stack ? { detail: described.stack } : {}),
+            tellPlayer: () => reportFatalRuntimeError(described.message),
+        });
+        return;
+    }
     // After the window exists so a sidecar's first event has somewhere to land,
     // and unawaited so a slow handshake never delays the game's first paint.
-    sidecarHost.startAutostart();
+    sidecars.startAutostart();
     // A preview stopped while it was still booting quits mid-load, and the pending navigation then
     // rejects with ERR_FAILED. That is the shutdown working, not a failure to report - and the
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
     windowCreatedAt = Date.now();
-    await mainWindow.loadURL(buildGameRuntimeIndexUrl({
+    await window.loadURL(buildGameRuntimeIndexUrl({
         policy: normalizeGameCrashPolicy(pack.crash?.policy),
         logPath: runtimeLogPath(userDataDir),
         launch: gameLaunchTiming(),
@@ -645,7 +728,11 @@ void app.whenReady().then(async () => {
         if (isQuitting) {
             return;
         }
-        throw error;
+        // Not rethrown: a page that will not load is the window's crash handling's to decide, and
+        // it has almost always decided already from the same failure's `did-fail-load`. Rethrown, it
+        // became a rejection the game records and survives - with an empty window in front of the
+        // player for as long as the process lived.
+        mainWindowCrashHandling?.loadRejected(error);
     });
 });
 
@@ -733,7 +820,7 @@ process.on("exit", () => {
  * server for anything to subscribe on. That is what makes {@link emitTestEvent} safe to call from
  * anywhere, including a crash handler - with no subscribers it does nothing at all.
  *
- * Declared above the error monitor below rather than after it, so an exception thrown while this
+ * Declared above the error reporting below rather than after it, so an exception thrown while this
  * module is still evaluating finds an initialised set instead of a temporal-dead-zone error that
  * would replace the real crash with a bogus one.
  */
@@ -742,46 +829,46 @@ const testSubscribers = new Set<WebSocket>();
 /** `ws` readyState for an open socket; compared numerically so no `ws` value import is needed. */
 const WEBSOCKET_OPEN = 1;
 
-function describeRuntimeError(error: unknown): { message: string; stack?: string } {
-    if (error instanceof Error) {
-        return {
-            message: error.message || String(error),
-            ...(error.stack ? { stack: error.stack } : {}),
-        };
-    }
-    return { message: String(error) };
-}
-
 /**
- * Report an uncaught error in the game's main process without changing what happens next.
+ * Take over every error nobody caught in the game's main process. An exception ends the game - the
+ * log, a test that is watching, the save and persistence stores written out within the close budget,
+ * the fatal box, exit `GAME_EXIT_CODES.crashed`; a rejection is recorded and the game carries on. See
+ * `mainProcessErrors` for what Electron does with each on its own (measured, and not what Node does)
+ * and why the two are treated differently.
  *
- * `uncaughtExceptionMonitor` rather than `uncaughtException` / `unhandledRejection`: registering
- * either of those *replaces* Node's default handling, and the default is to die. A game left alive
- * after an uncaught exception - half-initialised, its invariants gone - is a worse bug than the
- * missing report this hook exists to fix, and a test watching that wreck would call it a pass.
- * The monitor observes and the process still ends exactly as it would have. Unhandled rejections
- * arrive here too: Node's default mode raises them as uncaught exceptions.
+ * The flush is the half of `before-quit` that a player would miss: the stores' queued writes. The
+ * other half, a polite shutdown of the sidecars, is not waited for - a crash kills them on the way out
+ * (`exit` below, and the process `exit` hook), which is what they are built to survive.
  *
- * Best-effort by nature - the frame is written to the socket on the way out, and a process that
- * dies before the kernel drains it loses the message. Studio still classifies the death from the
- * exit code, so a lost frame costs detail, not the verdict.
+ * The report to a test is best-effort by nature - the frame is written to the socket on the way, and
+ * a process that dies before the kernel drains it loses the message. Studio classifies the run from
+ * the exit code as well, so a lost frame costs detail, not the verdict.
+ *
+ * Registered here, below `testSubscribers`, so an error thrown while this module is still evaluating
+ * finds the set initialised.
  */
-process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
-    const described = describeRuntimeError(error);
-    const headline = origin === "unhandledRejection"
-        ? `Unhandled rejection: ${described.message}`
-        : described.message;
-    emitTestEvent({
-        kind: "runtime-error",
-        scope: "main",
-        message: headline,
-        ...(described.stack ? { stack: described.stack } : {}),
-    });
-    // Written before the box below, so the record survives even if drawing it is what fails. Both
-    // are new: this used to report to a test nobody was running and then let the process disappear
-    // off the player's screen without a word.
-    logRuntime("error", `[Crash] ${headline}${described.stack ? `\n${described.stack}` : ""}`);
-    reportFatalRuntimeError(headline);
+const endGameAfterCrash = createCrashTeardown({
+    log: logRuntime,
+    flushForCrash: () => {
+        isQuitting = true;
+        return Promise.allSettled([saveStore?.flush(), persistenceStore?.flush()]);
+    },
+    crashFlushBudgetMs: CLOSE_TEARDOWN_DEADLINE_MS,
+    reportFatal: reportFatalRuntimeError,
+    exit: code => {
+        isQuitting = true;
+        sidecarHost?.killAllSync();
+        app.exit(code);
+    },
+});
+
+installMainProcessErrorReporting({
+    on: (event: "uncaughtException" | "unhandledRejection", listener: (...args: never[]) => void) => {
+        process.on(event, listener as (...args: unknown[]) => void);
+    },
+    log: logRuntime,
+    emitTestEvent: event => emitTestEvent(event),
+    endAfterCrash: endGameAfterCrash,
 });
 
 /**
@@ -1207,7 +1294,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("focus", emitWindowFocus(true));
     win.on("blur", emitWindowFocus(false));
-    installWindowCrashHandling(win, {
+    mainWindowCrashHandling = installWindowCrashHandling(win, {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
@@ -1216,11 +1303,15 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,
         isQuitting: () => isQuitting,
-        quit: () => {
+        failedToStart: (reason, headline) => {
             isQuitting = true;
-            app.quit();
+            refuseToStart(startupRefusalHost, {
+                kind: "failed",
+                reason,
+                tellPlayer: () => reportFatalRuntimeError(headline),
+            });
         },
-        reportFatal: reportFatalRuntimeError,
+        endAfterCrash: endGameAfterCrash,
         ask: async request => (await dialog.showMessageBox(win, {
             type: "warning",
             title: request.title,
@@ -1594,7 +1685,11 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
                 if (bundled) {
                     return serveBytes(bundled, getMimeType(wanted));
                 }
-                return serveFile(resolveRuntimeStaticPath(appDir, wanted));
+                // Awaited, so a file missing from the build is caught below and logged: returned as a
+                // bare promise, its rejection went past the handler and the request failed with no
+                // trace in the game's log - for the page's own script bundle, an empty window with
+                // nothing anywhere to say why.
+                return await serveFile(resolveRuntimeStaticPath(appDir, wanted));
             }
             if (url.hostname === "pack") {
                 return serveBytes(await runtimeResources().readPack(), "application/json");

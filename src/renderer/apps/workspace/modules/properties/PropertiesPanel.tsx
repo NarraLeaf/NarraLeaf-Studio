@@ -53,7 +53,6 @@ import {
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
-    getUIComponentLink,
     isLinkedUIComponentElement,
     type UIDocument,
     type UIElement,
@@ -118,12 +117,16 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
+import { LinkedComponentInfoField } from "./LinkedComponentInfoField";
 import { AssetSetInspector } from "./AssetSetInspector";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
+import { readAssetTag } from "@shared/types/assetSetLabels";
+import { useAssetSetNaming } from "../assets/state/useAssetSetNaming";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -342,6 +345,10 @@ function createLayoutInspectorSchema(
     };
 
     const sizeField = createSizeField();
+    // A component's root, in that component's editor, is the frame the canvas is drawn at: it sits at
+    // the origin because a placement draws it from there, and the editor keeps no position for it.
+    // Its size is the component's size and stays; a position row would take a number and show 0.
+    const isComponentOrigin = elements.length === 1 && isComponentEditorRootElement(elements[0]);
     const fields: FieldDefinition<UIInspectorData>[] = [
         defineField<UIInspectorData, any>({
             id: "layout.position",
@@ -488,7 +495,7 @@ function createLayoutInspectorSchema(
             ],
             order: 2,
         }),
-    ];
+    ].filter(field => !(isComponentOrigin && field.id === "layout.position"));
 
     if (!linkedOnly) {
         fields.push(defineField<UIInspectorData, any>({
@@ -674,23 +681,6 @@ function mergeInspectorWithLayoutSchema(
     });
 }
 
-function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
-    const { t } = useTranslation();
-    const link = getUIComponentLink(data.element);
-    const component = link ? data.documentService.getComponent(link.componentId) : null;
-    if (!link) {
-        return null;
-    }
-    return (
-        <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-fg">
-            <div className="font-medium">{component?.name ?? t("properties.linkedComponent.missing")}</div>
-            <div className="mt-1 text-2xs leading-snug text-fg-muted">
-                {t("properties.linkedComponent.info")}
-            </div>
-        </div>
-    );
-}
-
 /**
  * Declared at module scope, not inline in the schema below: the schema is rebuilt on every document
  * revision, and an inline component would be a new type each time - React would remount the field
@@ -719,11 +709,14 @@ function createLinkedComponentInspectorSchema(
                 component: LinkedComponentParamsSection,
                 order: 98,
             }),
+            // First, above the frame fields: which component this is decides what every field below
+            // may change, and the instance's own name sits close enough to the component's that the
+            // card has to be read before anything else on the panel.
             defineField<UIInspectorData, any>({
                 id: "component.linkInfo",
                 type: "custom",
                 component: LinkedComponentInfoField,
-                order: 99,
+                order: -1,
             }),
         ],
     });
@@ -1321,6 +1314,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         [assetsService]
     );
 
+    // A member of an asset set carries the set's bookkeeping among its tags; the tag list prints it in
+    // the project's words, or not at all. See `readAssetTag`.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
+
     // Build asset editor context - only recreate when necessary values change
     const assetContext = useMemo<AssetEditorContext<any> | null>(() => {
         if (!activeAsset) return null;
@@ -1328,8 +1326,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             asset: activeAsset,
             metadata: assetMetadata,
             onUpdate: handleAssetUpdate,
+            readTag,
         };
-    }, [activeAsset, assetMetadata, handleAssetUpdate]);
+    }, [activeAsset, assetMetadata, handleAssetUpdate, readTag]);
 
     // Build character editor context
     const characterContext = useMemo<CharacterEditorContext | null>(() => {

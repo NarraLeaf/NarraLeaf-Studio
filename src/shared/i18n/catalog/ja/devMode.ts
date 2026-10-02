@@ -41,7 +41,7 @@ export const devMode = {
         viaPlayHead: "再生位置",
         stack: "スタック",
         dismissAll: "すべて閉じる（{count}）",
-        summary: "今回の実行でエラー {errors} 件 · 警告 {warnings} 件",
+        counts: "今回の実行で{errors} · {warnings}",
     },
     // ドロワーのパネル名は主題そのままの一語にする。ストーリー、インターフェース、デバッガー。
     // 並びをそろえるのは意図的で、「ストーリーランタイム」と「ブループリント DevTools」が並ぶと、

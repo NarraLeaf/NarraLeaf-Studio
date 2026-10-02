@@ -142,6 +142,11 @@
       "status": "translated",
       "target": "Auto forward delay"
     },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:e26859b1",
+      "status": "translated",
+      "target": "BGM"
+    },
     "key:config.categorySound": {
       "sourceHash": "fnv1a:e61140de",
       "status": "translated",
@@ -302,6 +307,11 @@
       "status": "translated",
       "target": "Return to title"
     },
+    "key:extra.categoryCg": {
+      "sourceHash": "fnv1a:79da17ef",
+      "status": "translated",
+      "target": "CG"
+    },
     "key:extra.categoryMusic": {
       "sourceHash": "fnv1a:e76cd5ed",
       "status": "translated",
@@ -336,6 +346,11 @@
       "sourceHash": "fnv1a:df26a542",
       "status": "translated",
       "target": "No voice lines unlocked yet."
+    },
+    "key:extra.progress": {
+      "sourceHash": "fnv1a:ca6c0303",
+      "status": "translated",
+      "target": "{unlocked} / {total}"
     },
     "key:extra.title": {
       "sourceHash": "fnv1a:83138286",
@@ -491,6 +506,11 @@
       "sourceHash": "fnv1a:6359e622",
       "status": "translated",
       "target": "The corridor"
+    },
+    "ui:c6d9dc8d-9524-4102-985e-5612b971a776.text": {
+      "sourceHash": "fnv1a:fe252532",
+      "status": "translated",
+      "target": "Your Game"
     }
   }
 }

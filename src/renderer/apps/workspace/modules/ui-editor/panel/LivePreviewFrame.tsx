@@ -10,6 +10,10 @@ type LivePreviewFrameProps = {
     render: () => ReactNode;
     designWidth: number;
     designHeight: number;
+    /**
+     * How tall the frame is drawn, in CSS pixels. The frame takes this height itself, so the height
+     * the thumbnail is scaled to fit and the height it is given are one number and cannot drift.
+     */
     frameHeight: number;
     className: string;
 };
@@ -86,7 +90,7 @@ export const LivePreviewFrame = memo(
         };
 
         return (
-            <div ref={frameRef} className={className} aria-hidden="true">
+            <div ref={frameRef} className={className} style={{ height: frameHeight }} aria-hidden="true">
                 <div className="relative h-full w-full">
                     {scale > 0 && hasBeenVisible ? (
                         <div className="pointer-events-none absolute" style={contentStyle}>

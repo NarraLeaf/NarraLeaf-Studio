@@ -245,7 +245,10 @@ export const story = {
     paste: {
         title: "行として貼り付け",
         action: "貼り付け",
-        totals: "台詞 {dialogue} · 地の文 {narration} · 新しいキャラクター {created}",
+        totalCounts: "台詞 {dialogue} · 地の文 {narration} · {created}",
+        newCharacterCount: {
+            other: "新しいキャラクター {count}",
+        },
         lineCount: {
             other: "{count} 行",
         },
@@ -1186,8 +1189,8 @@ export const story = {
         kindExpression: "式",
         expressionPlaceholder: "gold >= 100 && !met",
         expressionVariables: "スコープ内：{names}",
-        opIsOn: "がオン",
-        opIsOff: "がオフ",
+        opIsTrue: "が真",
+        opIsFalse: "が偽",
         opEquals: "が等しい",
         opNotEquals: "が等しくない",
         opGreaterThan: "より大きい",
@@ -1197,8 +1200,8 @@ export const story = {
         opExists: "が設定されている",
         openGraphAria: "条件のグラフを開く",
         createGraphAria: "条件のグラフを作成",
-        valueTrue: "true",
-        valueFalse: "false",
+        valueTrue: "真",
+        valueFalse: "偽",
         valuePlaceholder: "値",
         clear: "条件を消す",
         summarySet: "条件を決める…",

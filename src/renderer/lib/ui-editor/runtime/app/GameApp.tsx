@@ -168,7 +168,6 @@ import {
     restoreLiveGameToHistory,
     STUDIO_SKIP_KEY_BINDING,
 } from "./gameUiSlots";
-import { audioClipGain, audioClipRegionToSoundConfig } from "@shared/types/audio";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
@@ -202,8 +201,12 @@ import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
+import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
+import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
+import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
 import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
 import {
@@ -244,7 +247,8 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
-import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
+import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
+import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -412,16 +416,9 @@ export type GameAppProps = {
 };
 
 /**
- * Shared game application orchestrator: owns the blueprint runtime core, the
- * surface navigation stack and transitions, the NarraLeaf environment boot /
- * story lifecycle, saves, keyboard dispatch, and appBoot/gameReady events.
- * Studio Dev Mode and the standalone game runtime render this component and
- * differ only in the injected GameAppHost.
- */
-
-/**
- * A fresh `Sound` for replaying one voice take: its speaker's bus, and its gain as the volume when it
- * has one. Fresh rather than the scene table's instance, for the reason `playVoiceUnit` gives.
+ * A fresh `Sound` for replaying one voice take: its speaker's bus, at the volume the compile gave the
+ * take (its gain, already folded in by `clipVolume`). Fresh rather than the scene table's instance,
+ * for the reason `playVoiceUnit` gives.
  */
 function voiceReplaySound(playback: VoicePlayback): Sound {
     return new Sound({
@@ -431,6 +428,13 @@ function voiceReplaySound(playback: VoicePlayback): Sound {
     });
 }
 
+/**
+ * Shared game application orchestrator: owns the blueprint runtime core, the
+ * surface navigation stack and transitions, the NarraLeaf environment boot /
+ * story lifecycle, saves, keyboard dispatch, and appBoot/gameReady events.
+ * Studio Dev Mode and the standalone game runtime render this component and
+ * differ only in the injected GameAppHost.
+ */
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -918,6 +922,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         drawableSurfaceIds,
     });
     /**
+     * The page half of the same answer, which is what the Game UI inside the stage steps off for
+     * (see `isStageSlotConcealedByPage`): a page is a screen of its own, while a layer floats over
+     * the one the player is on.
+     */
+    const stageCoveredByPage = isStageCoveredByPage({
+        pageEntries: navStack,
+        pagesHiddenForGame: studioPageHiddenForGame,
+        gameHiddenKeys: gameHiddenNavKeys,
+    });
+    /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
      * below reads it, and a save has to record the time at the moment it is written.
@@ -946,6 +960,11 @@ export function GameApp(props: GameAppProps): ReactNode {
      * register here so the window and preference events reach them too (see `ambientSurfaceEvents`).
      */
     const [ambientSurfaces] = useState(() => new AmbientSurfaceTargets());
+    /**
+     * The stage's surfaces that take input, which register here the same way, so the keys reach them
+     * while the stage owns the keyboard (see `keyboardOwner`).
+     */
+    const [stageKeyboardSurfaces] = useState(() => new AmbientSurfaceTargets());
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -2228,19 +2247,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
         // which the transport reads as the built-ins.
         getAudioTracks: () => bundle.audio?.tracks,
-        // The in/out points the author marked on the asset apply here exactly as they do in a story
-        // row, so a music page loops a track's body rather than the whole file.
-        createSound: ({ src, busId, loop, volume, assetId }) => new Sound({
-            src,
+        // The config arrives finished - the clip's region and gain folded in by the transport - and
+        // goes to the engine as it is.
+        createSound: ({ busId, ...config }) => new Sound({
+            ...config,
             // An arbitrary bus id, not one of three enum members: the tracks declared at boot are
             // the buses, so `voice/alice` routes here with nothing to map it through.
             type: busId,
-            loop,
-            volume,
-            ...audioClipRegionToSoundConfig(bundle.audio?.clips?.[assetId]),
         }),
-        // The clip's own gain, which the transport multiplies into every volume it writes.
-        getClipGain: assetId => audioClipGain(bundle.audio?.clips?.[assetId]),
+        // The markers and gain the author set on each asset, which the transport reads each clip's
+        // playback from.
+        getClip: assetId => bundle.audio?.clips?.[assetId],
         log: (level, message) => host.log(level, message),
     }), [bundle, host]);
 
@@ -2724,7 +2741,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
                 try {
-                    capture = await liveGame.capturePng();
+                    // Kept at thumbnail size: the full-size picture was 99% of every save file, and a
+                    // save screen only ever draws it small (see `saveCapture`).
+                    capture = await shrinkSaveCapture(await liveGame.capturePng());
                 } catch (error) {
                     // The save itself still goes through — a failed preview must not lose progress.
                     reportSaveCaptureFailure(id, normalizeError(error));
@@ -4101,6 +4120,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             widgetPatchesByScopeRef,
             reducedMotion: prefersReducedMotion === true,
             ambientSurfaces,
+            stageKeyboardSurfaces,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -4255,6 +4275,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [
         activeSurface,
         ambientSurfaces,
+        stageKeyboardSurfaces,
         bootReporter,
         bundle,
         clearGameHiddenStudioPages,
@@ -5274,6 +5295,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [activeEntry, bootReporter, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
 
+    /**
+     * What the engine's NVL page reads on for while it stands in for the dialogue box: the actions the
+     * box answers with `Next`, and whether the project draws an NVL page of its own instead (see
+     * `engineNvlKeys`). Facts about the bundle, so worked out once per bundle.
+     */
+    const dialogueAdvanceActionIds = useMemo(
+        () => resolveDialogueAdvanceActionIds(bundle.ui.uidoc, bundle.ui.localBlueprints),
+        [bundle.ui.localBlueprints, bundle.ui.uidoc],
+    );
+    const drawsOwnNvlPage = useMemo(() => projectDrawsNvlPage(bundle.ui.uidoc), [bundle.ui.uidoc]);
+
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
             gameReady: Boolean(host.ready && core && hostAdapterBundle),
@@ -5293,10 +5325,44 @@ export function GameApp(props: GameAppProps): ReactNode {
             vocabulary: bundle.ui.uidoc.actions,
             core,
             globalHost: hostAdapterBundle,
-            readKeyboardOwner: () => keyboardOwnerRef.current,
+            // An entry when one owns the keyboard; otherwise the stage, when the story is what the
+            // player is looking at - the moment the skip loop and the auto-forward hold treat as the
+            // story running, so the keys and the story's own motion leave the stage together.
+            // The engine's NVL page, when it is up in place of the dialogue box, reads on for the keys
+            // the box does.
+            readKeyboardOwner: () => {
+                if (keyboardOwnerRef.current) {
+                    return keyboardOwnerRef.current;
+                }
+                if (!isStoryOnScreen()) {
+                    return null;
+                }
+                const stage = stageKeyboardSurfaces.list();
+                return {
+                    stage,
+                    engineNvl: resolveEngineNvlKeys({
+                        nvlActive: isNvlModeInGame(),
+                        projectDrawsNvlPage: drawsOwnNvlPage,
+                        stage,
+                        actionIds: dialogueAdvanceActionIds,
+                        advance: nextInGame,
+                    }),
+                };
+            },
             onError: err => host.log("error", normalizeError(err)),
         });
-    }, [bundle, core, host, hostAdapterBundle]);
+    }, [
+        bundle,
+        core,
+        dialogueAdvanceActionIds,
+        drawsOwnNvlPage,
+        host,
+        hostAdapterBundle,
+        isNvlModeInGame,
+        isStoryOnScreen,
+        nextInGame,
+        stageKeyboardSurfaces,
+    ]);
 
     /**
      * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
@@ -5996,13 +6062,23 @@ export function GameApp(props: GameAppProps): ReactNode {
             <div
                 ref={setGameRoot}
                 className="nl-motion-keep relative h-full w-full overflow-hidden"
+                // Where this game's keyboard focus may be moved about: a focus outside it is the
+                // window's, and stays where it is (see `keyboardFocusHandover`).
+                {...{ [GAME_ROOT_ATTRIBUTE]: "" }}
+                // The keyboard focus is the keyboard's: a click on a control answers the click and
+                // leaves the next key to the game, see `pointerKeyboardFocus`.
+                onMouseDownCapture={keepPointerPressOffKeyboardFocus}
                 onClick={offerSyntheticPointerInputToGlobal}
                 onDoubleClick={offerSyntheticPointerInputToGlobal}
                 onAuxClick={offerSyntheticPointerInputToGlobal}
                 onContextMenu={offerSyntheticPointerInputToGlobal}
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
-                {nlrStageLayer}
+                <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
+                    <StageCoveredContext.Provider value={stageCovered}>
+                        {nlrStageLayer}
+                    </StageCoveredContext.Provider>
+                </StageCoveredByPageContext.Provider>
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
                     HOST-rendered layer can go — NarraLeaf renders the dialogue inside the

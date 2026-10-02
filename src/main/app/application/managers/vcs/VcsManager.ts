@@ -2828,9 +2828,7 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             // The account id rather than the author's name, because the fetch below is what the
-            // backend looks a signed-in session up for. The revision an automatic merge records
-            // therefore carries the account id while a session is in force; the author's own
-            // commits do not, because those are offline and go through `resolveIdentity`.
+            // backend looks a signed-in session up for.
             const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
             const globals = { ...session.globals, identity: this.onlineIdentity(signedIn) };
 
@@ -2843,11 +2841,28 @@ export class VcsManager extends Manager {
                 throw new VcsUncommittedChangesError();
             }
 
-            const result = await this.withServerSession(
+            const { automaticMerge, ...synced } = await this.withServerSession(
                 signedIn,
                 () => backend.syncFromRemote({ ...globals, offline: false }),
                 session.remoteOrigin,
             );
+
+            // A merge that settled every file is committed inside the call above, under the
+            // identity that call connected with - the account id while a sign-in is in force. It
+            // is given the name every other commit on this project records before anything can
+            // send it (§4.39). A failure here is logged rather than thrown: the tree is already
+            // written, and a sync reported as failed skips the re-read the renderer owes it, so
+            // the next save would put the pre-sync documents back over the merge.
+            if (automaticMerge !== undefined) {
+                const author = this.resolveIdentity(undefined, signedIn);
+                if (author !== globals.identity) {
+                    await backend.attributeAutomaticMerge({ ...session.globals, identity: author }, automaticMerge)
+                        .catch((error: unknown) => {
+                            this.app.logger.warn("[Vcs] Could not record the merge a sync made under the author's name", error);
+                        });
+                }
+            }
+            const result = await this.settleSelfMergingConflicts(backend, session, signedIn, synced);
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
                 `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,
@@ -2855,6 +2870,57 @@ export class VcsManager extends Manager {
             );
             return result;
         });
+    }
+
+    /**
+     * After a sync that stopped on conflicts: settle what merges by itself, and close the merge when
+     * that was everything.
+     *
+     * The backend's merge is line by line, so it leaves a file conflicted that the file's own format
+     * merges with nothing to ask - above all the story library and a story's `meta.updatedAt`, which
+     * every save stamps and which therefore conflict on every divergent edit of a story, over nothing
+     * anybody typed. Those are settled on the spot (`settleSelfMergingConflicts`), which is what the
+     * backend would have done with them had it known the format, so the author is handed only what
+     * somebody has to decide - and a merge where that is nothing is recorded here, exactly as a merge
+     * the backend settles itself is recorded inside the sync. Recorded under the name every other
+     * commit on the project records, on the offline globals (§4.29), and unlabelled like any merge.
+     *
+     * A failure here is logged rather than thrown, for the attribution's reason above: the sync has
+     * already written the tree, and the conflicts still standing are answered from the repository -
+     * the same list the renderer asks for next - so nothing reports a file as settled that is not.
+     */
+    private async settleSelfMergingConflicts(
+        backend: VcsBackend,
+        session: VcsSession,
+        signedIn: VcsServerSession | null,
+        synced: VcsSyncResult,
+    ): Promise<VcsSyncResult> {
+        // `*` is the backend reporting a conflict without naming it; there is nothing to settle by name.
+        if (synced.conflicts.length === 0 || synced.conflicts.includes("*")) {
+            return synced;
+        }
+        const globals = { ...session.globals, identity: this.resolveIdentity(undefined, signedIn) };
+        try {
+            const settled = await backend.settleSelfMergingConflicts(globals, session.root, synced.conflicts);
+            if (settled.length === 0) {
+                return synced;
+            }
+            const remaining = (await backend.readMergeState(globals, session.root)).conflicts;
+            this.app.logger.info(
+                "[Vcs] Settled", `${settled.length} conflicted document(s) that merge by themselves;`,
+                `${remaining.length} left`,
+            );
+            if (remaining.length > 0) {
+                return { ...synced, conflicts: remaining };
+            }
+            const revision = await backend.commitWorkingTree(globals, { message: DEFAULT_MERGE_MESSAGE, kind: "commit" });
+            this.app.logger.info("[Vcs] Recorded a merge with nothing left to decide", revision.revision);
+            return { ...synced, conflicts: [] };
+        } catch (error) {
+            this.app.logger.warn("[Vcs] Could not settle the conflicts that merge by themselves", error);
+            const state = await backend.readMergeState(globals, session.root).catch(() => null);
+            return state ? { ...synced, conflicts: state.conflicts } : synced;
+        }
     }
 
     // -- merge ----------------------------------------------------------------

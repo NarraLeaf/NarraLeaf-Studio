@@ -4,6 +4,7 @@ import {
     elideGeneratedIdentifiers,
     readableChangePath,
     readableStoragePath,
+    revisionAuthorLabel,
 } from "./identifierDisplay";
 
 const SCENE = "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33";
@@ -22,6 +23,26 @@ describe("recognising an id Studio generated", () => {
         for (const text of ["narraleaf-studio:main-surface", "p1oh", "global.appBoot", "#40A8C4", "cafe", "2026-09-21"]) {
             expect(containsGeneratedIdentifier(text)).toBe(false);
         }
+    });
+});
+
+describe("who a version is by", () => {
+    const ACCOUNT = { userId: "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b", identity: "Ada Blackwood <ada@example.com>" };
+
+    it("is the recorded name, as recorded", () => {
+        expect(revisionAuthorLabel("Ada Blackwood <ada@example.com>", ACCOUNT)).toBe("Ada Blackwood <ada@example.com>");
+        expect(revisionAuthorLabel("  Ben  ", null)).toBe("Ben");
+    });
+
+    it("names this installation's own account where a revision recorded its id", () => {
+        expect(revisionAuthorLabel(ACCOUNT.userId, ACCOUNT)).toBe(ACCOUNT.identity);
+    });
+
+    it("draws nobody for any other account id, and for nothing at all", () => {
+        expect(revisionAuthorLabel("8d1c7b2a-0f9e-4d3c-b2a1-908f7e6d5c4b", ACCOUNT)).toBeNull();
+        expect(revisionAuthorLabel(ACCOUNT.userId, null)).toBeNull();
+        expect(revisionAuthorLabel(undefined, ACCOUNT)).toBeNull();
+        expect(revisionAuthorLabel("   ", ACCOUNT)).toBeNull();
     });
 });
 

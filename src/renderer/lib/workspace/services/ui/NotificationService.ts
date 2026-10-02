@@ -36,8 +36,33 @@ export interface NotificationHistoryEntry {
     type: NotificationType;
     message: string;
     detail?: string;
+    /** When it was last said. For a repeated notice, the latest time rather than the first. */
     timestamp: number;
     read: boolean;
+    /** The raiser's {@link NotificationShowOptions.coalesceKey}, so a repeat finds this entry again. */
+    key?: string;
+    /** How many times it was said; absent means once. */
+    count?: number;
+}
+
+/** What {@link NotificationService.show} takes. */
+export interface NotificationShowOptions {
+    type: NotificationType;
+    message: string;
+    detail?: string;
+    severity?: NotificationSeverity;
+    timeout?: number;
+    actions?: NotificationAction[];
+    closable?: boolean;
+    onClose?: () => void;
+    /**
+     * Names a notice that can recur, so saying it again updates the one already there instead of
+     * adding another: the card on screen, if it is still up, and the history entry, which moves to
+     * the top with the new time and a count. Without it a failure that comes and goes - a file that
+     * refuses a write, accepts the next and refuses the one after - fills the notification centre
+     * with copies of one sentence.
+     */
+    coalesceKey?: string;
 }
 
 /**
@@ -154,8 +179,17 @@ export class NotificationService {
         return this.history.filter(entry => !entry.read).length;
     }
 
+    /**
+     * Add an entry, or - for a keyed notice already in the log - move that entry to the top with the
+     * new time and one more on its count. Unread again either way: it was said again.
+     */
     private recordHistory(entry: NotificationHistoryEntry): void {
-        this.history = [entry, ...this.history].slice(0, NotificationService.HistoryLimit);
+        const previous = entry.key ? this.history.find(candidate => candidate.key === entry.key) : undefined;
+        const next = previous
+            ? { ...entry, id: previous.id, count: (previous.count ?? 1) + 1 }
+            : entry;
+        const rest = previous ? this.history.filter(candidate => candidate !== previous) : this.history;
+        this.history = [next, ...rest].slice(0, NotificationService.HistoryLimit);
         this.emitHistoryChanged();
     }
 
@@ -216,18 +250,14 @@ export class NotificationService {
     /**
      * Show a notification with custom options
      */
-    public show(options: {
-        type: NotificationType;
-        message: string;
-        detail?: string;
-        severity?: NotificationSeverity;
-        timeout?: number;
-        actions?: NotificationAction[];
-        closable?: boolean;
-        onClose?: () => void;
-    }): string {
-        const id = `notification-${this.nextId++}`;
-        
+    public show(options: NotificationShowOptions): string {
+        const key = options.coalesceKey;
+        // The same notice still on screen is said again in place: one card, not two of the same.
+        const live = key
+            ? this.store.getNotifications().find(candidate => candidate.coalesceKey === key)
+            : undefined;
+        const id = live?.id ?? `notification-${this.nextId++}`;
+
         const notification: Notification = {
             id,
             type: options.type,
@@ -239,9 +269,14 @@ export class NotificationService {
             closable: options.closable !== false, // Default closable
             onClose: options.onClose,
             timestamp: Date.now(),
+            coalesceKey: key,
         };
 
-        this.store.addNotification(notification);
+        if (live) {
+            this.store.updateNotification(notification);
+        } else {
+            this.store.addNotification(notification);
+        }
         this.recordHistory({
             id,
             type: notification.type,
@@ -249,6 +284,7 @@ export class NotificationService {
             detail: notification.detail,
             timestamp: notification.timestamp,
             read: false,
+            ...(key ? { key } : {}),
         });
 
         // `timeout` is a duration on screen, and only the view knows when that starts. The toast
@@ -262,15 +298,7 @@ export class NotificationService {
     /**
      * Show a notification that stays until closed
      */
-    public showSticky(options: {
-        type: NotificationType;
-        message: string;
-        detail?: string;
-        severity?: NotificationSeverity;
-        actions?: NotificationAction[];
-        closable?: boolean;
-        onClose?: () => void;
-    }): string {
+    public showSticky(options: Omit<NotificationShowOptions, "timeout">): string {
         return this.show({ ...options, timeout: 0 });
     }
 
