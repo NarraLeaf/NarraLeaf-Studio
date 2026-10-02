@@ -56,6 +56,9 @@ import {
 import { GalleryThumb, InlineNameInput, formatDuration, useAudioAudition } from "./components";
 import {
     galleryCount,
+    galleryKindLabel,
+    galleryNodeWord,
+    galleryTitle,
     useGalleryTranslator,
     type GalleryMessageKey,
     type GalleryTranslator,
@@ -68,15 +71,12 @@ const GROUP_UNGROUPED = "__none";
 
 const DRAG_ENTRY_MIME = "application/x-narraleaf-gallery-entry";
 
+/**
+ * A column's own words are message keys. Its name is not among them: that is the `Kind` option the
+ * blueprint node offers, read through `galleryKindLabel` so the tab, the inspector and the idle
+ * inspector's step all say what the node's dropdown says.
+ */
 type KindMeta = {
-    /** The column's name on its tab and in the inspector. */
-    labelKey: GalleryMessageKey;
-    /**
-     * The value the `Kind` setting shows on the `Get Gallery` node. Kept apart from `labelKey`
-     * because the plugin cannot translate its node: the idle inspector's step has to name the value
-     * the author will find there, in the language it is written in.
-     */
-    nodeKindValue: string;
     /** The primary action's verb for this column. */
     createKey: GalleryMessageKey;
     /** What an empty column says it is for. */
@@ -87,7 +87,8 @@ type KindMeta = {
     /** What the idle inspector says a row of this kind carries: field names, never translated. */
     rowFields: string;
     /**
-     * Message key naming what collects a row of this kind.
+     * Message key naming what collects a row of this kind. A `{node}` in it is filled with the
+     * `Unlock Gallery` node's title as its card shows it.
      *
      * Three of the four columns collect themselves while the player plays, and only CG needs the
      * story to say so. Without this line on the card that difference reads as a broken column.
@@ -97,8 +98,6 @@ type KindMeta = {
 
 const KIND_META: Record<GalleryEntryKind, KindMeta> = {
     cg: {
-        labelKey: "kindCg",
-        nodeKindValue: "CG",
         createKey: "createCg",
         emptyKey: "emptyCg",
         icon: Images,
@@ -107,8 +106,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         unlockKey: "unlockCg",
     },
     scene: {
-        labelKey: "kindScene",
-        nodeKindValue: "Recollection",
         createKey: "createScene",
         emptyKey: "emptyScene",
         icon: Clapperboard,
@@ -117,8 +114,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         unlockKey: "unlockScene",
     },
     music: {
-        labelKey: "kindMusic",
-        nodeKindValue: "Music",
         createKey: "createMusic",
         emptyKey: "emptyMusic",
         icon: Music,
@@ -127,8 +122,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         unlockKey: "unlockMusic",
     },
     voice: {
-        labelKey: "kindVoice",
-        nodeKindValue: "Voice",
         createKey: "createVoice",
         emptyKey: "emptyVoice",
         icon: MessageSquareQuote,
@@ -296,7 +289,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
             <header className="shrink-0 border-b border-edge">
                 <div className="flex items-center gap-2 px-3 pt-2">
                     <Images size={15} className="text-fg-muted" />
-                    <span className="text-sm">{tr.t("title")}</span>
+                    <span className="text-sm">{galleryTitle(tr)}</span>
                     <span className="text-2xs text-fg-subtle">
                         {galleryCount(tr, "entryCountOne", "entryCountMany", data.items.length)}
                         {" · "}
@@ -351,7 +344,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                                 }}
                             >
                                 <Icon size={12} />
-                                {tr.t(kindMeta.labelKey)}
+                                {galleryKindLabel(tr, kind)}
                                 <span className="tabular-nums text-fg-subtle">{countsByKind[kind]}</span>
                             </button>
                         );
@@ -446,7 +439,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             onClear={() => setSelectedIds([])}
                         />
                     ) : (
-                        <IdleInspector meta={meta} tr={tr} />
+                        <IdleInspector kind={activeKind} meta={meta} tr={tr} />
                     )}
                 </aside>
             </div>
@@ -505,7 +498,7 @@ function toggleSelection(
 function pickerTitle(target: PickerTarget | null, tr: GalleryTranslator): string {
     switch (target?.kind) {
         case "importCgs":
-            return tr.t("pickerImportCgs");
+            return tr.t("createCg");
         case "importTracks":
             return tr.t("pickerImportTracks");
         case "addImages":
@@ -933,7 +926,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * would otherwise be blank, and it is gone the moment anything is selected, so
  * it never becomes chrome over the content.
  */
-function IdleInspector({ meta, tr }: { meta: KindMeta; tr: GalleryTranslator }) {
+function IdleInspector({ kind, meta, tr }: { kind: GalleryEntryKind; meta: KindMeta; tr: GalleryTranslator }) {
     return (
         <div className="flex flex-col gap-3 p-3">
             <span className="text-2xs text-fg-subtle">{tr.t("idleEmpty")}</span>
@@ -941,18 +934,19 @@ function IdleInspector({ meta, tr }: { meta: KindMeta; tr: GalleryTranslator }) 
                 <div className="text-2xs text-fg-muted">{tr.t("idleHeading")}</div>
                 <ol className="space-y-1 text-2xs text-fg-subtle">
                     <li>
-                        1. <span className="text-fg-muted">Get Gallery</span>, Kind =
-                        {" "}
-                        <span className="text-fg-muted">{meta.nodeKindValue}</span>
+                        1. <span className="text-fg-muted">{galleryNodeWord(tr, "Get Gallery")}</span>
+                        {tr.t("idleSeparator")}
+                        {galleryNodeWord(tr, "Kind")} ={" "}
+                        <span className="text-fg-muted">{galleryKindLabel(tr, kind)}</span>
                     </li>
                     <li>
-                        2. {tr.t("pinEntries")} → <span className="text-fg-muted">{tr.t("nodeSetListContent")}</span>
+                        2. {tr.t("corePinEntries")} → <span className="text-fg-muted">{tr.t("coreSetListContent")}</span>
                     </li>
                     <li>
                         3. <span className="mr-1">{tr.t("idleItemTemplate")}</span>
-                        <span className="text-fg-muted">{tr.t("nodeGetListItemProps")}</span>
+                        <span className="text-fg-muted">{tr.t("coreGetListItemProps")}</span>
                         {" → "}
-                        <span className="text-fg-muted">{tr.t("nodeGetJsonField")}</span>
+                        <span className="text-fg-muted">{tr.t("coreGetJsonField")}</span>
                     </li>
                 </ol>
                 <div className="text-2xs text-fg-subtle">
@@ -963,7 +957,9 @@ function IdleInspector({ meta, tr }: { meta: KindMeta; tr: GalleryTranslator }) 
                     not know which is which reads the difference as a broken column. */}
                 <div className="text-2xs text-fg-subtle">
                     <span className="mr-1">{tr.t("idleUnlockedBy")}</span>
-                    <span className="text-fg-muted">{tr.t(meta.unlockKey)}</span>
+                    <span className="text-fg-muted">
+                        {tr.t(meta.unlockKey, { node: galleryNodeWord(tr, "Unlock Gallery") })}
+                    </span>
                 </div>
             </div>
         </div>
@@ -1005,7 +1001,7 @@ function EntryInspector({
         <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5">
                 <MetaIcon size={12} className="shrink-0 text-fg-subtle" />
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{tr.t(meta.labelKey)}</span>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{galleryKindLabel(tr, entry.kind)}</span>
                 <ui.IconButton size="sm" variant="ghost" aria-label={tr.t("closeInspector")} onClick={onClose}>
                     <X size={12} />
                 </ui.IconButton>

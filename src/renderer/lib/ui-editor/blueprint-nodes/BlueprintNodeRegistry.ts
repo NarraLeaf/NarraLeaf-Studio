@@ -35,6 +35,7 @@ import {
     type BlueprintPaletteContext,
 } from "./types";
 import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
+import { indexBlueprintNodeTranslations } from "./nodeTranslations";
 import { blueprintContract, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 
 type BlueprintNodeGraphContextDef = Pick<
@@ -342,6 +343,7 @@ class BlueprintNodeDefinitionsRegistry {
         this.validateDynamicInputPins(def);
         this.validateGraphKinds(def);
         this.byType.set(def.type, def);
+        indexBlueprintNodeTranslations(def.translations);
         behaviorNodeRegistry.register({
             type: def.type,
             displayName: def.displayName,

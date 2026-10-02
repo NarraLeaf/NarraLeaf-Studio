@@ -10,17 +10,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Images, Maximize2, Plus } from "lucide-react";
 import { ui, type PluginApp } from "narraleaf-studio/plugin";
-import { resolveCoverVariant, type GalleryEntryKind } from "./catalog";
+import { resolveCoverVariant } from "./catalog";
 import { GalleryThumb } from "./components";
-import { galleryCount, useGalleryTranslator, type GalleryMessageKey } from "./messages";
+import { galleryCount, galleryKindLabel, galleryTitle, useGalleryTranslator } from "./messages";
 import type { GalleryStore } from "./store";
-
-const PANEL_KIND_LABEL: Record<GalleryEntryKind, GalleryMessageKey> = {
-    cg: "kindCg",
-    scene: "kindScene",
-    music: "kindMusic",
-    voice: "kindVoice",
-};
 
 export function GalleryPanel({
     app,
@@ -55,7 +48,7 @@ export function GalleryPanel({
     return (
         <ui.Panel.Root>
             <ui.Panel.Header
-                title={tr.t("title")}
+                title={galleryTitle(tr)}
                 description={galleryCount(tr, "entryCountOne", "entryCountMany", data.items.length)}
                 actions={(
                     <ui.IconButton
@@ -114,7 +107,7 @@ export function GalleryPanel({
                                             columns, and a track and a CG are
                                             otherwise indistinguishable here. */}
                                         <span className="block truncate text-2xs text-fg-subtle">
-                                            {tr.t(PANEL_KIND_LABEL[artwork.kind])}
+                                            {galleryKindLabel(tr, artwork.kind)}
                                             {groupName ? ` · ${groupName}` : ""}
                                             {artwork.variants.length > 1
                                                 ? ` · ${galleryCount(tr, "itemCountOne", "itemCountMany", artwork.variants.length)}`
