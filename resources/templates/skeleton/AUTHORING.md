@@ -1,0 +1,110 @@
+# Skeleton template — how its blueprints are written
+
+The skeleton is the first project most authors open, and they learn how Studio's blueprints are
+written by reading it. A graph in here is an example before it is anything else, so it is held to
+the rules below. The Config page and the Global blueprint are written this way; bring any other page
+to the same standard when it is touched.
+
+This file sits beside `content/` and is not copied into projects (`template.json` copies `content/`
+and the `content.<locale>/` overlays only).
+
+## 1. One job per layer, named for the job
+
+- A layer does one thing, and its name says what, the way an author would put it: "Open on the Text
+  pane", "Show the saved skip setting", "Change the master volume and show it". Never "Layer 1".
+- Several event heads share a layer only when they start the same job.
+- Names are short verb phrases. They are translated through the locale tables like every other
+  author-facing word (section 7).
+
+## 2. Notes that teach
+
+- A layer whose name does not say everything gets a note (a comment card) across its top: when it
+  runs, what changes on screen, and why when that is not obvious ("so a returning player sees the
+  choice they left"). Where the layer shows a pattern worth copying, the note says what to change to
+  reuse it.
+- A layer with distinct sections frames each one with a comment in frame mode, slate-coloured,
+  titled for the section ("Apply the setting" / "Show the number", "In full screen" / "In a window").
+  Frames are for sections, not decoration: a four-node chain does not need one.
+- No note that only lists the nodes it sits above.
+- A note is sized for the longest of its English, Chinese and Japanese text, measured in the editor,
+  so it never scrolls in any language.
+
+## 3. Layout a reader can follow
+
+- Execution runs left to right along one row per band; a band is one chain.
+- A data node sits below and just before the input it feeds, so its wire runs forwards and up. One
+  Element node per consumer, directly under it, rather than one Element fanned out across the graph.
+- A chain fed by an execution node's output (a head's value, a Memo's result) starts to the right of
+  that node. No wire runs backwards.
+- An If keeps its true branch on its own row, to the right; the false branch drops to a band of its
+  own that starts under the If, so its wire runs straight down beside the first branch.
+- No two cards overlap, and a frame either holds a card entirely or not at all. This is measured
+  from the cards the editor actually draws (their DOM rectangles), not from stored positions: an
+  Element card is about 211 units tall and a Set Element Variant card about 230.
+- Spacing is constant: 90 between execution cards, 60 between a data card and what it feeds, 40
+  between rows, 90 between bands, frames padded 56 at the top and 32 elsewhere.
+- The graph starts at the origin, note first.
+
+## 4. The current way to write each thing
+
+- A value goes in the node's own field when the input has one (`÷ 100`, the text a Log writes, a
+  Go Page target). A separate literal node only where the input takes none, which today means
+  boolean pins (`Set Skip Read Text`, `Set Mute When Unfocused`).
+- A number feeds a text input directly; it is converted the same way To String would. No To String,
+  no `Concat` with an empty string.
+- Show and hide with **Set Element Property** (Property: Visible, Value: Visible / Hidden). The card
+  reads as words, needs no literal node, and works for every widget type.
+- Highlight with **Set Element Variant** (Selected / Default), each with its own Element node.
+- Branch with **If** (True / False). If Else only when there is an else-if.
+- **Memo** only where one value feeds two inputs (an output feeds one input; Memo, literals, Element
+  nodes and Fn head params are the exceptions), and the note says so.
+- No palette-hidden node types: compare `node project/app/blueprint.js nodes --all` with the plain
+  listing.
+- **A sound that always plays when an element is pressed or hovered is set in that element's Sound
+  section** (`clickSound` / `hoverSound`), not in a blueprint. A blueprint plays a sound only when
+  the sound depends on something — a locked card that opens nothing, a dialog whose first answer
+  acts and whose others back out — and then it calls `UI confirm cue` or `UI back cue` from the
+  Global blueprint after the check.
+
+## 5. Repetition becomes structure
+
+- Where several elements carry the same graph and differ only by a value a node input can take,
+  they become instances of one component with a param, and the graph lives once, on the component
+  definition (`Get Component Param` reads the instance's value). The Config page's BGM, Sound
+  effects and Voice rows are instances of `Volume slider` with an `Audio track` param.
+- Keep the copies, identical in shape, when the difference cannot go through a param, and say why
+  in the note:
+  - which node runs (the three toggle pairs each change their setting with a different node; the
+    master volume is set with Set Global Volume, not a track);
+  - a label or any other prop: a component instance draws its definition's props, so instances
+    cannot differ in text on the canvas. That is why the volume component holds the slider and its
+    number but not the row's label.
+
+## 6. Behaviour stays the same
+
+What the player sees and what is saved stay byte-for-byte the same. Walk the page in Dev Mode on a
+fresh project from the branch and on one from `develop`, and compare: values shown, settings read
+back from the game, state shown when the page reopens, Escape, Back, and opening the page from the
+title and from inside a game.
+
+## 7. Words
+
+- The English template is the source. The Chinese and Japanese trees are generated from it with
+  `scripts/gen-skeleton-locale.mjs`; every new layer name, note and frame title needs an entry in
+  `scripts/gen-skeleton-locale.zh.json` and `.ja.json`, and an entry nothing uses any more has to go.
+  Run the generator, then `--check`.
+- In the Chinese and Japanese notes, nodes, widgets, pages and panels are called by the names the
+  interface shows in that language (the `blueprint.node.*`, `uiEditor.*` and `properties.*`
+  catalogues), and elements by the names their Element cards show — never by type ids.
+- English notes follow the interface's register: they state what happens, plainly, without asides.
+  The table is keyed by the English string, so two meanings need two strings (a slider's `Track`
+  part and an audio track are not the same word).
+
+## 8. Tools
+
+- Edit with `node project/app/blueprint.js show` → edit the `.bp` → `check` → `apply --write`, and
+  `node project/app/ui.js` for elements and components. Never edit `uidoc.json` or `uigraphs.json` by
+  hand. Keep each blueprint's id and its first layer's id, so references and history follow.
+- Before and after any change: `blueprint.js check` and `ui.js check` on `content/`, `content.zh/`
+  and `content.ja/`, the generator's `--check`, and the tests under
+  `src/renderer/apps/project-wizard/starter*.test.ts`.
