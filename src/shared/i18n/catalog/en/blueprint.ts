@@ -303,8 +303,8 @@ export const blueprint = {
         },
     },
     /**
-     * What a blueprint with no layers shows: one tile per template that suits its owner, and a blank
-     * layer last. A template's title is also the name the layer it creates starts with.
+     * What a blueprint with no layers shows: a few templates that suit its owner, the template library,
+     * and a blank layer last.
      */
     layerTemplates: {
         heading: "New layer",
@@ -314,74 +314,37 @@ export const blueprint = {
             title: "Blank layer",
             description: "An empty canvas, or one of your own scripts.",
         },
-        splash: {
-            title: "Splash screen",
-            description: "Fades in, holds, fades out and opens the next page. A click or any key skips ahead.",
+        library: {
+            title: "More templates",
+            description: "Browse every template for this blueprint by category.",
         },
-        pressAnyKey: {
-            title: "Press any key",
-            description: "Opens the next page on a click or any key.",
+    },
+    /** The template library: every template that suits a blueprint, shelved by category. */
+    templateLibrary: {
+        title: "Template library",
+        open: "Add from template library",
+        all: "All",
+        categoriesLabel: "Categories",
+        search: "Search templates",
+        emptyFiltered: "No templates match.",
+        empty: "No templates suit this blueprint.",
+        add: "Add",
+        back: "Back",
+        openDetail: "Show details",
+        choicesHeading: "To choose after adding",
+        choicesNone: "Runs as it is once added.",
+        previewLabel: "Graph preview",
+        category: {
+            pageFlow: "Page flow",
+            navigation: "Navigation",
+            game: "Game",
+            settings: "Settings",
+            audio: "Audio",
+            motion: "Motion",
+            keys: "Keys",
+            window: "Window",
+            display: "Display",
         },
-        pageMusic: {
-            title: "Page music",
-            description: "Plays music while this page is shown and fades it out when the page closes.",
-        },
-        escapeBack: {
-            title: "Back on Escape",
-            description: "Escape closes this page and returns to the page beneath it.",
-        },
-        escapeMenu: {
-            title: "Menu on Escape",
-            description: "Escape opens a page on top of this one.",
-        },
-        confirmClose: {
-            title: "Confirm before closing",
-            description: "Asks the player before the game window closes.",
-        },
-        fullscreenKey: {
-            title: "Fullscreen key",
-            description: "F11 turns fullscreen on and off.",
-        },
-        screenshotKey: {
-            title: "Screenshot key",
-            description: "S saves a screenshot.",
-        },
-        openPage: {
-            title: "Open a page",
-            description: "Opens a page when clicked.",
-        },
-        startGame: {
-            title: "Start the game",
-            description: "Starts the story when clicked.",
-        },
-        goBack: {
-            title: "Go back",
-            description: "Closes the current page when clicked and returns to the page beneath it.",
-        },
-        overlayPage: {
-            title: "Page on top",
-            description: "Opens a page on top of the current one when clicked.",
-        },
-        quitApp: {
-            title: "Quit button",
-            description: "Asks for confirmation when clicked, then quits the game.",
-        },
-        clickSound: {
-            title: "Click sound",
-            description: "Plays a sound effect when clicked.",
-        },
-        hoverSound: {
-            title: "Hover sound",
-            description: "Plays a sound effect when the pointer moves over it.",
-        },
-        hoverGrow: {
-            title: "Grow on hover",
-            description: "Grows slightly under the pointer and returns to size when it leaves.",
-        },
-        // Written into the game by the quit templates, so they are what the player reads.
-        quitQuestion: "Quit the game?",
-        quitConfirm: "Quit",
-        quitCancel: "Cancel",
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
     owner: {

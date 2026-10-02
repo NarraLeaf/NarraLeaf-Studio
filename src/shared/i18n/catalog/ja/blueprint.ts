@@ -273,8 +273,9 @@ export const blueprint = {
             other: "{count} 個のレイヤーが実行中",
         },
     },
-    // レイヤーのないブループリントに出すもの。所属先に合うテンプレートを 1 枠ずつ並べ、最後の枠は空のレイヤー。
-    // テンプレートのタイトルは、作られるレイヤーの最初の名前にもなる。
+    /**
+     * レイヤーのないブループリントに表示する内容：所属先に合うテンプレートをいくつか、テンプレートライブラリ、最後に空のレイヤー。
+     */
     layerTemplates: {
         heading: "新しいレイヤー",
         description: "テンプレートか空のレイヤーから始める",
@@ -283,74 +284,37 @@ export const blueprint = {
             title: "空のレイヤー",
             description: "空のキャンバス、または自分のスクリプト",
         },
-        splash: {
-            title: "スプラッシュ画面",
-            description: "フェードイン・表示・フェードアウトの後に次のページへ移動し、クリックか任意のキーでスキップする",
+        library: {
+            title: "その他のテンプレート",
+            description: "このブループリントに使えるテンプレートをカテゴリ別に見る",
         },
-        pressAnyKey: {
-            title: "任意のキーで続行",
-            description: "クリックか任意のキーで次のページへ移動する",
+    },
+    /** テンプレートライブラリ：ブループリントに使えるすべてのテンプレートをカテゴリ別に並べる。 */
+    templateLibrary: {
+        title: "テンプレートライブラリ",
+        open: "テンプレートライブラリから追加",
+        all: "すべて",
+        categoriesLabel: "カテゴリ",
+        search: "テンプレートを検索",
+        emptyFiltered: "一致するテンプレートはない",
+        empty: "このブループリントに使えるテンプレートはない",
+        add: "追加",
+        back: "戻る",
+        openDetail: "詳細を表示",
+        choicesHeading: "追加後に選ぶ項目",
+        choicesNone: "追加すればそのまま動く",
+        previewLabel: "グラフのプレビュー",
+        category: {
+            pageFlow: "ページの流れ",
+            navigation: "移動",
+            game: "ゲーム",
+            settings: "設定",
+            audio: "サウンド",
+            motion: "アニメーション",
+            keys: "キー操作",
+            window: "ウィンドウ",
+            display: "表示",
         },
-        pageMusic: {
-            title: "ページの音楽",
-            description: "ページの表示中に音楽を再生し、ページを閉じるときにフェードアウトする",
-        },
-        escapeBack: {
-            title: "Esc で戻る",
-            description: "Esc で現在のページを閉じ、下のページに戻る",
-        },
-        escapeMenu: {
-            title: "Esc でメニュー",
-            description: "Esc で現在のページの上に別のページを重ねて表示する",
-        },
-        confirmClose: {
-            title: "閉じる前の確認",
-            description: "ゲームウィンドウを閉じる前にプレイヤーに確認する",
-        },
-        fullscreenKey: {
-            title: "全画面キー",
-            description: "F11 で全画面を切り替える",
-        },
-        screenshotKey: {
-            title: "スクリーンショットキー",
-            description: "S でスクリーンショットを保存する",
-        },
-        openPage: {
-            title: "ページを開く",
-            description: "クリックで指定したページへ移動する",
-        },
-        startGame: {
-            title: "ゲームを始める",
-            description: "クリックでストーリーを始める",
-        },
-        goBack: {
-            title: "戻る",
-            description: "クリックで現在のページを閉じ、下のページに戻る",
-        },
-        overlayPage: {
-            title: "ページを重ねる",
-            description: "クリックで現在のページの上に別のページを重ねて表示する",
-        },
-        quitApp: {
-            title: "終了ボタン",
-            description: "クリックで確認を求め、承認されるとゲームを終了する",
-        },
-        clickSound: {
-            title: "クリック音",
-            description: "クリックで効果音を鳴らす",
-        },
-        hoverSound: {
-            title: "ホバー音",
-            description: "ポインターが重なると効果音を鳴らす",
-        },
-        hoverGrow: {
-            title: "ホバーで拡大",
-            description: "ポインターが重なると少し拡大し、離れると元に戻る",
-        },
-        // 終了系のテンプレートがゲームに書き込む文字。プレイヤーが読む。
-        quitQuestion: "ゲームを終了しますか？",
-        quitConfirm: "終了",
-        quitCancel: "キャンセル",
     },
     // ブループリントがぶら下がっている先の名前。ノードがどこにあるかを言う検索結果で使う。
     owner: {

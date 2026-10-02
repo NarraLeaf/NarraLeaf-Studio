@@ -1,15 +1,17 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { LibraryBig, Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { CANVAS_SIDEBAR_INSET_PADDING } from "@/lib/components/layout/editorSidebarInset";
 import type { FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
-import type { BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
+import { blueprintTemplateText, type BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
 
 type Props = {
-    /** The templates that suit this blueprint's owner, already narrowed and in display order. */
+    /** The few templates shown as tiles, already narrowed to this blueprint and in display order. */
     templates: readonly BlueprintLayerTemplate[];
     onPickTemplate: (template: BlueprintLayerTemplate) => void;
+    /** Opens the template library; absent when the library holds nothing the tiles do not. */
+    onOpenLibrary?: () => void;
     /** The blank layer, which asks graph or script as the member panel's New button does. */
     onPickBlank: () => void;
     /** Every tile writes the blueprint, so a frozen project greys all of them alike. */
@@ -21,16 +23,17 @@ const MIN_TILE_WIDTH_PX = 176;
 const GAP_PX = 12;
 
 /**
- * The canvas of a blueprint with no layers: one tile per template, and a blank layer last.
+ * The canvas of a blueprint with no layers: a few templates, the template library, and a blank layer.
  *
- * The blank tile always takes the last column of the last row. A grid that ran short would
- * otherwise leave it wherever the count happened to put it, and it is the one tile an author looks
- * for by position rather than by name.
+ * The blank tile always takes the last column of the last row, and the library the cell before it.
+ * A grid that ran short would otherwise leave them wherever the count happened to put them, and they
+ * are the two tiles an author looks for by position rather than by name.
  */
-export function BlueprintLayerTemplateGrid({ templates, onPickTemplate, onPickBlank, writeProps }: Props) {
-    const { t } = useTranslation();
+export function BlueprintLayerTemplateGrid({ templates, onPickTemplate, onOpenLibrary, onPickBlank, writeProps }: Props) {
+    const { t, locale } = useTranslation();
     const listRef = useRef<HTMLUListElement>(null);
-    const columns = useColumnCount(listRef, preferredColumns(templates.length + 1));
+    const tileCount = templates.length + (onOpenLibrary ? 1 : 0) + 1;
+    const columns = useColumnCount(listRef, preferredColumns(tileCount));
 
     return (
         // The layer panel is drawn over the canvas, so the grid keeps to the part of it the panel
@@ -49,18 +52,31 @@ export function BlueprintLayerTemplateGrid({ templates, onPickTemplate, onPickBl
                 >
                     {templates.map(template => {
                         const Icon = template.icon;
+                        const text = blueprintTemplateText(template, locale);
                         return (
                             <li key={template.id}>
                                 <TemplateTile
                                     icon={<Icon className="h-4 w-4" aria-hidden />}
-                                    title={t(`blueprint.layerTemplates.${template.id}.title`)}
-                                    description={t(`blueprint.layerTemplates.${template.id}.description`)}
+                                    title={text.title}
+                                    description={text.description}
                                     onClick={() => onPickTemplate(template)}
                                     writeProps={writeProps}
                                 />
                             </li>
                         );
                     })}
+                    {onOpenLibrary ? (
+                        // Browsing writes nothing, so the library stays open on a frozen project; it
+                        // is the Add inside it that is refused.
+                        <li style={columns > 1 ? { gridColumnEnd: -2 } : undefined}>
+                            <TemplateTile
+                                icon={<LibraryBig className="h-4 w-4" aria-hidden />}
+                                title={t("blueprint.layerTemplates.library.title")}
+                                description={t("blueprint.layerTemplates.library.description")}
+                                onClick={onOpenLibrary}
+                            />
+                        </li>
+                    ) : null}
                     <li style={{ gridColumnEnd: -1 }}>
                         <TemplateTile
                             icon={<Plus className="h-4 w-4" aria-hidden />}
@@ -81,7 +97,7 @@ function TemplateTile(props: {
     title: string;
     description: string;
     onClick: () => void;
-    writeProps: FrozenControlProps;
+    writeProps?: FrozenControlProps;
 }) {
     return (
         <button
