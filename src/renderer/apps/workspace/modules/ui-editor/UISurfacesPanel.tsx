@@ -644,7 +644,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             title: t(ownerLabelKey("globalMain")),
             subtitle: t("uiEditor.panel.globalSubtitle"),
             typeLabel: t("uiEditor.panel.blueprintType"),
-            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,
+            // Fills the box the list gives it, which is sized like the surface previews beside it.
+            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-full" />,
             canOpen: Boolean(globalBlueprintId),
             onClick: () => handleOpenGlobalBlueprint(),
             onOpenInWindow: () => handleOpenGlobalBlueprint({ inOwnWindow: true }),
