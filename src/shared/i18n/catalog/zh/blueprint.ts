@@ -1543,4 +1543,19 @@ export const blueprint = {
     live: {
         nodeClaimed: "{name} 正在编辑该节点",
     },
+    overview: {
+        title: "蓝图总览",
+        count: {
+            other: "{count} 个蓝图",
+        },
+        noBlueprints: "没有蓝图",
+        nodes: {
+            other: "{count} 个节点",
+        },
+        group: {
+            project: "项目",
+            componentCaption: "组件",
+            storyCaption: "故事",
+        },
+    },
 } satisfies LocaleNamespace<"blueprint">;

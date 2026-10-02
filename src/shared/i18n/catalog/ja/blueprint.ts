@@ -1545,4 +1545,19 @@ export const blueprint = {
     live: {
         nodeClaimed: "{name} がこのノードを編集している",
     },
+    overview: {
+        title: "ブループリント一覧",
+        count: {
+            other: "ブループリント {count} 件",
+        },
+        noBlueprints: "ブループリントはない",
+        nodes: {
+            other: "ノード {count} 件",
+        },
+        group: {
+            project: "プロジェクト",
+            componentCaption: "コンポーネント",
+            storyCaption: "ストーリー",
+        },
+    },
 } satisfies LocaleNamespace<"blueprint">;

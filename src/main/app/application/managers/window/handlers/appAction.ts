@@ -25,6 +25,8 @@ import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } 
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isMainOnlyStateKey, isMainOwnedStateKey, isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
+import { collectLogArchiveFiles, encodeLogArchive } from "../../../logging/logArchive";
+import { windowProjectPath } from "../../../utils/windowProject";
 import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
@@ -593,6 +595,27 @@ export class AppSystemPathHandler extends IPCHandler<IPCEventType.appSystemPath>
     }
 }
 
+/** What was running and where its files are: the header both kinds of export open with. */
+function describeDiagnosticsEnvironment(window: AppWindow, logsDir: string): DiagnosticsEnvironment {
+    return {
+        appVersion: window.app.getAppInfo().version,
+        electronVersion: process.versions.electron ?? "unknown",
+        chromeVersion: process.versions.chrome ?? "unknown",
+        nodeVersion: process.versions.node ?? "unknown",
+        platform: process.platform,
+        osRelease: os.release(),
+        arch: process.arch,
+        packaged: window.app.isPackaged(),
+        // The locale in force, not the raw key: with none stored the key is absent, and a
+        // report that said "unknown" about a Studio the author is plainly reading in
+        // Chinese would answer the wrong question.
+        locale: getMainLocale(window.app),
+        userDataDir: window.app.getUserDataDir(),
+        logsDir,
+        generatedAt: new Date().toISOString(),
+    };
+}
+
 /**
  * Write a support bundle to a file the user picks.
  *
@@ -611,23 +634,7 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportDiagnostics]["response"]>> {
         try {
             const logsDir = electronApp.getPath("logs");
-            const environment: DiagnosticsEnvironment = {
-                appVersion: window.app.getAppInfo().version,
-                electronVersion: process.versions.electron ?? "unknown",
-                chromeVersion: process.versions.chrome ?? "unknown",
-                nodeVersion: process.versions.node ?? "unknown",
-                platform: process.platform,
-                osRelease: os.release(),
-                arch: process.arch,
-                packaged: window.app.isPackaged(),
-                // The locale in force, not the raw key: with none stored the key is absent, and a
-                // report that said "unknown" about a Studio the author is plainly reading in
-                // Chinese would answer the wrong question.
-                locale: getMainLocale(window.app),
-                userDataDir: window.app.getUserDataDir(),
-                logsDir,
-                generatedAt: new Date().toISOString(),
-            };
+            const environment = describeDiagnosticsEnvironment(window, logsDir);
             const content = composeDiagnosticsBundle(environment, report, await readMainLogTail(logsDir));
 
             const { t } = dialogTranslator(window);
@@ -648,6 +655,55 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
                 canceled: false,
                 filePath: selection.filePath,
                 byteLength: Buffer.byteLength(content, "utf8"),
+            });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Write every log Studio has to a zip the user picks a place for.
+ *
+ * The save dialog comes first and the files are read after it closes, so the archive holds what was
+ * logged up to the moment the author confirmed, the dialog's own lines included. Like the bundle
+ * above it is reachable from any window; a window with a project open also contributes that
+ * project's run logs, and it is the window's own project, never one the payload names.
+ */
+export class AppExportLogArchiveHandler extends IPCHandler<IPCEventType.appExportLogArchive> {
+    readonly name = IPCEventType.appExportLogArchive;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { defaultFileName, files }: IPCEvents[IPCEventType.appExportLogArchive]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportLogArchive]["response"]>> {
+        try {
+            const { t } = dialogTranslator(window);
+            const selection = await showSaveDialog(window, {
+                title: t("dialogs.file.title.exportLogs"),
+                defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-logs.zip", [".zip"]),
+                filters: [{ name: t("dialogs.file.filter.zip"), extensions: ["zip"] }],
+            });
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+
+            const logsDir = electronApp.getPath("logs");
+            const now = new Date();
+            const archived = await collectLogArchiveFiles({
+                logsDir,
+                projectPath: windowProjectPath(window),
+                environment: describeDiagnosticsEnvironment(window, logsDir),
+                rendererFiles: Array.isArray(files) ? files : [],
+            });
+            const archive = await encodeLogArchive(archived, now);
+            await fs.writeFile(selection.filePath, archive);
+            return this.success({
+                canceled: false,
+                filePath: selection.filePath,
+                byteLength: archive.byteLength,
+                fileCount: archived.length,
             });
         } catch (error) {
             return this.failed(error);

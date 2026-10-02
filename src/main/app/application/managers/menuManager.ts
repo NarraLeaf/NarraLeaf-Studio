@@ -415,6 +415,14 @@ export class MenuManager {
                             void this.openFeedback();
                         },
                     },
+                    {
+                        // The renderer adds the logs only its window holds before main writes the
+                        // archive, so this goes through the Help group like Welcome does.
+                        label: t("menu.help.exportLogs"),
+                        click: () => {
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.ExportLogs);
+                        },
+                    },
                     { type: "separator" },
                     {
                         // Opens the workspace's About editor tab; the renderer resolves this

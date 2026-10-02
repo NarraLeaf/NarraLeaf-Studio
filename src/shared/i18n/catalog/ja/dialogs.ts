@@ -116,6 +116,7 @@ export const dialogs = {
             supported: "対応するファイル",
             images: "画像",
             log: "ログ",
+            zip: "ZIP アーカイブ",
             text: "テキスト",
             json: "JSON",
             patch: "パッチ",

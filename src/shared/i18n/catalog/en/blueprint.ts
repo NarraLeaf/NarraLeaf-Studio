@@ -1600,4 +1600,23 @@ export const blueprint = {
     live: {
         nodeClaimed: "{name} is editing this node",
     },
+    // Every blueprint in the project on one page, grouped by the page, Game UI, component or story it
+    // belongs to. Reached from the interface panel and the command palette.
+    overview: {
+        title: "Blueprint Overview",
+        count: {
+            one: "{count} blueprint",
+            other: "{count} blueprints",
+        },
+        noBlueprints: "No blueprints",
+        nodes: {
+            one: "{count} node",
+            other: "{count} nodes",
+        },
+        group: {
+            project: "Project",
+            componentCaption: "Component",
+            storyCaption: "Story",
+        },
+    },
 } as const;
