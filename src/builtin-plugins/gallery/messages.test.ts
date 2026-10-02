@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTranslator } from "@shared/i18n";
 import { GALLERY_MESSAGES } from "./messages";
 
 const { en, ...others } = GALLERY_MESSAGES.messages;
@@ -27,6 +28,16 @@ describe("the Gallery message bundle", () => {
         for (const text of Object.values(GALLERY_MESSAGES.messages.zh)) {
             expect(text).not.toMatch(/工程|资源/);
         }
+    });
+
+    it.each(["en", "zh", "ja"] as const)("names the built-in nodes the way Studio draws them in %s", locale => {
+        // The idle inspector's steps point at these on the canvas, so a host rename has to reach here.
+        const host = createTranslator(locale).t;
+        const table = GALLERY_MESSAGES.messages[locale];
+        expect(table.nodeSetListContent).toBe(host("blueprint.node.setListContent"));
+        expect(table.nodeGetListItemProps).toBe(host("blueprint.node.getListItemProps"));
+        expect(table.nodeGetJsonField).toBe(host("blueprint.node.getJsonField"));
+        expect(table.pinEntries).toBe(host("blueprint.port.entries"));
     });
 
     it("ends no Chinese or Japanese line with a full stop", () => {
