@@ -24,12 +24,13 @@ import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { PluginDetailsModal } from "./PluginDetailsModal";
 
 type LauncherTab = "installed" | "store";
 
 export function PluginsTab() {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [activeTab, setActiveTab] = useState<LauncherTab>("installed");
     const [query, setQuery] = useState("");
     const [detailId, setDetailId] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function PluginsTab() {
 
     const { plugins, registry, registryError, registryLoading, task, busy, installedById, registryById } = catalog;
 
-    const visibleInstalled = useMemo(() => filterInstalled(plugins, query), [plugins, query]);
+    const visibleInstalled = useMemo(() => filterInstalled(plugins, query, locale), [plugins, query, locale]);
     const visibleStore = useMemo(() => filterStore(registry ?? [], query), [registry, query]);
     const q = query.trim();
 
@@ -209,7 +210,8 @@ function InstalledRow({
     onUninstall: () => void;
     onUpdate: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
+    const name = pluginDisplayName(plugin.manifest, locale);
     // No window here runs a plugin, so there is nothing to retry: Enable clears a recorded failure
     // on its way past, and the next project to open is what tries the plugin again.
     const actions = pluginRecordActions(plugin, false);
@@ -225,10 +227,10 @@ function InstalledRow({
                 onClick={onOpen}
                 className="flex w-full cursor-default items-center gap-3 rounded-md px-3 py-2.5 pr-36 text-left transition-colors hover:bg-fill"
             >
-                <PluginAvatar name={plugin.manifest.name} src={plugin.iconUrl} />
+                <PluginAvatar name={name} colorKey={plugin.manifest.name} src={plugin.iconUrl} />
                 <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
+                        <span className="truncate text-sm text-fg">{name}</span>
                         {plugin.builtIn ? <Badge tone="primary">{t("plugins.builtIn")}</Badge> : null}
                         <PluginStatusBadge status={plugin.status} />
                         {updateAvailable ? <Badge tone="warning">{t("plugins.updateAvailable")}</Badge> : null}

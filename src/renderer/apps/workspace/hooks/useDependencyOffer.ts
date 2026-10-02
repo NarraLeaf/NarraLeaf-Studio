@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { translate, translateN } from "@/lib/i18n";
+import { i18nStore } from "@/lib/i18n/store";
+import { dependencyDisplayName } from "@shared/utils/pluginDisplayText";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
@@ -57,9 +59,10 @@ export function useDependencyOffer() {
         const evaluate = () => {
             const unmet = (dependencies.getResolution()?.entries ?? []).filter(isDependencyUnavailable);
             const message = translateN("plugins.dependencies.unavailable", unmet.length, { count: unmet.length });
+            const locale = i18nStore.getLocale();
             const detail = unmet
                 .slice(0, NAMES_LISTED)
-                .map(entry => entry.dependency.name?.trim() || entry.dependency.id)
+                .map(entry => dependencyDisplayName(entry, locale))
                 .join(", ");
 
             if (offered) {

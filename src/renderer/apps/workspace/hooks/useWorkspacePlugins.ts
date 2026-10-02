@@ -46,7 +46,7 @@ export function useWorkspacePlugins() {
                 // The toast now leads somewhere: the plugins panel shows the same failure with its
                 // reason, and the reload / disable / uninstall that answer it.
                 ui.notifications.error(
-                    translate("plugins.workspace.error.loadFailed", { name: result.pluginId }),
+                    translate("plugins.workspace.error.loadFailed", { name: result.pluginName ?? result.pluginId }),
                     result.error,
                     [{
                         label: translate("plugins.workspace.openPanel"),

@@ -23,6 +23,7 @@ import {
     type PluginContributes,
     type PluginLocaleContribution,
     type PluginManifestEntries,
+    type PluginManifestLocalized,
     type PluginManifestV2,
     type PluginSidecarContribution,
     type PluginSidecarTargetContribution,
@@ -96,6 +97,10 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
     }
 
     const description = readOptionalString(value, "description");
+    const localized = value.localized === undefined ? undefined : validateLocalized(value.localized);
+    if (typeof localized === "string") {
+        return invalid(localized);
+    }
     const publisher = readOptionalString(value, "publisher");
     const declared = value.permissions === undefined
         ? []
@@ -121,11 +126,51 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         contributes,
         permissions,
         ...(description ? { description } : {}),
+        ...(localized ? { localized } : {}),
         ...(publisher ? { publisher } : {}),
         ...(icon ? { icon } : {}),
     };
 
     return { ok: true, manifest };
+}
+
+/**
+ * The `localized` table, `undefined` when it declares nothing, or an error.
+ *
+ * Keys use the same locale-code shape as `contributes.locales`, which is every code Studio's
+ * language setting can hold. An entry that translates neither field is refused rather than
+ * dropped: it is almost always a misspelt key (`title`, `desc`), and dropping it would leave the
+ * author wondering why the plugin list still shows the plain name.
+ */
+function validateLocalized(value: unknown): PluginManifestLocalized | undefined | string {
+    if (!isRecord(value)) {
+        return "Plugin localized must be an object keyed by locale code";
+    }
+    const out: PluginManifestLocalized = {};
+    for (const [code, entry] of Object.entries(value)) {
+        if (!LOCALE_CODE_PATTERN.test(code)) {
+            return `Plugin localized has an invalid locale code: ${code}`;
+        }
+        if (!isRecord(entry)) {
+            return `Plugin localized["${code}"] must be an object with name and/or description`;
+        }
+        if (entry.name !== undefined && typeof entry.name !== "string") {
+            return `Plugin localized["${code}"].name must be a string`;
+        }
+        if (entry.description !== undefined && typeof entry.description !== "string") {
+            return `Plugin localized["${code}"].description must be a string`;
+        }
+        const name = readString(entry, "name");
+        const description = readString(entry, "description");
+        if (!name && !description) {
+            return `Plugin localized["${code}"] must declare a name or a description`;
+        }
+        out[code] = {
+            ...(name ? { name } : {}),
+            ...(description ? { description } : {}),
+        };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**

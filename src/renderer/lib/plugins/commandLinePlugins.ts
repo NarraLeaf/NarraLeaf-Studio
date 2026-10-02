@@ -233,9 +233,9 @@ export function findUnmetPluginDependencies(
 const SWITCHED_OFF = "is switched off in this profile";
 
 /**
- * How the plugin flags would name this plugin: by the name Studio shows for it, as a person would
- * write it, unless another installed plugin shares that name - then by its manifest id, which the
- * flag would otherwise ask for.
+ * How the plugin flags would name this plugin: by its plain manifest name, as a person would write
+ * it, unless another installed plugin shares that name - then by its manifest id, which the flag
+ * would otherwise ask for. Never by a `localized` name, which the flags do not read.
  */
 function switchOnValue(plugin: InstalledPluginState, installed: readonly InstalledPluginState[]): string {
     const name = plugin.manifest.name?.trim() || plugin.pluginId;

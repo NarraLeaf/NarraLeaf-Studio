@@ -28,10 +28,13 @@ import type { PluginListItem } from "@shared/types/plugins";
  *
  * ## Naming a plugin
  *
- * By the name Studio shows for it - its manifest's `name`, without regard to case - or by its
- * manifest id (`narraleaf.gallery`), which its publisher wrote and which is not a generated id. The id
- * is looked for first, since no two plugins share one. A name two installed plugins share is refused,
- * and the refusal gives each one's id to write instead.
+ * By its manifest's plain `name`, without regard to case - what Studio shows for it in English - or
+ * by its manifest id (`narraleaf.gallery`), which its publisher wrote and which is not a generated
+ * id. The id is looked for first, since no two plugins share one. A name two installed plugins share
+ * is refused, and the refusal gives each one's id to write instead.
+ *
+ * Never by a `localized` name: a line is written once and run on machines set to any language, so
+ * what it names a plugin by cannot depend on which one the profile is in.
  *
  * Every refusal here is exit 4 (`studio-failed`), not a bad invocation: which plugins a profile has
  * is a property of the machine the line runs on, and the same line is right on another.
@@ -124,7 +127,7 @@ function findPlugin(
     };
 }
 
-/** The name Studio shows for a plugin, which is what the line names it by. */
+/** The plugin's plain manifest name, which is what the line names it by. */
 function nameOf(plugin: CommandLinePluginCandidate): string {
     return plugin.manifest.name?.trim() || plugin.pluginId;
 }

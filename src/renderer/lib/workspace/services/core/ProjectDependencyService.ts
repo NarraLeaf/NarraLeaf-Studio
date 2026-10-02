@@ -34,6 +34,8 @@ export interface InstalledPlugin {
     publisher?: string;
     /** For the resolution's rows, which name a plugin waiting for its permissions or failed to load. */
     status?: PluginListItem["status"];
+    /** For the resolution's rows, which name the plugin in the editor's language. Never recorded. */
+    localized?: PluginListItem["manifest"]["localized"];
 }
 
 /** A single instance of a plugin-owned type/namespace referenced by the project. */
@@ -471,6 +473,7 @@ function toInstalledPlugin(plugin: PluginListItem): InstalledPlugin {
         name: plugin.manifest.name,
         publisher: plugin.manifest.publisher,
         status: plugin.status,
+        ...(plugin.manifest.localized ? { localized: plugin.manifest.localized } : {}),
     };
 }
 

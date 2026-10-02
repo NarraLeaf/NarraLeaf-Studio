@@ -37,6 +37,8 @@ import { BLUEPRINT_SET_LEGAL_PARAM_KEYS } from "@shared/build/blueprintAssetSlot
 import { parsePluginStore, pluginStoreNamespace } from "@shared/utils/pluginStorage";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { getInterface } from "@/lib/app/bridge";
+import { i18nStore } from "@/lib/i18n/store";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { workspacePluginSession } from "@/lib/plugins/workspacePluginSession";
 import { ServiceAssetsService } from "../core/ServiceAssetsService";
 import { catalogAssetPins, createAssetNameDescriber } from "./assetNameCatalog";
@@ -1010,7 +1012,7 @@ export class ReferenceService extends Service<ReferenceService> {
             if (!plugin.enabled || !plugin.manifest.entries?.runtime || namespaces.length === 0) {
                 continue;
             }
-            const pluginName = plugin.manifest.name || plugin.manifest.id;
+            const pluginName = pluginDisplayName(plugin.manifest, i18nStore.getLocale()) || plugin.manifest.id;
             for (const namespace of namespaces) {
                 const result = await storage.readStore(pluginStoreNamespace(plugin.manifest.id, namespace));
                 if (result.ok) {

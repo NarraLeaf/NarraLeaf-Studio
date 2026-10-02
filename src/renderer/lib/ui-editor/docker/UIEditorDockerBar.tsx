@@ -817,12 +817,13 @@ export function UIEditorDockerBar({
     enableComponents = true,
     readOnly = UI_EDITOR_WRITABLE,
 }: UIEditorDockerBarProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const surface = useMemo(() => {
         return documentService.getDocument().surfaces.find(candidate => candidate.id === surfaceId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentService, surfaceId]);
-    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface]);
+    // The locale is a dependency because a plugin's name in the palette is in the editor's language.
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface, locale]);
     const primaryEntries = useMemo(
         () => paletteEntries.filter(entry => entry.placement === "primary"),
         [paletteEntries],

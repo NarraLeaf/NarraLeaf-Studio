@@ -206,7 +206,7 @@ function DependencyScreenRow({
                 className={`flex items-center gap-2.5 px-3 py-2 transition-colors ${openable ? "cursor-default hover:bg-fill" : ""}`}
                 onClick={openable ? () => onOpen(dependency.id) : undefined}
             >
-                <PluginAvatar name={name} src={installed?.iconUrl} size={28} />
+                <PluginAvatar name={name} colorKey={installed?.manifest.name} src={installed?.iconUrl} size={28} />
                 <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-sm text-fg">{name}</span>

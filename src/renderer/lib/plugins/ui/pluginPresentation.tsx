@@ -66,8 +66,17 @@ export function PluginStatusBadge({ status }: { status: PluginStatus }) {
  * boxed to the same square either way, so a plugin cannot change the shape of
  * its row by what it ships, and anything that still fails to decode falls back
  * to the monogram rather than to a broken-image glyph.
+ *
+ * `colorKey` is what the color is hashed from, `name` when absent. Rows pass the plugin's plain
+ * manifest name there while `name` is the translated one, so a plugin keeps its color when the
+ * editor changes language and only the letters change.
  */
-export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
+export function PluginAvatar({ name, colorKey, src, size = 36 }: {
+    name: string;
+    colorKey?: string;
+    src?: string | null;
+    size?: number;
+}) {
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
     if (src && failedSrc !== src) {
@@ -90,7 +99,7 @@ export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: str
         <span
             aria-hidden
             className="flex shrink-0 items-center justify-center rounded-lg text-xs font-medium text-white/90"
-            style={{ width: size, height: size, backgroundColor: nameMonogramColor(name) }}
+            style={{ width: size, height: size, backgroundColor: nameMonogramColor(colorKey ?? name) }}
         >
             {nameInitials(name)}
         </span>
