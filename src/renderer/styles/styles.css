@@ -356,47 +356,6 @@ html.nl-studio {
     font-family: var(--nl-ui-font-base);
 }
 
-/*
- * The incoming picture of an image transition, placed the way it will be placed once it settles.
- *
- * Every stage image (a scene background, a `/bg` row, a CG, a character's expression swap) lives in
- * a box `[data-image-id]` sized to its picture. At rest the picture sits in that box by layout -
- * no offsets, no transform. While a transition runs, the engine (narraleaf-react's `Image`) adds the
- * incoming picture centred a different way: `top/left: 50%` plus `transform: translate(-50%, -50%)`.
- * The two only agree on paper. The stage is scaled by a non-integer factor, so the box is a
- * fractional size; a layout offset is snapped to the device-pixel grid and a translate is not, so
- * the incoming picture is drawn resampled between pixels - a little soft and up to a pixel off. When
- * the transition ends the same picture is re-laid out at rest, snaps onto the grid and sharpens: the
- * whole background visibly steps sideways or down by under a pixel, on every background change
- * that has a transition. Measured in Dev Mode at 125%: the picture moved by up to 0.9 of a device
- * pixel as a fade settled, and a fade from a picture to itself still changed a third of the
- * background's pixels, by up to 118/255, between the last animated frame and the settled one.
- *
- * So the box centres its children by layout, and the incoming picture drops the translate and
- * takes its place from that. A picture the size of its box - every transition between backgrounds
- * of one aspect ratio, and the settled picture always - lands on the box's corner exactly as at
- * rest, and the last animated frame and the settled frame are the same picture. A picture of a
- * different size is still centred, by layout rather than by transform. Flex rather than auto
- * margins because auto margins stop centring along the inline axis once the picture is wider than
- * the box, and an incoming CG can be.
- *
- * Keyed on the exact centring transform, so this lets go on its own if the engine stops writing it,
- * and never touches a transition that writes a transform of its own. The layers of a layered
- * picture are not direct children of the box and keep their own centring, which never changes
- * between moving and rest. Unguarded by `.nl-studio`: the shipped game draws the same stage.
- */
-.__narraleaf_content-player [data-image-id] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.__narraleaf_content-player [data-image-id] > img[style*="transform: translate(-50%, -50%)"] {
-    top: auto !important;
-    left: auto !important;
-    transform: none !important;
-}
-
 *, *::before, *::after {
     user-select: none;
     box-sizing: border-box;
