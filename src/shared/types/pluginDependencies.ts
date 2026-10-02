@@ -9,7 +9,7 @@
  * by scanning the project's actual plugin usage, never hand-authored.
  */
 
-import type { PluginStatus } from "./plugins";
+import type { PluginManifestLocalized, PluginStatus } from "./plugins";
 
 export const PROJECT_DEPENDENCY_SCHEMA_VERSION = 1;
 
@@ -66,6 +66,12 @@ export interface DependencyResolutionEntry {
      * waiting for its permissions to be approved, and failed to load - are only visible here.
      */
     installedStatus?: PluginStatus;
+    /**
+     * The installed plugin's translations of its name, where the resolver was told them. A row
+     * names the dependency through them, so a plugin reads the same in the project's dependency
+     * table as in the plugin list; the recorded `dependency.name` stays what the project stores.
+     */
+    installedLocalized?: PluginManifestLocalized;
     status: DependencyStatus;
     /** True when this dependency causes the plugin to be suppressed for the project. */
     suppressed: boolean;

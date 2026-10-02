@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pluginDisplayDescription, pluginDisplayName } from "./pluginDisplayText";
+import { dependencyDisplayName, pluginDisplayDescription, pluginDisplayName } from "./pluginDisplayText";
 
 const manifest = {
     name: "Gallery",
@@ -36,5 +36,19 @@ describe("pluginDisplayName / pluginDisplayDescription", () => {
     it("does not read inherited properties as entries", () => {
         expect(pluginDisplayName(manifest, "constructor")).toBe("Gallery");
         expect(pluginDisplayName({ name: "Plain" }, "zh")).toBe("Plain");
+    });
+});
+
+describe("dependencyDisplayName", () => {
+    it("applies the installed plugin's translations over the recorded name", () => {
+        const entry = { dependency: { id: "narraleaf.gallery", name: "Gallery" }, installedLocalized: manifest.localized };
+        expect(dependencyDisplayName(entry, "zh")).toBe("画廊");
+        expect(dependencyDisplayName(entry, "ja")).toBe("ギャラリー");
+        expect(dependencyDisplayName(entry, "en")).toBe("Gallery");
+    });
+
+    it("names a plugin that is not installed by what the project recorded, then by its id", () => {
+        expect(dependencyDisplayName({ dependency: { id: "acme.tool", name: " Tool " } }, "zh")).toBe("Tool");
+        expect(dependencyDisplayName({ dependency: { id: "acme.tool" } }, "zh")).toBe("acme.tool");
     });
 });

@@ -36,3 +36,22 @@ export function pluginDisplayName(manifest: LocalizableManifest, locale: string 
 export function pluginDisplayDescription(manifest: LocalizableManifest, locale: string | undefined): string | undefined {
     return localizedText(manifest, locale)?.description || manifest.description;
 }
+
+/**
+ * The name a row about one of a project's dependencies shows in `locale`.
+ *
+ * The project records a plugin's plain name, which is all it has for a plugin that is not
+ * installed. When the plugin is installed, its own translations apply on top of that, so the
+ * dependency table, the build dialog and the warning raised at project open name it the way the
+ * plugin list does.
+ */
+export function dependencyDisplayName(
+    entry: {
+        dependency: { id: string; name?: string };
+        installedLocalized?: PluginManifestLocalized;
+    },
+    locale: string | undefined,
+): string {
+    const recorded = entry.dependency.name?.trim() || entry.dependency.id;
+    return pluginDisplayName({ name: recorded, localized: entry.installedLocalized }, locale);
+}

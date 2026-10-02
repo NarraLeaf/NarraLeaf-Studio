@@ -124,6 +124,7 @@ export function useProjectDependencyRows(
             version: plugin.manifest.version,
             enabled: plugin.enabled,
             status: plugin.status,
+            ...(plugin.manifest.localized ? { localized: plugin.manifest.localized } : {}),
         }))).entries;
     }, [catalog.plugins, resolved]);
 
