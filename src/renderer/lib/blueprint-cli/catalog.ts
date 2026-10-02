@@ -232,6 +232,11 @@ export type NodeDetail = {
         optional?: boolean;
         acceptsLiteral?: boolean;
         assetRef?: unknown;
+        /**
+         * The other pins that can stand in for this one (`alternativeInputs` on the definition): the
+         * node needs one of the group, not each of them.
+         */
+        alternatives?: string[];
     }[];
     fields: {
         key: string;
@@ -280,6 +285,10 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         return null;
     }
     const entry: BlueprintNodeEditorCatalogEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(type, params);
+    const alternativesOf = (pinId: string): string[] | undefined => {
+        const group = def.alternativeInputs?.find(candidate => candidate.includes(pinId));
+        return group ? group.filter(other => other !== pinId) : undefined;
+    };
     return {
         type: def.type,
         displayName: def.displayName,
@@ -302,6 +311,7 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
             optional: pin.optional,
             acceptsLiteral: pin.allowInlineLiteral,
             assetRef: pin.assetRef,
+            alternatives: pin.kind === "input" ? alternativesOf(pin.id) : undefined,
         })),
         fields: (entry.inspectorParams ?? []).map(param => ({
             key: param.key,
@@ -433,6 +443,7 @@ export function formatNodeDetail(detail: NodeDetail): string {
                 pin.optional ? "optional" : null,
                 pin.acceptsLiteral ? "takes a literal" : null,
                 pin.assetRef ? "asset id" : null,
+                pin.alternatives?.length ? `alternative to ${pin.alternatives.join(", ")}` : null,
             ].filter(Boolean);
             lines.push(`    ${pin.id.padEnd(width)}  ${bits.join(", ")}${pin.label ? `  - ${pin.label}` : ""}`);
         }
