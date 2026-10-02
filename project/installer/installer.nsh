@@ -684,13 +684,41 @@ Function nlFinishTick
   ; The origin is checked here all the same. The page is a local file this installer wrote, so this
   ; is not defending against it - it is making sure a shell open can only ever be aimed at one host,
   ; whatever the document turns into later.
+  ;
+  ; Not StdUtils' ExecShellAsUser, which the launch above uses: it refuses anything that is not a
+  ; file on disk (GetFileAttributes, before any shell call) and returns "not_found" for every URL, so
+  ; with it this link did nothing at all. A plain shell open is the right call for an unelevated
+  ; installer, which is the per-user case. An elevated installer that UAC started from an unelevated
+  ; one asks that one to make the call, so the browser does not inherit the elevation. If the shell
+  ; cannot open the address, the document shows it so it can be copied.
   StrCpy $1 $0 5
   ${If} $1 == "open:"
     StrCpy $2 $0 "" 5
     StrCpy $3 $2 26
     ${If} $3 == "https://www.narraleaf.com/"
-      ${StdUtils.ExecShellAsUser} $4 "$2" "open" ""
+      StrCpy $R9 $2
+      StrCpy $R8 ""
+      ${If} ${UAC_IsInnerInstance}
+        !insertmacro UAC_AsUser_Call Function nlShellOpen ${UAC_SYNCREGISTERS}
+      ${Else}
+        Call nlShellOpen
+      ${EndIf}
+      ${If} $R8 != "ok"
+        NlWebView::Eval `window.nlOpenFailed("$2")`
+      ${EndIf}
     ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+; Opens the address in $R9 with the shell; "ok" or "error" in $R8. A function rather than inline so
+; UAC_AsUser_Call can run it in the unelevated process, which hands the registers back.
+Function nlShellOpen
+  ClearErrors
+  ExecShell "open" "$R9"
+  ${If} ${Errors}
+    StrCpy $R8 "error"
+  ${Else}
+    StrCpy $R8 "ok"
   ${EndIf}
 FunctionEnd
 

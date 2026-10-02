@@ -74,6 +74,9 @@
   /* Pulled left by its own padding so the link's text starts on the same column as the line
      above it, rather than being inset by the hover target. */
   #after { margin-top: 10px; margin-left: -6px; }
+  /* Shown when the shell could not open the documentation; the address can be selected and copied. */
+  #open-failed { margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--fg-muted);
+                 user-select: text; cursor: text; overflow-wrap: anywhere; }
   body[data-state="failed"] #note { color: var(--danger); }
 
   /* ---- controls ---------------------------------------------------------------------------- */
@@ -158,6 +161,7 @@
 
     <div id="note" hidden></div>
     <div id="after" hidden><button class="link" id="docs"></button></div>
+    <div id="open-failed" hidden></div>
   </main>
 
   <footer>
@@ -211,7 +215,8 @@
       close: "Close",
       docs: "Documentation",
       locked: "{app} is already installed here. To install it elsewhere, uninstall it first.",
-      refused: "This folder cannot be written to. Choose another location."
+      refused: "This folder cannot be written to. Choose another location.",
+      openFailed: "Could not open the browser. Documentation: {url}"
     },
     zh: {
       name: "中文",
@@ -229,7 +234,8 @@
       close: "关闭",
       docs: "文档",
       locked: "{app} 已安装在此位置。如需安装到其他位置，请先卸载",
-      refused: "无法写入该文件夹，请选择其他位置"
+      refused: "无法写入该文件夹，请选择其他位置",
+      openFailed: "无法打开浏览器。文档地址：{url}"
     },
     ja: {
       name: "日本語",
@@ -247,7 +253,8 @@
       close: "閉じる",
       docs: "ドキュメント",
       locked: "{app} はこの場所にインストールされています。別の場所にインストールするには、先にアンインストールしてください",
-      refused: "このフォルダーには書き込めません。別の場所を選択してください"
+      refused: "このフォルダーには書き込めません。別の場所を選択してください",
+      openFailed: "ブラウザーを開けませんでした。ドキュメント：{url}"
     }
   };
 
@@ -265,9 +272,11 @@
   var locked = false;
   // The last folder picked was not taken; cleared by the next one that is.
   var refused = false;
+  // The documentation address the shell could not open, or "".
+  var unopened = "";
 
   function fill(template) {
-    return (template || "").replace("{app}", app).replace("{dir}", dir);
+    return (template || "").replace("{app}", app).replace("{dir}", dir).replace("{url}", unopened);
   }
 
   function apply() {
@@ -293,6 +302,8 @@
     el("after").hidden = !done;
     if (done) { el("note").textContent = fill(text.installedIn); }
     el("docs").textContent = text.docs;
+    el("open-failed").hidden = !done || unopened === "";
+    el("open-failed").textContent = unopened === "" ? "" : fill(text.openFailed);
 
     el("k-location").textContent = text.location;
     el("k-size").textContent = text.size;
@@ -372,6 +383,7 @@
     apply();
   };
   window.nlDirRefused = function () { refused = true; apply(); };
+  window.nlOpenFailed = function (address) { unopened = address; apply(); };
   window.nlMessage = function (message) { el("note").textContent = message; };
 
   // Called by the host's progress mirror, up to ten times a second.
