@@ -115,6 +115,8 @@ export type WorkspacePluginLoadResult =
     }
     | {
         pluginId: string;
+        /** The plugin's name in the editor's language when it failed, for the notice that says so. */
+        pluginName?: string;
         ok: false;
         error: string;
     };
@@ -276,6 +278,7 @@ async function loadWorkspacePlugin(
         workspacePluginSession(ctx).markFailed(descriptor.plugin.id, message);
         return {
             pluginId: descriptor.plugin.id,
+            pluginName: pluginDisplayName(descriptor.manifest, i18nStore.getLocale()) || descriptor.plugin.id,
             ok: false,
             error: message,
         };
