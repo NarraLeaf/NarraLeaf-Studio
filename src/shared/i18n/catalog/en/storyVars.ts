@@ -18,6 +18,11 @@ export const storyVars = {
         string: "String",
         json: "JSON",
     },
+    // A boolean default reads as a value, in the words the snapshot panel uses for the same values.
+    value: {
+        true: "True",
+        false: "False",
+    },
     row: {
         nameAria: "Variable name",
         defaultPlaceholder: "default",
