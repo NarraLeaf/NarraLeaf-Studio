@@ -273,8 +273,9 @@ export const blueprint = {
             other: "已被 {count} 个图层运行",
         },
     },
-    // 没有图层的蓝图显示的内容：适合其所属对象的模板各占一格，最后一格是空白图层。
-    // 模板标题同时是它所创建图层的初始名称。
+    /**
+     * 没有图层的蓝图显示的内容：几个适合其所属对象的模板、模板库，以及最后的空白图层。
+     */
     layerTemplates: {
         heading: "新建图层",
         description: "从模板开始，或新建空白图层",
@@ -283,74 +284,37 @@ export const blueprint = {
             title: "空白图层",
             description: "空画布，或运行自己的脚本",
         },
-        splash: {
-            title: "开屏动画",
-            description: "淡入、停留、淡出后前往下一个页面，点击或按任意键可跳过",
+        library: {
+            title: "更多模板",
+            description: "按分类浏览适用于这个蓝图的全部模板",
         },
-        pressAnyKey: {
-            title: "按任意键继续",
-            description: "点击或按任意键时前往下一个页面",
+    },
+    /** 模板库：适用于当前蓝图的全部模板，按分类列出。 */
+    templateLibrary: {
+        title: "模板库",
+        open: "从模板库添加",
+        all: "全部",
+        categoriesLabel: "分类",
+        search: "搜索模板",
+        emptyFiltered: "没有匹配的模板",
+        empty: "没有适用于这个蓝图的模板",
+        add: "添加",
+        back: "返回",
+        openDetail: "查看详情",
+        choicesHeading: "添加后需要选择",
+        choicesNone: "添加后即可运行",
+        previewLabel: "图预览",
+        category: {
+            pageFlow: "页面流程",
+            navigation: "跳转",
+            game: "游戏",
+            settings: "设置",
+            audio: "声音",
+            motion: "动画",
+            keys: "按键",
+            window: "窗口",
+            display: "显示内容",
         },
-        pageMusic: {
-            title: "页面音乐",
-            description: "页面显示时播放音乐，页面关闭时淡出",
-        },
-        escapeBack: {
-            title: "Esc 返回",
-            description: "按 Esc 关闭当前页面，回到下层页面",
-        },
-        escapeMenu: {
-            title: "Esc 打开菜单",
-            description: "按 Esc 在当前页面上叠加一个页面",
-        },
-        confirmClose: {
-            title: "关闭前确认",
-            description: "关闭游戏窗口前询问玩家",
-        },
-        fullscreenKey: {
-            title: "全屏快捷键",
-            description: "按 F11 进入或退出全屏",
-        },
-        screenshotKey: {
-            title: "截图快捷键",
-            description: "按 S 保存截图",
-        },
-        openPage: {
-            title: "打开页面",
-            description: "点击时前往指定页面",
-        },
-        startGame: {
-            title: "开始游戏",
-            description: "点击时开始故事",
-        },
-        goBack: {
-            title: "返回",
-            description: "点击时关闭当前页面，回到下层页面",
-        },
-        overlayPage: {
-            title: "叠加页面",
-            description: "点击时在当前页面上叠加一个页面",
-        },
-        quitApp: {
-            title: "退出按钮",
-            description: "点击时询问确认，确认后退出游戏",
-        },
-        clickSound: {
-            title: "点击音效",
-            description: "点击时播放音效",
-        },
-        hoverSound: {
-            title: "悬停音效",
-            description: "指针移入时播放音效",
-        },
-        hoverGrow: {
-            title: "悬停放大",
-            description: "指针移入时略微放大，移出时还原",
-        },
-        // 由退出类模板写进游戏，是玩家看到的文字。
-        quitQuestion: "确定要退出游戏吗？",
-        quitConfirm: "退出",
-        quitCancel: "取消",
     },
     // 蓝图挂在什么东西上——搜索结果要靠它说明节点在哪。
     owner: {

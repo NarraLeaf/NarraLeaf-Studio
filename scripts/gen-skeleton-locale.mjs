@@ -110,6 +110,8 @@ const NODE_PARAM_SLOTS = [
     ["blueprint.event.head.onBroadcast", "event", VERBATIM],
     // A note on the canvas, written to whoever opens the graph.
     ["blueprint.flow.comment", "text", TEXT],
+    // Which of the comment swatches the card is painted in.
+    ["blueprint.flow.comment", "color", VERBATIM],
     ["blueprint.fn.call", "fnRef", VERBATIM],
     ["blueprint.fn.head", "name", TEXT],
     ["blueprint.game.getTrackVolume", "audioTrackId", VERBATIM],
@@ -526,6 +528,11 @@ function buildVariant(locale) {
     }
     for (const component of uidoc.value.components ?? []) {
         component.name = say(component.name);
+        // A param's name labels its field in the instance's inspector. Its id is what Get Component
+        // Param names and its default is a value a blueprint reads, so both stay as they are.
+        for (const param of component.params ?? []) {
+            param.name = say(param.name);
+        }
         for (const element of Object.values(component.elements ?? {})) {
             translateElement(element);
         }
