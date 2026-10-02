@@ -302,15 +302,17 @@ function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): st
         }
     }
     const componentId = anchorComponentId(owner);
-    if (componentId) {
-        const component = (document.components ?? []).find(candidate => candidate.id === componentId);
-        if (component?.name) {
-            parts.push(component.name);
-        }
+    const component = componentId
+        ? (document.components ?? []).find(candidate => candidate.id === componentId)
+        : undefined;
+    if (component?.name) {
+        parts.push(component.name);
     }
     const elementId = anchorElementId(owner);
     if (elementId) {
-        const element = document.elements[elementId];
+        // A component's controls live in the component's own table, not the document's, so a
+        // component owner's element is looked up there or not at all.
+        const element = componentId ? component?.elements[elementId] : document.elements[elementId];
         const name = element?.name || element?.type;
         if (name) {
             parts.push(name);
