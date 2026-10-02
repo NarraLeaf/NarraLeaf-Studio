@@ -525,6 +525,7 @@ export const story = {
         scopedTo: "{name} 可用的动作",
         addStarred: "添加到收藏",
         removeStarred: "从收藏中移除",
+        starredEmpty: "收藏的指令列于「/」菜单最前",
     },
     music: {
         missingAudio: "音频缺失",

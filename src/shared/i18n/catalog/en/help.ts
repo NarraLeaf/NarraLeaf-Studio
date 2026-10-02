@@ -176,6 +176,7 @@ export const help = {
                 + "\n"
                 + "- The panel spells commands the way they are typed. With the editor in Chinese the Chinese "
                 + "spellings parse, and the English spellings remain valid.\n"
+                + "- The star beside a command adds it to Starred. Starred commands are listed first in the “/” menu.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
         storyVariables: {

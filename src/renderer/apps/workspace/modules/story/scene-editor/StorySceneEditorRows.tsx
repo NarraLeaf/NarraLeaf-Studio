@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
@@ -44,8 +44,10 @@ import {
     dialogueActionCharacter,
 } from "./storyCharacterActions";
 import { availableSpecCommands, localizeSpecCommand, specPaletteCommands } from "./commands/specPalette";
-import { availableSidebarGroups, browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { availableSidebarGroups, browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, pickStarredCommands, starredMenuStops, type StoryCommandMenuStop, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
+import { useStarredStoryCommands } from "./useStarredStoryCommands";
+import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
 import { getCommandDef, getDefById, localizedCommandToken } from "./commands/registry";
 import { localizeCommandVerb } from "./storyCommandSpelling";
 import { completionFor, defaultHighlights, getCommandCursor, type StoryCommandCursor } from "./storyCommandCursor";
@@ -2183,11 +2185,18 @@ export function InsertRow(props: {
         },
         [ct, pluginCommands, props.commandContext, scopeName],
     );
+    const { starredIds, toggleStarred } = useStarredStoryCommands();
+    // A scoped menu is one subject's list under that subject's name, so it does not lead with the
+    // starred set: rows there would sit under a header that names someone else.
+    const starredCommands = useMemo(
+        () => scopeName === null ? pickStarredCommands(sidebarGroups, starredIds) : [],
+        [scopeName, sidebarGroups, starredIds],
+    );
     const characterOptions = useMemo(
         () => getSpeakerCandidates(props.characters, props.tempSpeakers, chooserQuery),
         [chooserQuery, props.characters, props.tempSpeakers],
     );
-    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups);
+    const actionMenu = useActionCommandMenuState(actionOptions, chooserQuery, sidebarGroups, starredCommands);
     const characterMenu = useCharacterPickerState(characterOptions);
     const textStyle = useStoryEditorTextStyle();
 
@@ -2494,6 +2503,9 @@ export function InsertRow(props: {
                     <ActionCommandMenu
                         ranked={actionMenu.ranked}
                         sections={actionMenu.sections}
+                        starred={actionMenu.starred}
+                        starredIds={starredIds}
+                        onToggleStarred={toggleStarred}
                         stops={actionMenu.stops}
                         category={actionMenu.category}
                         reachable={actionMenu.reachable}
@@ -2703,17 +2715,28 @@ type MenuCategory = typeof ALL_MENU_CATEGORY | StoryCommandCategoryId;
  * that files under six subjects is six distinct stops. That composite key is what keeps rule 2 true:
  * one keypress moves one stop, one row is `active`, and Enter takes the row on screen rather than the
  * first row that shares its id (see {@link browseMenuStops}).
+ *
+ * The author's starred commands head the menu where it opens — 全部, nothing typed — so the commands
+ * they reach for most are the first rows and the first Enter. Only there: a query is answered by the
+ * ranking, and a chosen category by its own filing, and a starred row placed above either would be a
+ * row that did not match what was asked for. The starred commands are still in their subjects below.
  */
 function useActionCommandMenuState(
     options: PaletteActionCommand[],
     query: string,
     allGroups: readonly StoryCommandSidebarGroup[],
+    starredCommands: readonly PaletteActionCommand[],
 ) {
     const browse = query.trim() === "";
     const [category, setCategory] = useState<MenuCategory>(ALL_MENU_CATEGORY);
     // 全部 with a query is the one case that stays flat: the ranking is the answer there, and a header
     // over each hit would only argue with it.
     const ranked = category === ALL_MENU_CATEGORY && !browse;
+
+    const starred = useMemo<readonly StoryCommandMenuStop[]>(
+        () => category === ALL_MENU_CATEGORY && browse ? starredMenuStops(starredCommands) : [],
+        [browse, category, starredCommands],
+    );
 
     /** The sections the right column shows — the chosen category's filing, narrowed by the query. */
     const sections = useMemo<readonly StoryCommandSidebarGroup[]>(() => {
@@ -2753,8 +2776,8 @@ function useActionCommandMenuState(
                 return { key: `${group.id}:${command.id}`, group, command };
             });
         }
-        return browseMenuStops(sections);
-    }, [options, ranked, sections]);
+        return [...starred, ...browseMenuStops(sections)];
+    }, [options, ranked, sections, starred]);
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const activeStop = stops.find(stop => stop.key === activeKey) ?? stops[0] ?? null;
 
@@ -2787,6 +2810,7 @@ function useActionCommandMenuState(
     return {
         ranked,
         sections,
+        starred,
         reachable,
         category,
         chooseCategory,
@@ -2798,35 +2822,71 @@ function useActionCommandMenuState(
     };
 }
 
+/**
+ * One command in the `/` menu, with the star that adds it to (or takes it out of) the starred rows.
+ *
+ * The star is drawn on the highlighted row, and stays drawn on a starred one, where it is also the mark
+ * that says so. It sits beside the row rather than inside it, and takes its gesture on `mousedown` with
+ * the default prevented, like every other control in this menu: the line being typed keeps focus, and
+ * starring a command does not choose it.
+ */
 function ActionCommandMenuRow(props: {
     stop: StoryCommandMenuStop;
     active: boolean;
+    starred: boolean;
     onHighlight: (key: string) => void;
     onChoose: (commandId: string) => void;
+    onToggleStarred: (commandId: string) => void;
 }) {
+    const { t } = useTranslation();
     const { command, group } = props.stop;
     // The glyph is the COMMAND's, the colour is the SECTION's (the sidebar's rule, shared here): the
     // icon says the verb, the hue says the subject it is filed under.
     const Icon = command.icon;
+    const starLabel = props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred");
     return (
-        <button
-            type="button"
-            role="option"
-            aria-selected={props.active}
-            data-action-command-key={props.stop.key}
-            className={[
-                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
-            ].join(" ")}
-            onMouseDown={() => props.onChoose(command.id)}
-            onMouseEnter={() => props.onHighlight(props.stop.key)}
-        >
-            <Icon className="h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
-            <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg">{command.label}</span>
-                {command.detail ? <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span> : null}
-            </span>
-        </button>
+        <div className="relative" onMouseEnter={() => props.onHighlight(props.stop.key)}>
+            <button
+                type="button"
+                role="option"
+                aria-selected={props.active}
+                data-action-command-key={props.stop.key}
+                className={[
+                    // Room for the star is kept on every row, so a label does not re-truncate under
+                    // the pointer when the star comes up beside it.
+                    "flex w-full items-center gap-2 rounded-md py-2 pl-2 pr-9 text-left transition-colors",
+                    props.active ? "bg-primary/15 text-fg" : "hover:bg-fill",
+                ].join(" ")}
+                onMouseDown={() => props.onChoose(command.id)}
+            >
+                <Icon className="h-4 w-4 shrink-0" style={{ color: group.iconColor }} />
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-fg">{command.label}</span>
+                    {command.detail ? <span className="block truncate text-2xs text-fg-subtle">{command.detail}</span> : null}
+                </span>
+            </button>
+            {props.active || props.starred ? (
+                <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center">
+                    <button
+                        type="button"
+                        className={[
+                            "pointer-events-auto grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-fill-strong",
+                            props.starred ? "text-warning" : "text-fg-subtle hover:text-warning",
+                        ].join(" ")}
+                        data-tip={starLabel}
+                        aria-label={starLabel}
+                        aria-pressed={props.starred}
+                        onMouseDown={event => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            props.onToggleStarred(command.id);
+                        }}
+                    >
+                        <Star className="h-3.5 w-3.5" fill={props.starred ? "currentColor" : "none"} />
+                    </button>
+                </span>
+            ) : null}
+        </div>
     );
 }
 
@@ -2869,6 +2929,10 @@ function ActionCommandCategoryRow(props: {
 function ActionCommandMenu(props: {
     ranked: boolean;
     sections: readonly StoryCommandSidebarGroup[];
+    /** The starred rows that head the browse; empty wherever the menu does not lead with them. */
+    starred: readonly StoryCommandMenuStop[];
+    starredIds: ReadonlySet<string>;
+    onToggleStarred: (commandId: string) => void;
     stops: readonly StoryCommandMenuStop[];
     category: MenuCategory;
     reachable: ReadonlySet<MenuCategory>;
@@ -2933,15 +2997,39 @@ function ActionCommandMenu(props: {
                         key={stop.key}
                         stop={stop}
                         active={stop.key === props.activeKey}
+                        starred={props.starredIds.has(stop.command.id)}
                         onHighlight={props.onHighlight}
                         onChoose={props.onChoose}
+                        onToggleStarred={props.onToggleStarred}
                     />
                 ))
             ) : (
-                // The sidebar's projection, one section per subject, so the author sees "here is
-                // everything you can do to an image" — a verb appearing under several subjects is
-                // several rows, each its own highlight stop.
-                props.sections.map(entry => {
+                <>
+                {props.starred.length > 0 ? (
+                    // The starred rows lead, under a header of their own in the shape of the subject
+                    // headers below it — and with no gap above, being the first section.
+                    <div className="pt-2 first:pt-0">
+                        <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium tracking-wide text-fg-subtle">
+                            <Star className="h-3 w-3 shrink-0" style={{ color: STARRED_ICON_COLOR }} />
+                            <span>{t("story.actionCreator.starred")}</span>
+                        </div>
+                        {props.starred.map(stop => (
+                            <ActionCommandMenuRow
+                                key={stop.key}
+                                stop={stop}
+                                active={stop.key === props.activeKey}
+                                starred
+                                onHighlight={props.onHighlight}
+                                onChoose={props.onChoose}
+                                onToggleStarred={props.onToggleStarred}
+                            />
+                        ))}
+                    </div>
+                ) : null}
+                {/* The sidebar's projection, one section per subject, so the author sees "here is
+                    everything you can do to an image" — a verb appearing under several subjects is
+                    several rows, each its own highlight stop. */}
+                {props.sections.map(entry => {
                     const Icon = entry.group.icon;
                     return (
                         // The gap above a header separates it from the section before it, so the first
@@ -2963,14 +3051,17 @@ function ActionCommandMenu(props: {
                                         key={key}
                                         stop={{ key, group: entry.group, command }}
                                         active={key === props.activeKey}
+                                        starred={props.starredIds.has(command.id)}
                                         onHighlight={props.onHighlight}
                                         onChoose={props.onChoose}
+                                        onToggleStarred={props.onToggleStarred}
                                     />
                                 );
                             })}
                         </div>
                     );
-                })
+                })}
+                </>
             )}
         </>
     );
