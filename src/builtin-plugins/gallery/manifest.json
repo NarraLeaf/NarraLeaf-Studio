@@ -7,7 +7,11 @@
   "localized": {
     "zh": {
       "name": "画廊",
-      "description": "制作 CG 画廊、场景回想、音乐与语音鉴赏等附加内容界面，并由蓝图驱动"
+      "description": "制作 CG 画廊、场景回想、音乐与配音鉴赏等附加内容界面，并由蓝图驱动"
+    },
+    "ja": {
+      "name": "ギャラリー",
+      "description": "CG ギャラリー、シーン回想、音楽とボイスの鑑賞などのおまけ画面を作成し、ブループリントから制御する"
     }
   },
   "publisher": "NarraLeaf Studio",

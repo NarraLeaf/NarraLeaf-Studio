@@ -9,6 +9,7 @@ import {
     toGameMenuSpec,
     type MenuBarDocument,
 } from "./document";
+import { MENU_BAR_MESSAGES } from "./messages";
 
 const AUTHORED: MenuBarDocument = {
     version: 1,
@@ -142,5 +143,18 @@ describe("the plugin manifest", () => {
             fs.readFileSync(path.join(__dirname, "manifest.json"), "utf-8"),
         ) as { version: string };
         expect(manifest.version.split(".")[0]).toBe("1");
+    });
+
+    it("names the plugin as the panel's title does, in every language the panel speaks", () => {
+        // The plugin list and the dependency rows show the manifest's name; the side panel shows its
+        // own title. One plugin, so one name in each language.
+        const manifest = JSON.parse(
+            fs.readFileSync(path.join(__dirname, "manifest.json"), "utf-8"),
+        ) as { name: string; localized?: Record<string, { name?: string }> };
+        const { en, ...translated } = MENU_BAR_MESSAGES.messages;
+        expect(manifest.name).toBe(en.title);
+        for (const [locale, messages] of Object.entries(translated)) {
+            expect(manifest.localized?.[locale]?.name, locale).toBe(messages.title);
+        }
     });
 });

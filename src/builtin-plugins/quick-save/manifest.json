@@ -8,6 +8,10 @@
     "zh": {
       "name": "快速存档",
       "description": "基于一个保留存档槽的快速存档与快速读档蓝图节点"
+    },
+    "ja": {
+      "name": "クイックセーブ",
+      "description": "専用のセーブ枠 1 つを使うクイックセーブとクイックロードのブループリントノード"
     }
   },
   "publisher": "NarraLeaf Studio",

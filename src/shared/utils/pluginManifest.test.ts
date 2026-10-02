@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { SOURCE_LOCALE, SUPPORTED_LOCALES } from "../i18n/locales";
 import { validatePluginManifest } from "./pluginManifest";
 
 describe("validatePluginManifest", () => {
@@ -1085,17 +1086,23 @@ describe("validatePluginManifest localized", () => {
 
 describe("built-in plugin manifests", () => {
     const BUILT_INS = ["gallery", "menu-bar", "quick-save"];
+    /** Every language Studio ships besides the one the plain fields are written in. */
+    const TRANSLATED = SUPPORTED_LOCALES.filter(locale => locale !== SOURCE_LOCALE);
 
-    it.each(BUILT_INS)("%s validates and names itself in Chinese without a closing full stop", async (dir) => {
+    it.each(BUILT_INS)("%s validates and names itself in every shipped language without a closing full stop", async (dir) => {
         const manifestPath = fileURLToPath(new URL(`../../builtin-plugins/${dir}/manifest.json`, import.meta.url));
         const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
         expect(result).toMatchObject({ ok: true });
-        const zh = (result as { manifest: { localized?: Record<string, { name?: string; description?: string }> } })
-            .manifest.localized?.zh;
-        expect(zh?.name).toBeTruthy();
-        expect(zh?.description).toBeTruthy();
-        for (const text of [zh!.name!, zh!.description!]) {
-            expect(text).not.toMatch(/[。.]$/);
+        const localized = (result as { manifest: { localized?: Record<string, { name?: string; description?: string }> } })
+            .manifest.localized ?? {};
+        expect(Object.keys(localized).sort()).toEqual([...TRANSLATED].sort());
+        for (const locale of TRANSLATED) {
+            const entry = localized[locale];
+            expect(entry?.name, `${dir} ${locale} name`).toBeTruthy();
+            expect(entry?.description, `${dir} ${locale} description`).toBeTruthy();
+            for (const text of [entry!.name!, entry!.description!]) {
+                expect(text).not.toMatch(/[。.]$/);
+            }
         }
     });
 });

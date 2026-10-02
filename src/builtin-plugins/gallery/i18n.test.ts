@@ -6,6 +6,8 @@
  * nothing throws, the word just stays English. So the tests below ask for every word by name, in
  * every language Studio ships.
  */
+import fs from "fs";
+import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTranslator } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n/store";
@@ -216,5 +218,21 @@ describe("the Gallery message bundle", () => {
     it("uses the interface's words in Chinese: 项目 and 资产, never 工程 or 资源", () => {
         const off = translatedStrings("zh").filter(({ text }) => /工程|资源/.test(text));
         expect(off).toEqual([]);
+    });
+});
+
+describe("the manifest's name", () => {
+    // The plugin list and the dependency rows show the manifest's name; the panel and the editor tab
+    // show the node category's word. One plugin, so one name in each language.
+    const manifest = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "manifest.json"), "utf-8"),
+    ) as { name: string; localized?: Record<string, { name?: string }> };
+
+    it("is the node category in English", () => {
+        expect(manifest.name).toBe(GALLERY_CATEGORY);
+    });
+
+    it.each(TRANSLATED)("is the node category's word in %s", locale => {
+        expect(manifest.localized?.[locale]?.name).toBe(GALLERY_NODE_TRANSLATIONS[locale]?.[GALLERY_CATEGORY]);
     });
 });
