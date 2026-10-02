@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageOff, Lock } from "lucide-react";
 import { AssetType, ui, type PluginApp } from "narraleaf-studio/plugin";
+import { useGalleryTranslator } from "./messages";
 
 const urlCache = new Map<string, Promise<string>>();
 let disposeApp: PluginApp | null = null;
@@ -89,6 +90,7 @@ export function useAssetUrl(app: PluginApp, assetId: string | null | undefined):
 export function useAudioAudition(app: PluginApp) {
     const [playingKey, setPlayingKey] = useState<string | null>(null);
     const elementRef = useRef<HTMLAudioElement | null>(null);
+    const tr = useGalleryTranslator(app);
 
     const stop = useCallback(() => {
         elementRef.current?.pause();
@@ -121,11 +123,11 @@ export function useAudioAudition(app: PluginApp) {
             // indistinguishable from a broken one, and the likely causes
             // (missing asset, a codec this shell cannot decode) are both worth
             // knowing.
-            app.services.ui.notifications.error(
-                `Could not play the clip: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            app.services.ui.notifications.error(tr.t("playFailed", {
+                error: error instanceof Error ? error.message : String(error),
+            }));
         }
-    }, [app, playingKey, stop]);
+    }, [app, playingKey, stop, tr]);
 
     return { playingKey, toggle, stop };
 }

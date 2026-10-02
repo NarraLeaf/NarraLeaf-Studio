@@ -22,7 +22,7 @@ import { PanelPosition, definePlugin } from "narraleaf-studio/plugin";
 import { disposeAssetUrls } from "./components";
 import { GalleryEditorTab } from "./GalleryEditorTab";
 import { GalleryPanel } from "./GalleryPanel";
-import { GALLERY_MESSAGES } from "./messages";
+import { createGalleryTranslator } from "./messages";
 import { createGalleryStore } from "./store";
 import {
     DYNAMIC_OPTIONS_SOURCE,
@@ -42,7 +42,7 @@ export default definePlugin({
         // One translator, read at render: `.t()` resolves against the LIVE editor locale, and both
         // registrations below expose the title as a getter, so a language switch re-titles them on
         // the next render with no re-registration (the same shape the core panel modules use).
-        const tr = app.services.i18n.createTranslator(GALLERY_MESSAGES);
+        const tr = createGalleryTranslator(app);
 
         const openEditor = () => app.services.ui.editors.open({
             id: EDITOR_TAB_ID,

@@ -193,6 +193,70 @@ function groupParam() {
 }
 
 /**
+ * What each EXTRA column is called. The node inspector offers these as the Kind
+ * options, and the editor tab names its columns with the same words (through
+ * {@link GALLERY_NODE_TRANSLATIONS}), so a step that says "Kind = Music" names the
+ * option the author will find in the dropdown.
+ */
+export const GALLERY_KIND_LABELS: Record<GalleryEntryKind, string> = {
+    cg: "CG",
+    scene: "Recollection",
+    music: "Music",
+    voice: "Voice",
+};
+
+/**
+ * The nodes' words in other languages, keyed by the English text the
+ * declarations below use. Studio draws a node's title, category and labels
+ * through it (see `BlueprintNodeDeclaration.translations`).
+ *
+ * Words Studio's own catalogue already translates - In, Next, Count, Entries,
+ * Image, Index, Group, Name, Variant - read the host's way whatever is written
+ * here, so they are left out; `CG` reads the same in every language. The test
+ * beside this file holds the table to exactly the words the nodes use.
+ */
+export const GALLERY_NODE_TRANSLATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    zh: {
+        "Gallery": "画廊",
+        "Get Gallery": "获取画廊条目",
+        "Get Gallery Variants": "获取画廊变体",
+        "Get Gallery Groups": "获取画廊分组",
+        "Get Gallery Progress": "获取画廊进度",
+        "Unlock Gallery": "解锁画廊条目",
+        "Lock Gallery": "锁定画廊条目",
+        "Unlock Whole Gallery": "解锁整个画廊",
+        "Lock Whole Gallery": "锁定整个画廊",
+        "Is Gallery Unlocked": "画廊条目是否已解锁",
+        "Get Gallery Variant At": "按索引获取画廊变体",
+        "Get Gallery Variant Count": "获取画廊变体数量",
+        "Get Gallery Cover": "获取画廊封面",
+        "Get Gallery Artwork Count": "获取画廊条目数量",
+        "Get Gallery Artwork At": "按索引获取画廊条目",
+        "Artwork": "条目",
+        "Artwork Id": "条目 Id",
+        "Variant Id": "变体 Id",
+        "Variant Count": "变体数量",
+        "Group Id": "分组 Id",
+        "Groups": "分组列表",
+        "Only Unlocked": "仅已解锁",
+        "Unlocked": "已解锁",
+        "Unlocked Count": "已解锁数量",
+        "Total": "总数",
+        "Percent": "百分比",
+        "Variant Total": "变体总数",
+        "Variant Unlocked": "已解锁变体数",
+        "All groups": "全部分组",
+        "All variants": "全部变体",
+        "Any variant": "任一变体",
+        "Kind": "类型",
+        "All kinds": "全部类型",
+        "Recollection": "回想",
+        "Music": "音乐",
+        "Voice": "语音",
+    },
+};
+
+/**
  * Which EXTRA column this node reads. Static options rather than a dynamic
  * source: the kinds are a closed set in the plugin's own code, not project data.
  */
@@ -202,12 +266,7 @@ function kindParam() {
         label: "Kind",
         kind: "select" as const,
         emptyOptionLabel: "All kinds",
-        options: [
-            { value: "cg", label: "CG" },
-            { value: "scene", label: "Recollection" },
-            { value: "music", label: "Music" },
-            { value: "voice", label: "Voice" },
-        ],
+        options: GALLERY_ENTRY_KINDS.map(kind => ({ value: kind, label: GALLERY_KIND_LABELS[kind] })),
     };
 }
 
@@ -303,6 +362,13 @@ function countUnlockedRows(rows: readonly { unlocked: boolean }[]): number {
 }
 
 export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
+    return declareGalleryBlueprintNodes(readCatalog).map(def => ({
+        ...def,
+        translations: GALLERY_NODE_TRANSLATIONS,
+    }));
+}
+
+function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
     const store = (): GalleryStoreData => normalizeGalleryStore(readCatalog());
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */

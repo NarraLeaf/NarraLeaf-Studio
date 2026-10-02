@@ -395,6 +395,20 @@ export type BlueprintNodeDeclaration = {
     saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
     role?: BlueprintNodeRole;
+    /**
+     * The node's own words in other languages, for a node the host did not define.
+     *
+     * Keyed by locale code, then by the English text exactly as this declaration writes it: the
+     * title, the category, a pin label, an inspector label, an option label or an empty-option
+     * label. That is how the host's own catalogue is keyed (see `blueprintNodeI18n`), because the
+     * canvas, the palette and the issue list all hold a title or a label rather than the node that
+     * declared it. A string the host already translates keeps the host's wording, so one English
+     * word reads the same on every node; a string with no entry for the active locale is drawn in
+     * English.
+     *
+     * Built-in nodes leave this unset: their words live in Studio's catalogue.
+     */
+    translations?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 };
 
 /**

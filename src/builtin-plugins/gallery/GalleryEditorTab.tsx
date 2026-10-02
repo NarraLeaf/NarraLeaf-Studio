@@ -41,7 +41,6 @@ import {
     type PluginApp,
     type PluginSceneEntry,
     type PluginStoryEntry,
-    type PluginTranslator,
     type PluginVoiceUnitEntry,
 } from "narraleaf-studio/plugin";
 import {
@@ -55,7 +54,13 @@ import {
     type GalleryVariant,
 } from "./catalog";
 import { GalleryThumb, InlineNameInput, formatDuration, useAudioAudition } from "./components";
-import { useGalleryTranslator } from "./messages";
+import {
+    galleryNodeWord,
+    useGalleryTranslator,
+    type GalleryMessageKey,
+    type GalleryTranslator,
+} from "./messages";
+import { GALLERY_KIND_LABELS } from "./nodes";
 import type { GalleryStore } from "./store";
 
 /** Sentinel group filters that are not real group ids. */
@@ -64,15 +69,16 @@ const GROUP_UNGROUPED = "__none";
 
 const DRAG_ENTRY_MIME = "application/x-narraleaf-gallery-entry";
 
+/**
+ * A column's own words are message keys. Its name is not among them: that is the
+ * Kind option the blueprint node offers, read through {@link kindLabel} so the two
+ * cannot disagree.
+ */
 type KindMeta = {
-    label: string;
-    /**
-     * How the kind reads mid-sentence. Not derivable from `label`: lowercasing
-     * it turns the CG acronym into "cg".
-     */
-    noun: string;
     /** The primary action's verb for this column. */
-    createLabel: string;
+    createKey: GalleryMessageKey;
+    /** What the column says while it has no entries. */
+    emptyKey: GalleryMessageKey;
     icon: typeof Images;
     /** Grid for kinds identified by a picture, list for kinds identified by sound or text. */
     layout: "grid" | "list";
@@ -84,47 +90,48 @@ type KindMeta = {
      * Three of the four columns collect themselves while the player plays, and only CG needs the
      * story to say so. Without this line on the card that difference reads as a broken column.
      */
-    unlockKey: string;
+    unlockKey: GalleryMessageKey;
 };
 
 const KIND_META: Record<GalleryEntryKind, KindMeta> = {
     cg: {
-        label: "CG",
-        noun: "CG",
-        createLabel: "Import CGs",
+        createKey: "createCg",
+        emptyKey: "emptyCg",
         icon: Images,
         layout: "grid",
         rowFields: "name, image, unlocked, variantCount",
         unlockKey: "unlockCg",
     },
     scene: {
-        label: "Recollection",
-        noun: "recollection",
-        createLabel: "Add Recollection",
+        createKey: "createScene",
+        emptyKey: "emptyScene",
         icon: Clapperboard,
         layout: "grid",
         rowFields: "name, image, unlocked, storyId, sceneId",
         unlockKey: "unlockScene",
     },
     music: {
-        label: "Music",
-        noun: "track or album",
-        createLabel: "Import Tracks",
+        createKey: "createMusic",
+        emptyKey: "emptyMusic",
         icon: Music,
         layout: "list",
         rowFields: "name, audioAssetId, durationSec, unlocked",
         unlockKey: "unlockMusic",
     },
     voice: {
-        label: "Voice",
-        noun: "voice set",
-        createLabel: "Add Voice Lines",
+        createKey: "createVoice",
+        emptyKey: "emptyVoice",
         icon: MessageSquareQuote,
         layout: "list",
         rowFields: "name, voiceUnitId, lineText, unlocked",
         unlockKey: "unlockVoice",
     },
 };
+
+/** The column's name, as the Kind option on the blueprint node reads it. */
+function kindLabel(tr: GalleryTranslator, kind: GalleryEntryKind): string {
+    return galleryNodeWord(tr, GALLERY_KIND_LABELS[kind]);
+}
 
 type PickerTarget =
     | { kind: "importCgs" }
@@ -284,16 +291,16 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
             <header className="shrink-0 border-b border-edge">
                 <div className="flex items-center gap-2 px-3 pt-2">
                     <Images size={15} className="text-fg-muted" />
-                    <span className="text-sm">Gallery</span>
+                    <span className="text-sm">{tr.t("title")}</span>
                     <span className="text-2xs text-fg-subtle">
-                        {data.items.length} {data.items.length === 1 ? "entry" : "entries"}
+                        {tr.t(data.items.length === 1 ? "entriesOne" : "entriesMany", { count: data.items.length })}
                         {" · "}
-                        {itemCount} {itemCount === 1 ? "item" : "items"}
+                        {tr.t(itemCount === 1 ? "itemsOne" : "itemsMany", { count: itemCount })}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
                         <ui.SearchInput
                             size="sm"
-                            placeholder="Search"
+                            placeholder={tr.t("search")}
                             value={query}
                             onChange={event => setQuery(event.target.value)}
                         />
@@ -304,14 +311,14 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             {...freeze.writes(busy)}
                         >
                             <Plus size={13} />
-                            {meta.createLabel}
+                            {tr.t(meta.createKey)}
                         </ui.Button>
                         {/* A modal, not a navigation row: it changes settings, not what this pane shows. */}
                         <ui.IconButton
                             size="sm"
                             variant="ghost"
-                            aria-label="Locked look"
-                            data-tip="How locked entries look in game"
+                            aria-label={tr.t("lockedLook")}
+                            data-tip={tr.t("lockedLookTitle")}
                             onClick={() => setSettingsOpen(true)}
                         >
                             <SlidersHorizontal size={13} />
@@ -339,7 +346,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                                 }}
                             >
                                 <Icon size={12} />
-                                {kindMeta.label}
+                                {kindLabel(tr, kind)}
                                 <span className="tabular-nums text-fg-subtle">{countsByKind[kind]}</span>
                             </button>
                         );
@@ -348,6 +355,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
             </header>
 
             <GroupChips
+                tr={tr}
                 groups={data.groups}
                 items={data.items.filter(item => item.kind === activeKind)}
                 active={groupFilter}
@@ -368,6 +376,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                 <main className="min-w-0 flex-1 overflow-y-auto p-3">
                     {visible.length === 0 ? (
                         <EmptyPane
+                            tr={tr}
                             meta={meta}
                             filtered={countsByKind[activeKind] > 0}
                             onCreate={primaryAction}
@@ -378,6 +387,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                                 <EntryCard
                                     key={item.id}
                                     app={app}
+                                    tr={tr}
                                     entry={item}
                                     selected={selection.includes(item.id)}
                                     onSelect={additive => toggleSelection(setSelectedIds, item.id, additive)}
@@ -391,6 +401,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                                 <EntryRow
                                     key={item.id}
                                     app={app}
+                                    tr={tr}
                                     entry={item}
                                     selected={selection.includes(item.id)}
                                     audition={audition}
@@ -408,6 +419,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                     {selected ? (
                         <EntryInspector
                             app={app}
+                            tr={tr}
                             store={store}
                             entry={selected}
                             groups={data.groups}
@@ -420,6 +432,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                         />
                     ) : selection.length > 1 ? (
                         <BulkInspector
+                            tr={tr}
                             store={store}
                             selection={selection}
                             groups={data.groups}
@@ -428,7 +441,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             onClear={() => setSelectedIds([])}
                         />
                     ) : (
-                        <IdleInspector meta={meta} tr={tr} />
+                        <IdleInspector kind={activeKind} meta={meta} tr={tr} />
                     )}
                 </aside>
             </div>
@@ -439,13 +452,14 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                 assetType={pickerWantsAudio ? AssetType.Audio : AssetType.Image}
                 multiple={pickerWantsMany}
                 anchorRef={anchorRef}
-                title={pickerTitle(picker)}
+                title={pickerTitle(tr, picker)}
                 onClose={() => setPicker(null)}
                 onConfirm={assets => onPickerConfirm(assets as Asset[])}
             />
             {voicePickerFor && (
                 <VoiceUnitPicker
                     app={app}
+                    tr={tr}
                     existing={data.items.find(item => item.id === voicePickerFor)?.variants ?? []}
                     onClose={() => setVoicePickerFor(null)}
                     onConfirm={units => {
@@ -458,6 +472,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
             {settingsOpen && (
                 <LockedLookModal
                     app={app}
+                    tr={tr}
                     store={store}
                     busy={busy}
                     onClose={() => setSettingsOpen(false)}
@@ -482,26 +497,26 @@ function toggleSelection(
     });
 }
 
-function pickerTitle(target: PickerTarget | null): string {
+function pickerTitle(tr: GalleryTranslator, target: PickerTarget | null): string {
     switch (target?.kind) {
         case "importCgs":
-            return "Import CGs";
+            return tr.t("createCg");
         case "importTracks":
-            return "Import tracks";
+            return tr.t("pickImportTracks");
         case "addImages":
-            return "Add differentials";
+            return tr.t("pickAddDifferentials");
         case "addTracks":
-            return "Add tracks";
+            return tr.t("pickAddTracks");
         case "coverImage":
-            return "Select cover";
+            return tr.t("pickCover");
         case "variantImage":
-            return "Select image";
+            return tr.t("pickVariantImage");
         case "lockedImage":
-            return "Select locked placeholder";
+            return tr.t("pickLockedPlaceholder");
         case "defaultLockedImage":
-            return "Select default placeholder";
+            return tr.t("pickDefaultPlaceholder");
         default:
-            return "Select asset";
+            return tr.t("pickAsset");
     }
 }
 
@@ -509,7 +524,17 @@ function pickerTitle(target: PickerTarget | null): string {
  * An empty column teaches what it is for rather than dead-ending, so an author
  * who has only ever used the CG tab discovers the other three.
  */
-function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boolean; onCreate: () => void }) {
+function EmptyPane({
+    tr,
+    meta,
+    filtered,
+    onCreate,
+}: {
+    tr: GalleryTranslator;
+    meta: KindMeta;
+    filtered: boolean;
+    onCreate: () => void;
+}) {
     const Icon = filtered ? Search : meta.icon;
     const freeze = ui.useFreezeGuard();
     return (
@@ -517,7 +542,7 @@ function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boo
             <div className="flex flex-col items-center gap-3 text-center">
                 <Icon size={26} className="text-fg-subtle" />
                 <div className="text-sm text-fg-muted">
-                    {filtered ? "Nothing matches" : `No ${meta.noun} entries yet`}
+                    {tr.t(filtered ? "nothingMatches" : meta.emptyKey)}
                 </div>
                 {/* Still rendered while frozen, greyed: the empty column's whole
                     job is to say what this column is for, and a missing button
@@ -525,7 +550,7 @@ function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boo
                 {!filtered && (
                     <ui.Button size="sm" variant="secondary" onClick={onCreate} {...freeze.writes()}>
                         <Plus size={13} />
-                        {meta.createLabel}
+                        {tr.t(meta.createKey)}
                     </ui.Button>
                 )}
             </div>
@@ -538,6 +563,7 @@ function EmptyPane({ meta, filtered, onCreate }: { meta: KindMeta; filtered: boo
 // ---------------------------------------------------------------------------
 
 function GroupChips({
+    tr,
     groups,
     items,
     active,
@@ -548,6 +574,7 @@ function GroupChips({
     onRemove,
     onDropEntry,
 }: {
+    tr: GalleryTranslator;
     groups: GalleryGroup[];
     items: GalleryArtwork[];
     active: string;
@@ -618,7 +645,7 @@ function GroupChips({
                     <span
                         role="button"
                         tabIndex={-1}
-                        aria-label={`Delete group ${label}`}
+                        aria-label={tr.t("deleteGroup", { name: label })}
                         aria-disabled={freeze.frozen || undefined}
                         data-tip={freeze.frozen ? freeze.reason : undefined}
                         className={`hidden text-fg-subtle group-hover/chip:inline ${
@@ -643,7 +670,7 @@ function GroupChips({
 
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-edge px-3 py-1.5">
-            {chip(GROUP_ALL, "All", countFor(GROUP_ALL))}
+            {chip(GROUP_ALL, tr.t("groupAll"), countFor(GROUP_ALL))}
             {groups.map(group => (
                 renamingId === group.id ? (
                     <div key={group.id} className="w-32">
@@ -662,13 +689,13 @@ function GroupChips({
                 ) : chip(group.id, group.name, countFor(group.id), { groupId: group.id, droppable: true })
             ))}
             {groups.length > 0 && ungrouped > 0
-                && chip(GROUP_UNGROUPED, "Ungrouped", ungrouped, { droppable: true })}
+                && chip(GROUP_UNGROUPED, tr.t("ungrouped"), ungrouped, { droppable: true })}
             <button
                 type="button"
-                aria-label="New group"
+                aria-label={tr.t("newGroup")}
                 className="rounded-full border border-dashed border-edge px-1.5 py-0.5 text-fg-subtle hover:border-edge-strong hover:text-fg disabled:opacity-40"
                 onClick={onCreate}
-                {...freeze.writes(busy, "New group")}
+                {...freeze.writes(busy, tr.t("newGroup"))}
             >
                 <Plus size={10} />
             </button>
@@ -719,12 +746,14 @@ function useEntryDrag(entryId: string, onDropBefore: (draggedId: string) => void
 
 function EntryCard({
     app,
+    tr,
     entry,
     selected,
     onSelect,
     onDropBefore,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     entry: GalleryArtwork;
     selected: boolean;
     onSelect: (additive: boolean) => void;
@@ -749,14 +778,14 @@ function EntryCard({
                 {entry.variants.length > 1 && (
                     <span
                         className="flex shrink-0 items-center gap-0.5 text-2xs text-fg-subtle"
-                        data-tip={`${entry.variants.length} items`}
+                        data-tip={tr.t("itemsMany", { count: entry.variants.length })}
                     >
                         <Layers size={10} />
                         {entry.variants.length}
                     </span>
                 )}
                 {entry.hidden && (
-                    <span className="shrink-0 text-fg-subtle" data-tip="Hidden until unlocked">
+                    <span className="shrink-0 text-fg-subtle" data-tip={tr.t("hiddenUntilUnlocked")}>
                         <EyeOff size={11} />
                     </span>
                 )}
@@ -767,7 +796,7 @@ function EntryCard({
                 <div className={`truncate border-t border-edge px-1.5 py-0.5 text-2xs ${
                     entry.scene?.sceneId ? "text-fg-subtle" : "text-warning"
                 }`}>
-                    {entry.scene?.sceneId ? "Scene set" : "No scene picked"}
+                    {tr.t(entry.scene?.sceneId ? "sceneSet" : "noScenePicked")}
                 </div>
             )}
         </div>
@@ -780,6 +809,7 @@ function EntryCard({
  */
 function EntryRow({
     app,
+    tr,
     entry,
     selected,
     audition,
@@ -787,6 +817,7 @@ function EntryRow({
     onDropBefore,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     entry: GalleryArtwork;
     selected: boolean;
     audition: Audition;
@@ -813,8 +844,8 @@ function EntryRow({
             {single ? (
                 <button
                     type="button"
-                    aria-label={playing ? "Stop" : "Play"}
-                    data-tip={playing ? "Stop" : "Play"}
+                    aria-label={tr.t(playing ? "stop" : "play")}
+                    data-tip={tr.t(playing ? "stop" : "play")}
                     disabled={!single.audioAssetId}
                     className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-edge text-fg-muted hover:border-primary hover:text-fg disabled:opacity-40"
                     onClick={event => {
@@ -827,7 +858,7 @@ function EntryRow({
             ) : (
                 <span
                     className="grid h-6 w-6 shrink-0 place-items-center text-fg-subtle"
-                    data-tip={`${entry.variants.length} items`}
+                    data-tip={tr.t("itemsMany", { count: entry.variants.length })}
                 >
                     <Layers size={12} />
                 </span>
@@ -845,12 +876,14 @@ function EntryRow({
                     </div>
                 )}
                 {entry.variants.length > 1 && (
-                    <div className="text-2xs text-fg-subtle">{entry.variants.length} items</div>
+                    <div className="text-2xs text-fg-subtle">
+                        {tr.t("itemsMany", { count: entry.variants.length })}
+                    </div>
                 )}
             </div>
 
             {entry.hidden && (
-                <span className="shrink-0 text-fg-subtle" data-tip="Hidden until unlocked">
+                <span className="shrink-0 text-fg-subtle" data-tip={tr.t("hiddenUntilUnlocked")}>
                     <EyeOff size={11} />
                 </span>
             )}
@@ -895,7 +928,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * would otherwise be blank, and it is gone the moment anything is selected, so
  * it never becomes chrome over the content.
  */
-function IdleInspector({ meta, tr }: { meta: KindMeta; tr: PluginTranslator }) {
+function IdleInspector({ kind, meta, tr }: { kind: GalleryEntryKind; meta: KindMeta; tr: GalleryTranslator }) {
     return (
         <div className="flex flex-col gap-3 p-3">
             <span className="text-2xs text-fg-subtle">{tr.t("idleEmpty")}</span>
@@ -903,18 +936,19 @@ function IdleInspector({ meta, tr }: { meta: KindMeta; tr: PluginTranslator }) {
                 <div className="text-2xs text-fg-muted">{tr.t("idleHeading")}</div>
                 <ol className="space-y-1 text-2xs text-fg-subtle">
                     <li>
-                        1. <span className="text-fg-muted">Get Gallery</span>, Kind =
-                        {" "}
-                        <span className="text-fg-muted">{meta.label}</span>
+                        1. <span className="text-fg-muted">{galleryNodeWord(tr, "Get Gallery")}</span>
+                        {tr.t("idleSeparator")}
+                        {galleryNodeWord(tr, "Kind")} ={" "}
+                        <span className="text-fg-muted">{kindLabel(tr, kind)}</span>
                     </li>
                     <li>
-                        2. Entries → <span className="text-fg-muted">Set List Content</span>
+                        2. {tr.t("corePinEntries")} → <span className="text-fg-muted">{tr.t("coreSetListContent")}</span>
                     </li>
                     <li>
                         3. <span className="mr-1">{tr.t("idleItemTemplate")}</span>
-                        <span className="text-fg-muted">Get List Item Props</span>
+                        <span className="text-fg-muted">{tr.t("coreGetListItemProps")}</span>
                         {" → "}
-                        <span className="text-fg-muted">Get JSON Field</span>
+                        <span className="text-fg-muted">{tr.t("coreGetJsonField")}</span>
                     </li>
                 </ol>
                 <div className="text-2xs text-fg-subtle">
@@ -934,6 +968,7 @@ function IdleInspector({ meta, tr }: { meta: KindMeta; tr: PluginTranslator }) {
 
 function EntryInspector({
     app,
+    tr,
     store,
     entry,
     groups,
@@ -945,6 +980,7 @@ function EntryInspector({
     onPickVoiceLines,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     store: GalleryStore;
     entry: GalleryArtwork;
     groups: GalleryGroup[];
@@ -965,8 +1001,8 @@ function EntryInspector({
         <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1.5">
                 <MetaIcon size={12} className="shrink-0 text-fg-subtle" />
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{meta.label}</span>
-                <ui.IconButton size="sm" variant="ghost" aria-label="Close inspector" onClick={onClose}>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{kindLabel(tr, entry.kind)}</span>
+                <ui.IconButton size="sm" variant="ghost" aria-label={tr.t("closeInspector")} onClick={onClose}>
                     <X size={12} />
                 </ui.IconButton>
             </div>
@@ -981,7 +1017,7 @@ function EntryInspector({
                             onPick({ kind: "coverImage", artworkId: entry.id });
                         }
                     }}
-                    {...freeze.writes(busy, entry.variants.length === 0 ? "Pick an image" : undefined)}
+                    {...freeze.writes(busy, entry.variants.length === 0 ? tr.t("pickImage") : undefined)}
                 >
                     <GalleryThumb
                         app={app}
@@ -992,7 +1028,7 @@ function EntryInspector({
                 </button>
             )}
 
-            <Field label="Name">
+            <Field label={tr.t("fieldName")}>
                 <InlineNameInput
                     value={entry.name}
                     readOnly={freeze.frozen}
@@ -1000,7 +1036,7 @@ function EntryInspector({
                 />
             </Field>
 
-            <Field label="Description">
+            <Field label={tr.t("fieldDescription")}>
                 {/* `readOnly`, never `disabled`: the description is prose the author
                     came to read, and a disabled textarea dims it and refuses to be
                     selected or copied. */}
@@ -1009,7 +1045,7 @@ function EntryInspector({
                     fullWidth
                     rows={2}
                     readOnly={freeze.frozen}
-                    placeholder="Shown in the viewer once unlocked"
+                    placeholder={tr.t("descriptionPlaceholder")}
                     key={`${entry.id}:description`}
                     defaultValue={entry.description}
                     onBlur={event => {
@@ -1023,10 +1059,10 @@ function EntryInspector({
             </Field>
 
             {entry.kind === "scene" && (
-                <ScenePickerFields app={app} store={store} entry={entry} onRun={onRun} />
+                <ScenePickerFields app={app} tr={tr} store={store} entry={entry} onRun={onRun} />
             )}
 
-            <Field label="Group">
+            <Field label={tr.t("fieldGroup")}>
                 {/* `readOnly` rather than `disabled`, which is `Select`'s own
                     frozen mode: the list of groups is project data the author came
                     to look at, and a dropdown that will not open hides it. */}
@@ -1036,7 +1072,7 @@ function EntryInspector({
                     readOnly={freeze.frozen}
                     value={entry.groupId ?? ""}
                     options={[
-                        { value: "", label: "Ungrouped" },
+                        { value: "", label: tr.t("ungrouped") },
                         ...groups.map(group => ({ value: group.id, label: group.name })),
                     ]}
                     onChange={value => void onRun(() => store.patchArtworkFields(entry.id, {
@@ -1052,11 +1088,12 @@ function EntryInspector({
                 {...freeze.writes(busy)}
             >
                 {entry.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                {entry.hidden ? "Hidden until unlocked" : "Shown as a locked slot"}
+                {tr.t(entry.hidden ? "hiddenUntilUnlocked" : "shownAsLockedSlot")}
             </button>
 
             <MemberList
                 app={app}
+                tr={tr}
                 store={store}
                 entry={entry}
                 busy={busy}
@@ -1066,7 +1103,7 @@ function EntryInspector({
                 onPickVoiceLines={onPickVoiceLines}
             />
 
-            <Field label="Locked placeholder">
+            <Field label={tr.t("fieldLockedPlaceholder")}>
                 <div className="flex items-center gap-2">
                     <GalleryThumb
                         app={app}
@@ -1079,18 +1116,18 @@ function EntryInspector({
                         onClick={() => onPick({ kind: "lockedImage", artworkId: entry.id })}
                         {...freeze.writes(busy)}
                     >
-                        Pick
+                        {tr.t("pick")}
                     </ui.Button>
                     {entry.lockedImageAssetId && (
                         <ui.IconButton
                             size="sm"
                             variant="ghost"
-                            aria-label="Use the catalog default"
+                            aria-label={tr.t("useCatalogDefault")}
                             onClick={() => void onRun(() => store.patchArtworkFields(entry.id, {
                                 lockedImageAssetId: null,
                                 lockedImageAssetName: null,
                             }))}
-                            {...freeze.writes(busy, "Use the catalog default")}
+                            {...freeze.writes(busy, tr.t("useCatalogDefault"))}
                         >
                             <X size={12} />
                         </ui.IconButton>
@@ -1108,7 +1145,7 @@ function EntryInspector({
                 {...freeze.writes(busy)}
             >
                 <Trash2 size={12} />
-                Delete entry
+                {tr.t("deleteEntry")}
             </ui.Button>
         </div>
     );
@@ -1117,11 +1154,13 @@ function EntryInspector({
 /** Where a recollection replays from. */
 function ScenePickerFields({
     app,
+    tr,
     store,
     entry,
     onRun,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     store: GalleryStore;
     entry: GalleryArtwork;
     onRun: (action: () => Promise<unknown>) => Promise<void>;
@@ -1156,25 +1195,25 @@ function ScenePickerFields({
                 // An empty dropdown with no reason is the worst outcome here -
                 // the author cannot tell "this story has no scenes" from "the
                 // lookup broke".
-                app.services.ui.notifications.error(
-                    `Could not list scenes: ${error instanceof Error ? error.message : String(error)}`,
-                );
+                app.services.ui.notifications.error(tr.t("listScenesFailed", {
+                    error: error instanceof Error ? error.message : String(error),
+                }));
             });
         return () => {
             disposed = true;
         };
-    }, [app, storyId]);
+    }, [app, storyId, tr]);
 
     return (
         <>
-            <Field label="Story">
+            <Field label={tr.t("fieldStory")}>
                 <ui.Select
                     size="sm"
                     fullWidth
                     readOnly={freeze.frozen}
                     value={storyId}
                     options={[
-                        { value: "", label: "Pick a story" },
+                        { value: "", label: tr.t("pickStory") },
                         ...stories.map(story => ({ value: story.id, label: story.name })),
                     ]}
                     // Changing the story invalidates the scene, so it is cleared
@@ -1185,7 +1224,7 @@ function ScenePickerFields({
                     }))}
                 />
             </Field>
-            <Field label="Scene">
+            <Field label={tr.t("fieldScene")}>
                 <ui.Select
                     size="sm"
                     fullWidth
@@ -1193,7 +1232,7 @@ function ScenePickerFields({
                     readOnly={freeze.frozen}
                     value={sceneId}
                     options={[
-                        { value: "", label: storyId ? "Pick a scene" : "Pick a story first" },
+                        { value: "", label: tr.t(storyId ? "pickScene" : "pickStoryFirst") },
                         ...scenes.map(scene => ({ value: scene.id, label: scene.name })),
                     ]}
                     onChange={value => void onRun(() => store.setScene(entry.id, {
@@ -1212,6 +1251,7 @@ function ScenePickerFields({
  */
 function MemberList({
     app,
+    tr,
     store,
     entry,
     busy,
@@ -1221,6 +1261,7 @@ function MemberList({
     onPickVoiceLines,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     store: GalleryStore;
     entry: GalleryArtwork;
     busy: boolean;
@@ -1232,11 +1273,12 @@ function MemberList({
     const cover = resolveCoverVariant(entry);
     const freeze = ui.useFreezeGuard();
     const many = entry.variants.length > 1;
+    const count = { count: entry.variants.length };
     const label = entry.kind === "music"
-        ? many ? `Tracks (${entry.variants.length})` : "Track"
+        ? many ? tr.t("membersTracks", count) : tr.t("memberTrack")
         : entry.kind === "voice"
-            ? many ? `Lines (${entry.variants.length})` : "Line"
-            : many ? `Differentials (${entry.variants.length})` : "Image";
+            ? many ? tr.t("membersLines", count) : tr.t("memberLine")
+            : many ? tr.t("membersDifferentials", count) : tr.t("memberImage");
 
     const add = () => {
         switch (entry.kind) {
@@ -1257,16 +1299,12 @@ function MemberList({
                 <span className="flex-1 text-2xs text-fg-subtle">{label}</span>
                 <ui.Button size="sm" variant="secondary" onClick={add} {...freeze.writes(busy)}>
                     <Plus size={11} />
-                    Add
+                    {tr.t("add")}
                 </ui.Button>
             </div>
             {entry.variants.length === 0 ? (
                 <p className="px-1 text-2xs text-fg-subtle">
-                    {entry.kind === "voice"
-                        ? "No lines picked yet."
-                        : entry.kind === "music"
-                            ? "No tracks yet."
-                            : "No image yet."}
+                    {tr.t(entry.kind === "voice" ? "noLines" : entry.kind === "music" ? "noTracks" : "noImage")}
                 </p>
             ) : (
                 <div className="space-y-1">
@@ -1274,6 +1312,7 @@ function MemberList({
                         <MemberRow
                             key={variant.id}
                             app={app}
+                            tr={tr}
                             entry={entry}
                             variant={variant}
                             busy={busy}
@@ -1299,6 +1338,7 @@ function MemberList({
 
 function MemberRow({
     app,
+    tr,
     entry,
     variant,
     busy,
@@ -1312,6 +1352,7 @@ function MemberRow({
     onRemove,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     entry: GalleryArtwork;
     variant: GalleryVariant;
     busy: boolean;
@@ -1335,8 +1376,8 @@ function MemberRow({
             {audio ? (
                 <button
                     type="button"
-                    aria-label={playing ? "Stop" : "Play"}
-                    data-tip={variant.audioAssetName ?? (playing ? "Stop" : "Play")}
+                    aria-label={tr.t(playing ? "stop" : "play")}
+                    data-tip={variant.audioAssetName ?? tr.t(playing ? "stop" : "play")}
                     disabled={!variant.audioAssetId}
                     className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border border-edge text-fg-muted hover:border-primary hover:text-fg disabled:opacity-40"
                     onClick={() => void audition.toggle(key, variant.audioAssetId)}
@@ -1346,10 +1387,10 @@ function MemberRow({
             ) : (
                 <button
                     type="button"
-                    aria-label="Change image"
+                    aria-label={tr.t("changeImage")}
                     className="shrink-0"
                     onClick={onPickImage}
-                    {...freeze.writes(busy, variant.imageAssetName ?? "Pick an image")}
+                    {...freeze.writes(busy, variant.imageAssetName ?? tr.t("pickImage"))}
                 >
                     <GalleryThumb app={app} assetId={variant.imageAssetId} className="h-8 w-12 rounded" />
                 </button>
@@ -1374,12 +1415,12 @@ function MemberRow({
                 <ui.IconButton
                     size="sm"
                     variant="ghost"
-                    aria-label={isExplicitCover ? "Clear cover" : "Use as cover"}
+                    aria-label={tr.t(isExplicitCover ? "clearCover" : "useAsCover")}
                     className={isCover ? "text-primary" : ""}
                     onClick={onSetCover}
                     {...freeze.writes(
                         busy,
-                        isExplicitCover ? "Clear cover" : isCover ? "Default cover (first)" : "Use as cover",
+                        tr.t(isExplicitCover ? "clearCover" : isCover ? "defaultCover" : "useAsCover"),
                     )}
                 >
                     <Star size={12} fill={isExplicitCover ? "currentColor" : "none"} />
@@ -1388,10 +1429,10 @@ function MemberRow({
             <ui.IconButton
                 size="sm"
                 variant="ghost"
-                aria-label="Delete"
+                aria-label={tr.t("delete")}
                 className="text-fg-subtle hover:text-danger"
                 onClick={onRemove}
-                {...freeze.writes(busy, "Delete")}
+                {...freeze.writes(busy, tr.t("delete"))}
             >
                 <Trash2 size={12} />
             </ui.IconButton>
@@ -1400,6 +1441,7 @@ function MemberRow({
 }
 
 function BulkInspector({
+    tr,
     store,
     selection,
     groups,
@@ -1407,6 +1449,7 @@ function BulkInspector({
     onRun,
     onClear,
 }: {
+    tr: GalleryTranslator;
     store: GalleryStore;
     selection: string[];
     groups: GalleryGroup[];
@@ -1419,21 +1462,23 @@ function BulkInspector({
     return (
         <div className="flex flex-col gap-3 p-3">
             <div className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{selection.length} selected</span>
-                <ui.IconButton size="sm" variant="ghost" aria-label="Clear selection" onClick={onClear}>
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                    {tr.t("selectedCount", { count: selection.length })}
+                </span>
+                <ui.IconButton size="sm" variant="ghost" aria-label={tr.t("clearSelection")} onClick={onClear}>
                     <X size={12} />
                 </ui.IconButton>
             </div>
 
-            <Field label="Move to group">
+            <Field label={tr.t("moveToGroup")}>
                 <ui.Select
                     size="sm"
                     fullWidth
                     readOnly={freeze.frozen}
                     value=""
                     options={[
-                        { value: "", label: "Pick a group" },
-                        { value: GROUP_UNGROUPED, label: "Ungrouped" },
+                        { value: "", label: tr.t("pickGroup") },
+                        { value: GROUP_UNGROUPED, label: tr.t("ungrouped") },
                         ...groups.map(group => ({ value: group.id, label: group.name })),
                     ]}
                     onChange={async raw => {
@@ -1461,7 +1506,7 @@ function BulkInspector({
                 {...freeze.writes(busy)}
             >
                 <Trash2 size={12} />
-                Delete {selection.length}
+                {tr.t("deleteCount", { count: selection.length })}
             </ui.Button>
         </div>
     );
@@ -1480,11 +1525,13 @@ function BulkInspector({
  */
 function VoiceUnitPicker({
     app,
+    tr,
     existing,
     onClose,
     onConfirm,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     existing: GalleryVariant[];
     onClose: () => void;
     onConfirm: (units: { unitId: string; text: string; durationSec: number | null }[]) => void;
@@ -1530,22 +1577,20 @@ function VoiceUnitPicker({
     }, [query, units]);
 
     return (
-        <ui.Modal isOpen title="Add voice lines" onClose={onClose}>
+        <ui.Modal isOpen title={tr.t("addVoiceLinesTitle")} onClose={onClose}>
             <ui.ModalBody>
                 <div className="space-y-2">
                     <ui.SearchInput
                         size="sm"
                         fullWidth
-                        placeholder="Search lines..."
+                        placeholder={tr.t("searchLines")}
                         value={query}
                         onChange={event => setQuery(event.target.value)}
                     />
                     {units === null ? (
-                        <p className="py-6 text-center text-2xs text-fg-subtle">Loading…</p>
+                        <p className="py-6 text-center text-2xs text-fg-subtle">{tr.t("loading")}</p>
                     ) : units.length === 0 ? (
-                        <p className="py-6 text-center text-2xs text-fg-subtle">
-                            No recorded voice yet. Import takes in the Voice panel first.
-                        </p>
+                        <p className="py-6 text-center text-2xs text-fg-subtle">{tr.t("noVoice")}</p>
                     ) : (
                         <div className="max-h-72 space-y-0.5 overflow-y-auto">
                             {filtered.map(unit => {
@@ -1576,13 +1621,13 @@ function VoiceUnitPicker({
                                         <span className="min-w-0 flex-1">
                                             <span className="block truncate">{unit.text || unit.unitId}</span>
                                             <span className="block truncate text-fg-subtle">
-                                                {unit.character ?? "Narration"} · {unit.locale}
+                                                {unit.character ?? tr.t("narration")} · {unit.locale}
                                             </span>
                                         </span>
                                         <span className="shrink-0 tabular-nums text-fg-subtle">
                                             {formatDuration(unit.durationSec)}
                                         </span>
-                                        {isTaken && <span className="shrink-0 text-fg-subtle">added</span>}
+                                        {isTaken && <span className="shrink-0 text-fg-subtle">{tr.t("added")}</span>}
                                     </button>
                                 );
                             })}
@@ -1591,8 +1636,8 @@ function VoiceUnitPicker({
                 </div>
             </ui.ModalBody>
             <ui.ModalFooter>
-                <span className="mr-auto text-2xs text-fg-subtle">{picked.size} selected</span>
-                <ui.Button size="sm" variant="secondary" onClick={onClose}>Cancel</ui.Button>
+                <span className="mr-auto text-2xs text-fg-subtle">{tr.t("selectedCount", { count: picked.size })}</span>
+                <ui.Button size="sm" variant="secondary" onClick={onClose}>{tr.t("cancel")}</ui.Button>
                 <ui.Button
                     size="sm"
                     variant="primary"
@@ -1605,7 +1650,7 @@ function VoiceUnitPicker({
                             durationSec: unit.durationSec,
                         })))}
                 >
-                    Add {picked.size}
+                    {tr.t("addCount", { count: picked.size })}
                 </ui.Button>
             </ui.ModalFooter>
         </ui.Modal>
@@ -1618,6 +1663,7 @@ function VoiceUnitPicker({
 
 function LockedLookModal({
     app,
+    tr,
     store,
     busy,
     onClose,
@@ -1625,6 +1671,7 @@ function LockedLookModal({
     onRun,
 }: {
     app: PluginApp;
+    tr: GalleryTranslator;
     store: GalleryStore;
     busy: boolean;
     onClose: () => void;
@@ -1637,10 +1684,10 @@ function LockedLookModal({
     return (
         // The modal still opens while frozen: what it shows - the placeholder and
         // the mask - is catalog data, and it is the only place to read it.
-        <ui.Modal isOpen title="How locked entries look in game" onClose={onClose}>
+        <ui.Modal isOpen title={tr.t("lockedLookTitle")} onClose={onClose}>
             <ui.ModalBody>
                 <div className="space-y-4">
-                    <Field label="Default placeholder">
+                    <Field label={tr.t("defaultPlaceholder")}>
                         <div className="flex items-center gap-2">
                             <GalleryThumb
                                 app={app}
@@ -1653,25 +1700,25 @@ function LockedLookModal({
                                 onClick={onPickPlaceholder}
                                 {...freeze.writes(busy)}
                             >
-                                Pick
+                                {tr.t("pick")}
                             </ui.Button>
                             {settings.lockedImageAssetId && (
                                 <ui.IconButton
                                     size="sm"
                                     variant="ghost"
-                                    aria-label="Clear placeholder"
+                                    aria-label={tr.t("clearPlaceholder")}
                                     onClick={() => void onRun(() => store.patchSettings({
                                         lockedImageAssetId: null,
                                         lockedImageAssetName: null,
                                     }))}
-                                    {...freeze.writes(busy, "Clear placeholder")}
+                                    {...freeze.writes(busy, tr.t("clearPlaceholder"))}
                                 >
                                     <X size={12} />
                                 </ui.IconButton>
                             )}
                         </div>
                     </Field>
-                    <Field label="Locked title">
+                    <Field label={tr.t("lockedTitle")}>
                         <InlineNameInput
                             value={settings.lockedNameMask}
                             allowEmpty
@@ -1680,11 +1727,11 @@ function LockedLookModal({
                             onCommit={lockedNameMask => void onRun(() => store.patchSettings({ lockedNameMask }))}
                         />
                     </Field>
-                    <p className="text-2xs text-fg-subtle">Empty shows the real title while locked.</p>
+                    <p className="text-2xs text-fg-subtle">{tr.t("lockedTitleHint")}</p>
                 </div>
             </ui.ModalBody>
             <ui.ModalFooter>
-                <ui.Button size="sm" variant="primary" onClick={onClose}>Done</ui.Button>
+                <ui.Button size="sm" variant="primary" onClick={onClose}>{tr.t("done")}</ui.Button>
             </ui.ModalFooter>
         </ui.Modal>
     );

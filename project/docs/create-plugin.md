@@ -534,6 +534,38 @@ execute: async ctx => {
 `execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
 **产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
 
+### 节点文字的翻译
+
+节点卡片上的标题、分类、引脚标签、检查器标签和选项文字，都是写在定义里的英文原文。要让它们跟随
+Studio 的界面语言，在定义上加 `translations`：按语言代码分表，每张表把**定义里出现的英文原文**映射到该语言的写法。
+
+```ts
+const NODE_TRANSLATIONS = {
+  zh: {
+    "Use Item": "使用物品",
+    "Inventory": "物品栏",
+    "Item Id": "物品 Id",
+  },
+};
+
+{
+  type: `${PLUGIN_ID}.use-item`,
+  displayName: "Use Item",
+  category: "Inventory",
+  translations: NODE_TRANSLATIONS,
+  // ...
+}
+```
+
+- 键必须与定义里的英文**逐字一致**。对不上的条目不报错，界面上继续显示英文。
+- Studio 自己已经翻译的词（`In`、`Next`、`Count`、`Name` 等）一律沿用 Studio 的译法，插件表里的同名条目不生效。
+- 同一个英文原文在同一种语言下只有一种译法。两个插件为同一个词写了不同译法时，以后注册的为准。
+- 当前语言没有对应的表时显示英文。
+- 该表只在 Studio 编辑器里生效（节点卡片、添加节点菜单、蓝图检查结果）；runtime 入口不读取它。
+- 插件面板自己的文字仍然用 `app.services.i18n.createTranslator`。
+
+内建 Gallery 插件的 `GALLERY_NODE_TRANSLATIONS` 是参照实现，旁边的 `i18n.test.ts` 演示了怎样逐个检查节点用到的每一个词。
+
 ### 控件属性的值绑定（Blueprint Value 图）
 
 插件节点默认不在值绑定的调色板里，但可以**自己声明**进去：

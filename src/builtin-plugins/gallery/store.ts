@@ -37,15 +37,21 @@ import {
     type GalleryStoreData,
     type GalleryVariant,
 } from "./catalog";
+import { createGalleryTranslator, type GalleryMessageKey } from "./messages";
 
 export type GalleryStore = ReturnType<typeof createGalleryStore>;
 
-/** What a newly created entry of each kind is called before the author renames it. */
-const DEFAULT_ENTRY_NAME: Record<GalleryEntryKind, string> = {
-    cg: "Artwork",
-    scene: "Recollection",
-    music: "Album",
-    voice: "Voice Set",
+/**
+ * What a newly created entry of each kind is called before the author renames it.
+ *
+ * Written in the editor's language at the moment of creation. It is the author's text from then on,
+ * so switching language later does not rename it.
+ */
+const DEFAULT_ENTRY_NAME: Record<GalleryEntryKind, GalleryMessageKey> = {
+    cg: "defaultNameCg",
+    scene: "defaultNameScene",
+    music: "defaultNameMusic",
+    voice: "defaultNameVoice",
 };
 
 const EMPTY_STORE: GalleryStoreData = {
@@ -71,6 +77,7 @@ function reorder<T extends { id: string }>(list: T[], id: string, beforeId: stri
 export function createGalleryStore(app: PluginApp) {
     let data: GalleryStoreData = EMPTY_STORE;
     const listeners = new Set<() => void>();
+    const tr = createGalleryTranslator(app);
 
     const notify = () => {
         for (const listener of listeners) {
@@ -205,7 +212,7 @@ export function createGalleryStore(app: PluginApp) {
          */
         async addArtwork(kind: GalleryEntryKind = "cg", groupId: string | null = null): Promise<string> {
             const count = data.items.filter(item => item.kind === kind).length;
-            const artwork = newArtwork(`${DEFAULT_ENTRY_NAME[kind]} ${count + 1}`, groupId, [], kind);
+            const artwork = newArtwork(tr.t(DEFAULT_ENTRY_NAME[kind], { index: count + 1 }), groupId, [], kind);
             await commitItems([...data.items, artwork]);
             return artwork.id;
         },
@@ -246,7 +253,7 @@ export function createGalleryStore(app: PluginApp) {
                     ...assets.map((asset, index) => variantFromAsset(
                         artwork.id,
                         asset,
-                        `Variant ${artwork.variants.length + index + 1}`,
+                        tr.t("defaultNameVariant", { index: artwork.variants.length + index + 1 }),
                     )),
                 ],
             }));
@@ -260,7 +267,7 @@ export function createGalleryStore(app: PluginApp) {
                     ...assets.map((asset, index) => variantFromAudio(
                         artwork.id,
                         asset,
-                        `Track ${artwork.variants.length + index + 1}`,
+                        tr.t("defaultNameTrack", { index: artwork.variants.length + index + 1 }),
                     )),
                 ],
             }));
@@ -300,7 +307,7 @@ export function createGalleryStore(app: PluginApp) {
         /** One album per picked file is rarely wanted; one album, many tracks is. */
         async importTracks(assets: Asset[], groupId: string | null = null): Promise<string> {
             const artwork = newArtwork(
-                `Album ${data.items.filter(item => item.kind === "music").length + 1}`,
+                tr.t("defaultNameMusic", { index: data.items.filter(item => item.kind === "music").length + 1 }),
                 groupId,
                 [],
                 "music",
@@ -308,7 +315,7 @@ export function createGalleryStore(app: PluginApp) {
             artwork.variants = assets.map((asset, index) => variantFromAudio(
                 artwork.id,
                 asset,
-                `Track ${index + 1}`,
+                tr.t("defaultNameTrack", { index: index + 1 }),
             ));
             // A single track reads better as its own entry than as a one-track
             // album, so it takes the file's name.
@@ -359,7 +366,7 @@ export function createGalleryStore(app: PluginApp) {
         async addGroup(name?: string): Promise<string> {
             const group: GalleryGroup = {
                 id: createGroupId(),
-                name: name?.trim() || `Group ${data.groups.length + 1}`,
+                name: name?.trim() || tr.t("defaultNameGroup", { index: data.groups.length + 1 }),
             };
             await commit({ groups: [...data.groups, group] });
             return group.id;
