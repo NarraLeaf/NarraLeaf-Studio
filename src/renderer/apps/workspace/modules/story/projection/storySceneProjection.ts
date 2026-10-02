@@ -409,6 +409,13 @@ function formatCondition(
     if (comparison) {
         return `${name} ${comparison} ${formatStoryLiteral(condition.value ?? null)}`;
     }
+    // The two flag tests have an expression spelling too, the one `/if met` and `/if !met` write.
+    if (condition.operator === "isTrue") {
+        return name;
+    }
+    if (condition.operator === "isFalse") {
+        return `!${name}`;
+    }
     return `${name} ${condition.operator}`;
 }
 
@@ -417,8 +424,9 @@ function formatCondition(
  *
  * The expression symbols rather than the stored names: both surfaces sit next to conditions that ARE
  * expressions, and a `/repeat until` printing `gold >= 100` on one row and `gold greaterOrEqual 100`
- * on the next is one construct written two ways. The three that compare against nothing are absent
- * and keep printing the operator as it is stored, which is what a flow node has always shown.
+ * on the next is one construct written two ways. The three that compare against nothing are absent:
+ * "is true" and "is false" print as the bare and the negated name, which is how an expression says
+ * them, and "is set" - which no expression spells - prints the operator as it is stored.
  */
 const CONDITION_OPERATOR_SYMBOLS: Partial<Record<Extract<StoryConditionRef, { kind: "variable" }>["operator"], string>> = {
     equals: "==",

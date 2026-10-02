@@ -9,6 +9,7 @@ import type {
     StoryDocument,
     StoryExpr,
     StoryInterpolationRef,
+    StoryLiteralValue,
     StoryScene,
     StorySceneId,
     StoryTextSegment,
@@ -591,16 +592,28 @@ export function storyConditionSummary(
     const name = variableRefShortLabel(condition.target, lookups);
     const operator = translate(`story.condition.op${conditionOperatorSuffix(condition.operator)}` as TranslationKey);
     const suffix = conditionOperatorTakesValue(condition.operator)
-        ? ` ${String(condition.value ?? "")}`
+        ? ` ${conditionValueLabel(condition.value)}`
         : "";
     return `${name} ${operator}${suffix}`.trim();
 }
 
-/** `isTrue` → `IsOn`: the catalog spells these in plain language, not in operator names. */
+/**
+ * The compared value as the chip prints it. A boolean reads in the same words the condition editor's
+ * value switch uses, so a stored `equals true` names the value in the interface's language rather
+ * than in the spelling a typed line uses; everything else prints as stored.
+ */
+function conditionValueLabel(value: StoryLiteralValue | undefined): string {
+    if (typeof value === "boolean") {
+        return translate(value ? "story.condition.valueTrue" : "story.condition.valueFalse");
+    }
+    return String(value ?? "");
+}
+
+/** `isTrue` → `IsTrue`: the catalog keys follow the operator names. */
 function conditionOperatorSuffix(operator: Extract<StoryConditionRef, { kind: "variable" }>["operator"]): string {
     switch (operator) {
-        case "isTrue": return "IsOn";
-        case "isFalse": return "IsOff";
+        case "isTrue": return "IsTrue";
+        case "isFalse": return "IsFalse";
         case "equals": return "Equals";
         case "notEquals": return "NotEquals";
         case "greaterThan": return "GreaterThan";
