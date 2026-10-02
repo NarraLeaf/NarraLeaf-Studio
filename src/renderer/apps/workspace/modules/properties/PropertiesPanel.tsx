@@ -120,6 +120,8 @@ import {
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
+import { InteractionSoundField } from "@/lib/ui-editor/widget-modules/shared/sound/InteractionSoundField";
+import { hasUIInteractionSounds, uiElementTypeTakesInteractionSounds } from "@shared/types/ui-editor/interactionSounds";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
 import { LinkedComponentInfoField } from "./LinkedComponentInfoField";
 import { AssetSetInspector } from "./AssetSetInspector";
@@ -622,6 +624,38 @@ function createElementAnimationField(element: UIElement, t: TranslateFn): FieldD
 }
 
 /**
+ * The hover and click sounds every element but a surface's root gets, above its animation.
+ *
+ * Built here for the reason the animation section is: a sound is offered wherever a pointer reaches,
+ * which is every widget, and one place cannot forget a type. Open when the element already plays a
+ * sound, so selecting it shows what it plays; folded away otherwise.
+ *
+ * Keyed by element: a section holds its open state for as long as it is mounted, and under one id it
+ * would carry the state of whatever was selected before - folded on a button with sounds because the
+ * picture selected a moment earlier had none. Keyed by element rather than by whether it has a sound,
+ * so clearing the last one does not fold the section away under the pointer.
+ */
+function createElementInteractionSoundField(element: UIElement, t: TranslateFn): FieldDefinition<UIInspectorData> | null {
+    if (!uiElementTypeTakesInteractionSounds(element.type)) {
+        return null;
+    }
+    return defineField<UIInspectorData, any>({
+        id: `element.interactionSound:${element.id}`,
+        type: "section",
+        title: t("properties.interactionSound.title"),
+        collapsible: true,
+        defaultCollapsed: !hasUIInteractionSounds(element),
+        fields: [
+            defineField<UIInspectorData, any>({
+                id: `element.interactionSound.editor:${element.id}`,
+                type: "custom",
+                component: InteractionSoundField,
+            }),
+        ],
+    });
+}
+
+/**
  * The state picker every element with more than one look gets, above everything else in the panel.
  *
  * Ordered before the layout fields because it is not a property of the element: it decides which
@@ -644,7 +678,9 @@ function mergeInspectorWithLayoutSchema(
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
     const stateField = createElementStateField(element);
+    const soundField = createElementInteractionSoundField(element, t);
     const animationField = createElementAnimationField(element, t);
+    const closingFields = soundField ? [soundField, animationField] : [animationField];
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
@@ -655,7 +691,7 @@ function mergeInspectorWithLayoutSchema(
             if (targetTabId && tab.id === targetTabId) {
                 return {
                     ...tab,
-                    fields: [stateField, ...layoutFields, ...tab.fields, animationField],
+                    fields: [stateField, ...layoutFields, ...tab.fields, ...closingFields],
                 };
             }
             return tab;
@@ -675,7 +711,7 @@ function mergeInspectorWithLayoutSchema(
     return createPropertyEditorSchema<UIInspectorData>({
         id: baseId,
         title: baseTitle,
-        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
+        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), ...closingFields],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
     });
