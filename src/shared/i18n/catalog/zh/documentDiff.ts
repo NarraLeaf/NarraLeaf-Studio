@@ -221,6 +221,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "界面文档改名",
+        /** 两个页面名作为值对画出。 */
+        entryPage: "入口页面改动",
         surfaceAdded: "新增界面（{elementCount}）",
         surfaceRemoved: "删除界面（{elementCount}）",
         surfaceChanged: "界面改动",

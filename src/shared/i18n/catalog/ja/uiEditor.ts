@@ -46,6 +46,7 @@ export const uiEditor = {
         duplicateSurface: "{label} を複製",
         copySurface: "{label} をコピー",
         pasteSurface: "インターフェースを貼り付け",
+        setEntryPage: "入口ページに設定",
         deleteSurface: "{label} を削除",
         surfaceActions: "{label} の操作",
         deleteConfirm: "{label} を削除するか",
@@ -64,6 +65,7 @@ export const uiEditor = {
     // このパネルが履歴に残す名前（「インターフェース タイトル の移動を元に戻す」）。
     history: {
         moveSurface: "インターフェース {name} の移動",
+        setEntryPage: "入口ページ {name} の設定",
     },
     inputActions: {
         title: "入力アクション",

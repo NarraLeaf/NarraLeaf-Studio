@@ -62,6 +62,17 @@ export const properties = {
         uiElement: "UI 要素",
         linkedComponent: "リンクされたコンポーネント",
     },
+    interactionSound: {
+        title: "効果音",
+        hover: "ホバー",
+        hoverTip: "ポインタが要素に入ったときに効果音トラックで再生する。ホバー効果音を持つ要素が入れ子の場合は、最も内側の要素の効果音だけを再生する",
+        click: "クリック",
+        clickTip: "要素をクリックしたときに効果音トラックで再生する。クリック効果音を持つ要素が入れ子の場合は、最も内側の要素の効果音だけを再生する",
+        none: "効果音なし",
+        chooseHover: "ホバー時の効果音を選ぶ",
+        chooseClick: "クリック時の効果音を選ぶ",
+        missing: "効果音が見つからない",
+    },
     linkedComponent: {
         missing: "コンポーネントが見つからない",
         info: "リンクされたインスタンス。リンクを外すまで、変えられるのはパラメータと位置、大きさ、回転だけ",

@@ -1,4 +1,4 @@
-import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
 } from "@shared/types/blueprint/graph";
@@ -72,14 +72,11 @@ type SurfaceElementSite = {
 };
 
 /**
- * The page's name as every other surface spells it.
- *
- * The main page is shown under a fixed name in the surface list, the canvas menu and the rename
- * dialog whatever its stored `name` says (`getSurfaceDisplayLabel`), so a report that used the
- * stored one would name a page the author cannot find in the panel they are being sent to.
+ * The page's name, as its card in the interface panel shows it - which is the stored name for every
+ * page, the entry page included. A report names the page the author will look for on that list.
  */
 function surfaceDisplayName(surface: UISurface): string {
-    return surface.id === MAIN_APP_SURFACE_ID ? DEFAULT_APP_SURFACE_NAME : surface.name;
+    return surface.name;
 }
 
 export function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
@@ -469,23 +466,6 @@ function collectFrameSurfaceTargets(document: UIDocument): Set<string> {
         }
     }
     return embedded;
-}
-
-/**
- * The page a build starts on.
- *
- * Every launcher - Run, Test, and the compiled game - opens {@link MAIN_APP_SURFACE_ID} by name, so
- * that surface is entered whether or not anything navigates to it. The fallback to the first app
- * surface mirrors `resolveGameRuntimeEntrySurface`, which is what the shell falls back to when the
- * pack names no entry: without it a document that somehow lost its main page would report *every*
- * page as unreachable, including the one the game boots into.
- */
-function resolveEntrySurfaceId(document: UIDocument): string | undefined {
-    const surfaces = document.surfaces ?? [];
-    return (
-        surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID)?.id
-        ?? surfaces.find(surface => surface.kind === "appSurface")?.id
-    );
 }
 
 /**

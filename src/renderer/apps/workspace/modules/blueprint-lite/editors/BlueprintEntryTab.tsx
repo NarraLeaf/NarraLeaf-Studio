@@ -87,12 +87,15 @@ import {
     type BlueprintLayerDialogValue,
 } from "../components/BlueprintLayerDialogContent";
 import { BlueprintLayerTemplateGrid } from "../components/BlueprintLayerTemplateGrid";
-import type { BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
+import { BlueprintTemplateLibrary } from "../components/BlueprintTemplateLibrary";
+import { blueprintTemplateText, type BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
 import {
     buildBlueprintLayerTemplate,
     listBlueprintLayerTemplates,
+    pickFeaturedBlueprintTemplates,
     type BlueprintLayerTemplateTarget,
 } from "../templates/buildBlueprintLayerTemplate";
+import { SUPPORTED_LOCALES, type Locale } from "@shared/i18n/locales";
 import { collectBlueprintLayerTemplateFacts } from "../templates/blueprintLayerTemplateFacts";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
@@ -541,7 +544,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
 }
 
 function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     /** Already in a window of its own: the pop-out control has nothing left to offer. */
@@ -1426,9 +1429,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         t,
     ]);
 
-    // Only while the blueprint has no layer: that is the one time the templates are on screen.
+    const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
+    // A template's text is written in the editor's language; one the library is not written in
+    // falls back to English, as the catalogue does.
+    const templateLocale = useMemo<Locale>(() => {
+        const base = locale.split("-")[0];
+        return (SUPPORTED_LOCALES as readonly string[]).includes(base) ? (base as Locale) : "en";
+    }, [locale]);
+
+    // Only while the templates are on screen - an empty blueprint, or the library open - since the
+    // facts walk the whole blueprint document.
     const layerTemplateTarget = useMemo<BlueprintLayerTemplateTarget | null>(() => {
-        if (eventIds.length > 0) {
+        if (eventIds.length > 0 && !templateLibraryOpen) {
             return null;
         }
         const storyId = storyService.getDefaultStoryId() ?? storyService.listStories()[0]?.id;
@@ -1442,13 +1454,38 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 blueprintDocument: doc,
                 storyId,
                 storyDocuments: storyDocumentsById,
-                text: key => t(`blueprint.layerTemplates.${key}`),
+                locale: templateLocale,
             }),
         };
         // `revision` and `uiDocumentRevision` stand in for the two documents read through services.
-    }, [bp.owner, eventIds.length, revision, storyDocumentsById, storyService, t, uiDocumentRevision, uidoc, widgetElement?.type]);
+    }, [
+        bp.owner,
+        eventIds.length,
+        revision,
+        storyDocumentsById,
+        storyService,
+        templateLibraryOpen,
+        templateLocale,
+        uiDocumentRevision,
+        uidoc,
+        widgetElement?.type,
+    ]);
     const layerTemplates = useMemo(
         () => (layerTemplateTarget ? listBlueprintLayerTemplates(layerTemplateTarget) : []),
+        [layerTemplateTarget],
+    );
+    const featuredLayerTemplates = useMemo(() => pickFeaturedBlueprintTemplates(layerTemplates), [layerTemplates]);
+    const openTemplateLibrary = useCallback(() => setTemplateLibraryOpen(true), []);
+    const closeTemplateLibrary = useCallback(() => setTemplateLibraryOpen(false), []);
+    /** The graph a template builds here, for the library's preview; ids are throwaway. */
+    const previewLayerTemplate = useCallback(
+        (template: BlueprintLayerTemplate) => {
+            if (!layerTemplateTarget) {
+                return null;
+            }
+            let next = 0;
+            return buildBlueprintLayerTemplate(template, layerTemplateTarget, () => `preview-${(next += 1)}`);
+        },
         [layerTemplateTarget],
     );
 
@@ -1467,7 +1504,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const layerId = uuid.generate();
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                localBp.ensureEventGraph(payload.blueprintId, layerId, t(`blueprint.layerTemplates.${template.id}.title`));
+                localBp.ensureEventGraph(payload.blueprintId, layerId, blueprintTemplateText(template, templateLocale).title);
                 localBp.updateEventGraphIr(payload.blueprintId, layerId, ir => {
                     ir.nodes = built.ir.nodes;
                     ir.edges = built.ir.edges;
@@ -1476,7 +1513,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             selectEventGraph(layerId);
             editor.setSelectedNodeIds(built.pendingNodeIds);
         },
-        [editor, layerTemplateTarget, localBp, payload.blueprintId, selectEventGraph, t, uuid],
+        [editor, layerTemplateTarget, localBp, payload.blueprintId, selectEventGraph, templateLocale, uuid],
     );
 
     const onDeleteLayer = useCallback(
@@ -2264,8 +2301,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             </BlueprintBreakpointScope>
         ) : !hasAnyGraph ? (
             <BlueprintLayerTemplateGrid
-                templates={layerTemplates}
+                templates={featuredLayerTemplates}
                 onPickTemplate={onPickLayerTemplate}
+                onOpenLibrary={layerTemplates.length > featuredLayerTemplates.length ? openTemplateLibrary : undefined}
                 onPickBlank={onAddEvent}
                 // Declaring a layer writes the blueprint, the same as the member panel's New button
                 // beside it - which was already refused while the empty state's button was not, so
@@ -2310,12 +2348,21 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                             onVariableGroupOpenChange={setVariableGroupOpen}
                             onSelectLayer={selectEventGraph}
                             onAddLayer={onAddEvent}
+                            onOpenTemplateLibrary={openTemplateLibrary}
                             onDeleteLayer={onDeleteLayer}
                         />
                     </div>
                 }
                 canvas={canvas}
                 diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+            />
+            <BlueprintTemplateLibrary
+                isOpen={templateLibraryOpen}
+                onClose={closeTemplateLibrary}
+                templates={layerTemplates}
+                build={previewLayerTemplate}
+                onAdd={onPickLayerTemplate}
+                addDisabledReason={freeze.frozen ? freeze.reason : undefined}
             />
         </div>
         </BlueprintGraphAddressProvider>

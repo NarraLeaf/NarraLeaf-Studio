@@ -15,6 +15,7 @@ import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { translate } from "@/lib/i18n";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
@@ -52,7 +53,8 @@ function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISu
             return surface;
         }
     }
-    return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
+    // A pack names its page, so this is for one that does not, or names one it no longer has.
+    return resolveEntrySurface(bundle.ui.uidoc) ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
 function normalizeError(error: unknown): string {

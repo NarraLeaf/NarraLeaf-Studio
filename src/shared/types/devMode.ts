@@ -23,7 +23,12 @@ import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, St
 export type DevModeEntry =
     | {
           kind: "surface";
-          surfaceId: UISurfaceId;
+          /**
+           * The page to open on. Absent means the project's entry page, read from the interface
+           * document in the bundle the window loads - what the top bar's Run asks for. The surface
+           * editor's own launch button names the page it is showing.
+           */
+          surfaceId?: UISurfaceId;
           /**
            * Safe-area device preset id to open the window with; omitted / `null` = no overlay.
            *

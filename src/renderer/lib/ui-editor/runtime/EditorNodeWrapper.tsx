@@ -34,6 +34,8 @@ import { bindWidgetEventDispatch } from "./widgetEventDispatch";
 import { NodeWrapperMotionDriver, nodeWrapperTransform, type NodeWrapperPose } from "./nodeWrapperMotion";
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
+import { offerUIElementHoverSound, playUIElementInteractionSound } from "./interactionSounds";
+import { readUIInteractionSoundAssetId } from "@shared/types/ui-editor/interactionSounds";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
@@ -490,10 +492,25 @@ export function EditorNodeWrapper({
         [layout.height, layout.width],
     );
 
+    /**
+     * The element's hover sound, under the conditions its hover look shows in: not while it is
+     * disabled, and never for the surface's own root. A touch has no hover - the finger arrives and
+     * presses in one gesture - so a tap sounds the click alone.
+     */
+    const canSoundHover =
+        readUIInteractionSoundAssetId(element, "hover") !== null &&
+        Boolean(blueprintRuntime?.hostApi) &&
+        !interactionDisabled &&
+        !(isRoot && !isComponentRoot);
     const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
         widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
+        if (canSoundHover && e.pointerType !== "touch") {
+            offerUIElementHoverSound(e.nativeEvent, e.currentTarget, () => {
+                playUIElementInteractionSound(blueprintRuntime, element, "hover");
+            });
+        }
         dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
-    }, [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
+    }, [blueprintRuntime, canSoundHover, dispatchWidgetEvent, element, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
 
     const onPointerLeave = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {

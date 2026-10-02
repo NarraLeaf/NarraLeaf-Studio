@@ -1,6 +1,7 @@
 import { BrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS, type BrandColor } from "@shared/types/brand";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 
 /**
@@ -10,11 +11,12 @@ import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
  * show an identical pre-boot frame for the same pack.
  */
 
-export function resolveGameRuntimeEntrySurface(pack: GameRuntimePackV1) {
-    const surfaceId = pack.entry.kind === "surface" ? pack.entry.surfaceId : null;
-    return surfaceId
-        ? pack.bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId)
-        : pack.bundle.ui.uidoc.surfaces.find(item => item.kind === "appSurface");
+export function resolveGameRuntimeEntrySurface(pack: GameRuntimePackV1): UISurface | undefined {
+    // Both kinds: a story launch names the page the run sits on as well, and the renderer opens that
+    // page whichever kind it is - so the frame before first paint has to be the same one.
+    const surfaceId = pack.entry.surfaceId;
+    const named = surfaceId ? pack.bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId) : undefined;
+    return named ?? resolveEntrySurface(pack.bundle.ui.uidoc);
 }
 
 /**

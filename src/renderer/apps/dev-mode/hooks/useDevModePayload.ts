@@ -12,6 +12,7 @@ import { WindowAppType } from "@shared/types/window";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import { scrubGeneratedIds } from "@shared/utils/generatedId";
 
 /**
@@ -43,6 +44,12 @@ type DevModeState = {
     entry: DevModeEntry | null;
     projectPath: string | null;
     bundle: DevModeBundle | null;
+    /**
+     * The project's entry page as the first bundle this window received named it, for a launch that
+     * named no page. Held for the window's life: a reload keeps the run where it is, so making
+     * another page the entry while this window is open changes the next run, not this one.
+     */
+    entryPageId: string | null;
     launchRequest: DevModeLaunchRequest | null;
     sessionError: string | null;
 };
@@ -66,6 +73,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
         entry: null,
         projectPath: null,
         bundle: null,
+        entryPageId: null,
         launchRequest: null,
         sessionError: null,
     });
@@ -122,6 +130,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
             setState(prev => ({
                 ...prev,
                 bundle,
+                entryPageId: prev.entryPageId ?? resolveEntrySurfaceId(bundle.ui.uidoc) ?? null,
                 sessionError: null,
             }));
         });
@@ -160,12 +169,20 @@ export function useDevModePayload(): UseDevModePayloadResult {
         setState(prev => ({ ...prev, sessionError: null }));
     }, []);
 
+    // The page the launch named, or the project's entry page. A story launch and the top bar's Run
+    // name none, and the answer is the one the first bundle gave (`entryPageId`) for as long as that
+    // page is still there - the bundle is the document the run was flushed to before it started.
     const surfaceId = useMemo(() => {
-        if (state.entry?.kind === "surface") {
-            return state.entry.surfaceId;
+        const named = state.entry?.kind === "surface" ? state.entry.surfaceId : undefined;
+        if (named) {
+            return named;
         }
-        return MAIN_APP_SURFACE_ID;
-    }, [state.entry]);
+        const surfaces = state.bundle?.ui.uidoc.surfaces ?? [];
+        if (state.entryPageId && surfaces.some(candidate => candidate.id === state.entryPageId)) {
+            return state.entryPageId;
+        }
+        return resolveEntrySurfaceId(state.bundle?.ui.uidoc) ?? MAIN_APP_SURFACE_ID;
+    }, [state.bundle, state.entry, state.entryPageId]);
 
     const surface = useMemo(() => {
         if (!state.bundle) {

@@ -22,7 +22,7 @@ import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } from "./BlueprintVariableDialogContent";
-import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, LibraryBig, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -45,6 +45,8 @@ type Props = {
     onVariableGroupOpenChange?: (groupKey: BlueprintVariableGroupKey, open: boolean) => void;
     onSelectLayer: (layerId: string) => void;
     onAddLayer: () => void | Promise<void>;
+    /** Opens the template library, which adds a layer from a template. */
+    onOpenTemplateLibrary?: () => void;
     onDeleteLayer: (layerId: string) => void;
 };
 
@@ -507,6 +509,7 @@ export function BlueprintMemberTree({
     onVariableGroupOpenChange,
     onSelectLayer,
     onAddLayer,
+    onOpenTemplateLibrary,
     onDeleteLayer,
 }: Props) {
     const { t } = useTranslation();
@@ -932,15 +935,30 @@ export function BlueprintMemberTree({
             <section className="shrink-0">
                 <div className="mb-1 flex items-center justify-between text-2xs font-medium text-fg-subtle">
                     <span>{t("blueprint.memberTree.layers")}</span>
-                    <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() => void onAddLayer()}
-                        {...freeze.writes()}
-                    >
-                        <Plus className="h-3 w-3" />
-                        {t("common.new")}
-                    </button>
+                    <span className="inline-flex items-center gap-2">
+                        {onOpenTemplateLibrary ? (
+                            // Browsing the library writes nothing, so it stays open on a frozen
+                            // project; the Add inside it is what is refused.
+                            <button
+                                type="button"
+                                className="inline-flex items-center text-fg-subtle hover:text-primary"
+                                onClick={onOpenTemplateLibrary}
+                                data-tip={t("blueprint.templateLibrary.open")}
+                                aria-label={t("blueprint.templateLibrary.open")}
+                            >
+                                <LibraryBig className="h-3.5 w-3.5" />
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-primary hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => void onAddLayer()}
+                            {...freeze.writes()}
+                        >
+                            <Plus className="h-3 w-3" />
+                            {t("common.new")}
+                        </button>
+                    </span>
                 </div>
                 <ul className="space-y-0.5">
                     {eventIds.length === 0 ? (

@@ -6,6 +6,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { createTranslator } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n";
 import { Services, type WorkspaceContext } from "../../services";
+import { componentWidgetMainOwnerKey, widgetMainOwnerKey } from "../../ui-editor/blueprint/ownerKeys";
 
 function blueprintDoc(): BlueprintDocument {
     return {
@@ -364,6 +365,60 @@ describe("blueprintSource in a workspace", () => {
         invalidate.mockClear();
         i18nStore.setLocale("ja");
         expect(invalidate).not.toHaveBeenCalled();
+    });
+});
+
+describe("what a blueprint hit says it hangs on", () => {
+    /**
+     * A page with a Start button, and a component with a control of its own. The page's element table
+     * also holds an element under the component control's id, so a lookup in the wrong table is seen
+     * printing the wrong name rather than just printing nothing.
+     */
+    function workspace(): WorkspaceContext {
+        const pageButton = widgetMainOwnerKey("title", "start");
+        const cardLabel = componentWidgetMainOwnerKey("card", "label");
+        const document = {
+            schemaVersion: 1,
+            ownerRecords: { [pageButton]: { blueprintId: "bp-start" }, [cardLabel]: { blueprintId: "bp-label" } },
+            blueprints: {
+                "bp-start": { id: "bp-start", name: "Button", owner: {}, graphs: { events: {}, functions: {} } },
+                "bp-label": { id: "bp-label", name: "Text", owner: {}, graphs: { events: {}, functions: {} } },
+            },
+        };
+        const uiDocument = {
+            surfaces: [{ id: "title", name: "Title" }],
+            components: [{ id: "card", name: "Save card", elements: { label: { id: "label", type: "nl.text", name: "Slot name" } } }],
+            elements: {
+                start: { id: "start", type: "nl.button", name: "Start" },
+                label: { id: "label", type: "nl.text", name: "Not the component's" },
+            },
+        };
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.LocalBlueprint]: {
+                getBlueprintDocument: () => document,
+                listPersistentVariables: () => [],
+                listSavedVariables: () => [],
+            },
+            [Services.BlueprintNodeCatalog]: { resolveCatalogEntry: (type: string) => ({ type, displayName: type }) },
+            [Services.UIDocument]: { getDocument: () => uiDocument },
+        };
+        return { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+    }
+
+    async function detailOf(blueprintId: string): Promise<string | undefined> {
+        const entries = await blueprintSource.extract(workspace(), undefined);
+        return entries.find(e => e.group === "blueprint" && e.target.kind === "blueprint" && e.target.blueprintId === blueprintId)
+            ?.detail;
+    }
+
+    it("names a page control by its page and its own name", async () => {
+        expect(await detailOf("bp-start")).toBe("Title › Start");
+    });
+
+    // The control's name was looked up in the page document's element table, where a component's
+    // controls never are, so the hit said only which component and never which control in it.
+    it("names a component control by its component and its own name, from the component's table", async () => {
+        expect(await detailOf("bp-label")).toBe("Save card › Slot name");
     });
 });
 

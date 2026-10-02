@@ -17,9 +17,10 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { applyCompiled, mergePreservingOrder } from "./apply";
+import { checkUiSource } from "./check";
 import { compileUiFile } from "./dsl/compile";
 import { parseUiFile } from "./dsl/parse";
-import { printSurface } from "./dsl/print";
+import { printSurface, printUiDocument } from "./dsl/print";
 
 const SKELETON = path.resolve(
     __dirname,
@@ -202,5 +203,52 @@ describe("mergePreservingOrder", () => {
         );
         expect(Object.keys(merged)).toEqual(["a", "c", "d"]);
         expect(merged).toEqual({ a: 10, c: 30, d: 40 });
+    });
+});
+
+/**
+ * `entry=` on the document line: the one way a `.ui` file sets which page the game starts on.
+ *
+ * It sits on the document line rather than on a surface header so that applying one surface's block
+ * can never move or clear the entry by leaving something out - a block describes a surface, and the
+ * entry is a fact about the document.
+ */
+describe("the entry page in a .ui file", () => {
+    const configId = (document: UIDocument) => document.surfaces.find(item => item.name === "Config")!.id;
+
+    it("makes the named page the entry, by name or by id, and changes no id", () => {
+        for (const spelling of ['"Config"', null]) {
+            const document = loadSkeleton();
+            const ids = document.surfaces.map(surface => surface.id);
+            const entry = spelling ?? configId(document);
+            const result = checkUiSource(`document "UI Document" entry=${entry}\n`, { existing: document });
+            expect(result.ok, String(spelling)).toBe(true);
+
+            const applied = applyCompiled(document, result.compiled!);
+            expect(document.entrySurfaceId).toBe(configId(document));
+            expect(applied.entryPage).toBe("Config");
+            expect(document.surfaces.map(surface => surface.id)).toEqual(ids);
+        }
+    });
+
+    it("refuses a Game UI and a name nothing has", () => {
+        const document = loadSkeleton();
+        expect(checkUiSource('document "UI Document" entry="Dialogue"\n', { existing: document }).diagnostics
+            .map(item => item.code)).toContain("ui.entry_not_a_page");
+        expect(checkUiSource('document "UI Document" entry="Nowhere"\n', { existing: document }).diagnostics
+            .map(item => item.code)).toContain("ui.entry_unknown");
+    });
+
+    it("prints the entry only when the document stores one, so a round trip writes nothing new", () => {
+        const document = loadSkeleton();
+        expect(printUiDocument(document)).not.toContain("entry=");
+
+        document.entrySurfaceId = configId(document);
+        const printed = printUiDocument(document);
+        expect(printed).toContain(`entry=${configId(document)}`);
+
+        const again = loadSkeleton();
+        applyCompiled(again, compileUiFile(parseUiFile(printed), { existing: again }));
+        expect(again.entrySurfaceId).toBe(configId(document));
     });
 });

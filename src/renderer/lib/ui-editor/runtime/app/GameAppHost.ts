@@ -173,7 +173,7 @@ export type GameAppHost = {
      * a value that only changes when the bundle changes.
      */
     sessionKey: string;
-    /** Surface the navigation stack starts on; null falls back to the default app surface. */
+    /** Surface the navigation stack starts on; null falls back to the document's entry page. */
     entrySurfaceId: string | null | undefined;
     /**
      * Surface to show when the running story falls off the end, resolved for the variant this build

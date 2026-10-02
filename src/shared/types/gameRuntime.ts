@@ -80,10 +80,19 @@ export const GAME_RUNTIME_CLOSE_DECISION_CHANNEL = "runtime:close:decision" as c
  */
 export const GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL = "runtime:sidecar:message" as const;
 
+/**
+ * What a run starts on.
+ *
+ * `surfaceId` is optional on both kinds, and absent means the project's entry page - the page the
+ * interface document marks as the one the game starts on (`resolveEntrySurface`). Run, a test, a
+ * build and a patch all ask for that rather than naming a page, so the answer is read from the
+ * document the run is compiled from and not from whatever the caller held a moment earlier. The
+ * compiler writes the page it resolved into the pack, so a pack always says which page it opens.
+ */
 export type GameRuntimeLaunchEntry =
     | {
           kind: "surface";
-          surfaceId: UISurfaceId;
+          surfaceId?: UISurfaceId;
       }
     | {
           kind: "story";

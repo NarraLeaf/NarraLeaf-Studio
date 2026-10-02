@@ -24,6 +24,11 @@ import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
+import {
+    UI_INTERACTION_SOUND_KINDS,
+    UI_INTERACTION_SOUND_PROP,
+    uiElementTypeTakesInteractionSounds,
+} from "@shared/types/ui-editor/interactionSounds";
 import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
@@ -259,12 +264,15 @@ export function describeWidget(type: string): WidgetDetail | null {
     return {
         ...summary,
         acceptsChildren: uiElementTypeAcceptsChildren(module.type),
-        props: Object.entries(props).map(([key, value]) => ({
-            key,
-            valueType: describeValue(value),
-            defaultValue: value,
-            inherited: parentType != null && key in parentProps,
-        })),
+        props: [
+            ...Object.entries(props).map(([key, value]) => ({
+                key,
+                valueType: describeValue(value),
+                defaultValue: value,
+                inherited: parentType != null && key in parentProps,
+            })),
+            ...interactionSoundProps(module.type, props),
+        ],
         bindableProps: listBindableValueTargets()
             .filter(target => target.elementType === module.type)
             .map(target => ({ propPath: target.propPath, valueType: target.valueType })),
@@ -287,6 +295,23 @@ export function describeWidget(type: string): WidgetDetail | null {
         editorStates: readEditorStates(module),
         notes: [...(WIDGET_NOTES[module.type] ?? [])],
     };
+}
+
+/**
+ * The hover and click sound props, which every type but the root reads and no new element carries.
+ *
+ * Listed so `widget <type>` names them and a file that sets them is not reported as setting a key
+ * nothing declares. They are the element's own (`@shared/types/ui-editor/interactionSounds`) rather
+ * than any one widget's, so no module's defaults could state them.
+ */
+function interactionSoundProps(type: string, props: Record<string, unknown>): WidgetDetail["props"] {
+    if (!uiElementTypeTakesInteractionSounds(type)) {
+        return [];
+    }
+    return UI_INTERACTION_SOUND_KINDS
+        .map(kind => UI_INTERACTION_SOUND_PROP[kind])
+        .filter(key => !(key in props))
+        .map(key => ({ key, valueType: describeValue(undefined), defaultValue: undefined, inherited: false }));
 }
 
 /**

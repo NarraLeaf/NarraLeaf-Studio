@@ -1,5 +1,5 @@
 /**
- * A layer template, compiled for one particular blueprint.
+ * A library template, compiled for one particular blueprint.
  *
  * The template text goes through the blueprint CLI's parser and compiler with the real owner
  * substituted in, so the answer to "can this template go here" is the compiler's own: a node the
@@ -34,6 +34,8 @@ export type BuiltBlueprintLayerTemplate = {
     ir: BlueprintGraphIr;
     /** Nodes with a choice still left to the author, by their id in {@link ir}. */
     pendingNodeIds: string[];
+    /** The same nodes with the fields on each that are still empty, in the template's order. */
+    pending: { nodeId: string; keys: string[] }[];
 };
 
 /** The graph of `template` for this owner, or null when the template cannot go on it. */
@@ -84,22 +86,39 @@ export function buildBlueprintLayerTemplate(
         to: { nodeId: renamed.get(edge.to.nodeId) ?? edge.to.nodeId, port: edge.to.port },
     }));
 
-    const pendingNodeIds: string[] = [];
+    const pending: BuiltBlueprintLayerTemplate["pending"] = [];
     for (const [localId, keys] of Object.entries(template.choices ?? {})) {
         const node = graph.nodes?.[localId];
         const id = renamed.get(localId);
-        if (node && id && keys.some(key => isUnset(node.params?.[key]))) {
-            pendingNodeIds.push(id);
+        const unset = node ? keys.filter(key => isUnset(node.params?.[key])) : [];
+        if (id && unset.length > 0) {
+            pending.push({ nodeId: id, keys: unset });
         }
     }
-    return { ir: { nodes, edges }, pendingNodeIds };
+    return { ir: { nodes, edges }, pendingNodeIds: pending.map(entry => entry.nodeId), pending };
 }
 
-/** The templates that can go on this owner, in the order they are shown. */
+/** The templates that can go on this owner, in the order the library lists them. */
 export function listBlueprintLayerTemplates(target: BlueprintLayerTemplateTarget): BlueprintLayerTemplate[] {
     let counter = 0;
     const probeId = () => `probe-${(counter += 1)}`;
     return BLUEPRINT_LAYER_TEMPLATES.filter(template => buildBlueprintLayerTemplate(template, target, probeId) !== null);
+}
+
+/** How many templates a blueprint with no layers shows before the library and the blank layer. */
+export const FEATURED_BLUEPRINT_TEMPLATE_COUNT = 4;
+
+/**
+ * The few of `available` a blueprint with no layers shows: the ranked ones by rank, then the rest in
+ * library order. The second part is what gives a slider or a switch tiles of its own, since the
+ * ranked templates are the commonest needs of a page, the game and a button.
+ */
+export function pickFeaturedBlueprintTemplates(available: readonly BlueprintLayerTemplate[]): BlueprintLayerTemplate[] {
+    const ranked = available
+        .filter(template => template.featured !== undefined)
+        .sort((a, b) => a.featured! - b.featured!);
+    const rest = available.filter(template => template.featured === undefined);
+    return [...ranked, ...rest].slice(0, FEATURED_BLUEPRINT_TEMPLATE_COUNT);
 }
 
 function ownerFieldsOf(owner: BlueprintOwnerRef): Record<string, string> {

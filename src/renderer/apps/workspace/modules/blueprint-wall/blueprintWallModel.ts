@@ -1,7 +1,8 @@
 import { GLOBAL_MAIN_OWNER_KEY, decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { listBlueprintFunctionIds } from "@shared/blueprint/blueprintEventOrder";
 import { listBlueprintLayers } from "@shared/blueprint/blueprintLayers";
-import { DEFAULT_UI_ROOT_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story/document";
@@ -174,6 +175,7 @@ function storyBlueprintScenes(stories: readonly BlueprintWallStory[]): Map<strin
 
 export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWallInput): BlueprintWallGroup[] {
     const surfaces = ui?.surfaces ?? [];
+    const entrySurfaceId = resolveEntrySurfaceId(ui);
     const components = ui?.components ?? [];
     const elements = ui?.elements ?? {};
 
@@ -193,7 +195,7 @@ export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWall
                 kind: isPage ? "page" : "gameUi",
                 title: surface.name,
                 caption: isPage
-                    ? t(surface.id === MAIN_APP_SURFACE_ID ? "uiEditor.surfaceKind.mainPage" : "uiEditor.surfaceKind.page")
+                    ? t(surface.id === entrySurfaceId ? "uiEditor.surfaceKind.mainPage" : "uiEditor.surfaceKind.page")
                     : `${t("uiEditor.surfaceKind.gameUi")} · ${getStageSlotLabel(surface.mount.slotId, t)}`,
                 tiles: [],
             },
@@ -388,4 +390,29 @@ export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWall
 /** How many tiles the wall holds, for the header. */
 export function countBlueprintWallTiles(groups: readonly BlueprintWallGroup[]): number {
     return groups.reduce((sum, group) => sum + group.tiles.length, 0);
+}
+
+/**
+ * The groups and tiles a search leaves, by the words the wall itself shows: page and component
+ * names, control names, and the kind of logic. Node contents are the project search's job.
+ *
+ * Every word has to appear somewhere in a tile's own text or its group's, so "title start" finds the
+ * Start control on the Title page. A group whose own name or caption matches keeps all of its tiles,
+ * and keeps showing that it has none - searching a page's name is asking what that page holds.
+ */
+export function filterBlueprintWall(groups: readonly BlueprintWallGroup[], query: string): BlueprintWallGroup[] {
+    const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) {
+        return [...groups];
+    }
+    const matches = (text: string) => terms.every(term => text.includes(term));
+    return groups.flatMap(group => {
+        const groupText = `${group.title} ${group.caption}`.toLocaleLowerCase();
+        if (matches(groupText)) {
+            return [group];
+        }
+        const tiles = group.tiles.filter(tile =>
+            matches(`${groupText} ${tile.title} ${tile.kindLabel}`.toLocaleLowerCase()));
+        return tiles.length > 0 ? [{ ...group, tiles }] : [];
+    });
 }

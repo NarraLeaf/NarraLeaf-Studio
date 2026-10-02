@@ -9,6 +9,7 @@
  * Comments in English per project convention.
  */
 
+import type { Locale } from "@shared/i18n/locales";
 import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LAYER_CONFIRM } from "@shared/types/blueprint/graph";
 import type { StoryDocument } from "@shared/types/story";
@@ -24,7 +25,7 @@ export type BlueprintLayerTemplateFactsInput = {
     /** The project's default story, or else the first one it lists. */
     storyId: string | undefined;
     storyDocuments: Readonly<Record<string, StoryDocument>>;
-    text: BlueprintLayerTemplateFacts["text"];
+    locale: Locale;
 };
 
 export function collectBlueprintLayerTemplateFacts(input: BlueprintLayerTemplateFactsInput): BlueprintLayerTemplateFacts {
@@ -32,7 +33,7 @@ export function collectBlueprintLayerTemplateFacts(input: BlueprintLayerTemplate
         pageContent: pageContentOf(input),
         confirmPage: confirmPageOf(input),
         gameStart: gameStartOf(input),
-        text: input.text,
+        locale: input.locale,
     };
 }
 
