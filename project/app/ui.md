@@ -170,7 +170,7 @@ usually has a name already. The search word matches a surface, a component, an
 element path or an element type; the last line says how much was left out.
 
 ```
-Title  appSurface  1920x1080
+Title  appSurface  1920x1080  entry
     owner=surfaceMain surface=narraleaf-studio:main-surface
     Root / Title / Quit  [nl.button]  owner=widgetMain surface=narraleaf-studio:… element=281a47c0-…  # Quit
 
@@ -179,7 +179,8 @@ Save slot  component=d8d996da-…  (slot="1" mode="save")
 ```
 
 The `owner=` lines are the ones `blueprint apply` wants, and a `#` at the end of
-a line names the blueprints already hanging off that element.
+a line names the blueprints already hanging off that element. `entry` marks the
+page the game starts on.
 
 ## The text format
 
@@ -228,6 +229,13 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   `param <id> <name> = <default>` lines for the values each instance supplies.
 - **`struct <id>`** and **`action <id> <name>`** declare the two document-wide
   tables: item shapes, and what a gesture means.
+- **`document <name> [id=] [entry=]`** names the document itself. `entry=` makes
+  a page - by id or by name - the one the game starts on; leaving it out leaves
+  the entry where it is, so applying one surface's block can never move it. A
+  document that names no entry starts on the page with the id
+  `narraleaf-studio:main-surface`, which is the first page a new project has.
+  The pages keep their ids either way: the entry is a pointer, and nothing a
+  blueprint names changes when it moves.
 - **`<name>: <type> [id=<id>] [@x,y] [WxH]`** declares an element, and what is
   indented under it is inside it. The name is what the outline shows; the id is
   yours to choose and is what a blueprint refers to.
@@ -344,6 +352,13 @@ named by the component (`"Card / Window" in component "Card"`). Checking a file
 reports these for every block the file writes, and for any the file would create
 elsewhere - placing a card on a page is written on the page, while the widget
 that then leads back sits in the card.
+
+`entry=` is refused when it names nothing (**`ui.entry_unknown`**) or names a
+Game UI (**`ui.entry_not_a_page`**): only a page can be the entry. Checking the
+project warns **`ui.entry_missing`** when the stored entry names a page the
+document no longer has (the game starts on the fallback page, and Studio drops
+the pointer the next time it opens the project), and **`ui.no_entry_page`** when
+there is no page at all.
 
 Three findings are notes rather than refusals, deliberately:
 

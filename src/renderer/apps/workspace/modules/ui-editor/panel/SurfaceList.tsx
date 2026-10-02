@@ -2,7 +2,6 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "r
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MoreVertical } from "lucide-react";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -30,6 +29,8 @@ const PREVIEW_FRAME_CLASS = "overflow-hidden rounded-md border border-edge bg-su
 
 type SurfaceListProps = {
     surfaces: UISurface[];
+    /** The page the game starts on, which its card says. Resolved by the caller from the document. */
+    entrySurfaceId: string | null;
     globalBlueprintCard?: SurfaceListGlobalBlueprintCard;
     renderSurfacePreview?: (surface: UISurface) => ReactNode;
     /** Moves only when this surface's own content changed; keeps one page's edit off the other cards. */
@@ -65,11 +66,11 @@ export type SurfaceListGlobalBlueprintCard = {
  * so "Page" under every page was the switch read back. What is left is what tells two cards of the
  * same kind apart - the slot a Game UI mounts into, that a page is the entry page - and the size.
  */
-const getSurfaceMetaLabel = (surface: UISurface, t: UseTranslation["t"]): string => {
+const getSurfaceMetaLabel = (surface: UISurface, isEntry: boolean, t: UseTranslation["t"]): string => {
     const parts: string[] = [];
     if (surface.kind === "stageSurface") {
         parts.push(formatStageMountLabel(surface.mount, t));
-    } else if (surface.id === MAIN_APP_SURFACE_ID) {
+    } else if (isEntry) {
         parts.push(t("uiEditor.surfaceKind.mainPage"));
     }
     parts.push(`${surface.designSize.width}×${surface.designSize.height}`);
@@ -77,8 +78,8 @@ const getSurfaceMetaLabel = (surface: UISurface, t: UseTranslation["t"]): string
 };
 
 /** The kind, which still names the card's actions for a screen reader. */
-const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string => {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
+const getSurfaceTypeLabel = (surface: UISurface, isEntry: boolean, t: UseTranslation["t"]): string => {
+    if (isEntry) {
         return t("uiEditor.surfaceKind.mainPage");
     }
     return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
@@ -310,6 +311,7 @@ function useListContentWidth(): [number, (node: HTMLDivElement | null) => void] 
 
 export function SurfaceList({
     surfaces,
+    entrySurfaceId,
     globalBlueprintCard,
     renderSurfacePreview,
     getSurfaceContentRevision,
@@ -464,14 +466,15 @@ export function SurfaceList({
                     </button>
                 ) : null}
                 {surfaces.map((surface, cardIndex) => {
-                    const typeLabel = getSurfaceTypeLabel(surface, t);
+                    const isEntry = surface.id === entrySurfaceId;
+                    const typeLabel = getSurfaceTypeLabel(surface, isEntry, t);
                     return (
                         <SurfaceRow
                             key={surface.id}
                             surface={surface}
                             shape={shape}
                             previewHeight={previewHeight}
-                            metaLabel={getSurfaceMetaLabel(surface, t)}
+                            metaLabel={getSurfaceMetaLabel(surface, isEntry, t)}
                             actionsLabel={t("uiEditor.panel.surfaceActions", { label: typeLabel })}
                             contentRevision={getSurfaceContentRevision?.(surface) ?? 0}
                             renderPreview={() => renderSurfacePreview?.(surface) ?? null}

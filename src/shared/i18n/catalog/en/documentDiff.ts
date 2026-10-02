@@ -293,6 +293,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "Interface renamed",
+        /** The two page names are drawn as the value pair. */
+        entryPage: "Entry page changed",
         surfaceAdded: "Surface added ({elementCount})",
         surfaceRemoved: "Surface removed ({elementCount})",
         surfaceChanged: "Surface changed",

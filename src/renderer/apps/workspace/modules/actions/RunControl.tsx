@@ -24,7 +24,6 @@ import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { ProjectDlc } from "@shared/types/dlc";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { openPatchDialog } from "./PatchDialog";
@@ -574,8 +573,9 @@ export function RunControl() {
         if (target === "preview") {
             void (async () => {
                 await refreshDependenciesForRun();
-                await context.services.get<PreviewService>(Services.Preview)
-                    .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+                // No page named: the compile opens the project's entry page, read from the document
+                // it builds the game from.
+                await context.services.get<PreviewService>(Services.Preview).launch({ kind: "surface" });
             })();
             return;
         }
@@ -587,12 +587,13 @@ export function RunControl() {
                 console.error("[DevMode] flush before launch failed", e);
             }
             await refreshDependenciesForRun();
-                // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
-            // orientation is project context rather than a design aid, and the Dev Mode window's
-            // own safe-area picker needs it to resolve a device onto the right edge.
+            // No page and no safeAreaId, on purpose: the top bar runs the game the way a player gets
+            // it, so it opens on the project's entry page (read by the window from the bundle it
+            // loads) with no design aid over it. The orientation is project context rather than a
+            // design aid, and the Dev Mode window's own safe-area picker needs it to resolve a
+            // device onto the right edge.
             await dev.launch({
                 kind: "surface",
-                surfaceId: MAIN_APP_SURFACE_ID,
                 mobileOrientation: readProjectMobileOrientation(context),
                 viewport: readProjectViewportConfig(context),
             });

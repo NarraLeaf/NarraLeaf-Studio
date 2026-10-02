@@ -33,6 +33,7 @@ import {
 } from "./catalog";
 import { applyCompiled, formatApplyResult } from "./apply";
 import { checkProjectDocument, checkUiSource, formatDiagnostics } from "./check";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import { printUiDocument } from "./dsl/print";
 import {
     assertWritableSchema,
@@ -264,8 +265,9 @@ function commandSurfaces(args: Args, io: CliIo): number {
     const projectDir = requireProject(args);
     const { document } = readUiDocument(projectDir);
     const blueprints = readBlueprintIndex(projectDir);
+    const entrySurfaceId = resolveEntrySurfaceId(document);
     if (args.flags.json === true) {
-        io.out(JSON.stringify({ surfaces: document.surfaces, components: document.components ?? [] }, null, 2));
+        io.out(JSON.stringify({ surfaces: document.surfaces, components: document.components ?? [], entrySurfaceId }, null, 2));
         return 0;
     }
     // A project of any size has hundreds of elements, and the one being looked for usually has a
@@ -289,6 +291,7 @@ function commandSurfaces(args: Args, io: CliIo): number {
         }
         lines.push(
             `${surface.name}  ${surface.kind}${mount}  ${surface.designSize.width}x${surface.designSize.height}`
+                + `${surface.id === entrySurfaceId ? "  entry" : ""}`
                 + `${answers ? `  answers ${answers}` : ""}`,
         );
         lines.push(`    owner=surfaceMain surface=${surface.id}`);

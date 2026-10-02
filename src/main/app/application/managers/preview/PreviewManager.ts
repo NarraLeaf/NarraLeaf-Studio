@@ -743,7 +743,7 @@ export class PreviewManager {
 
     private describeEntry(entry: GameRuntimeLaunchEntry): string {
         if (entry.kind === "surface") {
-            return `surface ${entry.surfaceId}`;
+            return `surface ${entry.surfaceId ?? "(entry page)"}`;
         }
         return `story ${entry.storyId}:${entry.sceneId}`;
     }

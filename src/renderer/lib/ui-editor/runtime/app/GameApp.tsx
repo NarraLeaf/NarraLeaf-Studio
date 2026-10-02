@@ -55,6 +55,7 @@ import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAsset
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import {
@@ -357,7 +358,7 @@ function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | u
             return surface;
         }
     }
-    return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
+    return resolveEntrySurface(bundle.ui.uidoc) ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
 /**

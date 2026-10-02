@@ -129,12 +129,17 @@ describe("buildUiSurfaceClipboardPayload", () => {
         ]);
     });
 
-    it("refuses the main page, which cannot be duplicated or imported", () => {
-        expect(buildUiSurfaceClipboardPayload({
+    // Any page can be copied. The main page used to be refused because it was the one page a project
+    // had exactly one of; the entry is a pointer now, and a paste regenerates every id, so a copy of
+    // it arrives as an ordinary page - what Duplicate already made of it.
+    it("copies the main page like any other page", () => {
+        const payload = buildUiSurfaceClipboardPayload({
             document: sourceDocument(),
             surfaceId: MAIN_APP_SURFACE_ID,
             blueprintDocument: sourceBlueprints(),
-        })).toBeNull();
+        });
+        expect(payload?.document.surfaces.map(surface => surface.id)).toEqual([MAIN_APP_SURFACE_ID]);
+        expect(Object.keys(payload!.document.elements)).toEqual(["main-root"]);
     });
 
     it("refuses a surface the document does not have", () => {
@@ -176,11 +181,12 @@ describe("readUiSurfaceClipboardPayload", () => {
         expect(readUiSurfaceClipboardPayload(JSON.stringify(payload))).toBeNull();
     });
 
-    it("drops the main page rather than reporting a surface an import will skip", () => {
+    it("reads back a copied main page, which a paste imports under an id of its own", () => {
         const payload = copyDialogueSurface();
         payload.document.surfaces[0].id = MAIN_APP_SURFACE_ID;
 
-        expect(readUiSurfaceClipboardPayload(JSON.stringify(payload))).toBeNull();
+        expect(readUiSurfaceClipboardPayload(JSON.stringify(payload))?.document.surfaces.map(surface => surface.id))
+            .toEqual([MAIN_APP_SURFACE_ID]);
     });
 
     it("stands in an empty graph document for blueprints it cannot read", () => {

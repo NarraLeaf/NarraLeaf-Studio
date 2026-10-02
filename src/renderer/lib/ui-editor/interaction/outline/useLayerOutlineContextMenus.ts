@@ -40,10 +40,15 @@ function developerIdEntries(
     elementId: string | null,
     surfaceId: string,
     surface: UISurface | undefined,
+    documentService: UIDocumentService,
 ): DeveloperIdEntry[] {
     const entries: DeveloperIdEntry[] = [{ kind: "element", value: elementId }];
     if (surface) {
-        entries.push({ kind: "surface", value: surfaceId, label: getSurfaceDisplayLabel(surface, translate) });
+        entries.push({
+            kind: "surface",
+            value: surfaceId,
+            label: getSurfaceDisplayLabel(surface, documentService.getDocument(), translate),
+        });
     }
     return entries;
 }
@@ -153,7 +158,7 @@ export function useLayerOutlineContextMenus(params: {
             });
             setMenuItems(appendDeveloperIdSection(
                 items,
-                developerIdEntries(element.id, surfaceId, surface),
+                developerIdEntries(element.id, surfaceId, surface, documentService),
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             ));
             showMenu(event);
@@ -246,7 +251,7 @@ export function useLayerOutlineContextMenus(params: {
             });
             setMenuItems(appendDeveloperIdSection(
                 items,
-                developerIdEntries(null, surfaceId, surface),
+                developerIdEntries(null, surfaceId, surface, documentService),
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             ));
             showMenu(event);

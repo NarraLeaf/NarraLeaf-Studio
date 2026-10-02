@@ -868,7 +868,7 @@ authLoginWithToken: exchanging external token:
 |---|---|
 | `schemaChanged` | 盘上的 `schemaVersion` 比本构建低 |
 | `normalizedChanged` | 归一化器改了任何东西（`nl.image` 旧属性折叠、输入模型） |
-| `mainSurfaceChanged` | 主表面或它的根元素不在 |
+| `entrySurfaceChanged` | 没有任何页面、入口页面的根元素不在，或存着的入口指针指向一个不存在的页面 |
 | `flowLayoutsChanged` | 流式布局的子元素坐标不在归位 |
 
 **一次实测的两条**（同一台机器、同一份构建，各复制一份项目再打开）：
