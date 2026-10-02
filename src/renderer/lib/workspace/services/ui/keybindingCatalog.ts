@@ -353,6 +353,7 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("localization.find", "mod+f", "workspace.shell.keybindings.catalog.localizationFind", CATEGORY.localization, Search),
     entry("voice.find", "mod+f", "workspace.shell.keybindings.catalog.voiceFind", CATEGORY.voice, Search),
     entry("lint.find", "mod+f", "workspace.shell.keybindings.catalog.lintFind", CATEGORY.lint, Search),
+    entry("blueprint.overview.find", "mod+f", "workspace.shell.keybindings.catalog.blueprintOverviewFind", CATEGORY.blueprint, Search),
 ];
 
 const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));

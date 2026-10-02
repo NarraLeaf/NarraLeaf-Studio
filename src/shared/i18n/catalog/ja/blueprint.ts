@@ -1551,6 +1551,8 @@ export const blueprint = {
             other: "ブループリント {count} 件",
         },
         noBlueprints: "ブループリントはない",
+        search: "ブループリントを検索",
+        noMatches: "「{query}」に一致するブループリントがない",
         nodes: {
             other: "ノード {count} 件",
         },

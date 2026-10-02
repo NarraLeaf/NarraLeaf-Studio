@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { EmptyState, SearchInput } from "@/lib/components/elements";
+import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -16,6 +18,7 @@ import { BlueprintWallThumbnail } from "./BlueprintWallThumbnail";
 import {
     buildBlueprintWall,
     countBlueprintWallTiles,
+    filterBlueprintWall,
     type BlueprintWallGroup,
     type BlueprintWallTile,
 } from "./blueprintWallModel";
@@ -134,7 +137,7 @@ function BlueprintWallSection({
  * Kept-alive tabs stay mounted while hidden, so the wall follows edits only while it is the visible
  * tab and catches up the moment it is shown again.
  */
-export function BlueprintWallTab({ active }: EditorTabComponentProps) {
+export function BlueprintWallTab({ tabId, active }: EditorTabComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
@@ -222,16 +225,56 @@ export function BlueprintWallTab({ active }: EditorTabComponentProps) {
         [openBlueprint],
     );
 
-    const total = countBlueprintWallTiles(groups);
+    const [query, setQuery] = useState("");
+    const searchBoxRef = useRef<HTMLDivElement>(null);
+    const shownGroups = useMemo(() => filterBlueprintWall(groups, query), [groups, query]);
+    const total = countBlueprintWallTiles(shownGroups);
+
+    useKeybinding({
+        id: `blueprint-overview-find-${tabId}`,
+        catalogId: "blueprint.overview.find",
+        key: "mod+f",
+        // From inside the box as well, where it selects what is there to be typed over.
+        allowInEditable: true,
+        when: whenEditorFocused(tabId),
+        handler: () => {
+            const input = searchBoxRef.current?.querySelector("input");
+            input?.focus();
+            input?.select();
+        },
+    });
 
     return (
         <div className="h-full overflow-y-auto bg-surface" data-blueprint-overview="">
-            <div className="mx-auto max-w-6xl px-6 py-5">
-                <div className="mb-4 flex items-baseline gap-3">
-                    <h1 className="text-base font-semibold text-fg">{t("blueprint.overview.title")}</h1>
-                    <span className="text-xs text-fg-subtle">{tn("blueprint.overview.count", total)}</span>
+            {/* Pinned, so the search stays in reach however far down the wall the author is. */}
+            <div className="sticky top-0 z-10 border-b border-edge-subtle bg-surface">
+                <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-3">
+                    <h1 className="shrink-0 text-base font-semibold text-fg">{t("blueprint.overview.title")}</h1>
+                    <span className="shrink-0 text-xs text-fg-subtle">{tn("blueprint.overview.count", total)}</span>
+                    <div ref={searchBoxRef} className="ml-auto w-56 min-w-0">
+                        <SearchInput
+                            size="sm"
+                            fullWidth
+                            value={query}
+                            onChange={event => setQuery(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === "Escape" && !event.nativeEvent.isComposing && query) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setQuery("");
+                                }
+                            }}
+                            placeholder={t("blueprint.overview.search")}
+                            aria-label={t("blueprint.overview.search")}
+                        />
+                    </div>
                 </div>
-                {groups.map(group => (
+            </div>
+            <div className="mx-auto max-w-6xl px-6 py-5">
+                {shownGroups.length === 0 && query.trim() ? (
+                    <EmptyState title={t("blueprint.overview.noMatches", { query: query.trim() })} />
+                ) : null}
+                {shownGroups.map(group => (
                     <BlueprintWallSection
                         key={group.key}
                         group={group}
