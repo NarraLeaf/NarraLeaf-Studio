@@ -40,7 +40,7 @@ export function resolveEntrySurfaceId(
  * none (`GameRuntimeLaunchEntry`). A page it does name is kept as given, whether or not this
  * document has it - that is the caller's statement, and the reader's fallback is the same rule.
  */
-export function resolveLaunchEntrySurface<Entry extends { surfaceId?: UISurfaceId }>(
+export function resolveLaunchEntrySurface<Entry extends { kind: string; surfaceId?: UISurfaceId }>(
     entry: Entry,
     document: Pick<UIDocument, "surfaces" | "entrySurfaceId"> | null | undefined,
 ): Entry {
