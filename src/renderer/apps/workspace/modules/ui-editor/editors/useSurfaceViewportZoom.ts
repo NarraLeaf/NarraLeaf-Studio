@@ -8,6 +8,7 @@ import {
     type SurfaceViewportFit,
 } from "@/lib/ui-editor/geometry";
 import type { EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { resolveEditorSidebarWidth } from "@/apps/workspace/components/ui/EditorSidebar";
 
 export type UseSurfaceViewportZoomParams = {
     stateService: EditorStateService;
@@ -21,6 +22,8 @@ export type UseSurfaceViewportZoomParams = {
     active: boolean;
     /** False while the tab is still rendering its "not found" state and has no canvas to measure. */
     enabled: boolean;
+    /** The outline panel's chosen width; what it is drawn at in this pane is worked out here. */
+    outlineWidth: number;
 };
 
 export type SurfaceViewportZoom = {
@@ -33,6 +36,8 @@ export type SurfaceViewportZoom = {
      * the same way a wheel gesture does.
      */
     setZoomScale: (scale: number) => void;
+    /** Whether the outline panel is collapsed, which decides how much of the canvas it covers. */
+    outlineCollapsed: boolean;
 };
 
 /**
@@ -58,6 +63,7 @@ export function useSurfaceViewportZoom({
     viewportRef,
     active,
     enabled,
+    outlineWidth,
 }: UseSurfaceViewportZoomParams): SurfaceViewportZoom {
     const [outlineCollapsed, setOutlineCollapsed] = useState(
         () => stateService?.getOutlinePanelCollapsed() ?? false,
@@ -112,6 +118,10 @@ export function useSurfaceViewportZoom({
     const designWidth = designSize?.width;
     const designHeight = designSize?.height;
 
+    // The outline is drawn over the canvas, so the fit has to clear whatever width it is drawn at -
+    // which the author can drag, and which a narrow pane can hold below what they chose.
+    const drawnOutlineWidth = resolveEditorSidebarWidth("uiOutline", outlineWidth, container.width);
+
     const applyFit = useCallback(
         (next: SurfaceViewportFit) => {
             if (!stateService || !surfaceId || designWidth === undefined || designHeight === undefined) {
@@ -120,7 +130,7 @@ export function useSurfaceViewportZoom({
             const transform = computeFitViewportTransform({
                 container,
                 designSize: { width: designWidth, height: designHeight },
-                insets: resolveSurfaceFitInsets({ outlineCollapsed }),
+                insets: resolveSurfaceFitInsets({ outlineCollapsed, outlineWidth: drawnOutlineWidth }),
                 mode: next.mode,
                 // A mode the author picked does what it says; only the fit nobody asked for keeps
                 // the magnification ceiling. See SURFACE_FIT_MAX_SCALE.
@@ -132,7 +142,7 @@ export function useSurfaceViewportZoom({
             stateService.applyFittedViewport(surfaceId, transform, next);
             setFit(next);
         },
-        [container, designWidth, designHeight, outlineCollapsed, stateService, surfaceId],
+        [container, designWidth, designHeight, drawnOutlineWidth, outlineCollapsed, stateService, surfaceId],
     );
 
     const applyFitMode = useCallback(
@@ -148,7 +158,7 @@ export function useSurfaceViewportZoom({
             const transform = computeZoomedViewportTransform({
                 current: stateService.getViewportTransform(),
                 container,
-                insets: resolveSurfaceFitInsets({ outlineCollapsed }),
+                insets: resolveSurfaceFitInsets({ outlineCollapsed, outlineWidth: drawnOutlineWidth }),
                 nextScale: scale,
             });
             if (!transform) {
@@ -157,7 +167,7 @@ export function useSurfaceViewportZoom({
             stateService.updateViewport(transform);
             setFit(null);
         },
-        [container, outlineCollapsed, stateService],
+        [container, drawnOutlineWidth, outlineCollapsed, stateService],
     );
 
     useEffect(() => {
@@ -183,5 +193,5 @@ export function useSurfaceViewportZoom({
         }
     }, [active, applyFit, container.width, container.height, enabled, stateService, surfaceId]);
 
-    return { fit, applyFitMode, setZoomScale };
+    return { fit, applyFitMode, setZoomScale, outlineCollapsed };
 }
