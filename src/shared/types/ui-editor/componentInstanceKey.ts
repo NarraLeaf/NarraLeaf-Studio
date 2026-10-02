@@ -85,6 +85,12 @@ export function popUIComponentInstanceKey(
 }
 
 /**
+ * Spelled like an instance key segment, but a different thing: that one carries a placement's element
+ * id, this one a definition's id. Kept apart so neither format moves when the other does.
+ */
+const COMPONENT_SURFACE_PREFIX = "component:";
+
+/**
  * The surface id a component definition's own tree is laid out under.
  *
  * A definition is rendered inside a virtual surface of its own (see `SurfaceElementTree`), because
@@ -98,7 +104,22 @@ export function popUIComponentInstanceKey(
  * spelled twice is a format that stops matching the first time either side is touched.
  */
 export function buildUIComponentSurfaceId(componentId: string): string {
-    return `component:${componentId}`;
+    return `${COMPONENT_SURFACE_PREFIX}${componentId}`;
+}
+
+/**
+ * The component definition a `buildUIComponentSurfaceId` surface id names, or null when the id names
+ * anything else.
+ *
+ * For whoever holds an element reference written inside a definition and has to find the tree it
+ * points into: that surface is in no document's surface list, so looking it up there finds nothing.
+ */
+export function readUIComponentSurfaceComponentId(surfaceId: string | undefined): string | null {
+    if (!surfaceId?.startsWith(COMPONENT_SURFACE_PREFIX)) {
+        return null;
+    }
+    const id = surfaceId.slice(COMPONENT_SURFACE_PREFIX.length);
+    return id.length > 0 ? id : null;
 }
 
 /**

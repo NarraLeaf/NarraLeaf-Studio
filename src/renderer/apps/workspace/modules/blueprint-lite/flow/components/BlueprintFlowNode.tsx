@@ -401,7 +401,7 @@ function ImageAssetPickerCard({
                     className={`group relative flex w-full min-w-0 overflow-hidden rounded-md border border-edge bg-surface text-left transition-colors ${
                         disabled ? "cursor-default opacity-80" : "hover:border-primary/35 hover:bg-fill-subtle"
                     } ${heightClass}`}
-                    data-tip={assetId ? `${label} (${assetId})` : t("blueprint.image.selectAsset")}
+                    data-tip={assetId ? label : t("blueprint.image.selectAsset")}
                     onClick={e => {
                         e.stopPropagation();
                         if (!disabled) {
@@ -2339,7 +2339,10 @@ function BlueprintElementLiteralNodeCard({
     const { t } = useTranslation();
     const elementId = typeof params.elementId === "string" ? params.elementId : "";
     const elementType = typeof params.elementType === "string" ? params.elementType : "";
-    const boundLabel = elementPreview?.name || (elementId ? elementId : t("blueprint.element.select"));
+    // A card that names an element the editor cannot find says so rather than printing the id it
+    // holds: the interface shows no ids.
+    const emptyLabel = elementId ? t("blueprint.element.missing") : t("blueprint.element.select");
+    const boundLabel = elementPreview?.name || emptyLabel;
     const typeLabel = elementPreview?.type || elementType || t("blueprint.element.unbound");
     const outputPins = catalog.pins.filter(p => p.kind === "output");
     return (
@@ -2376,7 +2379,7 @@ function BlueprintElementLiteralNodeCard({
                         elementPreview.preview
                     ) : (
                         <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-edge bg-surface-sunken text-2xs text-fg-muted">
-                            {t("blueprint.element.select")}
+                            {emptyLabel}
                         </div>
                     )}
                 </button>

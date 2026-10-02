@@ -456,6 +456,7 @@ export const blueprint = {
         select: "选择元素",
         selectNamed: "选择元素 {name}",
         unbound: "未绑定",
+        missing: "元素缺失",
     },
     pin: {
         addInput: "添加输入端口",
