@@ -16,10 +16,12 @@
 ;   customPageAfterChangeDir - inserted immediately before MUI_PAGE_INSTFILES, so MUI defines
 ;                              written here are the ones that page picks up
 ;   customFinishPage         - replaces MUI_PAGE_FINISH outright
+;   customInstall            - the end of the install section
 ;
-; None of it runs for a silent install: NSIS skips pages entirely under /S, which is how
-; electron-updater applies an update. That is deliberate, and it is what keeps the update path clear
-; of all of this.
+; None of the pages run for a silent install: NSIS skips them entirely under /S. An update the app
+; starts is not silent, so that it can be seen, but passes through every page that would ask
+; something (--updated; see "the update"). The app's other way of applying an update - on its way
+; out, when the user quits with one downloaded - is silent, and starts nothing afterwards.
 ;
 ; Nothing here may be the reason an install cannot happen. The WebView2 runtime is not guaranteed on
 ; Windows 10, so the custom UI is gated on finding it, is only committed to once the view is
@@ -82,6 +84,20 @@ ManifestDPIAware true
 !macro customUnInstall
   !insertmacro nlDropExtension ".nlproj"
   !insertmacro nlDropExtension ".nlspkg"
+!macroend
+
+; ------------------------------------------------------------------------------------------------
+; The end of the install section. An update the app started (--updated --force-run, not silent)
+; starts the app again from here, while the update window is still up - see "the update" further
+; down. A silent run is left to the template, which starts the app itself when asked to
+; (templates/nsis/installSection.nsh); a silent run without --force-run, which is the app applying
+; a downloaded update on its way out, starts nothing.
+!macro customInstall
+  ${If} ${isUpdated}
+  ${AndIf} ${isForceRun}
+  ${AndIfNot} ${Silent}
+    Call nlRelaunch
+  ${EndIf}
 !macroend
 
 ; ------------------------------------------------------------------------------------------------
@@ -214,7 +230,12 @@ Function nlShell
   System::Call "user32::ReleaseDC(p 0, p r2) i"
   IntOp $nlWidth 620 * $3
   IntOp $nlWidth $nlWidth / 96
-  IntOp $nlHeight 372 * $3
+  ; An update has a title, a line and the bar to show (see "the update"), so its window is shorter.
+  ${If} ${isUpdated}
+    IntOp $nlHeight 184 * $3
+  ${Else}
+    IntOp $nlHeight 372 * $3
+  ${EndIf}
   IntOp $nlHeight $nlHeight / 96
 
   ; WS_CHILD (0x40000000) | WS_VISIBLE (0x10000000)
@@ -300,6 +321,10 @@ FunctionEnd
 ;
 ; Backslashes are doubled on the way into a JavaScript string literal: left alone, "C:\Users"
 ; arrives as "C:Users" and the document shows a path that does not exist.
+;
+; The last argument is the mode: "update" when the app started this installer to update itself
+; (--updated; see "the update" below), and the document then shows only that the app is being
+; updated and how far it has got.
 Function nlPushInit
   ${If} $LANGUAGE == 2052
     StrCpy $R1 "zh"
@@ -308,8 +333,13 @@ Function nlPushInit
   ${Else}
     StrCpy $R1 "en"
   ${EndIf}
+  ${If} ${isUpdated}
+    StrCpy $R2 "update"
+  ${Else}
+    StrCpy $R2 "install"
+  ${EndIf}
   ${WordReplace} "$INSTDIR" "\" "\\" "+" $R0
-  NlWebView::Eval `window.nlInit("$R1", "${PRODUCT_NAME} ${VERSION}", "${PRODUCT_NAME}", "$R0", "$nlSize", "$nlLocked")`
+  NlWebView::Eval `window.nlInit("$R1", "${PRODUCT_NAME} ${VERSION}", "${PRODUCT_NAME}", "$R0", "$nlSize", "$nlLocked", "$R2")`
 FunctionEnd
 
 Function nlPushDir
@@ -463,6 +493,11 @@ Function nlInstallTick
       Call nlFrame
       Call nlPushInit
       ShowWindow $HWNDPARENT ${SW_SHOW}
+      ; An update asks nothing, so this page is only passed through. Posted rather than sent, so the
+      ; page is left after this callback has returned rather than from inside it.
+      ${If} ${isUpdated}
+        System::Call "user32::PostMessageW(p $HWNDPARENT, i ${WM_COMMAND}, p 1, p 0)"
+      ${EndIf}
     ${EndIf}
     Return
   ${EndIf}
@@ -510,6 +545,7 @@ Page custom nlInstallPage nlInstallLeave
 ; PRE - the same arrangement the finish page uses.
 Function nlStockPre
   ${If} $nlState == "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
 FunctionEnd
@@ -593,7 +629,8 @@ FunctionEnd
 ; showed.
 ;
 ; Never reached by a silent install - NSIS runs no page callbacks under /S - which is what keeps
-; /S /D= and electron-updater's silent update on exactly the folder they name.
+; /S /D= on exactly the folder it names. An update passes through the pages, and $nlDir is then the
+; registered folder its page showed.
 Function nlInstFilesPre
   ${If} $nlDir != ""
     StrCpy $INSTDIR $nlDir
@@ -601,7 +638,18 @@ Function nlInstFilesPre
 FunctionEnd
 
 Function nlInstFilesShow
+  ; Nothing is asked once the files are in place during an update, on either wizard, so neither
+  ; waits on this page.
+  ${If} ${isUpdated}
+    SetAutoClose true
+  ${EndIf}
+
   ${If} $nlState != "ready"
+    ; The stock page's header says "installing"; on an update it says what is happening instead, in
+    ; the template's own translated words.
+    ${If} ${isUpdated}
+      !insertmacro MUI_HEADER_TEXT "$(^NameDA)" "$(reinstallUpgrade)"
+    ${EndIf}
     Return
   ${EndIf}
   Call nlRaise
@@ -623,6 +671,108 @@ Function nlInstFilesShow
 
   ; Hand over to the finish page as soon as the section is done - there is no visible Next to press.
   SetAutoClose true
+FunctionEnd
+
+; --- the update ---------------------------------------------------------------------------------
+;
+; The app applies an update by starting this installer with --updated --force-run and quitting
+; (src/main/app/application/managers/updateManager.ts). The run is not silent, so the window stays
+; on screen from the moment the app closes until it is back: every page that would ask something
+; passes straight through on --updated (nlInstallTick, nlStockPre, nlStockFinishPre, nlFinishPage),
+; the document shows the update view, and the section ends by starting the app again and waiting
+; for its window (nlRelaunch, from customInstall below).
+;
+; What a silent run would have done is otherwise unchanged: the folder is the registered one
+; (initMultiUser, and nlSettle locks it), the template still waits for the old app to exit before
+; it touches a file (CHECK_APP_RUNNING, which on --updated waits and asks nothing), KeepShortcuts
+; still keeps a shortcut the user deleted deleted, and the same uninstall entry is rewritten. An
+; all-users install now raises the UAC prompt from the install-mode page, where the template asks
+; for it in every non-silent run, instead of from the section; the window shows the update view
+; again from the elevated instance.
+
+; The first visible top-level window that belongs to a process running $appExe, in $R5; 0 if none.
+; By image path rather than by process id because an elevated installer starts the app through the
+; shell (nlRelaunch), which leaves it no handle to the process it started.
+Function nlFindAppWindow
+  Push $R0
+  Push $R1
+  Push $R2
+  Push $R3
+  Push $R4
+  StrCpy $R5 0
+  StrCpy $R4 0
+  ${Do}
+    System::Call "user32::FindWindowExW(p 0, p R4, p 0, p 0) p .R4"
+    ${If} $R4 == 0
+      ${Break}
+    ${EndIf}
+    System::Call "user32::IsWindowVisible(p R4) i .R3"
+    ${If} $R3 != 0
+      StrCpy $R2 0
+      System::Call "user32::GetWindowThreadProcessId(p R4, *i .R2)"
+      ; PROCESS_QUERY_LIMITED_INFORMATION
+      System::Call "kernel32::OpenProcess(i 0x1000, i 0, i R2) p .R1"
+      ${If} $R1 != 0
+        StrCpy $R0 ""
+        System::Call "kernel32::QueryFullProcessImageNameW(p R1, i 0, w .R0, *i ${NSIS_MAX_STRLEN})"
+        System::Call "kernel32::CloseHandle(p R1)"
+        ${If} $R0 == $appExe
+          StrCpy $R5 $R4
+          ${Break}
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+  ${Loop}
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Pop $R0
+FunctionEnd
+
+; Starts the updated app with --updated and keeps the update window up until the app has a window
+; of its own, then hands that window the foreground.
+;
+; Windows gives the foreground only to a process the user is working with or one it started: the
+; app, which the user had just pressed a button in, started this installer, so the installer may
+; take the foreground and pass it on - AllowSetForegroundWindow for whoever ends up owning the new
+; window, and SetForegroundWindow on it once it exists, which a foreground process may do for any
+; window. Closing first and launching after would leave the new window behind whatever the user
+; had open. If the user has gone to another application in the meantime, Windows refuses both
+; calls, which is the right outcome: the app comes back without taking the keyboard from them.
+;
+; The process is started from this installer when it is not elevated - the per-user case - so it
+; inherits the right to the foreground directly. An installer UAC elevated for an all-users install
+; starts it through the shell as the signed-in user instead (the stock finish page's call), so the
+; app does not run as administrator.
+;
+; Bounded at a minute: an app that has not drawn a window by then is not waited for any longer, and
+; the installer closes as it would have.
+Function nlRelaunch
+  Push $R5
+  Push $R6
+  ; ASFW_ANY
+  System::Call "user32::AllowSetForegroundWindow(i -1)"
+  ${If} ${UAC_IsInnerInstance}
+    ${StdUtils.ExecShellAsUser} $R6 "$launchLink" "open" "--updated"
+  ${Else}
+    ExecShell "open" "$launchLink" "--updated"
+  ${EndIf}
+  StrCpy $R6 0
+  ${Do}
+    Call nlFindAppWindow
+    ${If} $R5 != 0
+      System::Call "user32::SetForegroundWindow(p R5)"
+      ${Break}
+    ${EndIf}
+    IntOp $R6 $R6 + 1
+    ${If} $R6 > 240
+      ${Break}
+    ${EndIf}
+    Sleep 250
+  ${Loop}
+  Pop $R6
+  Pop $R5
 FunctionEnd
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE nlInstFilesPre
@@ -651,7 +801,10 @@ Function nlStartApp
 FunctionEnd
 
 Function nlFinishPage
+  ; An update has already started the app again from the section (nlRelaunch), and leaving the last
+  ; page is what closes the installer.
   ${If} $nlState != "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
 
@@ -731,6 +884,7 @@ Page custom nlFinishPage nlFinishLeave
 
 Function nlStockFinishPre
   ${If} $nlState == "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
 FunctionEnd
