@@ -435,6 +435,25 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * key union.
      */
     description?: TranslationKey;
+    /**
+     * Data inputs that answer the same question, so a node needs one pin out of each group.
+     *
+     * The save nodes take the save they act on as a typed `Id` or as a wired `Slot`, and a wired
+     * `Slot` wins. Neither pin is required on its own - the node is fine with either - but the pair
+     * is: with both empty the node has no save to act on and refuses to run. Marking `Id` optional
+     * would lose that second half, and leaving it required reports a node whose `Slot` is wired.
+     *
+     * `listUnwiredRequiredInputPins` judges a group as one: answered when any member is wired or
+     * carries a value on the card, and reported once, under its first pin, when none is. A member's
+     * own `optional` flag goes on deciding how the card draws it and nothing else.
+     *
+     * Every member must be a data input declared in `pins`; the registry refuses a node otherwise.
+     *
+     * Here rather than on {@link BlueprintNodeDeclaration} because a plugin's node already says what
+     * it needs through `optional`, and a field on the declaration would be a new piece of the
+     * published plugin type surface.
+     */
+    alternativeInputs?: readonly (readonly string[])[];
     execute: BlueprintNodeExecuteFn;
 };
 
