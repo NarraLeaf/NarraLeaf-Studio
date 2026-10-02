@@ -439,10 +439,15 @@ export class SaveStatusService extends Service<SaveStatusService> {
         if (!notifications) {
             return false;
         }
+        const message = describeUnreadableDocumentTitle(error.kind);
+        const detail = describeUnreadableDocumentDetail(error, quarantinePath !== null);
         const id = notifications.showSticky({
             type: NotificationType.Error,
-            message: describeUnreadableDocumentTitle(error.kind),
-            detail: describeUnreadableDocumentDetail(error, quarantinePath !== null),
+            message,
+            detail,
+            // A reload takes this notice down and the next load raises it again while the file is
+            // still unreadable; that is one fact, so it stays one entry in the notification centre.
+            coalesceKey: `save-unreadable|${message}|${detail}`,
         });
         this.corruptToasts.set(error.path, id);
         return true;
@@ -605,10 +610,16 @@ export class SaveStatusService extends Service<SaveStatusService> {
         if (!notifications) {
             return;
         }
+        const text = describeSaveFailureDetail(detail);
         const id = notifications.showSticky({
             type: NotificationType.Error,
             message: title,
-            detail: describeSaveFailureDetail(detail),
+            detail: text,
+            // A notice comes down when a later write to its file lands, and goes up again when the
+            // one after that fails - a file that only sometimes refuses, or a retry the author
+            // pressed. Keyed by everything it says, so each time it is the same entry in the
+            // notification centre with a later time, never another copy of the same two lines.
+            coalesceKey: `save-failed|${key}|${text}`,
             // Only where something will write the file again. For a write nothing retries, the
             // button would flush every saver, none of which writes this file.
             actions: detail.retried

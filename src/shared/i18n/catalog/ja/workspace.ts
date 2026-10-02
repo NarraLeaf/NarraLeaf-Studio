@@ -629,6 +629,9 @@ export const workspace = {
             queued: {
                 other: "残り {count} 件",
             },
+            repeated: {
+                other: "計 {count} 回",
+            },
         },
         // 背景画像のダイアログ（設定またはコマンドパレットから開く）。
         background: {
