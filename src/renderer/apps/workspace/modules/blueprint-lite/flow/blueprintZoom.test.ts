@@ -4,6 +4,7 @@ import {
     boundsOfMeasuredNodes,
     clampBlueprintZoom,
     computeBlueprintZoomViewport,
+    usableBlueprintInset,
 } from "./blueprintZoom";
 
 /** React Flow's own default range, which this canvas does not override. */
@@ -83,6 +84,27 @@ describe("computeBlueprintZoomViewport", () => {
         expect(tiny.zoom).toBe(RANGE.max);
         // Clamped or not, it is still centred - a clamped fit must not also be parked off screen.
         expect((20000 * huge.zoom) / 2 + huge.y).toBeCloseTo(300, 5);
+    });
+
+    it("frames the graph in the part of the pane the layer panel leaves", () => {
+        const inset = 300;
+        for (const mode of ["contain", "cover", "width", "actual"] as const) {
+            const v = computeBlueprintZoomViewport({ mode, bounds: BOUNDS, container: CONTAINER, range: OPEN, inset })!;
+            expect(boundsCentreOnScreen(v).x).toBeCloseTo(inset + (1000 - inset) / 2, 5);
+            expect(boundsCentreOnScreen(v).y).toBeCloseTo(300, 5);
+        }
+        const contain = computeBlueprintZoomViewport({ mode: "contain", bounds: BOUNDS, container: CONTAINER, range: OPEN, inset })!;
+        // Sized to the free width, and every card clear of the panel.
+        expect(contain.zoom).toBeCloseTo(700 / ((1 + BLUEPRINT_FIT_PADDING) * 800), 5);
+        expect(BOUNDS.x * contain.zoom + contain.x).toBeGreaterThan(inset);
+    });
+
+    it("lets a panel wider than most of the pane overlap rather than shrink the graph to nothing", () => {
+        expect(usableBlueprintInset(1000, 900)).toBe(600);
+        expect(usableBlueprintInset(1000, 0)).toBe(0);
+        expect(usableBlueprintInset(1000, Number.NaN)).toBe(0);
+        const v = computeBlueprintZoomViewport({ mode: "contain", bounds: BOUNDS, container: CONTAINER, range: OPEN, inset: 900 })!;
+        expect(boundsCentreOnScreen(v).x).toBeCloseTo(800, 5);
     });
 
     it("refuses an empty graph and a pane that has not been laid out", () => {

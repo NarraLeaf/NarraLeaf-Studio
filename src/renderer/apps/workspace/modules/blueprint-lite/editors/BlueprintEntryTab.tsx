@@ -86,6 +86,14 @@ import {
     createDefaultBlueprintLayerValue,
     type BlueprintLayerDialogValue,
 } from "../components/BlueprintLayerDialogContent";
+import { BlueprintLayerTemplateGrid } from "../components/BlueprintLayerTemplateGrid";
+import type { BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
+import {
+    buildBlueprintLayerTemplate,
+    listBlueprintLayerTemplates,
+    type BlueprintLayerTemplateTarget,
+} from "../templates/buildBlueprintLayerTemplate";
+import { collectBlueprintLayerTemplateFacts } from "../templates/blueprintLayerTemplateFacts";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
@@ -1418,6 +1426,59 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         t,
     ]);
 
+    // Only while the blueprint has no layer: that is the one time the templates are on screen.
+    const layerTemplateTarget = useMemo<BlueprintLayerTemplateTarget | null>(() => {
+        if (eventIds.length > 0) {
+            return null;
+        }
+        const storyId = storyService.getDefaultStoryId() ?? storyService.listStories()[0]?.id;
+        return {
+            owner: bp.owner,
+            widgetElementType: widgetElement?.type,
+            uiElements: uiDocument.elements,
+            facts: collectBlueprintLayerTemplateFacts({
+                owner: bp.owner,
+                uiDocument: uidoc.getDocument(),
+                blueprintDocument: doc,
+                storyId,
+                storyDocuments: storyDocumentsById,
+                text: key => t(`blueprint.layerTemplates.${key}`),
+            }),
+        };
+        // `revision` and `uiDocumentRevision` stand in for the two documents read through services.
+    }, [bp.owner, eventIds.length, revision, storyDocumentsById, storyService, t, uiDocumentRevision, uidoc, widgetElement?.type]);
+    const layerTemplates = useMemo(
+        () => (layerTemplateTarget ? listBlueprintLayerTemplates(layerTemplateTarget) : []),
+        [layerTemplateTarget],
+    );
+
+    /**
+     * Create a layer from a template, as one undo step, and open it with whatever is left for the
+     * author to choose already selected.
+     */
+    const onPickLayerTemplate = useCallback(
+        (template: BlueprintLayerTemplate) => {
+            if (!layerTemplateTarget) {
+                return;
+            }
+            const built = buildBlueprintLayerTemplate(template, layerTemplateTarget, () => uuid.generate());
+            if (!built) {
+                return;
+            }
+            const layerId = uuid.generate();
+            localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
+                localBp.ensureEventGraph(payload.blueprintId, layerId, t(`blueprint.layerTemplates.${template.id}.title`));
+                localBp.updateEventGraphIr(payload.blueprintId, layerId, ir => {
+                    ir.nodes = built.ir.nodes;
+                    ir.edges = built.ir.edges;
+                });
+            });
+            selectEventGraph(layerId);
+            editor.setSelectedNodeIds(built.pendingNodeIds);
+        },
+        [editor, layerTemplateTarget, localBp, payload.blueprintId, selectEventGraph, t, uuid],
+    );
+
     const onDeleteLayer = useCallback(
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
@@ -2202,19 +2263,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             </div>
             </BlueprintBreakpointScope>
         ) : !hasAnyGraph ? (
-            <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
-                <button
-                    type="button"
-                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary/10"
-                    onClick={onAddEvent}
-                    // Declaring a layer writes the blueprint, the same as the member panel's New
-                    // button beside it - which was already refused while this one was not, so an
-                    // empty frozen blueprint offered a layer it could not keep.
-                    {...freeze.writes()}
-                >
-                    {t("blueprint.canvas.addLayer")}
-                </button>
-            </div>
+            <BlueprintLayerTemplateGrid
+                templates={layerTemplates}
+                onPickTemplate={onPickLayerTemplate}
+                onPickBlank={onAddEvent}
+                // Declaring a layer writes the blueprint, the same as the member panel's New button
+                // beside it - which was already refused while the empty state's button was not, so
+                // an empty frozen blueprint offered a layer it could not keep.
+                writeProps={freeze.writes()}
+            />
         ) : (
             <div className="flex h-full min-h-0 items-center justify-center text-xs text-fg-subtle">
                 {t("blueprint.canvas.selectLayer")}
