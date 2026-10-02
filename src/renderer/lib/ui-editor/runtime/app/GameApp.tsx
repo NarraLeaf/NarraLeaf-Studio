@@ -39,7 +39,6 @@ import { createDefaultPreloadStrategy } from "narraleaf-react";
 import { normalizePreloadConfiguration, preloadGatesWholeScene } from "@shared/types/preload";
 import {
     isAutoSaveId,
-    isReservedSaveId,
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
@@ -173,7 +172,7 @@ import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
-import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { createGameMenuController, type GameMenuPort } from "./gameMenu";
 import {
     applyLocaleChange,
@@ -3378,30 +3377,29 @@ export function GameApp(props: GameAppProps): ReactNode {
     // are listed by List Auto Saves instead, so an authored Save/Load screen
     // built on this never has to filter Studio's bookkeeping out of its grid.
     // The same goes for the run parked by a language restart, which is nobody's
-    // slot and is gone again by the time the player reaches a save screen.
+    // slot and is gone again by the time the player reaches a save screen, and
+    // for the slots a plugin's manifest keeps for itself (the built-in Quick
+    // Save's), which that plugin finds again through its own nodes.
     // (The plugin `saves.listIds` surface is deliberately left raw - it is
-    // documented as direct store access, not the authoring view.)
-    const listSaveIds = useCallback(async (): Promise<string[]> => {
-        const headers = await host.saveStore.listHeaders();
-        return headers
-            .filter(header => !isReservedSaveId(header.id))
-            // The same decision the load itself makes, from the same header bytes: a slot this
-            // project would refuse is a slot a save screen must not draw a Load button on.
-            .filter(header => planSaveResume(
-                readSaveCompatibilityStamp(header.compatibility),
-                saveBuild,
-                saveCompatibilityConfig,
-            ).plan.action !== "discard")
-            .map(header => header.id);
-    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
+    // documented as direct store access, not the authoring view - and Has Quick
+    // Save depends on that.)
+    const listSaveIds = useCallback(async (): Promise<string[]> => listPlayerSaveIds(
+        await host.saveStore.listHeaders(),
+        {
+            // No plugin host means no plugins loaded, and so nothing of theirs to leave out.
+            pluginReservedSaveIds: pluginHost?.reservedSaveIds ?? new Set<string>(),
+            build: saveBuild,
+            compatibilityConfig: saveCompatibilityConfig,
+        },
+    ), [host.saveStore, pluginHost, saveBuild, saveCompatibilityConfig]);
 
     /**
      * The save slots, published for host debug overlays.
      *
      * Assembled from the very callbacks the Save/Load nodes are wired to rather than from
      * `host.saveStore` directly, so the Saves panel's "load this slot" is the same operation a
-     * player's Load button performs - including `listSaveIds`' autosave filter, which is what makes
-     * the panel's list the list an authored save screen would show.
+     * player's Load button performs - including `listSaveIds`' reserved-slot filter, which is what
+     * makes the panel's list the list an authored save screen would show.
      */
     const savesBridge = useMemo<GameAppSaveBridge>(() => ({
         listIds: listSaveIds,

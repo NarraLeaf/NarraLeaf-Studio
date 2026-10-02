@@ -15,6 +15,9 @@
       "narraleaf.quick-save.load",
       "narraleaf.quick-save.has"
     ],
+    "reservedSaveIds": [
+      "narraleaf.quick-save.slot"
+    ],
     "runtimeCapabilities": [
       "saves.read",
       "saves.write"

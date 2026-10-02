@@ -19,6 +19,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -1340,6 +1343,46 @@ describe("blueprint/required-input-unwired", () => {
         );
 
         expect(findings).toEqual([]);
+    });
+
+    describe.each([
+        ["Get Save Time", BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME],
+        ["Delete Save", BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE],
+    ])("%s, which names its save by Id or by Slot", (title, type) => {
+        function findingsFor(graph: BlueprintGraphIr) {
+            return run(
+                "blueprint/required-input-unwired",
+                createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onClick: graph } }) }),
+            );
+        }
+
+        it("says nothing when Slot is wired and Id is empty", async () => {
+            const findings = await findingsFor(
+                graphWith(
+                    { id: "save", type, params: {} },
+                    {
+                        nodes: {
+                            slot: { id: "slot", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT, params: { id: "slot-01" } },
+                        },
+                        edges: [{ from: { nodeId: "slot", port: "slot" }, to: { nodeId: "save", port: "slot" } }],
+                    },
+                ),
+            );
+
+            expect(findings).toEqual([]);
+        });
+
+        it("says nothing when only Id is given", async () => {
+            expect(await findingsFor(graphWith({ id: "save", type, params: { id: "slot-01" } }))).toEqual([]);
+        });
+
+        it("names Id once when neither is given", async () => {
+            const findings = await findingsFor(graphWith({ id: "save", type, params: {} }));
+
+            expect(findings).toHaveLength(1);
+            expect(findings[0].messageParams).toEqual({ node: title, pin: "Id" });
+            expect(findings[0].location).toMatchObject({ kind: "blueprint", nodeId: "save" });
+        });
     });
 
     it("leaves a draft nothing reaches alone", async () => {

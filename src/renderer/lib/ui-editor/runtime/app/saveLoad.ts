@@ -34,6 +34,7 @@ import {
     type SaveCompatibilityConfiguration,
     type SaveCompatibilityStamp,
 } from "@shared/types/saveCompatibility";
+import { isReservedSaveId } from "@shared/types/saves";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -641,6 +642,36 @@ export function readSavePosition(savedGame: unknown): SavePosition | null {
         }
     }
     return null;
+}
+
+/**
+ * The slots a player's save screen may draw, out of every header in the store - what `List Saves`
+ * hands a graph, and what the Dev Mode Saves panel lists.
+ *
+ * Two kinds of slot are left out:
+ *
+ *  - Bookkeeping: Studio's own reserved ids and the ones the running game's plugins reserved in
+ *    their manifests (the built-in Quick Save's slot). See `isReservedSaveId`. Each has a reader of
+ *    its own - `List Auto Saves`, `Has Quick Save` - so leaving it out here hides nothing.
+ *  - Slots this project's Older saves policy would refuse, decided from the same header bytes the
+ *    load decides from, so a save screen never draws a Load button that cannot work.
+ */
+export function listPlayerSaveIds(
+    headers: readonly { id: string; compatibility?: SaveCompatibilityStamp }[],
+    options: {
+        pluginReservedSaveIds: ReadonlySet<string>;
+        build: SaveBuildStamp | null;
+        compatibilityConfig: SaveCompatibilityConfiguration;
+    },
+): string[] {
+    return headers
+        .filter(header => !isReservedSaveId(header.id, options.pluginReservedSaveIds))
+        .filter(header => planSaveResume(
+            readSaveCompatibilityStamp(header.compatibility),
+            options.build,
+            options.compatibilityConfig,
+        ).plan.action !== "discard")
+        .map(header => header.id);
 }
 
 /**

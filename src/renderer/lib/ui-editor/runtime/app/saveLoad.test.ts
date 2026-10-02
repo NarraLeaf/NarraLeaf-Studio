@@ -3,8 +3,11 @@ import type { SavedGame } from "narraleaf-react";
 import {
     DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
     SAVE_PROTOCOL_VERSION,
+    buildSaveBuildStamp,
+    buildSaveCompatibilityStamp,
     type SaveCompatibilityConfiguration,
 } from "@shared/types/saveCompatibility";
+import { autoSaveSlotId, LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
 import { translate } from "@/lib/i18n";
 import {
     collectUnresolvedSaveReferences,
@@ -12,6 +15,7 @@ import {
     compareSaveStory,
     readSaveLastLine,
     isSavedGameShape,
+    listPlayerSaveIds,
     loadSaveIntoGame,
     readSaveStoryHash,
     type SaveLoadGameSeam,
@@ -957,3 +961,46 @@ describe("loadSaveIntoGame across a project's stories", () => {
         expect(harness.head().sceneId).toBe("nl:scene:courtroom");
     });
 });
+
+describe("the slots a save screen is offered", () => {
+    const build = buildSaveBuildStamp({ storyHashes: { story: "hash" }, gameVersion: "1.0" });
+    const stamp = buildSaveCompatibilityStamp({ storyId: "story", storyHash: "hash", gameVersion: "1.0" });
+
+    it("leaves out Studio's bookkeeping and the slots the running plugins reserved", () => {
+        const ids = listPlayerSaveIds(
+            [
+                { id: "1", compatibility: stamp },
+                { id: "narraleaf.quick-save.slot", compatibility: stamp },
+                { id: autoSaveSlotId(0), compatibility: stamp },
+                { id: LOCALE_RESTART_SAVE_ID, compatibility: stamp },
+                { id: "2" },
+            ],
+            {
+                pluginReservedSaveIds: new Set(["narraleaf.quick-save.slot"]),
+                build,
+                compatibilityConfig: DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
+            },
+        );
+
+        // An unstamped slot ("2") cannot be compared and is offered, as it always was.
+        expect(ids).toEqual(["1", "2"]);
+    });
+
+    it("leaves out a slot the project's Older saves policy would refuse to load", () => {
+        const ids = listPlayerSaveIds(
+            [
+                { id: "same", compatibility: stamp },
+                { id: "older", compatibility: { ...stamp, gameVersion: "0.9" } },
+                { id: "unreadable", compatibility: { ...stamp, protocol: SAVE_PROTOCOL_VERSION + 1 } },
+            ],
+            {
+                pluginReservedSaveIds: new Set(),
+                build,
+                compatibilityConfig: { ...DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION, compatible: "discard" },
+            },
+        );
+
+        expect(ids).toEqual(["same"]);
+    });
+});
+
