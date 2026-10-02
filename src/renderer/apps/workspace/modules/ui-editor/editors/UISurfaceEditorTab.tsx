@@ -231,8 +231,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         [surfaceDiagnostics],
     );
 
+    // A component editor answers too: an Element card on a definition's blueprint is bound to an
+    // element of the definition by picking it here, and the picker stores it under the definition's
+    // own surface (`withPickedElement`).
     const activeBindingSession =
-        !isComponentEdit && bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
+        bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
 
     const returnToBindingBlueprint = useCallback(
         (blueprintTabId: string) => {
