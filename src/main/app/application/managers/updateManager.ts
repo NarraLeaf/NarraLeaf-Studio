@@ -155,6 +155,9 @@ export class UpdateManager {
         // Once an installer *is* on disk, applying it on the way out is the whole point - the
         // alternative is asking a second time about work the user already agreed to.
         autoUpdater.autoInstallOnAppQuit = true;
+        // Read by quitAndInstall when the run is not silent; it is what puts --force-run on the
+        // installer's command line, and so what brings Studio back after "install now".
+        autoUpdater.autoRunAppAfterInstall = true;
         autoUpdater.logger = {
             info: (message: unknown) => this.app.logger.info("[Update]", message),
             warn: (message: unknown) => this.app.logger.warn("[Update]", message),
@@ -293,18 +296,27 @@ export class UpdateManager {
     /**
      * Quit and apply the downloaded installer.
      *
-     * `isSilent` is not optional. Studio's installer is now an assisted wizard (welcome, install
-     * mode, directory, finish), and without it every update would walk the user back through all
-     * of it - including a directory page for a directory they already chose. NSIS reads the
-     * existing `InstallLocation` from the registry, so a silent run lands where the app already
-     * is. `isForceRunAfter` brings Studio back, which is what "install now" implies.
+     * Not silent: a silent run has no window, and between Studio closing and coming back - over a
+     * minute for a full install - there was nothing on screen at all. The installer recognises the
+     * `--updated` the updater passes and turns its wizard into a window that only says Studio is
+     * being updated and how far it has got: no page asks anything, the folder is the one Studio
+     * is already in (NSIS reads `InstallLocation` from the registry), and it closes itself once
+     * the new Studio has a window (project/installer/installer.nsh, "the update").
+     *
+     * `--force-run` is what tells the installer to start Studio again, so `autoRunAppAfterInstall`
+     * is pinned on in `wireAutoUpdater`: for a run that is not silent, electron-updater takes the
+     * force-run flag from that setting rather than from the second argument here.
+     *
+     * Quitting with an update downloaded, rather than pressing this, still applies it silently
+     * (`autoInstallOnAppQuit`): the user asked Studio to go away, so nothing appears and nothing
+     * starts afterwards.
      */
     public installNow(): void {
         if (this.state.status !== "ready") {
             return;
         }
         this.app.logger.info("[Update] Quitting to install.");
-        autoUpdater.quitAndInstall(true, true);
+        autoUpdater.quitAndInstall(false, true);
     }
 
     private setState(patch: Partial<UpdateState> & { status: UpdateStatus }): void {
