@@ -1,7 +1,8 @@
 import { GLOBAL_MAIN_OWNER_KEY, decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { listBlueprintFunctionIds } from "@shared/blueprint/blueprintEventOrder";
 import { listBlueprintLayers } from "@shared/blueprint/blueprintLayers";
-import { DEFAULT_UI_ROOT_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story/document";
@@ -174,6 +175,7 @@ function storyBlueprintScenes(stories: readonly BlueprintWallStory[]): Map<strin
 
 export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWallInput): BlueprintWallGroup[] {
     const surfaces = ui?.surfaces ?? [];
+    const entrySurfaceId = resolveEntrySurfaceId(ui);
     const components = ui?.components ?? [];
     const elements = ui?.elements ?? {};
 
@@ -193,7 +195,7 @@ export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWall
                 kind: isPage ? "page" : "gameUi",
                 title: surface.name,
                 caption: isPage
-                    ? t(surface.id === MAIN_APP_SURFACE_ID ? "uiEditor.surfaceKind.mainPage" : "uiEditor.surfaceKind.page")
+                    ? t(surface.id === entrySurfaceId ? "uiEditor.surfaceKind.mainPage" : "uiEditor.surfaceKind.page")
                     : `${t("uiEditor.surfaceKind.gameUi")} · ${getStageSlotLabel(surface.mount.slotId, t)}`,
                 tiles: [],
             },

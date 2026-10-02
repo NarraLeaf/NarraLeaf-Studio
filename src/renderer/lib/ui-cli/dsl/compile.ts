@@ -55,6 +55,8 @@ export type CompiledComponent = {
 export type UiCompileResult = {
     documentName?: string;
     documentId?: string;
+    /** The page the file makes the entry, by id or by name, as written. See `applyCompiled`. */
+    documentEntry?: string;
     surfaces: CompiledSurface[];
     components: CompiledComponent[];
     structs: Record<string, UIStructDef>;
@@ -83,6 +85,7 @@ class CompileContext {
     private readonly actions: Record<string, UIInputActionDef> = {};
     private documentName?: string;
     private documentId?: string;
+    private documentEntry?: string;
     private readonly knownTypes: Set<string>;
     private readonly seenUnknownProps = new Set<string>();
 
@@ -94,6 +97,7 @@ class CompileContext {
         return {
             documentName: this.documentName,
             documentId: this.documentId,
+            ...(this.documentEntry ? { documentEntry: this.documentEntry } : {}),
             surfaces: this.surfaces,
             components: this.components,
             structs: this.structs,
@@ -111,6 +115,7 @@ class CompileContext {
             case "document":
                 this.documentName = statement.name || undefined;
                 this.documentId = statement.id;
+                this.documentEntry = statement.entry;
                 return;
             case "struct":
                 this.struct(statement);

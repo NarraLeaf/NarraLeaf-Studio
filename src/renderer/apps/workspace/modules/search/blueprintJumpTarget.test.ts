@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
+import { flattenBlueprintOwner, parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import {
     GLOBAL_MAIN_OWNER_KEY,
     componentWidgetMainOwnerKey,
@@ -8,7 +8,7 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { getBlueprintEntryTabId } from "../blueprint-lite/blueprintEntryTabId";
 import { getComponentEditorSurfaceId } from "../ui-editor/editors/componentEditorAdapter";
-import { blueprintJumpOpenTarget } from "./blueprintJumpTarget";
+import { blueprintJumpOpenTarget, blueprintOwnerOpenTarget } from "./blueprintJumpTarget";
 
 /**
  * A workspace holding the tabs in `openTabs` (id -> title) and the blueprints in `names` (id -> name),
@@ -84,5 +84,34 @@ describe("a deep link into a blueprint", () => {
     it("still carries what to focus", () => {
         const target = jump(surfaceMainOwnerKey("title"), workspace({}, { bp: "标题" }), { focusNodeId: "n1" });
         expect(target.focusNodeId).toBe("n1");
+    });
+});
+
+describe("a blueprint opened from the owner itself", () => {
+    // The project scripts list holds a blueprint's owner rather than its key, and passed on only the
+    // owner's kind - so a script bound to a page control opened a tab keyed by nothing, beside the one
+    // the inspector had open.
+    it("lands on a page control's tab under its page and element, as the inspector opens it", () => {
+        const owner = flattenBlueprintOwner({
+            kind: "widgetMain",
+            surfaceId: "narraleaf-studio:main-surface",
+            elementId: "start",
+        });
+        const target = blueprintOwnerOpenTarget("bp", owner, workspace({}, { bp: "Button" }));
+        expect(tabIdOf(target)).toBe(
+            getBlueprintEntryTabId({ blueprintId: "bp", surfaceId: "narraleaf-studio:main-surface", elementId: "start" }),
+        );
+        expect(target.title).toBe("Button");
+    });
+
+    it("lands on the global and component tabs under the same keys a deep link does", () => {
+        const global = blueprintOwnerOpenTarget("bp", flattenBlueprintOwner({ kind: "globalMain" }), null);
+        expect(tabIdOf(global)).toBe(tabIdOf(jump(GLOBAL_MAIN_OWNER_KEY, null)));
+        const control = blueprintOwnerOpenTarget(
+            "bp",
+            flattenBlueprintOwner({ kind: "componentWidgetMain", componentId: "card", elementId: "label" }),
+            null,
+        );
+        expect(tabIdOf(control)).toBe(tabIdOf(jump(componentWidgetMainOwnerKey("card", "label"), null)));
     });
 });

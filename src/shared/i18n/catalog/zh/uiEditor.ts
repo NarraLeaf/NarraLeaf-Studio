@@ -43,6 +43,7 @@ export const uiEditor = {
         duplicateSurface: "创建 {label} 副本",
         copySurface: "复制 {label}",
         pasteSurface: "粘贴界面",
+        setEntryPage: "设为入口页面",
         deleteSurface: "删除 {label}",
         surfaceActions: "{label} 操作",
         deleteConfirm: "删除 {label}",
@@ -61,6 +62,7 @@ export const uiEditor = {
     // 这个面板留下的撤销步骤叫什么（"撤销 移动界面 标题"）。
     history: {
         moveSurface: "移动界面 {name}",
+        setEntryPage: "设置入口页面 {name}",
     },
     inputActions: {
         title: "输入意图",

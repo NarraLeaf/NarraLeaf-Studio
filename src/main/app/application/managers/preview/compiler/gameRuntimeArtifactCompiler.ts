@@ -37,6 +37,7 @@ import {
     restrictRecordToAssetIds,
 } from "@shared/build/variantPayload";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { resolveLaunchEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
@@ -969,7 +970,11 @@ export async function compileGameRuntimeArtifact(
                 metadata: normalizeRecord(projectConfig?.metadata),
                 icon: projectIcon,
             },
-            entry: input.entry,
+            // With the page filled in when the caller asked for the project's entry page, so the pack
+            // says which page it opens and the shell's pre-boot frame, the renderer and a reader of
+            // the pack all take the same one. Resolved against the bundle being written, which is
+            // the document this game is: not the caller's copy from before the compile.
+            entry: resolveLaunchEntrySurface(input.entry, bundle.ui.uidoc),
             bundle,
             assets: shippedAssetManifest(assetManifest, mode, target.kind === "sealed"),
             plugins: packPlugins,

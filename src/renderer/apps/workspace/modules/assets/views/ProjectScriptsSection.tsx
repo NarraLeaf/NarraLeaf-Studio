@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { flattenBlueprintOwner } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import {
     buildProjectScriptListing,
     scriptBindingsByRef,
@@ -19,6 +20,7 @@ import { useOpenBlueprintTarget } from "../../blueprint-lite/hooks/useOpenBluepr
 import { ScriptOpenMenu } from "../../blueprint-lite/ts/ScriptOpenMenu";
 import { getScriptPreviewTabId } from "../../blueprint-lite/ts/scriptPreviewTabId";
 import { ScriptPreviewEditor } from "../../blueprint-lite/ts/ScriptPreviewEditor";
+import { blueprintOwnerOpenTarget } from "../../search/blueprintJumpTarget";
 
 /**
  * The accordion id. Also the handle verification uses to find the section on screen, the way every
@@ -152,13 +154,19 @@ export function ProjectScriptsSection({ open }: { open: boolean }) {
                                 {entry.boundTo.length > 0 && (
                                     <button
                                         type="button"
-                                        onClick={() =>
-                                            openBlueprint({
-                                                blueprintId: entry.boundTo[0]!.blueprintId,
-                                                ownerKind: entry.boundTo[0]!.owner.kind,
-                                                title: entry.boundTo[0]!.name,
-                                            })
-                                        }
+                                        onClick={() => {
+                                            // The whole owner, not just its kind: the tab is keyed by
+                                            // where the blueprint hangs, so a kind alone opened a second
+                                            // editor beside the one the interface panel had open.
+                                            const binding = entry.boundTo[0]!;
+                                            openBlueprint(
+                                                blueprintOwnerOpenTarget(
+                                                    binding.blueprintId,
+                                                    flattenBlueprintOwner(binding.owner),
+                                                    context,
+                                                ),
+                                            );
+                                        }}
                                         className="shrink-0 rounded-sm px-1.5 py-0.5 text-2xs text-fg-muted opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover/script:opacity-100"
                                     >
                                         {t(ownerLabelKey(entry.boundTo[0]!.owner.kind))}

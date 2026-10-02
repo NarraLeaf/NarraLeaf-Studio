@@ -242,7 +242,11 @@ export function useSurfaceCanvasContextMenu(params: {
                 items,
                 [
                     { kind: "element", value: developerElementId },
-                    { kind: "surface", value: surface.id, label: getSurfaceDisplayLabel(surface, translate) },
+                    {
+                        kind: "surface",
+                        value: surface.id,
+                        label: getSurfaceDisplayLabel(surface, documentService.getDocument(), translate),
+                    },
                 ],
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             );

@@ -23,10 +23,12 @@ import {
     type UIFrameSite,
 } from "@shared/types/ui-editor/frame";
 import type { BpDiagnostic } from "../blueprint-cli/dsl/ast";
-import { applyCompiled } from "./apply";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { entrySurfacePointerMisses, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { applyCompiled, findEntryTarget } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
-import { collectTree, elementPath, MAIN_SURFACE_ID, type BlueprintIndex } from "./project";
+import { collectTree, elementPath, type BlueprintIndex } from "./project";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 
@@ -86,7 +88,38 @@ function checkCompiledAgainstProject(compiled: UiCompileResult, options: UiCheck
     if (options.existing) {
         out.push(...checkFramesAfterApply(compiled, options.existing));
     }
+    if (compiled.documentEntry) {
+        out.push(...checkEntryTarget(compiled, options.existing ?? null));
+    }
     return out;
+}
+
+/** `entry=` has to name a page the document will have once the file is applied. */
+function checkEntryTarget(compiled: UiCompileResult, existing: UIDocument | null): BpDiagnostic[] {
+    const entry = compiled.documentEntry as string;
+    const written = new Set(compiled.surfaces.map(surface => surface.surface.id));
+    const surfaces = [
+        ...(existing?.surfaces ?? []).filter(surface => !written.has(surface.id)),
+        ...compiled.surfaces.map(surface => surface.surface),
+    ];
+    const target = findEntryTarget(surfaces, entry);
+    if (!target) {
+        return [{
+            severity: "error",
+            code: "ui.entry_unknown",
+            message: `entry=${JSON.stringify(entry)} names no surface in the document.`,
+            hint: "Name a page by its id or its name, as `ui surfaces` lists them.",
+        }];
+    }
+    if (target.kind !== "appSurface") {
+        return [{
+            severity: "error",
+            code: "ui.entry_not_a_page",
+            message: `entry=${JSON.stringify(entry)} names "${target.name}", which is a Game UI.`,
+            hint: "Only a page can be the entry: a Game UI is mounted into a stage slot and shows nothing before a story runs.",
+        }];
+    }
+    return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -307,13 +340,22 @@ export function checkProjectDocument(document: UIDocument, blueprints: Blueprint
     const out: BpDiagnostic[] = [];
     const reachable = new Set<string>();
 
-    if (!document.surfaces.some(surface => surface.id === MAIN_SURFACE_ID)) {
+    if (!resolveEntrySurface(document)) {
         out.push({
             severity: "warning",
-            code: "ui.no_main_surface",
-            message: `No surface carries the id "${MAIN_SURFACE_ID}".`,
-            hint: "A shipped game always boots into that surface id, and no other surface can be given it, so "
-                + "the title page has to be the one that has it.",
+            code: "ui.no_entry_page",
+            message: "The document has no page for the game to start on.",
+            hint: "Add a page. The game starts on the page `entry=` on the document line names, or on the page "
+                + `with the id "${MAIN_APP_SURFACE_ID}" when it names none.`,
+        });
+    } else if (entrySurfacePointerMisses(document)) {
+        out.push({
+            severity: "warning",
+            code: "ui.entry_missing",
+            message: `The entry page "${document.entrySurfaceId}" is not a page in the document; the game starts on `
+                + `"${resolveEntrySurface(document)?.name}" instead.`,
+            hint: "Studio drops the stale pointer the next time it opens the project. Set the entry with `entry=` on the "
+                + "document line.",
         });
     }
 

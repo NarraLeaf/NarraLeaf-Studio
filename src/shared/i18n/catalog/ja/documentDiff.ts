@@ -264,6 +264,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "インターフェースの名前を変更",
+        /** 2 つのページ名は値の組として描かれる。 */
+        entryPage: "入口ページを変更",
         surfaceAdded: "サーフェスを追加（{elementCount}）",
         surfaceRemoved: "サーフェスを削除（{elementCount}）",
         surfaceChanged: "サーフェスを変更",
