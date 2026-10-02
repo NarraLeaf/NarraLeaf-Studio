@@ -7,7 +7,15 @@ import {
     type StoryCommandGroupId,
 } from "../storyCommandCategories";
 import { listCommandSpecs } from "./registry";
-import { browseMenuStops, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, specGroupIds } from "./specSidebar";
+import {
+    browseMenuStops,
+    buildSpecSidebarGroups,
+    dedupeToPrimarySubject,
+    filterSidebarGroups,
+    pickStarredCommands,
+    specGroupIds,
+    starredMenuStops,
+} from "./specSidebar";
 
 /**
  * The `accepts` classification rule, and the colour contract behind it.
@@ -280,5 +288,50 @@ describe("one row per command (the unfiltered collapse)", () => {
     it("gives the browse walk one stop per row, still uniquely keyed", () => {
         const stops = browseMenuStops(collapsed);
         expect(new Set(stops.map(stop => stop.key)).size).toBe(stops.length);
+    });
+});
+
+/**
+ * The starred rows that head the `/` browse and fill the manual's starred tab.
+ *
+ * Both surfaces pick them out of the same groups with the same function, so a favourite cannot show in
+ * one and be missing from the other.
+ */
+describe("the starred rows", () => {
+    const groups = buildSpecSidebarGroups([], command => command);
+
+    it("lists a command once, however many subjects it files under", () => {
+        const starred = pickStarredCommands(groups, new Set(["show"]));
+        expect(starred.map(command => command.id)).toEqual(["show"]);
+    });
+
+    it("lists them in browse order, not the order they were starred", () => {
+        const browseOrder = groups.flatMap(entry => entry.commands.map(command => command.id));
+        const starred = pickStarredCommands(groups, new Set(["volume", "show", "set"]));
+        const ids = starred.map(command => command.id);
+        expect(ids).toEqual([...ids].sort((a, b) => browseOrder.indexOf(a) - browseOrder.indexOf(b)));
+        expect(new Set(ids)).toEqual(new Set(["volume", "show", "set"]));
+    });
+
+    it("offers nothing for an id the groups do not list", () => {
+        // A plugin action whose plugin is gone: its id stays stored and simply is not listable.
+        expect(pickStarredCommands(groups, new Set(["acme.confetti"]))).toEqual([]);
+        expect(pickStarredCommands(groups, new Set())).toEqual([]);
+    });
+
+    it("keys each starred row apart from the same command's row in its subject", () => {
+        const starred = starredMenuStops(pickStarredCommands(groups, new Set(["show", "volume"])));
+        const walk = [...starred, ...browseMenuStops(dedupeToPrimarySubject(groups))];
+        const keys = walk.map(stop => stop.key);
+        expect(new Set(keys).size).toBe(keys.length);
+        // Both rows are there: the starred one first, and the subject one where it always was.
+        expect(walk.filter(stop => stop.command.id === "show")).toHaveLength(2);
+        expect(walk[0].command.id).toBe(starred[0].command.id);
+    });
+
+    it("tints a starred row with its command's own group", () => {
+        for (const stop of starredMenuStops(pickStarredCommands(groups, new Set(["show", "volume", "set"])))) {
+            expect(stop.group).toBe(getCommandGroup(stop.command.group));
+        }
     });
 });

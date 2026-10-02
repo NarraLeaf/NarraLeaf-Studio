@@ -558,6 +558,7 @@ export const story = {
         scopedTo: "{name} のアクション",
         addStarred: "お気に入りに追加",
         removeStarred: "お気に入りから外す",
+        starredEmpty: "お気に入りのコマンドは「/」メニューの先頭に並ぶ",
     },
     music: {
         missingAudio: "音声が見つからない",

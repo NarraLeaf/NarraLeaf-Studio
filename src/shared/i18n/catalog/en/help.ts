@@ -176,6 +176,7 @@ export const help = {
                 + "\n"
                 + "- The panel spells commands the way they are typed. With the editor in Chinese the Chinese "
                 + "spellings parse, and the English spellings remain valid.\n"
+                + "- The star beside a command adds it to Starred. Starred commands are listed first in the “/” menu.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
         storyVariables: {
@@ -595,6 +596,8 @@ export const help = {
                 + "Execution follows the wires between the nodes. One kind of wire sets the order of execution, the "
                 + "other carries values from one node into the next.\n"
                 + "\n"
+                + "- A blueprint with no layers lists templates that suit what it belongs to. Blank layer is the "
+                + "last tile.\n"
                 + "- Right-click the canvas to add a node. It follows the cursor until it is placed.\n"
                 + "- The toolbar sets what a drag on empty canvas does: selecting, or moving the view.\n"
                 + "- A selection can be framed as a group that moves as one, and the whole graph can be "
