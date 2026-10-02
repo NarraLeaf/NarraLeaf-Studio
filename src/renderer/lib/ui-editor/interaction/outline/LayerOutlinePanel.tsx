@@ -2,10 +2,12 @@ import {
     startTransition,
     useCallback,
     useEffect,
+    useImperativeHandle,
     useMemo,
     useRef,
     useState,
     type MouseEvent,
+    type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
@@ -56,6 +58,16 @@ export type UILayersPanelProps = {
     allowAddSelectionToComponentLibrary?: boolean;
     /** Reorder, rename, visibility and every editing menu row go inert. Selection stays. */
     readOnly?: UIEditorReadOnly;
+    /**
+     * For the panel framing the outline, whose own chrome (its title row) belongs to the outline
+     * too: a right click there opens the menu a right click on the outline's empty space opens.
+     */
+    ref?: Ref<UILayersPanelHandle>;
+};
+
+export type UILayersPanelHandle = {
+    /** Open the outline's own menu - the one with no row under it - at the event's pointer. */
+    openPanelMenu: (event: MouseEvent<HTMLElement>) => void;
 };
 
 /**
@@ -164,6 +176,7 @@ export function UILayersPanel({
     inputDialog,
     allowAddSelectionToComponentLibrary = true,
     readOnly = UI_EDITOR_WRITABLE,
+    ref,
 }: UILayersPanelProps) {
     const { t } = useTranslation();
     const [docVersion, setDocVersion] = useState(0);
@@ -350,6 +363,8 @@ export function UILayersPanel({
         allowAddSelectionToComponentLibrary,
     });
 
+    useImperativeHandle(ref, () => ({ openPanelMenu: openBlankContextMenu }), [openBlankContextMenu]);
+
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: { distance: 4 },
@@ -491,7 +506,9 @@ export function UILayersPanel({
             : null;
 
     return (
-        <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
+        // `min-h-full`: the empty space under the last row is the outline's too, and a right click
+        // there is answered with the outline's menu rather than falling through to the canvas.
+        <div className="min-h-full space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
             <div className="text-xs tracking-wide text-fg-muted">{t("widgetChrome.outline.title")}</div>
             {isLinkedTree ? (
                 <div className="text-2xs leading-snug text-warning px-0.5">

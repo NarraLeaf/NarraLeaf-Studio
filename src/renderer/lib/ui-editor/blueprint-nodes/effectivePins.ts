@@ -424,6 +424,7 @@ export function resolveEffectiveBlueprintCatalogEntry(
         graphKinds: def.graphKinds,
         role: def.role,
         scope: def.scope,
+        description: def.description,
         dynamicInputPinLabelParamKey: cfg?.pinLabelParamKey,
         dynamicInputPinAddLabel: cfg?.addButtonLabel,
         dynamicInputPinTypeParamKey: cfg?.pinValueTypeParamKey,

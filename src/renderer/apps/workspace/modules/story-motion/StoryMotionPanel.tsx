@@ -13,6 +13,11 @@ import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
+import {
+    EditorSidebarResizeHandle,
+    editorSidebarCssWidth,
+    useEditorSidebarWidth,
+} from "../../components/ui/EditorSidebar";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -73,6 +78,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const exchange = useLibraryExchange("story-motion");
     const { menuState: libraryMenuState, showMenu: showLibraryMenu, hideMenu: hideLibraryMenu } = useContextMenu();
+    const libraryWidth = useEditorSidebarWidth("motionLibrary");
     // Creating, duplicating, deleting and binding write the story document; selecting a motion,
     // previewing it and opening the full editor only read, so they stay live in a frozen project.
     const freeze = useFreezeGuard();
@@ -520,7 +526,12 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
 
     return (
         <div className="flex h-full min-h-0 bg-surface text-fg">
-            <aside className="flex w-64 shrink-0 flex-col border-r border-edge">
+            {/* No right border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`). */}
+            <aside
+                className="relative flex shrink-0 flex-col"
+                style={{ width: editorSidebarCssWidth("motionLibrary", libraryWidth) }}
+            >
+                <EditorSidebarResizeHandle id="motionLibrary" edge="right" />
                 <div className="flex items-center gap-2 border-b border-edge p-2">
                     <EnhancedInput
                         className="flex-1"

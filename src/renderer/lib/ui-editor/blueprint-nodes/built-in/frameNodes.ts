@@ -121,6 +121,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         // the same button unusable on the same screen depending on how the player got to it.
         type: BLUEPRINT_NODE_TYPE_PAGE_BACK,
         displayName: "Go back",
+        description: "blueprint.nodeDescription.goBack",
         category: "App",
         keywords: ["page", "back", "close", "return", "dismiss", "pop", "layer", "overlay"],
         graphKinds: ["event", "macro"],

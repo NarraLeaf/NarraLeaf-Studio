@@ -5,6 +5,11 @@ import type { StoryDocument, StorySceneId } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import {
+    EditorSidebarResizeHandle,
+    editorSidebarCssWidth,
+    useEditorSidebarWidth,
+} from "@/apps/workspace/components/ui/EditorSidebar";
 import { formatSceneFlowArmLabel } from "./SceneFlowBranchNode";
 import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
 import { MAX_ROUTES, type SceneFlowEnding, type SceneFlowRoute, type SceneFlowRouteMap } from "./sceneFlowRoutes";
@@ -276,6 +281,7 @@ export function SceneFlowRouteRail({
     }, [routeMap, selection]);
 
     const hasEntryScene = Boolean(document.entrySceneId && document.scenes[document.entrySceneId]);
+    const width = useEditorSidebarWidth("sceneFlowRoutes");
 
     /** Clicking what is already selected clears it — the second click undoes the first. */
     const toggle = (next: SceneFlowRouteSelection): void => {
@@ -291,7 +297,12 @@ export function SceneFlowRouteRail({
     };
 
     return (
-        <aside className="flex h-full w-60 shrink-0 flex-col border-l border-edge bg-surface">
+        // No left border: the resize seam on that edge is the line (see `EditorSidebarResizeHandle`).
+        <aside
+            className="relative flex h-full shrink-0 flex-col bg-surface"
+            style={{ width: editorSidebarCssWidth("sceneFlowRoutes", width) }}
+        >
+            <EditorSidebarResizeHandle id="sceneFlowRoutes" edge="left" />
             <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
                 <span className="truncate text-xs font-medium text-fg">{t("story.flow.route.title")}</span>
                 {/* "200+" once the walk hit the cap. The plural key would read "200 routes" and

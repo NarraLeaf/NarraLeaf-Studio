@@ -12452,12 +12452,6 @@
           "surfaceId": "narraleaf-studio:main-surface",
           "elementId": "ac7c2f86-e356-4592-9dbf-04c0e55154da"
         },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
         "graphs": {
           "eventIds": [
             "a1a0e2ea-6c1b-4034-ac33-9ce70c9952d0"
@@ -12516,7 +12510,7 @@
                   },
                   "n5": {
                     "id": "n5",
-                    "type": "blueprint.math.greater",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -12967,7 +12961,13 @@
           },
           "functionIds": [],
           "functions": {}
-        }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       },
       "7c97b092-6675-4b6e-8726-1569cc3e0fe9": {
         "id": "7c97b092-6675-4b6e-8726-1569cc3e0fe9",
@@ -13921,12 +13921,6 @@
           "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
           "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74"
         },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
         "graphs": {
           "eventIds": [
             "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a"
@@ -13985,7 +13979,7 @@
                   },
                   "sfx.notFirst": {
                     "id": "sfx.notFirst",
-                    "type": "blueprint.math.greater",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -14162,7 +14156,13 @@
           },
           "functionIds": [],
           "functions": {}
-        }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       },
       "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b": {
         "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7b",
@@ -23473,7 +23473,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -24424,7 +24424,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -25096,7 +25096,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -25696,7 +25696,7 @@
                   },
                   "isEmpty": {
                     "id": "isEmpty",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -26245,7 +26245,7 @@
                   },
                   "back": {
                     "id": "back",
-                    "type": "blueprint.math.equal",
+                    "type": "blueprint.compare.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
@@ -27347,6 +27347,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-30T19:20:34.861Z"
+    "updatedAt": "2026-10-02T16:11:11.310Z"
   }
 }

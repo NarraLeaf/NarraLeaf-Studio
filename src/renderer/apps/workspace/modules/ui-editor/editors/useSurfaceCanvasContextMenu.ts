@@ -38,6 +38,7 @@ import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/develope
 import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { translate } from "@/lib/i18n";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { editableTextTarget } from "@/apps/workspace/components/EditableTextContextMenu";
 
 /**
  * The canvas menu rows a frozen project keeps: the ones that only read the document.
@@ -88,6 +89,12 @@ export function useSurfaceCanvasContextMenu(params: {
     const handleCanvasContextMenu = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
             if (!surface || !documentService || !stateService || !localBlueprint || widgetModules.length === 0) {
+                return;
+            }
+            // The tool bars drawn over the canvas carry text fields (a zoom percentage, a corner
+            // radius); a right click in one is a text gesture and gets cut, copy and paste, not rows
+            // about the canvas behind it.
+            if (editableTextTarget(event.target)) {
                 return;
             }
             event.preventDefault();
