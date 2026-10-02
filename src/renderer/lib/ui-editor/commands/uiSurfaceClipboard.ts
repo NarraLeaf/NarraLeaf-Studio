@@ -1,4 +1,3 @@
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { InterpolationParams, PluralKey, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -90,9 +89,8 @@ export function subscribeUiSurfaceClipboard(listener: () => void): () => void {
 /**
  * Snapshot one surface, its elements and its blueprints.
  *
- * Returns null for the main page: it is the one surface the project must have exactly one of, so
- * it can be neither duplicated nor imported, and a payload that pastes as nothing is worse than a
- * copy gesture that is simply not offered.
+ * Any page can be copied, the entry page included: a paste regenerates every id, so what arrives is
+ * a page of the receiving project and never its entry - the same thing Duplicate makes.
  */
 export function buildUiSurfaceClipboardPayload(input: {
     document: UIDocument;
@@ -102,9 +100,6 @@ export function buildUiSurfaceClipboardPayload(input: {
     source?: UIEditorClipboardSource;
 }): UISurfaceClipboardPayload | null {
     const { document, surfaceId, blueprintDocument } = input;
-    if (surfaceId === MAIN_APP_SURFACE_ID) {
-        return null;
-    }
     const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
     if (!surface || !document.elements[surface.rootElementId]) {
         return null;
@@ -138,8 +133,7 @@ export function buildUiSurfaceClipboardPayload(input: {
  *
  * Rebuilt rather than trusted, for the reason the element clipboard's reader gives: the JSON was
  * written by another process, and the import walks `childrenIds`, clones `layout` and indexes into
- * `elements`. The main page is dropped here as well as at import time, so a payload naming it
- * cannot make a paste that reports a surface it did not add.
+ * `elements`.
  *
  * Only the structure is judged. Every id inside is left exactly as it arrived; whether a reference
  * resolves in this project is the paste's question.
@@ -343,7 +337,7 @@ function readSurfaceDocument(value: unknown): UIDocument | null {
         if (!surface || typeof surface !== "object") {
             continue;
         }
-        if (typeof surface.id !== "string" || !surface.id || surface.id === MAIN_APP_SURFACE_ID) {
+        if (typeof surface.id !== "string" || !surface.id) {
             continue;
         }
         if (typeof surface.rootElementId !== "string" || !elements[surface.rootElementId]) {

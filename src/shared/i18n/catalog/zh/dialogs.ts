@@ -61,6 +61,7 @@ export const dialogs = {
         inputAction: "输入意图",
         asset: "资产",
         page: "页面",
+        entryPage: "入口页面",
         gameUi: "游戏 UI",
         image: "图片",
         audio: "音频",

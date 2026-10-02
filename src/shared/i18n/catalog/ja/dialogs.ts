@@ -64,6 +64,7 @@ export const dialogs = {
         inputAction: "入力アクション",
         asset: "アセット",
         page: "ページ",
+        entryPage: "入口ページ",
         gameUi: "ゲーム UI",
         image: "画像",
         audio: "音声",

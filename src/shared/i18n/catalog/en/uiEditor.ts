@@ -51,6 +51,7 @@ export const uiEditor = {
         duplicateSurface: "Duplicate {label}",
         copySurface: "Copy {label}",
         pasteSurface: "Paste interface",
+        setEntryPage: "Set as Entry Page",
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
@@ -69,6 +70,7 @@ export const uiEditor = {
     // Names for the undo steps this panel leaves behind ("Undo move interface Title").
     history: {
         moveSurface: "move interface {name}",
+        setEntryPage: "set entry page {name}",
     },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and

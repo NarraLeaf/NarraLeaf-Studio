@@ -426,6 +426,23 @@ describe("ui-document spec: diff", () => {
             .changes[0].children![0].label.key).toBe("documentDiff.uiDocument.surfaceField");
     });
 
+    // Compared as stored, named as resolved: the side that names no entry starts on its first page
+    // here (there is no main page in this document), and the author knows both pages by name.
+    it("reports a moved entry page by the two pages' names", () => {
+        const base = uidoc(
+            [surface("surf-1", "Title", "el-root-1"), surface("surf-2", "Splash", "el-root-2")],
+            [element("el-root-1", "Root", {type: "nl.root"}), element("el-root-2", "Root", {type: "nl.root"})],
+        );
+        const head = {...reserialized(base), entrySurfaceId: "surf-2"};
+
+        expect(diffUi(base, head).changes).toMatchObject([{
+            path: ["entrySurfaceId"],
+            subject: "Splash",
+            label: {key: "documentDiff.uiDocument.entryPage", params: {from: "Title", to: "Splash"}},
+        }]);
+        expect(diffUi(head, reserialized(head)).changes).toEqual([]);
+    });
+
     it("never throws on a malformed document, and says less instead", () => {
         expect(() => diffUi({} as UIDocument, {surfaces: null, elements: 7} as unknown as UIDocument)).not.toThrow();
         expect(diffUi({} as UIDocument, {} as UIDocument).changes).toEqual([]);

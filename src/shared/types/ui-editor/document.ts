@@ -59,6 +59,21 @@ export type UIDocument = {
      * `inputAction.ts`.
      */
     actions?: Record<string, UIInputActionDef>;
+    /**
+     * The page the game starts on, by id.
+     *
+     * Absent means the page carrying `MAIN_APP_SURFACE_ID` - the id a new document gives its first
+     * page, and the only entry a document had before this field existed - so a document whose author
+     * never moved the entry stays exactly as short as it was. Read only through `resolveEntrySurface`
+     * (`entrySurface.ts`), which also says what a pointer that has lost its page falls back to.
+     *
+     * A pointer rather than an id swap: a page's id is what its blueprints are filed under and what
+     * every `Go Page` names, so making another page the entry must not change which id it has.
+     *
+     * Carries no schema bump, for the reason `actions` and `structs` did not: absence already means a
+     * defined answer, so a document written before this field reads correctly without one.
+     */
+    entrySurfaceId?: UISurfaceId;
     meta?: UIDocumentMeta;
 };
 
