@@ -15,6 +15,10 @@ export const storyVars = {
         string: "文字列",
         json: "JSON",
     },
+    value: {
+        true: "真",
+        false: "偽",
+    },
     row: {
         nameAria: "変数名",
         defaultPlaceholder: "既定値",

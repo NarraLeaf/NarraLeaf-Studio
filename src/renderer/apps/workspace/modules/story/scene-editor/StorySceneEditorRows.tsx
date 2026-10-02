@@ -348,7 +348,20 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
-    const showRowActions = hovered || active;
+    /**
+     * Whether keyboard focus is on a condition header's branch buttons, the one thing in the trailing
+     * cluster that sits in the tab order. A focused control that stayed transparent - and
+     * `aria-hidden` - would be focus on nothing anybody can see or hear. Those buttons refuse focus
+     * from a pointer press, so this never holds the cluster open after a click.
+     */
+    const [actionsFocused, setActionsFocused] = useState(false);
+    const showRowActions = hovered || active || actionsFocused;
+    /** A condition holds one fallback at most, so its header stops offering a second. */
+    const conditionHasElse = containerInfo?.role === "condition"
+        && block.childrenIds.some(childId => {
+            const child = scene.blocks[childId];
+            return child?.kind === "control" && child.payload.control === "conditionBranch" && child.payload.branch === "else";
+        });
     // Whether this row's trailing controls land on the artwork strip rather than on the row's own
     // surface (see `.nl-on-media` in styles.css). The same condition the strip itself is drawn on —
     // a `/bg` row with something to show — because the strip is right-aligned and the controls are
@@ -659,7 +672,13 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                             controlsOverArtwork ? "nl-on-media" : "",
                         ].join(" ")}
                     >
-                        {containerInfo ? (
+                        {containerInfo?.role === "condition" ? (
+                            <ConditionBranchAdds
+                                offerElse={!conditionHasElse}
+                                onAddBranch={branch => on.onAddBranch(block.id, branch)}
+                                onFocusWithin={setActionsFocused}
+                            />
+                        ) : containerInfo ? (
                             <ContainerHeaderAdd info={containerInfo} onAdd={() => on.onAddInside(block.id)} />
                         ) : (
                             <>
@@ -679,7 +698,6 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                             block={block}
                             info={containerInfo}
                             onAddInside={() => on.onAddInside(block.id)}
-                            onAddBranch={branch => on.onAddBranch(block.id, branch)}
                         />
                     ) : null}
                 </div>
@@ -1696,12 +1714,12 @@ function RepeatTimesField(props: { block: StoryBlock; onUpdatePayload: (payload:
     );
 }
 
-/** Hover "+ Add" affordance on the right of a non-condition container header (adds a child at the end). */
+/**
+ * Hover "+ Add" affordance on the right of a container header (adds a child at the end). A condition
+ * header carries {@link ConditionBranchAdds} in its place.
+ */
 function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () => void }) {
     const { t } = useTranslation();
-    if (props.info.role === "condition") {
-        return null;
-    }
     const label = props.info.role === "menu" ? t("story.container.addOption") : t("story.container.addAction");
     return (
         <div className="pointer-events-none ml-auto flex shrink-0 items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
@@ -1721,42 +1739,97 @@ function ContainerHeaderAdd(props: { info: StoryContainerHeaderInfo; onAdd: () =
     );
 }
 
-/** Footer affordances under a container header: empty-body add prompt, and branch management for conditions. */
+/**
+ * The two ways a condition grows, at the right of its header row: another test, and the fallback.
+ *
+ * On the header rather than on a line of their own under it. That line sat between the `/if` and its
+ * first branch, so every condition in a scene was a row taller than its contents and the buttons that
+ * manage the branches were not on the row that owns them. Here they share the trailing cluster every
+ * header row has, so they appear with it, and take no height of their own: a header with them is
+ * exactly as tall as one without, hovered or not.
+ *
+ * Unlike the cluster's icon buttons these stay in the tab order, because nothing else adds a branch -
+ * there is no key for it - and the cluster comes up whenever one of them has focus. Enter and Space
+ * press them like any button.
+ *
+ * Where each lands is the controller's rule: another test goes after the last one and before the
+ * fallback, and the fallback goes last. A condition that already has its fallback is not offered a
+ * second, since it would be refused.
+ */
+function ConditionBranchAdds(props: {
+    offerElse: boolean;
+    onAddBranch: (branch: "elseIf" | "else") => void;
+    /** Keyboard focus arriving on, and leaving, these buttons - the row shows its cluster meanwhile. */
+    onFocusWithin: (focused: boolean) => void;
+}) {
+    const { t } = useTranslation();
+    // Adding a branch writes the story document, like the row's own insert and delete.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
+    const button = (branch: "elseIf" | "else", label: string) => (
+        <button
+            type="button"
+            {...freeze.writes()}
+            // `.nl-focus-ring` rather than `focus:ring-*`, which the global button rule cancels.
+            className="nl-focus-ring flex h-6 shrink-0 items-center rounded-md px-1.5 text-2xs text-fg-muted hover:bg-fill hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-muted"
+            // A pointer press does not move focus here. Focus kept on the button would hold the
+            // cluster open after the pointer left the row, ringed, and would take the editor's keys
+            // away from the list.
+            onMouseDown={event => event.preventDefault()}
+            // `KeybindingService` listens on `window` and stands aside only for editable targets, so
+            // Enter on a focused button would run the row's own Enter binding and be prevented before
+            // the browser turned it into a click. Shielded, not prevented: that activation is the
+            // thing being kept (the style strip does the same, see `onStripKeyDown`).
+            onKeyDown={event => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.stopPropagation();
+                }
+            }}
+            onClick={event => {
+                event.stopPropagation();
+                props.onAddBranch(branch);
+            }}
+        >
+            + {label}
+        </button>
+    );
+    const groupRef = useRef<HTMLDivElement | null>(null);
+    const { onFocusWithin, offerElse } = props;
+    // Pressing "+ else" from the keyboard removes the very button that had focus, and a removed
+    // element sends no blur - so the row would keep its cluster up for good. Ask again whenever the
+    // set of buttons changes.
+    useEffect(() => {
+        const group = groupRef.current;
+        if (group && !group.contains(group.ownerDocument.activeElement)) {
+            onFocusWithin(false);
+        }
+    }, [offerElse, onFocusWithin]);
+    return (
+        <div
+            ref={groupRef}
+            className="flex shrink-0 items-center gap-1"
+            onFocus={() => props.onFocusWithin(true)}
+            onBlur={event => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    props.onFocusWithin(false);
+                }
+            }}
+        >
+            {button("elseIf", t("story.container.elseIf"))}
+            {props.offerElse ? button("else", t("story.container.elseBranch")) : null}
+        </div>
+    );
+}
+
+/** Footer affordance under a container header: the add prompt of a body with nothing in it yet. */
 function ContainerFooter(props: {
     block: StoryBlock;
     info: StoryContainerHeaderInfo;
     onAddInside: () => void;
-    onAddBranch: (branch: "if" | "elseIf" | "else") => void;
 }) {
     const { t } = useTranslation();
     const empty = props.block.childrenIds.length === 0;
-    if (props.info.role === "condition") {
-        return (
-            <div className="mt-1 flex items-center gap-3 text-2xs text-fg-subtle" style={{ paddingLeft: rowIndent(1) }}>
-                <button
-                    type="button"
-                    className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
-                    onClick={event => {
-                        event.stopPropagation();
-                        props.onAddBranch("elseIf");
-                    }}
-                >
-                    + {t("story.container.elseIf")}
-                </button>
-                <button
-                    type="button"
-                    className="rounded-md px-1.5 py-0.5 hover:bg-fill hover:text-primary"
-                    onClick={event => {
-                        event.stopPropagation();
-                        props.onAddBranch("else");
-                    }}
-                >
-                    + {t("story.container.elseBranch")}
-                </button>
-            </div>
-        );
-    }
-    if (!empty) {
+    // A condition's body is its branches, and the header adds those.
+    if (props.info.role === "condition" || !empty) {
         return null;
     }
     const label = props.info.role === "menu" ? t("story.container.addOptionInside") : t("story.container.addActionInside");
