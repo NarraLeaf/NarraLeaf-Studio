@@ -456,6 +456,8 @@ export const blueprint = {
         select: "Select element",
         selectNamed: "Select element {name}",
         unbound: "Unbound",
+        // An Element card whose element is no longer in the project, in place of its name and preview.
+        missing: "Missing element",
     },
     pin: {
         addInput: "Add input pin",

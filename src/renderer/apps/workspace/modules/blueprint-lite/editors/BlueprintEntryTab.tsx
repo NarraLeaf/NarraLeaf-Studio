@@ -144,12 +144,7 @@ import {
     listCallableBlueprintFnOptions,
     resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
-import {
-    ELEMENT_REF_PARAM_ELEMENT_ID,
-    ELEMENT_REF_PARAM_ELEMENT_TYPE,
-    ELEMENT_REF_PARAM_SURFACE_ID,
-    readBlueprintElementRefParams,
-} from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
+import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
 import { FileCode2, PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -157,6 +152,7 @@ import {
     readElementBindingCompletion,
     startElementBindingSession,
     subscribeElementBindingSession,
+    withPickedElement,
 } from "../elementBindingSession";
 import {
     createComponentDocumentServiceAdapter,
@@ -168,7 +164,9 @@ import {
     listEffectiveBlueprintVariables,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { anchorElementId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
+import { isSameUIElementRefSurface } from "@shared/types/ui-editor/componentInstanceKey";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
+import { createElementCardTargetResolver } from "./elementCardTarget";
 import {
     buildBlueprintGraphClipboardPayload,
     pasteBlueprintGraphClipboardPayload,
@@ -330,7 +328,9 @@ function collectMagicElementRefs(input: {
             continue;
         }
         const ref = readBlueprintElementRefParams(node.params);
-        if (!ref || ref.surfaceId !== input.surfaceId) {
+        // Either spelling of a component definition's surface: a definition's blueprint is opened under
+        // the component editor's, and its references are stored under the definition's own.
+        if (!ref || !isSameUIElementRefSurface(ref.surfaceId, input.surfaceId)) {
             continue;
         }
         const element = input.document.elements[ref.elementId];
@@ -773,12 +773,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (!node) {
                     return;
                 }
-                node.params = {
-                    ...(node.params ?? {}),
-                    [ELEMENT_REF_PARAM_SURFACE_ID]: target.surfaceId,
-                    [ELEMENT_REF_PARAM_ELEMENT_ID]: target.elementId,
-                    [ELEMENT_REF_PARAM_ELEMENT_TYPE]: target.elementType,
-                };
+                node.params = withPickedElement(node.params, target);
             };
             if (session.graphKind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, session.graphId, apply);
@@ -1658,23 +1653,34 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         widgetLogicEvents,
     ]);
 
+    /**
+     * Against the project's document rather than this tab's. On a component definition's blueprint
+     * this tab's document is the component editor's view of the definition, and a definition is drawn
+     * from the project's document, not from that view (see `elementCardTarget`). Rebuilt when the
+     * interface document changes and only then, so the previews keep their objects while the graph
+     * around them is edited.
+     */
+    const resolveElementCardTarget = useMemo(
+        () => createElementCardTargetResolver(uidoc.getDocument()),
+        [uidoc, uiDocumentRevision],
+    );
+
     const elementPreviews = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
         if (!activeIr) {
             return {};
         }
-        const uiDocument = blueprintDocumentService.getDocument();
         const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (!isElementBindingNodeType(node.type)) {
                 continue;
             }
             const ref = readBlueprintElementRefParams(node.params);
-            const element = ref ? uiDocument.elements[ref.elementId] : undefined;
-            const surface = ref ? uiDocument.surfaces.find(item => item.id === ref.surfaceId) : undefined;
-            if (!ref || !element || !surface) {
+            const target = ref ? resolveElementCardTarget(ref) : null;
+            if (!ref || !target) {
                 continue;
             }
+            const { document: targetDocument, surface, element } = target;
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
                 revisionKey,
@@ -1689,7 +1695,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     <ElementLiteralSurfacePreview
                         key={revisionKey}
                         runtimeBridge={runtimeBridge}
-                        document={uiDocument}
+                        document={targetDocument}
                         surface={surface}
                         element={element}
                     />
@@ -1697,7 +1703,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             };
         }
         return previews;
-    }, [blueprintDocumentService, editor.graphView, ir, runtimeBridge, uiDocumentRevision]);
+    }, [editor.graphView, ir, resolveElementCardTarget, runtimeBridge, uiDocumentRevision]);
 
     const displayableTargetVariantsByNodeId = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
@@ -1852,18 +1858,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         uiDocumentRevision,
         widgetElement,
     ]);
-
-    const contextTitle = useMemo(
-        () =>
-            [
-                payload.ownerKind,
-                payload.surfaceId,
-                payload.elementId,
-                payload.propPath,
-                bp.id,
-            ].filter(Boolean).join(" · "),
-        [bp.id, payload.elementId, payload.ownerKind, payload.propPath, payload.surfaceId],
-    );
 
     const blueprintMemberVariables = useMemo(() => {
         return buildAccessibleBlueprintVariableOptions({
@@ -2239,7 +2233,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const header = (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" data-tip={contextTitle}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>

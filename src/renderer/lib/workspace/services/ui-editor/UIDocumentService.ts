@@ -27,6 +27,7 @@ import {
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
@@ -239,8 +240,6 @@ export type UIOpSink = {
      */
     handle(op: LiveUIOp): boolean;
 };
-
-const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
 
 function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfaceSettings {
     return {
@@ -2597,12 +2596,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             }
 
-            // A component's elements live outside any surface, so the surface fields of
-            // the remap context are inert here — only the element/blueprint/asset maps
-            // and the component-instance map do work.
+            // A component's elements live outside any surface. The surface fields reach the
+            // element references in the component's own blueprints, which name the definition's
+            // surface under either of its two spellings (`normalizeUIElementRefSurfaceId`): each
+            // is carried over to the copy under the spelling it had.
             const remapContext: SurfaceDuplicateRemapContext = {
-                oldSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${source.id}`,
-                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                oldSurfaceId: buildUIComponentEditorSurfaceId(source.id),
+                newSurfaceId: buildUIComponentEditorSurfaceId(newComponentId),
+                surfaceIdMap: { [buildUIComponentSurfaceId(source.id)]: buildUIComponentSurfaceId(newComponentId) },
                 elementIdMap,
                 blueprintIdMap,
                 assetIdMap,
@@ -3097,9 +3098,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         if (blueprintDocument && Object.keys(blueprintIdMap).length > 0) {
+            // Element references the carried logic makes to the page now point into the definition,
+            // and are stored under its own surface: the one the runtime compares them against.
             const remapContext: SurfaceDuplicateRemapContext = {
                 oldSurfaceId: surfaceId,
-                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${componentId}`,
+                newSurfaceId: buildUIComponentSurfaceId(componentId),
                 elementIdMap,
                 blueprintIdMap,
             };
@@ -3299,7 +3302,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         if (binding.target.kind === "widgetProp") {
                             binding.target = {
                                 ...binding.target,
-                                surfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                                surfaceId: buildUIComponentEditorSurfaceId(newComponentId),
                                 elementId: idMap[binding.target.elementId] ?? binding.target.elementId,
                             };
                         }

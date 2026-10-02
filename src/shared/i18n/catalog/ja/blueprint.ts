@@ -420,6 +420,7 @@ export const blueprint = {
         select: "要素を選ぶ",
         selectNamed: "要素 {name} を選ぶ",
         unbound: "未割り当て",
+        missing: "要素が見つからない",
     },
     pin: {
         addInput: "入力ピンを追加",
