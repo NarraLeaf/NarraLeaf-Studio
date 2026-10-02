@@ -194,11 +194,13 @@ export function EditorSidebarResizeHandle({ id, edge, onDraggingChange }: Editor
         });
     }, [id, onDraggingChange, settings]);
 
-    // A drag that is still going when the sidebar unmounts (its tab closed under the pointer) has
-    // nobody to tell; let anything animating with it know it is over.
-    useEffect(() => () => {
+    // A drag that is still going when the sidebar unmounts (its tab closed under the pointer) never
+    // reaches `handleDragEnd`; let anything animating with it know it is over.
+    const unmountRef = useRef<() => void>(() => undefined);
+    unmountRef.current = () => {
         if (dragging) onDraggingChange?.(false);
-    }, [dragging, onDraggingChange]);
+    };
+    useEffect(() => () => unmountRef.current(), []);
 
     const hostDocument = anchorRef.current?.ownerDocument ?? null;
 
