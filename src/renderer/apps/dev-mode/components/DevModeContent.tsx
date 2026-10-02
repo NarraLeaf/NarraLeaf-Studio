@@ -83,6 +83,7 @@ import { clearDevModeAssetUrls, publishDevModeAssetUrls } from "@/lib/ui-editor/
 import { BootScreenView } from "@/lib/ui-editor/runtime/app/BootScreenView";
 import { useDevModeInterfaceWarmup } from "./useDevModeInterfaceWarmup";
 import { resolveSurfaceInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { accentForeground } from "@shared/constants/accent";
 
 type DevModeContentProps = {
@@ -845,7 +846,7 @@ function DevModeDebugOverlay(props: {
 }
 
 export function DevModeContent(props: DevModeContentProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const {
         bundle,
         entry,
@@ -1798,19 +1799,20 @@ export function DevModeContent(props: DevModeContentProps) {
             return;
         }
         for (const entry of runtimePlugins.excluded) {
+            const pluginName = pluginDisplayName({ name: entry.pluginName, localized: entry.localized }, locale);
             reportIssue({
                 level: "warning",
                 origin: "plugin",
-                pluginName: entry.pluginName,
+                pluginName,
                 message: t(
                     entry.reason === "unusable"
                         ? "devMode.issues.pluginUnusable"
                         : "devMode.issues.pluginNotDeclared",
-                    { plugin: entry.pluginName },
+                    { plugin: pluginName },
                 ),
             });
         }
-    }, [bundle, reportIssue, runtimePlugins.excluded, t]);
+    }, [bundle, locale, reportIssue, runtimePlugins.excluded, t]);
 
     /**
      * Say which of the plugins this project does run failed to load.
@@ -1829,9 +1831,11 @@ export function DevModeContent(props: DevModeContentProps) {
             return;
         }
         for (const failure of runtimePlugins.errors) {
-            reportIssue(runtimePluginFailureIssue(failure, t));
+            const pluginName = failure.pluginName
+                && pluginDisplayName({ name: failure.pluginName, localized: failure.localized }, locale);
+            reportIssue(runtimePluginFailureIssue({ pluginName, error: failure.error }, t));
         }
-    }, [bundle, reportIssue, runtimePlugins.errors, t]);
+    }, [bundle, locale, reportIssue, runtimePlugins.errors, t]);
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {

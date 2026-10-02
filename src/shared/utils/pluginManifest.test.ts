@@ -961,3 +961,85 @@ describe("validatePluginManifest contributes.externalLinks", () => {
             .toMatchObject({ ok: false });
     });
 });
+
+describe("validatePluginManifest localized", () => {
+    const withLocalized = (localized: unknown) => validatePluginManifest({
+        manifestVersion: 2,
+        id: "acme.sample",
+        name: "Sample",
+        version: "1.0.0",
+        description: "A sample plugin.",
+        entries: { studio: "main.js" },
+        localized,
+    });
+
+    it("keeps each locale's name and description, trimmed", () => {
+        const result = withLocalized({
+            zh: { name: " 示例 ", description: "示例插件" },
+            ja: { name: "サンプル" },
+        });
+        expect(result).toMatchObject({ ok: true });
+        expect((result as { manifest: { localized?: unknown } }).manifest.localized).toEqual({
+            zh: { name: "示例", description: "示例插件" },
+            ja: { name: "サンプル" },
+        });
+    });
+
+    it("drops a blank field but keeps the entry when the other field is set", () => {
+        const result = withLocalized({ zh: { name: "  ", description: "示例插件" } });
+        expect((result as { manifest: { localized?: unknown } }).manifest.localized).toEqual({
+            zh: { description: "示例插件" },
+        });
+    });
+
+    it("leaves the field out when the table is empty", () => {
+        const result = withLocalized({});
+        expect(result).toMatchObject({ ok: true });
+        expect("localized" in (result as { manifest: object }).manifest).toBe(false);
+    });
+
+    it("rejects a table that is not an object", () => {
+        for (const value of [["zh"], "zh", 1, null]) {
+            const result = withLocalized(value);
+            expect(result).toMatchObject({ ok: false });
+            expect((result as { error: string }).error).toContain("localized must be an object");
+        }
+    });
+
+    it("rejects a key that is not a locale code", () => {
+        for (const code of ["zh_CN", "Chinese", "ZH", "__proto__"]) {
+            const result = withLocalized(JSON.parse(`{"${code}": {"name": "x"}}`));
+            expect(result).toMatchObject({ ok: false });
+            expect((result as { error: string }).error).toContain("invalid locale code");
+        }
+    });
+
+    it("rejects an entry that translates neither field, which is how a misspelt key arrives", () => {
+        const result = withLocalized({ zh: { title: "示例" } });
+        expect(result).toMatchObject({ ok: false });
+        expect((result as { error: string }).error).toContain("must declare a name or a description");
+    });
+
+    it("rejects a field that is not a string", () => {
+        expect(withLocalized({ zh: { name: 1 } })).toMatchObject({ ok: false });
+        expect(withLocalized({ zh: { name: "示例", description: ["x"] } })).toMatchObject({ ok: false });
+        expect(withLocalized({ zh: "示例" })).toMatchObject({ ok: false });
+    });
+});
+
+describe("built-in plugin manifests", () => {
+    const BUILT_INS = ["gallery", "menu-bar", "quick-save"];
+
+    it.each(BUILT_INS)("%s validates and names itself in Chinese without a closing full stop", async (dir) => {
+        const manifestPath = fileURLToPath(new URL(`../../builtin-plugins/${dir}/manifest.json`, import.meta.url));
+        const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
+        expect(result).toMatchObject({ ok: true });
+        const zh = (result as { manifest: { localized?: Record<string, { name?: string; description?: string }> } })
+            .manifest.localized?.zh;
+        expect(zh?.name).toBeTruthy();
+        expect(zh?.description).toBeTruthy();
+        for (const text of [zh!.name!, zh!.description!]) {
+            expect(text).not.toMatch(/[。.]$/);
+        }
+    });
+});

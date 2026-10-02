@@ -286,7 +286,7 @@ export function BuildDialogContent({
     onCancel: () => void;
     runPreflight: (request: GameBuildRequest) => Promise<BuildPreflightFinding[]>;
 }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [state, setState] = useState<BuildDialogState>(initialState);
     /** The variant every page after the first one describes. */
     const variant = useMemo(
@@ -318,8 +318,8 @@ export function BuildDialogContent({
      * declared for Android alone is not a question until Android is being built.
      */
     const pluginFields = useMemo(
-        () => collectPluginBuildConfigFields(info.configurablePlugins, selectedPlatforms),
-        [info.configurablePlugins, selectedPlatforms],
+        () => collectPluginBuildConfigFields(info.configurablePlugins, selectedPlatforms, locale),
+        [info.configurablePlugins, locale, selectedPlatforms],
     );
     /**
      * A project whose only variant is the release one has nothing to pick, and a build no plugin asks

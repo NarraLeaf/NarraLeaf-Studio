@@ -3,7 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import type { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import type { RuntimePluginExclusion } from "@shared/types/plugins";
+import type { PluginManifestLocalized, RuntimePluginExclusion } from "@shared/types/plugins";
 
 /**
  * One runtime entry that did not load.
@@ -15,6 +15,8 @@ import type { RuntimePluginExclusion } from "@shared/types/plugins";
 export type DevModeRuntimePluginFailure = {
     pluginId: string;
     pluginName: string | null;
+    /** The manifest's translations of the name, applied where the report is written. */
+    localized?: PluginManifestLocalized;
     error: string;
 };
 
@@ -74,11 +76,21 @@ export function useDevModeRuntimePlugins(
                     },
                 });
                 if (!disposed) {
+                    const localizedById = new Map(result.data.plugins.map(plugin => [plugin.plugin.id, plugin.manifest.localized]));
                     setState({
                         ready: true,
-                        errors: loadResults.flatMap(item => item.ok
-                            ? []
-                            : [{ pluginId: item.pluginId, pluginName: item.pluginName, error: item.error }]),
+                        errors: loadResults.flatMap((item) => {
+                            if (item.ok) {
+                                return [];
+                            }
+                            const localized = localizedById.get(item.pluginId);
+                            return [{
+                                pluginId: item.pluginId,
+                                pluginName: item.pluginName,
+                                ...(localized ? { localized } : {}),
+                                error: item.error,
+                            }];
+                        }),
                         excluded: result.data.excluded,
                     });
                 }

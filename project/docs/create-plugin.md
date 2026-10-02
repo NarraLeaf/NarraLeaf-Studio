@@ -52,6 +52,12 @@ my-plugin/
   "version": "1.0.0",
   "publisher": "Acme",
   "description": "Workspace tools for NarraLeaf Studio.",
+  "localized": {
+    "zh": {
+      "name": "面板工具",
+      "description": "NarraLeaf Studio 的工作区工具"
+    }
+  },
   "entries": {
     "studio": "main.js",
     "runtime": "runtime.js"
@@ -80,6 +86,7 @@ Manifest 字段：
 | `version` | `string` | `x.y.z` 格式，可带 prerelease/build 后缀。 |
 | `publisher` | `string` | 可选。 |
 | `description` | `string` | 可选。 |
+| `localized` | `Record<string, { name?: string; description?: string }>` | 可选。`name` 与 `description` 的各语言写法，见下面的 [插件名称与说明的翻译](#插件名称与说明的翻译)。 |
 | `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
 | `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
 | `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
@@ -147,6 +154,28 @@ plugin.install.approve
 ```
 
 文件系统权限的 `path` 是真实路径字符串。授权按 `pluginId@version` 保存；插件版本号改变后需要用户重新授权。
+
+### 插件名称与说明的翻译
+
+`name` 与 `description` 写一种语言（通常是英文）。要让插件列表、插件详情、项目依赖列表、控件插入面板、
+构建对话框的插件设置和 Dev Mode 的问题报告跟随 Studio 的界面语言显示，在 `localized` 里按语言代码给出对应写法：
+
+```json
+"localized": {
+  "zh": { "name": "面板工具", "description": "NarraLeaf Studio 的工作区工具" },
+  "ja": { "name": "パネルツール" }
+}
+```
+
+- 键是 Studio 界面语言的代码，**按原样精确匹配**：内建的是 `en`、`zh`、`ja`，语言包插件可以加入别的代码。
+  不做地区回退，写成 `zh-CN` 的条目在中文界面下不会显示。
+- 两个字段各自回退：只写 `name` 时，说明仍显示 `description` 的原文。当前语言没有条目时显示原文。
+- 每个条目至少给出 `name` 或 `description` 之一，两者都没有的条目会被判为清单错误（通常是键名拼错，例如 `title`）。
+  键不是语言代码、值不是字符串，同样会被拒绝。
+- 原文字段仍是插件的身份：命令行的 `--build-plugin` 等参数、项目文件记录的依赖名、构建日志和发布的游戏都只认 `name`，不读 `localized`。
+- 插件商店里尚未安装的插件仍显示注册表给出的名称与说明。
+
+内建的 Gallery、Menu Bar、Quick Save 三个插件的 `manifest.json` 都带有 `zh` 条目，可作参照。
 
 ## sidecars（随游戏发布的子进程）
 

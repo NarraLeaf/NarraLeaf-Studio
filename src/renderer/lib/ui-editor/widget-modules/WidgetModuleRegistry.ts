@@ -16,8 +16,11 @@ export interface WidgetModuleRegisterOptions {
      * The owning plugin's own name, as its manifest states it. Recorded beside the id because
      * the insert palette has to say where a widget came from, and an id is not what the author
      * knows the plugin as - the plugins panel and the dependency table both name it this way.
+     *
+     * A function is asked each time the name is read, which is how a plugin's name follows the
+     * editor's language without the plugin registering its widgets again.
      */
-    ownerPluginName?: string;
+    ownerPluginName?: string | (() => string);
 }
 
 export class WidgetModuleRegistry {
@@ -25,7 +28,7 @@ export class WidgetModuleRegistry {
     /** type -> owning plugin id, for widgets contributed by a plugin. */
     private readonly owners = new Map<string, string>();
     /** type -> owning plugin's display name; only set when the registration carried one. */
-    private readonly ownerNames = new Map<string, string>();
+    private readonly ownerNames = new Map<string, string | (() => string)>();
     private readonly listeners = new Set<() => void>();
     private revision = 0;
 
@@ -80,7 +83,8 @@ export class WidgetModuleRegistry {
         if (!pluginId) {
             return undefined;
         }
-        return this.ownerNames.get(type) ?? pluginId;
+        const name = this.ownerNames.get(type);
+        return (typeof name === "function" ? name() : name) || pluginId;
     }
 
     public get(type: string): UIWidgetModule | undefined {

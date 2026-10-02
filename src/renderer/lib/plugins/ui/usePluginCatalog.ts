@@ -3,6 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { forgetStoreIcon } from "./useStoreIcon";
 
 /** How long a "done" line stays before the surface goes quiet again. */
@@ -379,12 +380,18 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
     };
 }
 
-/** Filter an installed list by a free-text query over name, id, and publisher. */
-export function filterInstalled(plugins: PluginListItem[], query: string): PluginListItem[] {
+/**
+ * Filter an installed list by a free-text query over name, id, and publisher.
+ *
+ * Both names match: the one the list shows in `locale`, and the plain one the plugin is known by
+ * everywhere else, so a search typed from a README still finds it.
+ */
+export function filterInstalled(plugins: PluginListItem[], query: string, locale?: string): PluginListItem[] {
     const q = query.trim().toLowerCase();
     if (!q) return plugins;
     return plugins.filter(plugin =>
         plugin.manifest.name.toLowerCase().includes(q)
+        || pluginDisplayName(plugin.manifest, locale).toLowerCase().includes(q)
         || plugin.pluginId.toLowerCase().includes(q)
         || (plugin.manifest.publisher ?? "").toLowerCase().includes(q));
 }

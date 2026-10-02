@@ -364,9 +364,31 @@ export type PluginContributes = {
     network?: string[];
 };
 
+/**
+ * The plugin's name and description in one editor language. Either may be left out, and the plain
+ * manifest field is shown in its place.
+ */
+export type PluginManifestLocalizedText = {
+    name?: string;
+    description?: string;
+};
+
+/**
+ * `name` and `description` per editor locale, keyed by the exact code Studio's language setting
+ * stores (`zh`, `ja`, or a code a language pack adds). There is no region matching: an entry under
+ * `zh-CN` is never shown, because no Studio locale is called that.
+ */
+export type PluginManifestLocalized = Record<string, PluginManifestLocalizedText>;
+
 export type PluginManifestV2 = Omit<PluginIdentity, "id" | "name" | "version"> & Required<Pick<PluginIdentity, "id" | "name" | "version">> & {
     manifestVersion: typeof PluginManifestVersion;
     description?: string;
+    /**
+     * Translations of `name` and `description`, shown wherever Studio names the plugin to an author
+     * whose editor is set to that language. The plain fields stay the plugin's identity: command
+     * lines, project files and built games name it by them.
+     */
+    localized?: PluginManifestLocalized;
     /**
      * Package-relative path to the thumbnail shown beside the plugin's name in
      * the Launcher list. Square, at most 512x512, and one of the extensions in
@@ -461,6 +483,11 @@ export type RuntimePluginExclusion = {
     pluginId: string;
     /** The plugin's display name, for a host that has to name it to an author. */
     pluginName: string;
+    /**
+     * The manifest's translations of that name. Carried rather than applied, because the process
+     * that decides the exclusion does not know which language the window reading it is in.
+     */
+    localized?: PluginManifestLocalized;
     reason: RuntimePluginExclusionReason;
 };
 

@@ -44,6 +44,7 @@ import { collectDeclaredBlueprintFns } from "@/lib/workspace/services/ui-editor/
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { storeWrite } from "@/lib/workspace/services/autosave/writeReport";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -564,10 +565,12 @@ export function createPluginApp(
     // hands a node's execute the same `game` object `setup(app)` received.
     const nodeGame = createEditorRuntimePluginGame(descriptor);
     // Recorded with every widget the plugin contributes: the insert palette says where a widget
-    // came from, and the plugin's own name is what the author knows it by everywhere else.
+    // came from, and the plugin's own name is what the author knows it by everywhere else. Asked
+    // for when the palette draws, so it is in whatever language the editor is in by then.
+    const shownName = () => pluginDisplayName(descriptor.manifest, i18nStore.getLocale()) || descriptor.plugin.id;
     const widgetOwner = {
         ownerPluginId: descriptor.plugin.id,
-        ownerPluginName: descriptor.manifest.name || descriptor.plugin.id,
+        ownerPluginName: shownName,
     };
     const guardWidget = (module: PluginWidgetModule): UIWidgetModule => guardPluginWidgetModule(
         descriptor.plugin.id,
@@ -683,7 +686,10 @@ export function createPluginApp(
                 // than stacking a second one that reads into a store nobody owns any more.
                 registerReloader: reload => trackReturn(workspaceReload.registerReloader({
                     id: `plugin:${descriptor.plugin.id}`,
-                    label: descriptor.manifest.name || descriptor.plugin.id,
+                    // A getter, read when a reload reports, for the same reason as the widget owner.
+                    get label() {
+                        return shownName();
+                    },
                     reload,
                 })),
             },

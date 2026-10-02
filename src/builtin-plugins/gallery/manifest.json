@@ -4,6 +4,12 @@
   "name": "Gallery",
   "version": "3.1.0",
   "description": "Author the EXTRA screens - CG gallery, scene recollection, music appreciation and voice extras - and drive them from blueprint graphs.",
+  "localized": {
+    "zh": {
+      "name": "画廊",
+      "description": "制作 CG 画廊、场景回想、音乐与语音鉴赏等附加内容界面，并由蓝图驱动"
+    }
+  },
   "publisher": "NarraLeaf Studio",
   "entries": {
     "studio": "main.js",
