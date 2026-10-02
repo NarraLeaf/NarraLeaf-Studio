@@ -1,5 +1,6 @@
 import type { PaletteActionCommand } from "../storyActionCommands";
 import {
+    getCommandGroup,
     STORY_COMMAND_GROUPS,
     subjectGroupId,
     type StoryCommandCategoryId,
@@ -61,6 +62,45 @@ export function browseMenuStops(groups: readonly StoryCommandSidebarGroup[]): re
     return groups.flatMap(entry =>
         entry.commands.map(command => ({ key: `${entry.group.id}:${command.id}`, group: entry.group, command })),
     );
+}
+
+/**
+ * The starred commands, picked out of the browse groups in the order those groups list them.
+ *
+ * One entry per command: a favourite is a command, not a filing, so a verb filed under three subjects
+ * is still one row. Picked from the groups rather than looked up by id so the groups' own gates apply -
+ * a command this project has nothing to name for, or a plugin action whose plugin is gone, is not
+ * offered as a favourite either, and its stored id waits until it is listable again.
+ */
+export function pickStarredCommands(
+    groups: readonly StoryCommandSidebarGroup[],
+    starredIds: ReadonlySet<string>,
+): readonly PaletteActionCommand[] {
+    if (starredIds.size === 0) {
+        return [];
+    }
+    const seen = new Set<string>();
+    const starred: PaletteActionCommand[] = [];
+    for (const entry of groups) {
+        for (const command of entry.commands) {
+            if (starredIds.has(command.id) && !seen.has(command.id)) {
+                seen.add(command.id);
+                starred.push(command);
+            }
+        }
+    }
+    return starred;
+}
+
+/**
+ * The stops for the starred rows that head the `/` browse.
+ *
+ * A starred command is also listed under its subject further down, so its stop is keyed apart from
+ * that row's - the walk still moves one row per keypress and lights exactly one of the two. Each row
+ * is tinted with its command's own group, as it is in the manual's starred list.
+ */
+export function starredMenuStops(commands: readonly PaletteActionCommand[]): readonly StoryCommandMenuStop[] {
+    return commands.map(command => ({ key: `starred:${command.id}`, group: getCommandGroup(command.group), command }));
 }
 
 /** Every target kind a spec's params accept, in `accepts` order; empty when the spec takes no target. */

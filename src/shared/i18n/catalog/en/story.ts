@@ -646,6 +646,7 @@ export const story = {
         scopedTo: "Actions for {name}",
         addStarred: "Add to starred",
         removeStarred: "Remove from starred",
+        starredEmpty: "Starred commands are listed first in the “/” menu.",
     },
     music: {
         missingAudio: "Missing audio",

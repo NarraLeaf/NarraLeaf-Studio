@@ -21,3 +21,29 @@ export const CANVAS_CORNER_CHROME_MAX_WIDTH = `calc(100% - ${INSET} - 24px)`;
 
 /** `left` for chrome centred (with `-translate-x-1/2`) in the part of the canvas the sidebar leaves. */
 export const CANVAS_FREE_CENTRE_LEFT = `calc(${INSET} + (100% - ${INSET}) / 2)`;
+
+/**
+ * `padding-left` for content that fills the canvas in place of what usually pans under the sidebar
+ * - an empty state, say - so it is laid out in the part the sidebar leaves.
+ */
+export const CANVAS_SIDEBAR_INSET_PADDING = INSET;
+
+/**
+ * The inset in pixels, for a canvas that has to do arithmetic with it - framing a graph, say -
+ * rather than lay chrome out against it.
+ *
+ * Measured, not parsed: the editor sets the property to the sidebar's own `clamp()`, which only the
+ * layout engine can resolve. `element` is an element inside the one the property is set on, sized
+ * like the canvas; 0 when nothing sets it.
+ */
+export function measureEditorSidebarInset(element: Element | null | undefined): number {
+    if (!element) {
+        return 0;
+    }
+    const probe = element.ownerDocument.createElement("div");
+    probe.style.cssText = `position:absolute;left:0;top:0;height:0;visibility:hidden;pointer-events:none;width:${INSET}`;
+    element.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return Number.isFinite(width) ? width : 0;
+}
