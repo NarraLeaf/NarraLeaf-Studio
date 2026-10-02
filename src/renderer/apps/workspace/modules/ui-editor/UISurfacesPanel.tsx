@@ -61,6 +61,7 @@ import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPalette
 import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 import { interfaceDocumentFreezeScope } from "./uiLiveSession";
+import { openBlueprintWallTab } from "../blueprint-wall/openBlueprintWallTab";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -660,6 +661,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             <SurfaceFilters
                 kind={kind}
                 onKindChange={setKind}
+                onOpenBlueprintOverview={context ? () => openBlueprintWallTab(context) : undefined}
             />
             <SurfaceActions
                 onCreate={handleCreateSurface}

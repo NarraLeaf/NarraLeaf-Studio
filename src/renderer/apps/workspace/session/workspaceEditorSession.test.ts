@@ -451,6 +451,24 @@ describe("workspace editor session serialization", () => {
         });
     });
 
+    it("round-trips the Blueprint Overview tab", () => {
+        const layout: EditorLayout = {
+            id: "main",
+            tabs: [
+                { id: "narraleaf-studio:blueprint-overview", title: "Blueprint Overview", component: (() => null) as never },
+            ],
+            focus: "narraleaf-studio:blueprint-overview",
+        };
+
+        const parsed = parseWorkspaceEditorSession(JSON.parse(JSON.stringify(serializeEditorSession(layout))));
+
+        expect(parsed!.layout).toMatchObject({
+            kind: "group",
+            focus: "narraleaf-studio:blueprint-overview",
+            tabs: [{ kind: "blueprintOverview" }],
+        });
+    });
+
     // The other half of the surface-less bug, and the earlier one: a story-action tab failed the
     // payload guard on the way *out*, so it was never written to the session file in the first
     // place. Restoring it correctly is moot if saving silently discards it.

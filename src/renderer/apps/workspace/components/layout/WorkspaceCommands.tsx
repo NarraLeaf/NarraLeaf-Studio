@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BookPlus, FilePlus, Settings, UserPlus, Waypoints } from "lucide-react";
+import { BookPlus, FilePlus, Network, Settings, UserPlus, Waypoints } from "lucide-react";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -14,6 +14,7 @@ import { useKeybinding } from "../../hooks";
 import { SEARCH_PANEL_ID } from "../../modules/search";
 import { requestSearchFocus } from "../../modules/search/searchFocusRequest";
 import { openDefaultSceneFlowTab } from "../../modules/story-flow/openSceneFlowTab";
+import { openBlueprintWallTab } from "../../modules/blueprint-wall/openBlueprintWallTab";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 
 const STORY_PANEL_ID = "narraleaf-studio:story";
@@ -106,6 +107,13 @@ export function WorkspaceCommands() {
                 icon: <Waypoints className="w-4 h-4" />,
                 when: () => targetStoryId() !== null,
                 run: () => openDefaultSceneFlowTab(context),
+            },
+            {
+                id: "go:blueprint-overview",
+                titleKey: "blueprint.overview.title",
+                categoryKey: "workspace.shell.commandPalette.categoryGo",
+                icon: <Network className="w-4 h-4" />,
+                run: () => openBlueprintWallTab(context),
             },
             {
                 id: "story:new-story",

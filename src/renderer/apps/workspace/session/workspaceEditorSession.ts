@@ -46,6 +46,8 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { stableProjectKeyToken } from "@shared/utils/stableKeyHash";
 import { createDashboardTab } from "@/apps/workspace/modules/dashboard/openDashboardTab";
 import { DASHBOARD_TAB_ID } from "@/apps/workspace/modules/dashboard/dashboardTabId";
+import { createBlueprintWallTab } from "@/apps/workspace/modules/blueprint-wall/openBlueprintWallTab";
+import { BLUEPRINT_WALL_TAB_ID } from "@/apps/workspace/modules/blueprint-wall/blueprintWallTabId";
 
 /** Legacy global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
@@ -87,6 +89,7 @@ export type SerializedTabContent =
     | { kind: "welcome" }
     | { kind: "help"; topicId?: string }
     | { kind: "dashboard" }
+    | { kind: "blueprintOverview" }
     | { kind: "newTab"; token: string }
     | { kind: "surface"; surfaceId: string }
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
@@ -254,6 +257,9 @@ function serializeTabContent(tab: EditorTabDefinition): SerializedTabContent | n
     if (tab.id === DASHBOARD_TAB_ID) {
         return { kind: "dashboard" };
     }
+    if (tab.id === BLUEPRINT_WALL_TAB_ID) {
+        return { kind: "blueprintOverview" };
+    }
     if (tab.id.startsWith(NEW_TAB_ID_PREFIX)) {
         const token = tab.id.slice(NEW_TAB_ID_PREFIX.length);
         if (!token) {
@@ -366,7 +372,7 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     }
     const o = value as Record<string, unknown>;
     const kind = o.kind;
-    if (kind === "welcome" || kind === "dashboard") {
+    if (kind === "welcome" || kind === "dashboard" || kind === "blueprintOverview") {
         return true;
     }
     if (kind === "newTab" && typeof o.token === "string" && o.token.length > 0) {
@@ -589,6 +595,9 @@ function buildTabDefinitionContent(ctx: WorkspaceContext, entry: SerializedTab):
     }
     if (entry.kind === "dashboard") {
         return createDashboardTab();
+    }
+    if (entry.kind === "blueprintOverview") {
+        return createBlueprintWallTab();
     }
     if (entry.kind === "newTab") {
         return createNewTabTab(entry.token);
