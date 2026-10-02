@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
@@ -8,9 +8,6 @@ import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
-import { useWorkspace } from "@/apps/workspace/context";
-import { Services } from "@/lib/workspace/services/services";
-import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import {
     commandCategoryLabelKey,
@@ -23,12 +20,13 @@ import {
 import { localizeSpecCommand } from "./commands/specPalette";
 import { getCommandSpec, listCommandSpecs } from "./commands/registry";
 import { specGroupIds } from "./commands/specSidebar";
-import { availableSidebarGroups, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, type StoryCommandSidebarGroup } from "./commands/specSidebar";
+import { availableSidebarGroups, buildSpecSidebarGroups, dedupeToPrimarySubject, filterSidebarGroups, pickStarredCommands, type StoryCommandSidebarGroup } from "./commands/specSidebar";
 import { EMPTY_STORY_COMMAND_CONTEXT, type StoryCommandContext } from "./storyCommandValues";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
 import { searchActionCommands } from "./storyCommandSearch";
 import { useStoryPluginActionCommands } from "./useStoryPluginActionCommands";
-import { FAVORITES_SETTING_KEY, migrateStarredActionIds } from "./storyActionCreatorFavorites";
+import { STARRED_ICON_COLOR } from "./storyActionCreatorFavorites";
+import { useStarredStoryCommands } from "./useStarredStoryCommands";
 import {
     buildStoryCommandManual,
     type StoryCommandManualEntry,
@@ -73,49 +71,12 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     // The command reference is documentation of the command language, so its content follows
     // `editor.localizedCommands`; the panel's chrome around it follows the interface language.
     const { t: ct } = useCommandTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const settingsService = useMemo(
-        () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
-        [context, isInitialized],
-    );
     const [query, setQuery] = useState("");
     const [activeTab, setActiveTab] = useState<SidebarTab>(ALL_CATEGORY_ID);
     const [openCommandId, setOpenCommandId] = useState<string | null>(null);
-    const [starredIds, setStarredIds] = useState<Set<string>>(() => new Set());
+    // The same set the `/` menu leads with, so a star set here heads that menu on the next line typed.
+    const { starredIds, toggleStarred } = useStarredStoryCommands();
     const pluginCommands = useStoryPluginActionCommands();
-
-    const persistStarredIds = useCallback((next: readonly string[]) => {
-        if (!settingsService) {
-            return;
-        }
-        void settingsService.set(FAVORITES_SETTING_KEY, [...next]).catch(error => {
-            console.warn("[StoryActionCreatorPanel] failed to save starred actions", error);
-        });
-    }, [settingsService]);
-
-    useEffect(() => {
-        if (!settingsService) {
-            return;
-        }
-        const stored = settingsService.getSync<string[]>(FAVORITES_SETTING_KEY, []) ?? [];
-        // Favourites persist palette ids, and the catalogue those come from changed. Rewriting
-        // them here - and writing the result straight back - is what keeps a starred "Image show"
-        // showing up as a starred `/show` instead of quietly disappearing.
-        const migrated = migrateStarredActionIds(stored.filter(id => typeof id === "string"));
-        setStarredIds(new Set(migrated));
-        if (migrated.length !== stored.length || migrated.some((id, index) => id !== stored[index])) {
-            persistStarredIds(migrated);
-        }
-    }, [persistStarredIds, settingsService]);
-
-    const toggleStarred = useCallback((commandId: string) => {
-        setStarredIds(previous => {
-            const next = new Set(previous);
-            next.has(commandId) ? next.delete(commandId) : next.add(commandId);
-            persistStarredIds([...next]);
-            return next;
-        });
-    }, [persistStarredIds]);
 
     const localize = useCallback((command: PaletteActionCommand) => localizeSpecCommand(command, ct), [ct]);
 
@@ -172,22 +133,14 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
      * The starred tab is a flat set - a command filed under three subjects is still ONE favourite, so
      * it must not appear three times here.
      */
-    const starredCommands = useMemo<PaletteActionCommand[]>(() => {
-        if (activeTab !== STARRED_CATEGORY_ID) {
-            return [];
-        }
-        const seen = new Set<string>();
-        const starred: PaletteActionCommand[] = [];
-        for (const group of sidebarGroups) {
-            for (const command of group.commands) {
-                if (starredIds.has(command.id) && !seen.has(command.id)) {
-                    seen.add(command.id);
-                    starred.push(command);
-                }
-            }
-        }
-        return searchActionCommands(starred, query);
-    }, [activeTab, query, sidebarGroups, starredIds]);
+    const allStarredCommands = useMemo(
+        () => activeTab === STARRED_CATEGORY_ID ? pickStarredCommands(sidebarGroups, starredIds) : [],
+        [activeTab, sidebarGroups, starredIds],
+    );
+    const starredCommands = useMemo<PaletteActionCommand[]>(
+        () => searchActionCommands(allStarredCommands, query),
+        [allStarredCommands, query],
+    );
 
     /**
      * Every other tab keeps the subject sections, each ranked by the matcher the `/` creator uses.
@@ -263,7 +216,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                 <div className="mt-3 flex flex-wrap gap-1">
                     <CategoryChip
                         icon={Star}
-                        iconColor="#c8b06e"
+                        iconColor={STARRED_ICON_COLOR}
                         label={t("story.actionCreator.starred")}
                         active={activeTab === STARRED_CATEGORY_ID}
                         onClick={() => setActiveTab(STARRED_CATEGORY_ID)}
@@ -291,7 +244,10 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
                 {starredCommands.length === 0 && visibleGroups.length === 0 ? (
                     <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
-                        {t("story.manual.empty")}
+                        {/* An empty starred tab is not a search that missed: it says what the tab is for. */}
+                        {activeTab === STARRED_CATEGORY_ID && allStarredCommands.length === 0
+                            ? t("story.actionCreator.starredEmpty")
+                            : t("story.manual.empty")}
                     </div>
                 ) : null}
                 {/* Starred: one flat bucket, so no subject header over it. */}
@@ -305,6 +261,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                             starred
                             onOpen={setOpenCommandId}
                             onCreate={createAction}
+                            onToggleStarred={toggleStarred}
                         />
                     ))}
                 </div>
@@ -326,6 +283,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                                         starred={starredIds.has(command.id)}
                                         onOpen={setOpenCommandId}
                                         onCreate={createAction}
+                                        onToggleStarred={toggleStarred}
                                     />
                                 ))}
                             </div>
@@ -434,6 +392,9 @@ function CategoryChip(props: {
  *
  * The click used to insert, which made the list unbrowsable — you could not look at a command without
  * putting one in your scene. Insert stays one click away, on the row and again in the detail.
+ *
+ * The star beside it is the same control the detail header carries. It stays drawn on a starred row,
+ * where it is also the mark that says so, and comes up on hover everywhere else.
  */
 function ActionCreatorRow(props: {
     command: PaletteActionCommand;
@@ -442,6 +403,7 @@ function ActionCreatorRow(props: {
     starred: boolean;
     onOpen: (commandId: string) => void;
     onCreate: (commandId: string) => void;
+    onToggleStarred: (commandId: string) => void;
 }) {
     const { t } = useTranslation();
     // The glyph is the COMMAND's, the colour is the SECTION's. `/show` listed under 图片 wears an eye
@@ -468,7 +430,19 @@ function ActionCreatorRow(props: {
                     </span>
                     <span className="block truncate text-2xs text-fg-subtle">{props.command.detail}</span>
                 </span>
-                {props.starred ? <Star className="h-3 w-3 shrink-0 text-warning" fill="currentColor" /> : null}
+            </button>
+            <button
+                type="button"
+                className={cn(
+                    "grid h-7 w-7 shrink-0 place-items-center rounded-md transition hover:bg-fill-strong focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+                    props.starred ? "text-warning" : "text-fg-subtle opacity-0 hover:text-warning group-hover:opacity-100",
+                )}
+                data-tip={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                aria-label={props.starred ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                aria-pressed={props.starred}
+                onClick={() => props.onToggleStarred(props.command.id)}
+            >
+                <Star className="h-3.5 w-3.5" fill={props.starred ? "currentColor" : "none"} />
             </button>
             <button
                 type="button"

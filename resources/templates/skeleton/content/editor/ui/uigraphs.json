@@ -82,16 +82,16 @@
             },
             "ui-cues": {
               "id": "ui-cues",
-              "name": "Button sounds",
+              "name": "Sounds played on a condition",
               "graph": {
                 "nodes": {
                   "note": {
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "The three sounds every button in the template uses: confirm when a button is pressed, hover when the pointer moves onto it, back when it returns to the previous page. A button plays one by calling its function with Call Fn, so changing a clip here changes it on every button. They play on the SFX track, whose volume the Sound effects slider on the Config page sets.",
+                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the Sound effects slider on the Config page sets their volume.",
                       "width": 560,
-                      "height": 180
+                      "height": 230
                     },
                     "meta": {
                       "editorLayout": {
@@ -109,7 +109,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 230
+                        "y": 280
                       }
                     }
                   },
@@ -123,34 +123,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 306,
-                        "y": 230
-                      }
-                    }
-                  },
-                  "cueHoverHead": {
-                    "id": "cueHoverHead",
-                    "type": "blueprint.fn.head",
-                    "params": {
-                      "name": "UI hover cue"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 591
-                      }
-                    }
-                  },
-                  "cueHoverPlay": {
-                    "id": "cueHoverPlay",
-                    "type": "blueprint.sound.play",
-                    "params": {
-                      "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
-                      "audioTrackId": "sound"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 591
+                        "y": 280
                       }
                     }
                   },
@@ -163,7 +136,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 952
+                        "y": 641
                       }
                     }
                   },
@@ -177,7 +150,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 306,
-                        "y": 952
+                        "y": 641
                       }
                     }
                   }
@@ -190,16 +163,6 @@
                     },
                     "to": {
                       "nodeId": "cueConfirmPlay",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "cueHoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "cueHoverPlay",
                       "port": "in"
                     }
                   },
@@ -430,53 +393,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -486,27 +402,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -568,53 +464,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -624,27 +473,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -706,53 +535,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -762,27 +544,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -874,53 +636,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -928,16 +643,6 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -951,16 +656,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -1162,24 +857,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 450
-                      }
-                    }
-                  },
                   "i18n.nAsk.message": {
                     "id": "i18n.nAsk.message",
                     "type": "blueprint.localization.getText",
@@ -1297,7 +974,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "i18n.nAsk.message",
                       "port": "in"
                     }
                   },
@@ -1308,16 +985,6 @@
                     },
                     "to": {
                       "nodeId": "n8",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "i18n.nAsk.message",
                       "port": "in"
                     }
                   },
@@ -2760,8 +2427,7 @@
         },
         "graphs": {
           "eventIds": [
-            "00dee1b4-56db-40c1-917c-038b280dbd4f",
-            "00dee1b4-56db-40c1-917c-038b280dbd4f-hover"
+            "00dee1b4-56db-40c1-917c-038b280dbd4f"
           ],
           "events": {
             "00dee1b4-56db-40c1-917c-038b280dbd4f": {
@@ -2769,21 +2435,6 @@
               "name": "Open the Save page",
               "graph": {
                 "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "The confirm sound is called first because Go Page has no Next pin: nothing can follow it in the chain.",
-                      "width": 828,
-                      "height": 90
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
                   "pressed": {
                     "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
@@ -2791,25 +2442,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 140
-                      }
-                    }
-                  },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 140
+                        "y": 0
                       }
                     }
                   },
@@ -2821,8 +2454,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
-                        "y": 140
+                        "x": 306,
+                        "y": 0
                       }
                     }
                   }
@@ -2834,69 +2467,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "open",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            },
-            "00dee1b4-56db-40c1-917c-038b280dbd4f-hover": {
-              "id": "00dee1b4-56db-40c1-917c-038b280dbd4f-hover",
-              "name": "Play the hover sound",
-              "graph": {
-                "nodes": {
-                  "pointerOver": {
-                    "id": "pointerOver",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "hoverSound": {
-                    "id": "hoverSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 0
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pointerOver",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "hoverSound",
                       "port": "in"
                     }
                   }
@@ -2927,8 +2498,7 @@
         },
         "graphs": {
           "eventIds": [
-            "c80832be-4046-4536-a27d-2c4406e35ff7",
-            "c80832be-4046-4536-a27d-2c4406e35ff7-hover"
+            "c80832be-4046-4536-a27d-2c4406e35ff7"
           ],
           "events": {
             "c80832be-4046-4536-a27d-2c4406e35ff7": {
@@ -2936,21 +2506,6 @@
               "name": "Open the Load page",
               "graph": {
                 "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "The confirm sound is called first because Go Page has no Next pin: nothing can follow it in the chain.",
-                      "width": 828,
-                      "height": 90
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
                   "pressed": {
                     "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
@@ -2958,25 +2513,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 140
-                      }
-                    }
-                  },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 140
+                        "y": 0
                       }
                     }
                   },
@@ -2988,8 +2525,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
-                        "y": 140
+                        "x": 306,
+                        "y": 0
                       }
                     }
                   }
@@ -3001,69 +2538,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "open",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            },
-            "c80832be-4046-4536-a27d-2c4406e35ff7-hover": {
-              "id": "c80832be-4046-4536-a27d-2c4406e35ff7-hover",
-              "name": "Play the hover sound",
-              "graph": {
-                "nodes": {
-                  "pointerOver": {
-                    "id": "pointerOver",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "hoverSound": {
-                    "id": "hoverSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 0
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pointerOver",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "hoverSound",
                       "port": "in"
                     }
                   }
@@ -3120,17 +2595,13 @@
           "events": {
             "03e2d03f-7b02-4096-89b5-f52a59dcaae1": {
               "id": "03e2d03f-7b02-4096-89b5-f52a59dcaae1",
-              "name": "Play the hover sound",
+              "name": "Open the Config page",
               "graph": {
                 "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "This is the Config page's own entry, so pressing it does nothing: opening the page again would put a second copy on top, and Back would only return to the first. On the Save, Load and Log pages the Config entry opens this page.",
-                      "width": 560,
-                      "height": 130
-                    },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
@@ -3138,32 +2609,16 @@
                       }
                     }
                   },
-                  "pointerOver": {
-                    "id": "pointerOver",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 180
-                      }
-                    }
-                  },
-                  "hoverSound": {
-                    "id": "hoverSound",
-                    "type": "blueprint.fn.call",
+                  "open": {
+                    "id": "open",
+                    "type": "blueprint.page.go",
                     "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
+                      "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182"
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 306,
-                        "y": 180
+                        "y": 0
                       }
                     }
                   }
@@ -3171,11 +2626,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "pointerOver",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "hoverSound",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -3206,8 +2661,7 @@
         },
         "graphs": {
           "eventIds": [
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5",
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5-hover"
+            "992d40a9-6e75-4ec8-8af1-b273b080a1c5"
           ],
           "events": {
             "992d40a9-6e75-4ec8-8af1-b273b080a1c5": {
@@ -3241,31 +2695,13 @@
                       }
                     }
                   },
-                  "backSound": {
-                    "id": "backSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 160
-                      }
-                    }
-                  },
                   "clear": {
                     "id": "clear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 160
                       }
                     }
@@ -3276,7 +2712,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 160
                       }
                     }
@@ -3287,16 +2723,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "backSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "backSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "clear",
@@ -3310,58 +2736,6 @@
                     },
                     "to": {
                       "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            },
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5-hover": {
-              "id": "992d40a9-6e75-4ec8-8af1-b273b080a1c5-hover",
-              "name": "Play the hover sound",
-              "graph": {
-                "nodes": {
-                  "pointerOver": {
-                    "id": "pointerOver",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "hoverSound": {
-                    "id": "hoverSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 0
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pointerOver",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "hoverSound",
                       "port": "in"
                     }
                   }
@@ -3489,24 +2863,6 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 160
-                      }
-                    }
-                  },
                   "show": {
                     "id": "show",
                     "type": "blueprint.element.displayable.setProperty",
@@ -3516,7 +2872,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 320,
                         "y": 160
                       }
                     }
@@ -3531,7 +2887,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 292,
+                        "x": 0,
                         "y": 432
                       }
                     }
@@ -3545,7 +2901,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 626,
                         "y": 160
                       }
                     }
@@ -3560,7 +2916,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 306,
                         "y": 432
                       }
                     }
@@ -3573,7 +2929,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 932,
                         "y": 160
                       }
                     }
@@ -3588,7 +2944,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 612,
                         "y": 432
                       }
                     }
@@ -3601,7 +2957,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1530,
+                        "x": 1238,
                         "y": 160
                       }
                     }
@@ -3616,7 +2972,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1210,
+                        "x": 918,
                         "y": 432
                       }
                     }
@@ -3627,16 +2983,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "show",
@@ -3774,24 +3120,6 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 160
-                      }
-                    }
-                  },
                   "show": {
                     "id": "show",
                     "type": "blueprint.element.displayable.setProperty",
@@ -3801,7 +3129,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 320,
                         "y": 160
                       }
                     }
@@ -3816,7 +3144,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 292,
+                        "x": 0,
                         "y": 432
                       }
                     }
@@ -3830,7 +3158,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 626,
                         "y": 160
                       }
                     }
@@ -3845,7 +3173,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 306,
                         "y": 432
                       }
                     }
@@ -3858,7 +3186,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 932,
                         "y": 160
                       }
                     }
@@ -3873,7 +3201,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 612,
                         "y": 432
                       }
                     }
@@ -3886,7 +3214,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1530,
+                        "x": 1238,
                         "y": 160
                       }
                     }
@@ -3901,7 +3229,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1210,
+                        "x": 918,
                         "y": 432
                       }
                     }
@@ -3912,16 +3240,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "show",
@@ -5495,31 +4813,13 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.game.setSkipReadText",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -5532,7 +4832,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 336,
+                        "x": 30,
                         "y": 450
                       }
                     }
@@ -5545,7 +4845,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -5560,7 +4860,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -5573,7 +4873,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -5588,7 +4888,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -5599,16 +4899,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -5726,31 +5016,13 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.game.setSkipReadText",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -5763,7 +5035,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 336,
+                        "x": 30,
                         "y": 450
                       }
                     }
@@ -5776,7 +5048,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -5791,7 +5063,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -5804,7 +5076,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -5819,7 +5091,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -5830,16 +5102,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -5999,24 +5261,6 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.app.setFullscreen",
@@ -6025,7 +5269,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -6038,7 +5282,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -6053,7 +5297,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -6066,7 +5310,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -6081,7 +5325,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -6092,16 +5336,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -6209,24 +5443,6 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.app.setFullscreen",
@@ -6235,7 +5451,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -6248,7 +5464,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -6263,7 +5479,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -6276,7 +5492,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -6291,7 +5507,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -6302,16 +5518,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -8486,53 +7692,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -8542,27 +7701,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -8645,53 +7784,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -8701,27 +7793,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -8783,53 +7855,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -8839,27 +7864,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -8930,53 +7935,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -8984,16 +7942,6 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -9007,16 +7955,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -10780,53 +9718,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -10836,27 +9727,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -10939,53 +9810,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -10995,27 +9819,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -11077,53 +9881,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -11133,27 +9890,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -11224,53 +9961,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -11278,16 +9968,6 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -11301,16 +9981,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -11499,53 +10169,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -11555,27 +10178,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -11798,53 +10401,6 @@
                         "y": -340
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 710
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 710
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -12004,7 +10560,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "nAuto",
                       "port": "in"
                     }
                   },
@@ -12055,26 +10611,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "nAuto",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   },
@@ -12162,53 +10698,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -12218,27 +10707,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -12300,53 +10769,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -12356,27 +10778,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -12457,53 +10859,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
-                  },
                   "i18n.nAsk.message": {
                     "id": "i18n.nAsk.message",
                     "type": "blueprint.localization.getText",
@@ -12551,7 +10906,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "i18n.nAsk.message",
                       "port": "in"
                     }
                   },
@@ -12562,26 +10917,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "i18n.nAsk.message",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   },
@@ -13704,24 +12039,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 420
-                      }
-                    }
-                  },
                   "i18n.n15.message": {
                     "id": "i18n.n15.message",
                     "type": "blueprint.localization.getText",
@@ -13809,7 +12126,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "n14",
                       "port": "in"
                     }
                   },
@@ -13871,16 +12188,6 @@
                     "to": {
                       "nodeId": "n16",
                       "port": "id"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "n14",
-                      "port": "in"
                     }
                   },
                   {
@@ -14987,53 +13294,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -15041,16 +13301,6 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -15064,16 +13314,6 @@
                     },
                     "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -15192,53 +13432,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -15248,27 +13441,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -17126,24 +15299,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1400,
-                        "y": 1350
-                      }
-                    }
-                  },
                   "i18n.nOverwriteConfirm.message": {
                     "id": "i18n.nOverwriteConfirm.message",
                     "type": "blueprint.localization.getText",
@@ -17892,7 +16047,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "nModeIf",
                       "port": "in"
                     }
                   },
@@ -18304,16 +16459,6 @@
                     "to": {
                       "nodeId": "n46",
                       "port": "field:99bfea66-9e2b-4f60-bcdb-a9252612d025"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "nModeIf",
-                      "port": "in"
                     }
                   },
                   {
@@ -19435,53 +17580,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 410
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 410
-                      }
-                    }
-                  },
                   "i18n.nConfirm.message": {
                     "id": "i18n.nConfirm.message",
                     "type": "blueprint.localization.getText",
@@ -19529,7 +17627,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "nConfirmIf",
                       "port": "in"
                     }
                   },
@@ -19570,26 +17668,6 @@
                     },
                     "to": {
                       "nodeId": "nQuit",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "nConfirmIf",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   },
@@ -19708,31 +17786,13 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.game.setMuteOnWindowBlur",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -19745,7 +17805,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 336,
+                        "x": 30,
                         "y": 450
                       }
                     }
@@ -19758,7 +17818,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -19773,7 +17833,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -19786,7 +17846,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -19801,7 +17861,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -19812,16 +17872,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -19939,31 +17989,13 @@
                       }
                     }
                   },
-                  "confirmSound": {
-                    "id": "confirmSound",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 306,
-                        "y": 180
-                      }
-                    }
-                  },
                   "change": {
                     "id": "change",
                     "type": "blueprint.game.setMuteOnWindowBlur",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 612,
+                        "x": 306,
                         "y": 180
                       }
                     }
@@ -19976,7 +18008,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 336,
+                        "x": 30,
                         "y": 450
                       }
                     }
@@ -19989,7 +18021,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 612,
                         "y": 180
                       }
                     }
@@ -20004,7 +18036,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 598,
+                        "x": 292,
                         "y": 450
                       }
                     }
@@ -20017,7 +18049,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1224,
+                        "x": 918,
                         "y": 180
                       }
                     }
@@ -20032,7 +18064,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 904,
+                        "x": 598,
                         "y": 450
                       }
                     }
@@ -20043,16 +18075,6 @@
                     "from": {
                       "nodeId": "pressed",
                       "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "confirmSound",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "confirmSound",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "change",
@@ -20155,24 +18177,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
                   "ref01": {
                     "id": "ref01",
                     "type": "blueprint.element.ref",
@@ -20448,35 +18452,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 560
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 560
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -20486,7 +18461,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "show01",
                       "port": "in"
                     }
                   },
@@ -20508,16 +18483,6 @@
                     "to": {
                       "nodeId": "show01",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "show01",
-                      "port": "in"
                     }
                   },
                   {
@@ -20687,16 +18652,6 @@
                     },
                     "to": {
                       "nodeId": "sel04.set",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -20746,24 +18701,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
                   "ref01": {
                     "id": "ref01",
                     "type": "blueprint.element.ref",
@@ -21039,35 +18976,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 560
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 560
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -21077,7 +18985,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "show01",
                       "port": "in"
                     }
                   },
@@ -21099,16 +19007,6 @@
                     "to": {
                       "nodeId": "show01",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "show01",
-                      "port": "in"
                     }
                   },
                   {
@@ -21278,16 +19176,6 @@
                     },
                     "to": {
                       "nodeId": "sel04.set",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -21337,24 +19225,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
                   "ref01": {
                     "id": "ref01",
                     "type": "blueprint.element.ref",
@@ -21630,35 +19500,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 560
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 560
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -21668,7 +19509,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "show01",
                       "port": "in"
                     }
                   },
@@ -21690,16 +19531,6 @@
                     "to": {
                       "nodeId": "show01",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "show01",
-                      "port": "in"
                     }
                   },
                   {
@@ -21869,16 +19700,6 @@
                     },
                     "to": {
                       "nodeId": "sel04.set",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -21928,24 +19749,6 @@
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
                   "ref01": {
                     "id": "ref01",
                     "type": "blueprint.element.ref",
@@ -22221,35 +20024,6 @@
                         "y": 0
                       }
                     }
-                  },
-                  "sfx.hoverHead": {
-                    "id": "sfx.hoverHead",
-                    "type": "blueprint.event.head.mouseEnter",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 560
-                      }
-                    }
-                  },
-                  "sfx.hoverPlay": {
-                    "id": "sfx.hoverPlay",
-                    "type": "blueprint.fn.call",
-                    "params": {
-                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
-                      "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
-                        "params": [],
-                        "returns": []
-                      }
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 560
-                      }
-                    }
                   }
                 },
                 "edges": [
@@ -22259,7 +20033,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "show01",
                       "port": "in"
                     }
                   },
@@ -22281,16 +20055,6 @@
                     "to": {
                       "nodeId": "show01",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.click",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "show01",
-                      "port": "in"
                     }
                   },
                   {
@@ -22460,16 +20224,6 @@
                     },
                     "to": {
                       "nodeId": "sel04.set",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.hoverHead",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "sfx.hoverPlay",
                       "port": "in"
                     }
                   }
@@ -26547,6 +24301,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-02T21:25:53.859Z"
+    "updatedAt": "2026-10-02T21:35:59.753Z"
   }
 }

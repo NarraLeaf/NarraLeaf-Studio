@@ -64,6 +64,18 @@ export const properties = {
         uiElement: "UI Element",
         linkedComponent: "Linked Component",
     },
+    // The sounds an element plays when it is pointed at and when it is clicked.
+    interactionSound: {
+        title: "Sound",
+        hover: "Hover",
+        hoverTip: "Plays on the SFX track when the pointer moves onto the element. Of nested elements with a hover sound, only the innermost one plays.",
+        click: "Click",
+        clickTip: "Plays on the SFX track when the element is clicked. Of nested elements with a click sound, only the innermost one plays.",
+        none: "No sound",
+        chooseHover: "Choose hover sound",
+        chooseClick: "Choose click sound",
+        missing: "Missing sound",
+    },
     linkedComponent: {
         missing: "Missing component",
         info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",

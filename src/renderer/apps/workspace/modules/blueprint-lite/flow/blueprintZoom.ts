@@ -70,6 +70,12 @@ export type ComputeBlueprintZoomParams = {
     /** What the canvas will accept; React Flow clamps to this anyway, so the caller must not lie. */
     range: ZoomRange;
     padding?: number;
+    /**
+     * Screen pixels at the pane's left edge that the layer panel covers. The panel is drawn over the
+     * canvas, so a graph framed against the whole pane lands partly behind it; the graph is framed in
+     * what the panel leaves instead.
+     */
+    inset?: number;
 };
 
 /**
@@ -84,6 +90,7 @@ export function computeBlueprintZoomViewport({
     container,
     range,
     padding = BLUEPRINT_FIT_PADDING,
+    inset = 0,
 }: ComputeBlueprintZoomParams): FlowViewport | null {
     if (
         !Number.isFinite(container.width) ||
@@ -106,7 +113,9 @@ export function computeBlueprintZoomViewport({
     // Padding is breathing room, and a mode whose whole point is to leave no empty side must not
     // have any: "fill" that stopped short of the edges would be answering a different question.
     const padded = mode === "cover" ? 1 : 1 + padding;
-    const byWidth = container.width / (padded * bounds.width);
+    const left = usableBlueprintInset(container.width, inset);
+    const freeWidth = container.width - left;
+    const byWidth = freeWidth / (padded * bounds.width);
     const byHeight = container.height / (padded * bounds.height);
     const rawZoom =
         mode === "actual" ? 1
@@ -117,9 +126,24 @@ export function computeBlueprintZoomViewport({
 
     return {
         zoom,
-        x: container.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+        x: left + freeWidth / 2 - (bounds.x + bounds.width / 2) * zoom,
         y: container.height / 2 - (bounds.y + bounds.height / 2) * zoom,
     };
+}
+
+/** The most of the pane a covering panel may claim before framing stops making room for it. */
+const MAX_INSET_SHARE = 0.6;
+
+/**
+ * How much of the pane's left edge framing keeps clear of: the panel's width, but never so much
+ * that the graph would be framed into a sliver - a panel dragged nearly as wide as the canvas is
+ * left to overlap rather than shrink the graph to nothing.
+ */
+export function usableBlueprintInset(paneWidth: number, inset: number): number {
+    if (!Number.isFinite(inset) || inset <= 0 || !Number.isFinite(paneWidth) || paneWidth <= 0) {
+        return 0;
+    }
+    return Math.min(inset, Math.floor(paneWidth * MAX_INSET_SHARE));
 }
 
 /** Holds a zoom inside what the canvas accepts, so the box never shows a value it cannot reach. */
