@@ -7,6 +7,10 @@ export const storyVars = {
         string: "字符串",
         json: "JSON",
     },
+    value: {
+        true: "真",
+        false: "假",
+    },
     row: {
         nameAria: "变量名",
         defaultPlaceholder: "默认值",

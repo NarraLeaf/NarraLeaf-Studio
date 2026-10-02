@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { ChevronDown, FilePlus2, MoreVertical, Plus, Pointer } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import {
     UI_INPUT_ACTION_BLANK_PRESET_ID,
     UI_INPUT_ACTION_PRESETS,
@@ -16,6 +17,11 @@ import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { InputBindingList } from "./InputBindingList";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 import { onInputActionPanelFocus } from "./inputActionPanelFocus";
+import { answeredActionIdsForSelection, scrollRowIntoListView } from "../panel/selectionHighlights";
+import { useSelectionHighlight } from "../panel/useSelectionHighlight";
+
+/** How long the section, or the one action asked for, stays marked after a request to show it. */
+const FOCUS_FLASH_MS = 1600;
 
 type InputActionLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -61,6 +67,18 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
+    /**
+     * The actions the interface being looked at answers - its Input section's list, drawn here as a
+     * frame on each row. See `answeredActionIdsForSelection` for why that, and not anything about
+     * the selected element, is what an action is relevant to.
+     */
+    const answeredHere = useSelectionHighlight(uiService, documentService, answeredActionIdsForSelection);
+    /** The one action somebody asked for by name, marked for a moment on top of its frame. */
+    const [flashId, setFlashId] = useState<string | null>(null);
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const rowRefs = useRef(new Map<string, HTMLDivElement>());
+    /** A row that has to be brought into view once the render that shows it has landed. */
+    const scrollTargetRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!documentService) {
@@ -76,6 +94,53 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     // numbers can move and no more.
     const answeredCounts = useMemo(() => countAnsweringSurfaces(documentService), [actions, documentService]);
 
+    // Somebody on the other side of the workspace has said they need an action, or asked where one
+    // is. Open, come into view, and mark the section - or that one action - for long enough to be
+    // found: the request means "where is this", so answering it silently would be the same as not
+    // answering.
+    useEffect(() => onInputActionPanelFocus(actionId => {
+        setOpen(true);
+        if (actionId) {
+            scrollTargetRef.current = actionId;
+            setFlashId(actionId);
+            window.setTimeout(() => {
+                setFlashId(current => (current === actionId ? null : current));
+            }, FOCUS_FLASH_MS);
+        } else {
+            setHighlighted(true);
+            window.setTimeout(() => setHighlighted(false), FOCUS_FLASH_MS);
+        }
+        window.setTimeout(() => {
+            rootRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }, 0);
+    }), []);
+
+    // Following the selection: when the interface being looked at changes, the first action it
+    // answers comes into view if the list has it scrolled away. Keyed on the set's identity, which
+    // only changes when its contents do. Declared before the layout effect that scrolls, so both run
+    // in the same commit and in this order.
+    useLayoutEffect(() => {
+        const first = actions.find(action => answeredHere.has(action.id));
+        if (first) {
+            scrollTargetRef.current = first.id;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [answeredHere]);
+
+    useLayoutEffect(() => {
+        const targetId = scrollTargetRef.current;
+        if (!targetId || !open) {
+            return;
+        }
+        const list = listRef.current;
+        const row = rowRefs.current.get(targetId);
+        if (!list || !row) {
+            return;
+        }
+        scrollTargetRef.current = null;
+        scrollRowIntoListView(list, row);
+    });
+
     /**
      * Create one action, starting from a preset.
      *
@@ -83,18 +148,6 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
      * from the row like anything else, and nothing records that it was used. Blank is on the same
      * list rather than being a different button, because picking a starting point is one decision.
      */
-    // Somebody on the other side of the workspace has said they need an action. Open, come into
-    // view, and mark the section for long enough to be found - the request means "where is this",
-    // so answering it silently would be the same as not answering.
-    useEffect(() => onInputActionPanelFocus(() => {
-        setOpen(true);
-        setHighlighted(true);
-        window.setTimeout(() => {
-            rootRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }, 0);
-        window.setTimeout(() => setHighlighted(false), 1600);
-    }), []);
-
     const handleCreate = useCallback(
         async (presetId: string) => {
             if (!documentService) {
@@ -245,7 +298,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                         <Plus className="h-3.5 w-3.5" aria-hidden />
                         {t("uiEditor.inputActions.create")}
                     </button>
-                    <div className="min-h-0 max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
+                    <div ref={listRef} className="min-h-0 max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
                         {actions.length === 0 ? (
                             <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                                 {t("uiEditor.inputActions.empty")}
@@ -254,7 +307,22 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                             actions.map(action => (
                                 <div
                                     key={action.id}
-                                    className="group rounded-md border border-edge bg-fill-subtle px-2 py-2"
+                                    ref={node => {
+                                        if (node) {
+                                            rowRefs.current.set(action.id, node);
+                                        } else {
+                                            rowRefs.current.delete(action.id);
+                                        }
+                                    }}
+                                    data-input-action-id={action.id}
+                                    data-canvas-highlight={answeredHere.has(action.id) ? "true" : undefined}
+                                    className={cn(
+                                        "group rounded-md border border-edge bg-fill-subtle px-2 py-2 transition-colors",
+                                        // The same frame the component library draws round the
+                                        // definition behind a selected instance.
+                                        answeredHere.has(action.id) && "border-primary ring-1 ring-inset ring-primary",
+                                        flashId === action.id && "bg-primary/15",
+                                    )}
                                     onContextMenu={event => openActionMenu(event, action)}
                                 >
                                     <div className="flex items-center gap-2">

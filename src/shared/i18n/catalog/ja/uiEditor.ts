@@ -178,6 +178,8 @@ export const uiEditor = {
         layerFallback: "レイヤー",
         openComponent: "コンポーネントを開く",
         unlinkComponent: "コンポーネントのリンクを外す",
+        openComponentNamed: "コンポーネント {name} を開く",
+        openPageNamed: "ページ {name} を開く",
     },
     zoom: {
         label: "拡大縮小",

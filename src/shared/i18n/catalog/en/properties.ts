@@ -37,6 +37,7 @@ export const properties = {
             addCreate: "Create action",
             removeAction: "Stop answering {name}",
             answer: "Answer {name}",
+            reveal: "Show {name} in Input Actions",
             bubble: "After it fires",
             bubbleStop: "Intercept",
             bubbleContinue: "Continue",
@@ -66,6 +67,7 @@ export const properties = {
     linkedComponent: {
         missing: "Missing component",
         info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",
+        reveal: "Show in Component Library",
     },
     componentParams: {
         title: "Params",

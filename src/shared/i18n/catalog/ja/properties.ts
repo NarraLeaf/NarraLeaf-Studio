@@ -35,6 +35,7 @@ export const properties = {
             addCreate: "アクションを作成",
             removeAction: "{name} への応答をやめる",
             answer: "{name} に応答する",
+            reveal: "{name} を入力アクションで表示",
             bubble: "発火後",
             bubbleStop: "バブリングを遮断",
             bubbleContinue: "バブリングを継続",
@@ -64,6 +65,7 @@ export const properties = {
     linkedComponent: {
         missing: "コンポーネントが見つからない",
         info: "リンクされたインスタンス。リンクを外すまで、変えられるのはパラメータと位置、大きさ、回転だけ",
+        reveal: "コンポーネントライブラリで表示",
     },
     componentParams: {
         title: "パラメータ",

@@ -80,8 +80,17 @@ import {
 
 const INPUT_CLASS = cn(
     CONTROL_SIZE_CLASS.sm,
-    "min-w-0 flex-1 rounded-md border border-edge bg-surface-raised text-fg outline-none focus:border-primary/50",
+    "w-full min-w-0 rounded-md border border-edge bg-surface-raised text-fg outline-none focus:border-primary/50",
 );
+
+/**
+ * The two growing columns of a row - the name and the default - each sit in one of these.
+ *
+ * A wrapper rather than `flex-1` on the controls themselves: an input cannot shrink below its own
+ * padding and border, so a flexed input starts 18px ahead of a flexed dropdown, and a boolean row
+ * (dropdown default) laid its columns out 9px off the rows above and below it.
+ */
+const FIELD_SLOT_CLASS = "min-w-0 flex-1";
 
 function formatDefault(value: StoryLiteralValue | undefined, valueType: StoryVariableValueType): string {
     if (value === undefined || value === null) return "";
@@ -142,6 +151,13 @@ function VariableRowEditor(props: {
     // freeze is unchanged.
     const freeze = useFreezeGuard(variableRegistryFreezeScope());
     const valueTypeOptions = useValueTypeOptions();
+    const booleanOptions: SelectOption[] = useMemo(
+        () => [
+            { value: "true", label: t("storyVars.value.true") },
+            { value: "false", label: t("storyVars.value.false") },
+        ],
+        [t],
+    );
     // Who else has this entry open in a live session, or null. Read-only for as long as somebody has.
     const heldBy = useVariableClaim(props.row.id);
     const removable = useVariableRemovalAvailable();
@@ -166,14 +182,16 @@ function VariableRowEditor(props: {
                 on thaw. `readOnly` rather than `disabled` on the two text boxes, matching what the
                 inspector framework does with its own text fields - the name and the default are
                 what the author came to READ, and a disabled input is dimmed past reading. */}
-            <input
-                className={INPUT_CLASS}
-                value={props.row.name}
-                onChange={event => props.onRename(event.target.value)}
-                readOnly={freeze.frozen || held}
-                data-tip={freeze.frozen ? freeze.reason : heldTip}
-                aria-label={t("storyVars.row.nameAria")}
-            />
+            <div className={FIELD_SLOT_CLASS}>
+                <input
+                    className={INPUT_CLASS}
+                    value={props.row.name}
+                    onChange={event => props.onRename(event.target.value)}
+                    readOnly={freeze.frozen || held}
+                    data-tip={freeze.frozen ? freeze.reason : heldTip}
+                    aria-label={t("storyVars.row.nameAria")}
+                />
+            </div>
             <Select
                 options={valueTypeOptions}
                 value={props.row.valueType}
@@ -183,15 +201,36 @@ function VariableRowEditor(props: {
                 disabled={freeze.frozen || held}
                 className="w-24 shrink-0"
             />
-            <input
-                className={INPUT_CLASS}
-                value={formatDefault(props.row.defaultValue, props.row.valueType)}
-                placeholder={t("storyVars.row.defaultPlaceholder")}
-                onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
-                readOnly={freeze.frozen || held}
-                data-tip={freeze.frozen ? freeze.reason : heldTip}
-                aria-label={t("storyVars.row.defaultAria")}
-            />
+            <div className={FIELD_SLOT_CLASS}>
+                {props.row.valueType === "boolean" ? (
+                    /* A boolean has two values, so it is picked rather than typed - in the words the
+                       snapshot panel uses for the same values. As a text box it showed the code
+                       spelling, and every keystroke re-read the box as "is it exactly `true`", so
+                       typing the word letter by letter could never set it. Read-only rather than
+                       disabled while frozen or held, for the reason the text boxes are. */
+                    <Select
+                        options={booleanOptions}
+                        value={props.row.defaultValue === true ? "true" : props.row.defaultValue === false ? "false" : ""}
+                        onChange={value => props.onDefault(value === "true")}
+                        placeholder={t("storyVars.row.defaultPlaceholder")}
+                        size="sm"
+                        portalMenu
+                        fullWidth
+                        readOnly={freeze.frozen || held}
+                        ariaLabel={t("storyVars.row.defaultAria")}
+                    />
+                ) : (
+                    <input
+                        className={INPUT_CLASS}
+                        value={formatDefault(props.row.defaultValue, props.row.valueType)}
+                        placeholder={t("storyVars.row.defaultPlaceholder")}
+                        onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
+                        readOnly={freeze.frozen || held}
+                        data-tip={freeze.frozen ? freeze.reason : heldTip}
+                        aria-label={t("storyVars.row.defaultAria")}
+                    />
+                )}
+            </div>
             <button
                 type="button"
                 className={cn(
