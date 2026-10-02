@@ -123,6 +123,7 @@ export const dialogs = {
             supported: "Supported files",
             images: "Images",
             log: "Log",
+            zip: "Zip archive",
             text: "Text",
             json: "JSON",
             patch: "Patch",

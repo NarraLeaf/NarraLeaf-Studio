@@ -110,6 +110,7 @@ export const dialogs = {
             supported: "支持的文件",
             images: "图片",
             log: "日志",
+            zip: "ZIP 压缩包",
             text: "文本",
             json: "JSON",
             patch: "补丁",

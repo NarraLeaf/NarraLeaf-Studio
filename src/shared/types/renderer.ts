@@ -562,6 +562,16 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
         }>>;
         /**
+         * Write every log Studio has to one zip the user picks a place for: the log folder whole,
+         * this window's project's run logs, and the in-memory `files` this window formats itself.
+         */
+        exportLogArchive(defaultFileName: string, files: { name: string; content: string }[]): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+            fileCount?: number;
+        }>>;
+        /**
          * Show the log folder itself, for reading rather than for handing over. Takes no path: the
          * folder is the one main knows, which is what keeps this from being a general "open a
          * directory" call.
