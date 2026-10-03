@@ -536,7 +536,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
     if (!localBp.getBlueprintDocument().blueprints[props.payload.blueprintId]) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-warning">
-                {t("blueprint.tab.notFound", { id: props.payload.blueprintId })}
+                {t("blueprint.tab.notFound")}
             </div>
         );
     }

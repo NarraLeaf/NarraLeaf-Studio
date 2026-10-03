@@ -14,7 +14,7 @@ export const blueprint = {
     tab: {
         title: "蓝图",
         invalid: "蓝图标签页无效",
-        notFound: "未找到蓝图：{id}",
+        notFound: "本项目中未找到该蓝图",
     },
     /** 断点：在节点右键菜单里设置，由开发模式调试器命中。 */
     breakpoint: {
