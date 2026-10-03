@@ -479,6 +479,12 @@ describe("defaultGameBuildArch", () => {
 
     it("uses x64 for a cross build regardless of host arch", () => {
         expect(defaultGameBuildArch("windows", "macos", "arm64")).toBe("x64");
+        expect(defaultGameBuildArch("linux", "windows", "x64")).toBe("x64");
+    });
+
+    it("makes a macOS app built off a Mac universal, so it runs on every Mac", () => {
+        expect(defaultGameBuildArch("macos", "windows", "x64")).toBe("universal");
+        expect(defaultGameBuildArch("macos", "linux", "arm64")).toBe("universal");
     });
 });
 

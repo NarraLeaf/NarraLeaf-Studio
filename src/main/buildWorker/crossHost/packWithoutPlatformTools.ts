@@ -13,7 +13,8 @@ import { writeZip, type ZipWriteEntry } from "../mobile/zipWriter";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "../protocol";
 import { FileZipOutput, readZipAsTree, writeTreeAsZip } from "./archive";
 import { fetchElectronRelease } from "./electronRelease";
-import { asarHeaderHash, assembleMacApp } from "./macApp";
+import { asarHeaderHash, assembleMacApp, type MacApp } from "./macApp";
+import { mergeUniversalBundle } from "./universal";
 import { unixModeForContent } from "./unixModes";
 
 /**
@@ -109,9 +110,6 @@ async function packMacApp(input: {
     staging: string;
 }): Promise<string[]> {
     const { config, target, log, appDir, staging } = input;
-    if (target.arch === "universal") {
-        throw new Error("A universal macOS app cannot be built on this machine yet; build arm64 and x64 separately.");
-    }
     if (target.signing) {
         // Preflight already refuses a macOS credential off a Mac; this keeps the worker from ever
         // shipping an ad-hoc signature over a build an author asked to have signed.
@@ -139,17 +137,8 @@ async function packMacApp(input: {
         throw new Error("electron-builder produced no app.asar for the macOS payload.");
     }
 
-    // 2. Electron's macOS release, from the same cache and mirror electron-builder uses.
-    const releaseZip = await fetchElectronRelease({
-        version: config.electronVersion,
-        platform: "darwin",
-        arch: target.arch,
-        ...(config.electronMirror ? { mirror: config.electronMirror } : {}),
-    });
-    log("info", `assembling the macOS app from ${path.basename(releaseZip)}`);
-    const release = await readZipAsTree(releaseZip);
-
-    // 3. The bundle, signed ad hoc, written as the zip electron-builder would have written.
+    // 2. The bundle from Electron's macOS release (the same cache and mirror electron-builder uses),
+    //    once per architecture; a universal app is both halves joined.
     const metadata = await appMetadata(appDir);
     const notices = new Map<string, Buffer>();
     if (config.copyrightFile) {
@@ -158,20 +147,41 @@ async function packMacApp(input: {
     if (config.thirdPartyNoticesFile) {
         notices.set("THIRD-PARTY-NOTICES.txt", await fsPromises.readFile(config.thirdPartyNoticesFile));
     }
-    const app = await assembleMacApp({
-        release,
-        productName: config.productName,
-        appId: config.appId,
-        version: metadata.version,
-        author: metadata.author,
-        ...(config.copyright ? { copyright: config.copyright } : {}),
-        ...(target.iconPath ? { icon: await fsPromises.readFile(target.iconPath) } : {}),
-        languages: config.electronLanguages,
-        resources,
-        asarHeaderHash: asarHeaderHash(asar.data, data => crypto.createHash("sha256").update(data).digest("hex")),
-        notices,
-        fuses: target.fuses,
-    });
+    const icon = target.iconPath ? await fsPromises.readFile(target.iconPath) : undefined;
+    const headerHash = asarHeaderHash(asar.data, data => crypto.createHash("sha256").update(data).digest("hex"));
+    const assemble = async (arch: "x64" | "arm64") => {
+        const releaseZip = await fetchElectronRelease({
+            version: config.electronVersion,
+            platform: "darwin",
+            arch,
+            ...(config.electronMirror ? { mirror: config.electronMirror } : {}),
+        });
+        log("info", `assembling the macOS app from ${path.basename(releaseZip)}`);
+        return assembleMacApp({
+            release: await readZipAsTree(releaseZip),
+            productName: config.productName,
+            appId: config.appId,
+            version: metadata.version,
+            author: metadata.author,
+            ...(config.copyright ? { copyright: config.copyright } : {}),
+            ...(icon ? { icon } : {}),
+            languages: config.electronLanguages,
+            resources,
+            asarHeaderHash: headerHash,
+            notices,
+            fuses: target.fuses,
+        });
+    };
+    let app: MacApp;
+    if (target.arch === "universal") {
+        const intel = await assemble("x64");
+        const silicon = await assemble("arm64");
+        app = { tree: mergeUniversalBundle(intel.tree, silicon.tree), bundlePath: silicon.bundlePath };
+    } else {
+        app = await assemble(target.arch);
+    }
+
+    // 3. Signed ad hoc, written as the zip electron-builder would have written.
     adHocSignBundle(app.tree, app.bundlePath, message => log("info", message));
     log("info", "the macOS app is signed ad hoc (no certificate); players see a security prompt the first time they open it");
 

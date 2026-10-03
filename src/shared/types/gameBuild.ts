@@ -672,7 +672,10 @@ export function defaultGameBuildArch(
     hostArch: string,
 ): GameBuildArch {
     if (platform !== hostPlatform) {
-        return "x64";
+        // A macOS app made off a Mac goes to Macs of both kinds, none of which its maker can try it
+        // on, and an Apple-silicon Mac only runs an Intel app once Rosetta is installed. Universal
+        // runs on every Mac.
+        return platform === "macos" ? "universal" : "x64";
     }
     return hostArch === "arm64" ? "arm64" : "x64";
 }
