@@ -17,7 +17,7 @@
  *
  * Usage:
  *   node project/app/dev-electron.js --cdp --cdp-port=9222
- *   NLS_DEV_RELOAD_PORT=5599 node project/app/dev-electron.js --cdp --cdp-port=9377
+ *   NLS_DEV_RELOAD_PORT=5599 node project/app/dev-electron.js --cdp --cdp-port=9377 --window-tag="jitter fix"
  */
 
 const path = require('path');
@@ -44,7 +44,18 @@ const {
 const { buildRuntime } = require('../build/build-runtime');
 const { mainProcessBundleOptions } = require('../build/main-bundles');
 
-const forwardedElectronArgs = process.argv.slice(2);
+/*
+ * `--window-tag=<label>` is this script's, not Electron's: it becomes `NLS_WINDOW_TAG`, which every
+ * process the app starts inherits, so the label lands in front of the title of each window this
+ * session opens - Studio's, Dev Mode's, the games a preview or a test launches. Taken here rather
+ * than set by hand because a shell that has to export a variable first is one more step to forget.
+ */
+const WINDOW_TAG_FLAG = '--window-tag=';
+const windowTagArg = process.argv.slice(2).find((arg) => arg.startsWith(WINDOW_TAG_FLAG));
+if (windowTagArg) {
+    process.env.NLS_WINDOW_TAG = windowTagArg.slice(WINDOW_TAG_FLAG.length);
+}
+const forwardedElectronArgs = process.argv.slice(2).filter((arg) => !arg.startsWith(WINDOW_TAG_FLAG));
 
 const styleIn = path.join(rootDir, 'src', 'renderer', 'styles', 'styles.css');
 const styleOut = path.join(distWindows, 'styles.css');
@@ -168,7 +179,7 @@ function broadcastReload(target = 'all') {
     function startElectron() {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
-        console.log('[dev] starting electron process...');
+        console.log(`[dev] starting electron process${process.env.NLS_WINDOW_TAG ? ` tagged [${process.env.NLS_WINDOW_TAG}]` : ''}...`);
         // Tell the app which reload socket is ours. Without it the main process
         // falls back to 5588, so a session on NLS_DEV_RELOAD_PORT either found
         // nothing there or — worse — attached to the default-port session owned by
