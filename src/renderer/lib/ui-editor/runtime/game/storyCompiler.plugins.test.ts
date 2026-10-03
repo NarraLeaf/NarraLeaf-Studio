@@ -8,6 +8,12 @@ import {
     registerStoryCompilePass,
     type CompileBlockView,
 } from "@/lib/ui-editor/runtime/game/storyCompilePass";
+import {
+    clearStoryPluginActions,
+    registerStoryPluginAction,
+    type RuntimeStoryActionContext,
+} from "@/lib/ui-editor/runtime/game/storyPluginActions";
+import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 
 /**
  * The plugin compile-pass seam, end to end: a registered pass runs once per scene during a game
@@ -19,7 +25,10 @@ import {
  * shown darkness their row does not describe and would go looking for it in their own document.
  */
 
-afterEach(() => clearStoryCompilePasses());
+afterEach(() => {
+    clearStoryCompilePasses();
+    clearStoryPluginActions();
+});
 
 function characterEnter(id: string, characterId: string, objectName?: string): StoryBlock {
     return {
@@ -249,5 +258,74 @@ describe("story compile pass", () => {
         registerStoryCompilePass(pass, "test.plugin");
         await compileWith(doc({ sayA: dialogue("sayA", "char-alice", "hi") }, ["sayA"]));
         expect(ran).toBe(1);
+    });
+});
+
+/**
+ * The other half of a plugin row: a runner the plugin's runtime entry registers under the row's
+ * action id. The row then compiles to an action the story waits on, and the runner is handed the
+ * row's params and its plugin's own `game`.
+ */
+describe("plugin story action runner", () => {
+    const fakeGameState = {
+        game: { getLiveGame: () => ({ getStorable: () => ({ getNamespace: () => ({}) }) }) },
+        logger: { warn: () => undefined },
+    };
+    const pluginGame = { log: () => undefined } as unknown as RuntimePluginGame;
+
+    function rowBindings(compiled: Awaited<ReturnType<typeof compileWith>>, blockId: string) {
+        return compiled.actionIdBindings.filter(binding => binding.blockId === blockId);
+    }
+
+    it("compiles a row its plugin answers into one awaited action that runs the runner", async () => {
+        const calls: RuntimeStoryActionContext[] = [];
+        registerStoryPluginAction({
+            id: "test.plugin.rps",
+            run: async ctx => { calls.push(ctx); },
+        }, "test.plugin", pluginGame);
+
+        const blocks: Record<string, StoryBlock> = {
+            rps: pluginBlock("rps", "test.plugin.rps", { rounds: 3 }),
+            sayA: dialogue("sayA", "char-alice", "hi"),
+        };
+        const compiled = await compileWith(doc(blocks, ["rps", "sayA"]));
+        const bindings = rowBindings(compiled, "rps");
+        expect(bindings).toHaveLength(1);
+
+        const action = bindings[0].action as unknown as { type: string; executeAction(...args: unknown[]): { isSettled(): boolean } };
+        expect(action.type).toBe("service:action");
+        const awaitable = action.executeAction(fakeGameState, {});
+        await new Promise(r => setTimeout(r, 0));
+        expect(awaitable.isSettled()).toBe(true);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].params).toEqual({ rounds: 3 });
+        expect(calls[0].game).toBe(pluginGame);
+        expect(calls[0].signal.aborted).toBe(false);
+    });
+
+    it("hands each run its own copy of the params", async () => {
+        const seen: Array<Record<string, unknown>> = [];
+        registerStoryPluginAction({
+            id: "test.plugin.rps",
+            run: async ctx => {
+                seen.push(ctx.params);
+                ctx.params.rounds = 99;
+            },
+        }, "test.plugin", pluginGame);
+
+        const compiled = await compileWith(doc({ rps: pluginBlock("rps", "test.plugin.rps", { rounds: 3 }) }, ["rps"]));
+        const action = rowBindings(compiled, "rps")[0].action as unknown as { executeAction(...args: unknown[]): unknown };
+        action.executeAction(fakeGameState, {});
+        action.executeAction(fakeGameState, {});
+        await new Promise(r => setTimeout(r, 0));
+        expect(seen.map(params => params.rounds)).toEqual([99, 99]);
+        expect(seen[0]).not.toBe(seen[1]);
+    });
+
+    it("leaves a row to its marker reading when the runner belongs to a different plugin", async () => {
+        registerStoryPluginAction({ id: "test.plugin.rps", run: async () => undefined }, "other.plugin", pluginGame);
+
+        const compiled = await compileWith(doc({ rps: pluginBlock("rps", "test.plugin.rps") }, ["rps"]));
+        expect(rowBindings(compiled, "rps")).toHaveLength(0);
     });
 });

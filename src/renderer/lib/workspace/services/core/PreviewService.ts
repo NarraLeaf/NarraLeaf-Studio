@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import { EventEmitter } from "../ui/EventEmitter";
 import { flushPendingSaves } from "../autosave/flushPendingSaves";
+import { refreshDependenciesForRun } from "./refreshDependenciesForRun";
 
 type PreviewServiceEvents = {
     statusChanged: PreviewStatus;
@@ -124,6 +125,8 @@ export class PreviewService extends Service<PreviewService> {
         if (!result.flushed) {
             console.warn("[Preview] launching with stores that could not be saved:", result.failures.join(", "));
         }
+        // After the flush: the scan reads the documents the run is about to be compiled from.
+        await refreshDependenciesForRun(this.getContext());
     }
 
     private projectPath(): string {
