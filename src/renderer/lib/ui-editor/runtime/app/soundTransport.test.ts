@@ -162,6 +162,46 @@ describe("createSoundTransport play", () => {
     });
 });
 
+describe("createSoundTransport between sessions", () => {
+    function betweenSessions(arrives: boolean) {
+        const token: TokenStub = { setVolume: vi.fn(), fade: vi.fn(), stop: vi.fn() };
+        const next = { playSound: vi.fn(async () => token), game: {} } as unknown as LiveGame;
+        let current: LiveGame | null = null;
+        const logged: string[] = [];
+        const transport = createSoundTransport({
+            getLiveGame: () => current,
+            // The menu's session coming up after a quit: the transport is told once it is there.
+            waitForLiveGame: async () => {
+                current = arrives ? next : null;
+                return current;
+            },
+            resolveAssetUrl: () => "blob:clip",
+            createSound: input => input,
+            log: (_level, message) => void logged.push(message),
+        });
+        return { transport, next, logged };
+    }
+
+    it("plays a clip asked for before the next session is up once it arrives", async () => {
+        // A title page starting its music as a quit hands the screen back: before this the clip
+        // found no game and was dropped, and the title came back silent.
+        const { transport, next, logged } = betweenSessions(true);
+
+        const handle = await transport.play({ assetId: "a1", audioTrackId: "bgm" });
+
+        expect(handle).not.toBeNull();
+        expect(next.playSound).toHaveBeenCalledTimes(1);
+        expect(logged).toEqual([]);
+    });
+
+    it("skips the clip, and says so, when no session arrives", async () => {
+        const { transport, logged } = betweenSessions(false);
+
+        expect(await transport.play({ assetId: "a1", audioTrackId: "bgm" })).toBeNull();
+        expect(logged).toEqual(["Play Sound: no audio in this environment; the clip was skipped."]);
+    });
+});
+
 /**
  * A gain set on the asset balances the clip against the project's others. Every volume this
  * transport writes replaces the token's outright, so the gain has to be in each of them - and in

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { forEachUiAssetIdSlot } from "@shared/build/uiAssetSlots";
 import {
     hasUIInteractionSounds,
+    readUIInteractionSound,
     readUIInteractionSoundAssetId,
     uiElementTypeTakesInteractionSounds,
+    uiInteractionSoundOptionsPatch,
     uiInteractionSoundPatch,
 } from "./interactionSounds";
 
@@ -31,6 +33,49 @@ describe("interaction sounds", () => {
         const cleared = { ...props, ...uiInteractionSoundPatch("click", null) };
         expect(JSON.parse(JSON.stringify(cleared))).toEqual({ label: "Start" });
         expect(uiInteractionSoundPatch("hover", "  ")).toEqual({ hoverSound: undefined });
+    });
+
+    it("reads volume and track at their defaults as absent", () => {
+        // Full volume and the SFX track are what a slot that says nothing plays at, so a stored
+        // default is read the same as no option at all.
+        expect(readUIInteractionSound({ props: { clickSound: { assetId: "c", volume: 1, audioTrackId: "sound" } } }, "click"))
+            .toEqual({ assetId: "c" });
+        expect(readUIInteractionSound({ props: { clickSound: { assetId: "c", volume: 0.4, audioTrackId: " ui " } } }, "click"))
+            .toEqual({ assetId: "c", volume: 0.4, audioTrackId: "ui" });
+    });
+
+    it("clamps a volume into 0..1 and ignores one that is not a number", () => {
+        expect(readUIInteractionSound({ props: { hoverSound: { assetId: "h", volume: 3 } } }, "hover")).toEqual({ assetId: "h" });
+        expect(readUIInteractionSound({ props: { hoverSound: { assetId: "h", volume: -1 } } }, "hover")).toEqual({ assetId: "h", volume: 0 });
+        expect(readUIInteractionSound({ props: { hoverSound: { assetId: "h", volume: "loud" } } }, "hover")).toEqual({ assetId: "h" });
+    });
+
+    it("reads no sound from a slot that has options but no file", () => {
+        expect(readUIInteractionSound({ props: { clickSound: { volume: 0.5 } } }, "click")).toBeNull();
+    });
+
+    it("keeps a slot's options when another file is picked, and drops them with the sound", () => {
+        const current = { assetId: "old", volume: 0.5, audioTrackId: "ui" };
+
+        expect(uiInteractionSoundPatch("click", "new", current)).toEqual({
+            clickSound: { assetId: "new", volume: 0.5, audioTrackId: "ui" },
+        });
+        expect(uiInteractionSoundPatch("click", null, current)).toEqual({ clickSound: undefined });
+    });
+
+    it("changes one option at a time, and stores none at its default", () => {
+        const current = { assetId: "c", volume: 0.5, audioTrackId: "ui" };
+
+        expect(uiInteractionSoundOptionsPatch(current, "click", { volume: 0.25 })).toEqual({
+            clickSound: { assetId: "c", volume: 0.25, audioTrackId: "ui" },
+        });
+        expect(uiInteractionSoundOptionsPatch(current, "click", { volume: 1, audioTrackId: "sound" })).toEqual({
+            clickSound: { assetId: "c" },
+        });
+        expect(uiInteractionSoundOptionsPatch(current, "click", { volume: null, audioTrackId: null })).toEqual({
+            clickSound: { assetId: "c" },
+        });
+        expect(uiInteractionSoundOptionsPatch(null, "click", { volume: 0.5 })).toBeNull();
     });
 
     it("is offered on every element but a surface's root", () => {

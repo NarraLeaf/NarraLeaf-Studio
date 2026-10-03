@@ -83,6 +83,13 @@ export type BlueprintLayerTemplateFacts = {
     confirmPage?: string;
     /** Where the game begins: the default story and the scene it opens on. */
     gameStart?: { storyId: string; sceneId: string };
+    /**
+     * Keys this blueprint already answers through an input action - a page's own actions, or for the
+     * game's blueprint any action at all - spelled as the key picker writes them. A template whose
+     * key head names one of them is not offered: the press would do the action's job and the
+     * template's both, and Escape on a page that already closes on Escape would step back twice.
+     */
+    takenKeys?: readonly string[];
     /** The editor's language, for the few templates that write text the player reads. */
     locale: Locale;
 };

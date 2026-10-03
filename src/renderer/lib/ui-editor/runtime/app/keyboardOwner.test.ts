@@ -252,7 +252,22 @@ function runningGame(options: {
         return [...lines].sort();
     };
 
-    return { pressEscape, layerStack, errors };
+    /** Escape held down long enough for the system to repeat it, then released. */
+    const holdEscape = async (repeats: number) => {
+        lines.length = 0;
+        const init = { key: "Escape", code: "Escape", bubbles: true, cancelable: true };
+        window.dispatchEvent(new KeyboardEvent("keydown", init));
+        await settle();
+        for (let index = 0; index < repeats; index++) {
+            window.dispatchEvent(new KeyboardEvent("keydown", { ...init, repeat: true }));
+            await settle();
+        }
+        window.dispatchEvent(new KeyboardEvent("keyup", init));
+        await settle();
+        return [...lines].sort();
+    };
+
+    return { pressEscape, holdEscape, layerStack, errors };
 }
 
 beforeAll(() => {
@@ -270,6 +285,18 @@ describe("the keys go to whichever entry owns the keyboard", () => {
         const game = runningGame({});
 
         expect(await game.pressEscape()).toEqual([
+            "global: key down",
+            "page: cancel",
+            "page: key down",
+            "page: key up",
+        ]);
+        expect(game.errors).toEqual([]);
+    });
+
+    it("hears a held Escape as one press: the repeats reach no key head and no action", async () => {
+        const game = runningGame({});
+
+        expect(await game.holdEscape(5)).toEqual([
             "global: key down",
             "page: cancel",
             "page: key down",

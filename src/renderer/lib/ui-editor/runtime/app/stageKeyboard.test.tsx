@@ -431,12 +431,14 @@ describe("the keys on the stage", () => {
         expect(game.errors).toEqual([]);
     });
 
-    it("advances once for a key held down: the system's repeats raise nothing, and the key head still hears them", async () => {
+    it("answers a key held down once: the system's repeats reach neither the action nor the key head", async () => {
         const { game } = await onStage();
 
         expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
-        expect(await game.press(" ", { repeat: true })).toEqual(["dialogue: key down"]);
-        expect(await game.press(" ", { repeat: true })).toEqual(["dialogue: key down"]);
+        expect(await game.press(" ", { repeat: true })).toEqual([]);
+        expect(await game.press(" ", { repeat: true })).toEqual([]);
+        // Let go and press again: that is a second press.
+        expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
     });
 
     it("keeps a text field's keys", async () => {

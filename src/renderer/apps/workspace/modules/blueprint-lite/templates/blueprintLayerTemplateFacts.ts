@@ -15,12 +15,14 @@ import { BLUEPRINT_NODE_TYPE_LAYER_CONFIRM } from "@shared/types/blueprint/graph
 import type { StoryDocument } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { formatBlueprintKeyboardBinding } from "@shared/types/blueprint/graph";
+import { resolveSurfaceActionBindings } from "@shared/types/ui-editor/inputAction";
 import { isDisplayableWidgetType } from "@shared/types/ui-editor/displayableWidgets";
 import type { BlueprintLayerTemplateFacts } from "./blueprintLayerTemplates";
 
 export type BlueprintLayerTemplateFactsInput = {
     owner: BlueprintOwnerRef;
-    uiDocument: Pick<UIDocument, "surfaces" | "elements">;
+    uiDocument: Pick<UIDocument, "surfaces" | "elements" | "actions">;
     blueprintDocument: BlueprintDocument;
     /** The project's default story, or else the first one it lists. */
     storyId: string | undefined;
@@ -33,6 +35,7 @@ export function collectBlueprintLayerTemplateFacts(input: BlueprintLayerTemplate
         pageContent: pageContentOf(input),
         confirmPage: confirmPageOf(input),
         gameStart: gameStartOf(input),
+        takenKeys: takenKeysOf(input),
         locale: input.locale,
     };
 }
@@ -73,6 +76,32 @@ function confirmPageOf({ uiDocument, blueprintDocument }: BlueprintLayerTemplate
         return undefined;
     }
     return ranked[0]![0];
+}
+
+/**
+ * The keys bound to the input actions this owner answers. A page answers the actions it lists; the
+ * game's own blueprint hears every action there is, so every key the vocabulary binds is taken there.
+ */
+function takenKeysOf({ owner, uiDocument }: BlueprintLayerTemplateFactsInput): string[] {
+    const vocabulary = uiDocument.actions ?? {};
+    let actionIds: string[];
+    if (owner.kind === "globalMain") {
+        actionIds = Object.keys(vocabulary);
+    } else if (owner.kind === "surfaceMain") {
+        const surface = uiDocument.surfaces.find(item => item.id === owner.surfaceId);
+        actionIds = (surface?.actions ?? []).map(enablement => enablement.actionId);
+    } else {
+        return [];
+    }
+    const keys = new Set<string>();
+    for (const actionId of actionIds) {
+        for (const binding of resolveSurfaceActionBindings(vocabulary[actionId])) {
+            if (binding.kind === "key") {
+                keys.add(formatBlueprintKeyboardBinding(binding.key));
+            }
+        }
+    }
+    return [...keys];
 }
 
 function gameStartOf({ storyId, storyDocuments }: BlueprintLayerTemplateFactsInput): BlueprintLayerTemplateFacts["gameStart"] {

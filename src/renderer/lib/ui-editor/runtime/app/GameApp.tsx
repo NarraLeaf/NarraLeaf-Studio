@@ -283,6 +283,12 @@ const SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS = 3000;
  * boot that never produces one leaves the parked run for the next one instead of waiting forever.
  */
 const LOCALE_RESUME_SESSION_WAIT_MS = 30_000;
+/**
+ * How long a sound waits for the live game when it asks between one session and the next - a page
+ * entering as a game is quit, before the menu's session is up. Long enough for a menu environment
+ * to come back; bounded so a session that never arrives costs one skipped clip, not a stuck graph.
+ */
+const LIVE_GAME_ARRIVAL_WAIT_MS = 10_000;
 const LOCALE_RESUME_POLL_MS = 200;
 /**
  * How long the environment has to stand still before the parked run is loaded into it. Covers the
@@ -846,6 +852,22 @@ export function GameApp(props: GameAppProps): ReactNode {
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    /** Callers waiting for the next live game; answered where it is published. */
+    const liveGameWaitersRef = useRef(new Set<(liveGame: LiveGame | null) => void>());
+    const waitForLiveGame = useCallback((): Promise<LiveGame | null> => {
+        if (nlrLiveGameRef.current) {
+            return Promise.resolve(nlrLiveGameRef.current);
+        }
+        return new Promise(resolve => {
+            const waiter = (liveGame: LiveGame | null) => {
+                clearTimeout(timer);
+                liveGameWaitersRef.current.delete(waiter);
+                resolve(liveGame);
+            };
+            const timer = setTimeout(() => waiter(null), LIVE_GAME_ARRIVAL_WAIT_MS);
+            liveGameWaitersRef.current.add(waiter);
+        });
+    }, []);
     // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
     // when its session was mounted. Both members read the refs above at call time.
     /**
@@ -2243,6 +2265,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
+        waitForLiveGame,
         resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
         // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
         // which the transport reads as the built-ins.
@@ -2259,7 +2282,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // playback from.
         getClip: assetId => bundle.audio?.clips?.[assetId],
         log: (level, message) => host.log(level, message),
-    }), [bundle, host]);
+    }), [bundle, host, waitForLiveGame]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
@@ -5925,6 +5948,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                for (const waiter of [...liveGameWaitersRef.current]) {
+                    waiter(liveGame);
+                }
                 // Puppets have no authoring surface yet, so the only way to put one on a stage is
                 // from a console. Published on the window rather than a panel because the audience
                 // is whoever is bringing a backend up, and what they need is to poke at a live one.

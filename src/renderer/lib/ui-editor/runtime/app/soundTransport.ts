@@ -73,6 +73,16 @@ type EngineSoundHost = {
 
 export type SoundTransportOptions = {
     getLiveGame: () => LiveGame | null;
+    /**
+     * The live game once there is one, for a request that arrives while none is up but one is on its
+     * way - or null when none comes. Omitted by a host that never has one coming.
+     *
+     * Quitting a game is the case it exists for. The run's session is torn down before the page it
+     * quits to opens, and the menu's own session only arrives once that page is up - so the music a
+     * title page starts as it enters landed between the two, found no game, and was dropped. The
+     * title came back silent after every playthrough.
+     */
+    waitForLiveGame?: () => Promise<LiveGame | null>;
     resolveAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,
@@ -160,7 +170,7 @@ export type SoundTransport = {
 };
 
 export function createSoundTransport(options: SoundTransportOptions): SoundTransport {
-    const { getLiveGame, resolveAssetUrl, getAudioTracks, createSound, getClip, log } = options;
+    const { getLiveGame, waitForLiveGame, resolveAssetUrl, getAudioTracks, createSound, getClip, log } = options;
     const tokens = new Map<string, EngineSoundToken>();
     /**
      * Each handle's clip, so a later Set Sound Volume folds the clip's gain into the node's number
@@ -172,6 +182,16 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
     const engine = (): EngineSoundHost | null => {
         const liveGame = getLiveGame();
         return liveGame ? liveGame as unknown as EngineSoundHost : null;
+    };
+
+    /** The engine now, or the one about to arrive; see {@link SoundTransportOptions.waitForLiveGame}. */
+    const arrivingEngine = async (): Promise<EngineSoundHost | null> => {
+        const now = engine();
+        if (now || !waitForLiveGame) {
+            return now;
+        }
+        await waitForLiveGame();
+        return engine();
     };
 
     const tokenFor = (handle: BlueprintSoundHandle | null): EngineSoundToken | null => {
@@ -192,7 +212,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
 
     return {
         async play(input) {
-            const host = engine();
+            const host = await arrivingEngine();
             if (!host?.playSound) {
                 // No running game (editor preview) or an engine dist without the
                 // API. Warn once per call and let the graph continue silently -
@@ -307,7 +327,7 @@ export function createSoundTransport(options: SoundTransportOptions): SoundTrans
                 log("warning", "Set Track Volume: no track selected; nothing was changed.");
                 return;
             }
-            const mixer = engine()?.game?.audioBuses;
+            const mixer = (await arrivingEngine())?.game?.audioBuses;
             if (!mixer?.setVolume) {
                 log("warning", "Set Track Volume: no audio in this environment; the change was skipped.");
                 return;
