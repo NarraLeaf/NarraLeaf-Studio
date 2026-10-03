@@ -998,7 +998,9 @@ describe("UIDocumentService component library", () => {
         expect(linked.layout.visible).toBe(true);
         expect(linked.layout.lockAspectRatio).toBeUndefined();
         expect(linked.props).toBeUndefined();
-        expect(linked.name).toBe("CTA");
+        // The name is the instance's own - copied from the definition when placed, not owned by it.
+        expect(linked.name).toBe("Renamed Instance");
+        expect(service.getDocument().components?.find(item => item.id === component.id)?.name).toBe("CTA");
         expect(linked.extra).toEqual({ componentLink: { componentId: component.id, linked: true } });
         expect(() =>
             service.ensureElementBlueprintValueBinding(instance.id, "label", { valueType: "string" }),
