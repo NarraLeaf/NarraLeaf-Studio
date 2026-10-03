@@ -6,7 +6,8 @@ import { PreviewService } from "./PreviewService";
 /**
  * Both runs are compiled from the disk, so what reaches the disk before the launch request is what
  * the author sees played. These pin the order: the open editors are settled, then every store is
- * written, and only then does the request leave the renderer.
+ * written, then the plugin dependency table is rescanned from what was written, and only then does
+ * the request leave the renderer.
  */
 
 const calls: string[] = [];
@@ -86,6 +87,13 @@ function createContext() {
             },
         },
         [Services.Console]: { log: () => undefined },
+        // Every launch, not only the top bar's: a row's play control used to skip this and run a
+        // session without the plugin the row had just started using.
+        [Services.ProjectDependency]: {
+            rescanAndPersist: async (trigger: string) => {
+                calls.push(`rescan:${trigger}`);
+            },
+        },
     };
     const ctx = {
         project: { getConfig: () => ({ projectPath: "D:/projects/game" }) },
@@ -122,6 +130,7 @@ describe.each([
 
         expect(calls[0]).toBe("settle");
         expect(calls.at(-1)).toBe("launch");
+        expect(calls.at(-2)).toBe("rescan:automatic");
         expect(calls).toEqual(expect.arrayContaining(["flush:story", "flush:localization", "flush:variables", "flush:characters"]));
         expect(written).toEqual(expect.arrayContaining(["story with the edited line", "localization", "variables"]));
     });
