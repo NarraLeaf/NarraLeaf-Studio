@@ -157,16 +157,73 @@ function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | n
     return null;
 }
 
+/**
+ * The displayable a row names, with whatever the action that introduced it says about it.
+ *
+ * Every matching action earlier in the scene is layered on in execution order, so the last one to
+ * say a thing wins. That is read here from the other end: walk BACKWARD from the row, let the
+ * nearest match say each thing first, and stop at the first creator (`@image`, `@character`,
+ * `@text`, `@layer` ...). A creator states every field its kind can carry, so nothing earlier could
+ * change the answer.
+ *
+ * This runs once per mounted transform or show/hide row, so its cost is paid on every frame of a
+ * scroll. It used to flatten the whole scene and scan every row above this one, allocating a target
+ * for each: on a seven-thousand-line chapter that was most of what a scroll through those rows did.
+ * The walk is now as long as the distance back to the creator - a few rows in practice.
+ */
 function resolveDisplayableFromScene(
     scene: StoryScene,
     blockId: StoryBlockId,
     requested: StoryMotionPreviewTarget,
 ): StoryMotionPreviewTarget {
-    const blocks = flattenSceneBlocks(scene);
-    const activeIndex = blocks.findIndex(block => block.id === blockId);
-    const previousBlocks = activeIndex >= 0 ? blocks.slice(0, activeIndex) : blocks;
+    const resolved: Record<string, unknown> = { ...requested };
+    const said = new Set<string>();
+    const actions = ACTIONS_TARGETING_KIND[requested.kind];
+    const wantedName = stageNameKey(requested.label);
+    const reachable = walkBlocksBefore(scene, blockId, block => {
+        // Most of what the walk passes is dialogue, unrelated actions and moves of OTHER objects,
+        // and on a long scene it passes thousands of them: rule those out before building a target.
+        if (block.kind !== "action" || !actions.has(block.payload.action)) {
+            return false;
+        }
+        if (block.payload.action === "displayable") {
+            const target = block.payload.target;
+            if ((target.kind ?? "image") !== requested.kind || stageNameKey(target.name || "Displayable") !== wantedName) {
+                return false;
+            }
+        }
+        const target = previewTargetFromBlock(block);
+        if (!target || target.kind !== requested.kind || stageNameKey(target.label) !== wantedName) {
+            return false;
+        }
+        for (const [key, value] of Object.entries(target)) {
+            if (!said.has(key)) {
+                said.add(key);
+                resolved[key] = value;
+            }
+        }
+        return block.payload.action !== "displayable";
+    });
+    if (!reachable) {
+        // Not reachable from the scene's roots: every block counts as "before" it, as the forward
+        // reading had it.
+        return layerMatchesForward(flattenSceneBlocks(scene), requested);
+    }
+    return resolved as StoryMotionPreviewTarget;
+}
+
+/** The actions whose target can be of each kind - see `previewTargetFromBlock`. */
+const ACTIONS_TARGETING_KIND: Record<StoryMotionTargetKind, ReadonlySet<string>> = {
+    image: new Set(["image", "displayable"]),
+    character: new Set(["character", "displayable"]),
+    text: new Set(["text", "displayable"]),
+    layer: new Set(["layer", "nvl", "displayable"]),
+    camera: new Set(["camera", "displayable"]),
+};
+
+function layerMatchesForward(blocks: StoryBlock[], requested: StoryMotionPreviewTarget): StoryMotionPreviewTarget {
     let resolved = requested;
-    for (const block of previousBlocks) {
+    for (const block of blocks) {
         if (block.kind !== "action") {
             continue;
         }
@@ -174,12 +231,74 @@ function resolveDisplayableFromScene(
         if (!target || target.kind !== requested.kind || !sameStageName(target.label, requested.label)) {
             continue;
         }
-        resolved = {
-            ...resolved,
-            ...target,
-        };
+        resolved = { ...resolved, ...target };
     }
     return resolved;
+}
+
+/**
+ * Visit the blocks that run before `blockId`, nearest first - execution order (a depth-first
+ * pre-order walk from the roots) read backwards, without building it - until `visit` returns true.
+ *
+ * A plain loop rather than a generator: the walk can pass every row of a long scene (a transform on
+ * a background has no creator above it to stop at), and a generator step costs several times what
+ * the check it feeds does.
+ *
+ * Returns false, having visited nothing, when the block cannot be reached from the roots.
+ */
+function walkBlocksBefore(scene: StoryScene, blockId: StoryBlockId, visit: (block: StoryBlock) => boolean): boolean {
+    const chain: StoryBlock[] = [];
+    let current = scene.blocks[blockId];
+    while (current) {
+        if (chain.length > 0 && chain.includes(current)) {
+            return false;
+        }
+        chain.push(current);
+        if (current.parentId == null) {
+            break;
+        }
+        current = scene.blocks[current.parentId];
+    }
+    const top = chain[chain.length - 1];
+    if (!top || top.parentId != null) {
+        return false;
+    }
+    // Each level's position among its siblings, found once: on a flat scene the roots are the whole
+    // scene, and this is the one scan of them the walk needs.
+    const positions: number[] = [];
+    for (let level = 0; level < chain.length; level += 1) {
+        const parent = level + 1 < chain.length ? chain[level + 1]! : null;
+        const position = (parent ? parent.childrenIds : scene.rootBlockIds).indexOf(chain[level]!.id);
+        if (position < 0) {
+            return false;
+        }
+        positions.push(position);
+    }
+    for (let level = 0; level < chain.length; level += 1) {
+        const parent = level + 1 < chain.length ? chain[level + 1]! : null;
+        const siblings = parent ? parent.childrenIds : scene.rootBlockIds;
+        for (let index = positions[level]! - 1; index >= 0; index -= 1) {
+            const sibling = scene.blocks[siblings[index]!];
+            if (sibling && visitSubtreeBackward(scene, sibling, visit)) {
+                return true;
+            }
+        }
+        if (parent && visit(parent)) {
+            return true;
+        }
+    }
+    return true;
+}
+
+/** One block and everything under it in reverse execution order; true once `visit` asks to stop. */
+function visitSubtreeBackward(scene: StoryScene, block: StoryBlock, visit: (block: StoryBlock) => boolean): boolean {
+    for (let index = block.childrenIds.length - 1; index >= 0; index -= 1) {
+        const child = scene.blocks[block.childrenIds[index]!];
+        if (child && visitSubtreeBackward(scene, child, visit)) {
+            return true;
+        }
+    }
+    return visit(block);
 }
 
 function flattenSceneBlocks(scene: StoryScene): StoryBlock[] {
@@ -197,7 +316,11 @@ function flattenSceneBlocks(scene: StoryScene): StoryBlock[] {
 }
 
 function sameStageName(left: string, right: string): boolean {
-    return left.trim().toLowerCase() === right.trim().toLowerCase();
+    return stageNameKey(left) === stageNameKey(right);
+}
+
+function stageNameKey(name: string): string {
+    return name.trim().toLowerCase();
 }
 
 function labelForKind(kind: StoryMotionTargetKind): string {
