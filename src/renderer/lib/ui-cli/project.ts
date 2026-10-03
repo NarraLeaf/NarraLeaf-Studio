@@ -16,9 +16,11 @@
  * back under the current version number would be the migration silently not having run. This is the
  * same refusal `blueprint apply` makes, and for the same reason.
  *
- * `uigraphs.json` is read and never written: attaching a graph to a widget is `blueprint apply`'s
- * job. It is read so that a value binding can be checked against the blueprint it names, and so that
- * replacing a surface can say which blueprints it is about to orphan.
+ * `uigraphs.json` is only read here: attaching a graph to a widget is `blueprint apply`'s job. It is
+ * read so that a value binding can be checked against the blueprint it names, and so that replacing a
+ * surface can say which blueprints it is about to orphan. The one command that writes it, `remove`,
+ * goes through the blueprint tool's own reader and writer (see `remove.ts`), so there is still one
+ * place that knows how that file is written.
  *
  * Comments in English per project convention.
  */
