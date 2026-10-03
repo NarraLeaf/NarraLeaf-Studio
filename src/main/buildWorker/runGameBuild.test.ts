@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { builderConfiguration, extraFilesFor } from "./runGameBuild";
-import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { LinuxPackager, type AfterPackContext } from "electron-builder";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LINUX_PROGRAM_SUFFIX, renderLinuxLauncher } from "./linuxLauncher";
+import { builderConfiguration, electronFuseConfig, extraFilesFor } from "./runGameBuild";
+import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 
 const config = {
     appId: "com.narraleaf.games.example",
@@ -68,5 +73,97 @@ describe("extraFilesFor", () => {
 
     it("ships nothing the project does not have", () => {
         expect(extraFilesFor(config, "macos")).toEqual([]);
+    });
+});
+
+/** A fuse set with both answers in it, so a position swapped in the conversion shows up. */
+const FUSES: GameBuildWorkerFuses = {
+    runAsNode: false,
+    enableCookieEncryption: true,
+    enableNodeOptionsEnvironmentVariable: false,
+    enableNodeCliInspectArguments: true,
+    enableEmbeddedAsarIntegrityValidation: false,
+    onlyLoadAppFromAsar: true,
+    grantFileProtocolExtraPrivileges: false,
+    resetAdHocDarwinSignature: false,
+};
+
+const targetFor = (platform: GameBuildWorkerTarget["platform"]) =>
+    ({ ...target, platform, platformKey: `${platform}-x64`, fuses: FUSES }) as GameBuildWorkerTarget;
+
+/**
+ * What a Linux target asks of electron-builder that no other target does.
+ *
+ * The launcher has to be in the app directory before any artifact is made from it, and it takes the
+ * executable's name - which is the file electron-builder flips the fuses on, after `afterPack`. So a
+ * Linux target flips its own fuses inside `afterPack`, on the binary, before the launcher goes in,
+ * and electron-builder is handed none. Every other platform is left exactly as it was.
+ */
+describe("a Linux target", () => {
+    it("brings the launcher and the static AppImage runtime, and leaves the fuses to its own step", () => {
+        const built = builderConfiguration(config, targetFor("linux"), () => undefined);
+        expect(typeof built.afterPack).toBe("function");
+        expect(built.toolsets).toEqual({ appimage: "1.0.3" });
+        expect(built.electronFuses).toBeUndefined();
+    });
+
+    it("changes nothing for Windows or macOS", () => {
+        for (const platform of ["windows", "macos"] as const) {
+            const built = builderConfiguration(config, targetFor(platform), () => undefined);
+            expect(built.electronFuses).toEqual(FUSES);
+            expect(built.afterPack).toBeUndefined();
+            expect(built.toolsets).toBeUndefined();
+        }
+    });
+});
+
+describe("electronFuseConfig", () => {
+    it("is what electron-builder itself would have flipped for the same settings", async () => {
+        // The conversion electron-builder runs on `electronFuses` is private to it; this reaches it
+        // directly so the copy here cannot drift from it unnoticed.
+        const theirs = await (LinuxPackager.prototype as unknown as {
+            generateFuseConfig(fuses: GameBuildWorkerFuses): Promise<unknown>;
+        }).generateFuseConfig(FUSES);
+        expect(electronFuseConfig(FUSES)).toEqual(theirs);
+    });
+});
+
+/**
+ * The step itself, against a stand-in binary that carries a real fuse wire, flipped by
+ * electron-builder's own `addElectronFuses` - the order is the point: the fuses land on the binary,
+ * and the launcher takes its name afterwards.
+ */
+describe("the Linux afterPack step", () => {
+    const SENTINEL = Buffer.from("dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX");
+    let appOutDir: string;
+
+    beforeEach(() => {
+        appOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "nl-after-pack-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(appOutDir, { recursive: true, force: true });
+    });
+
+    it("flips the fuses on the binary, then puts the launcher in front of it", async () => {
+        // ELF magic, some padding, then the wire: version 1, eight fuses, each the opposite of what the
+        // set asks for, so every position the set names has to change.
+        const wire = Buffer.from("10101011");
+        fs.writeFileSync(path.join(appOutDir, "demo"), Buffer.concat([
+            Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(64), SENTINEL, Buffer.from([1, 8]), wire, Buffer.alloc(16),
+        ]));
+        const packager = Object.assign(Object.create(LinuxPackager.prototype) as LinuxPackager, { executableName: "demo" });
+        const logged: string[] = [];
+        const built = builderConfiguration(config, targetFor("linux"), (_level, message) => logged.push(message));
+        const afterPack = built.afterPack as (context: AfterPackContext) => Promise<void>;
+
+        await afterPack({ appOutDir, electronPlatformName: "linux", packager } as unknown as AfterPackContext);
+
+        const binary = fs.readFileSync(path.join(appOutDir, `demo${LINUX_PROGRAM_SUFFIX}`));
+        const at = binary.indexOf(SENTINEL) + SENTINEL.length + 2;
+        // Positions 0-5 and 7 as the set says; 6, which the set does not name, as the binary had it.
+        expect(binary.subarray(at, at + 8).toString()).toBe("01010110");
+        expect(fs.readFileSync(path.join(appOutDir, "demo"), "utf-8")).toBe(renderLinuxLauncher("demo"));
+        expect(logged.some(line => line.includes(`demo${LINUX_PROGRAM_SUFFIX}`))).toBe(true);
     });
 });
