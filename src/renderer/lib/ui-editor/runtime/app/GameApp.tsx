@@ -4,6 +4,7 @@ import {
     useMemo,
     useRef,
     useState,
+    useSyncExternalStore,
     type ReactNode,
     type SyntheticEvent,
 } from "react";
@@ -203,7 +204,12 @@ import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { keepPointerPressOffKeyboardFocus } from "@/lib/ui-editor/runtime/input/pointerKeyboardFocus";
 import { GAME_ROOT_ATTRIBUTE } from "@/lib/ui-editor/runtime/input/keyboardFocusHandover";
-import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import {
+    listenForGameKeys,
+    resolveKeyboardOwnerEntry,
+    resolveKeyboardOwnerLane,
+    type KeyboardOwner,
+} from "./keyboardOwner";
 import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { shrinkSaveCapture } from "./saveCapture";
@@ -246,7 +252,7 @@ import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from "./layers/LayerStackController";
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
-import { buildCompositeView } from "./layers/compositeView";
+import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
 import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
@@ -283,6 +289,12 @@ const SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS = 3000;
  * boot that never produces one leaves the parked run for the next one instead of waiting forever.
  */
 const LOCALE_RESUME_SESSION_WAIT_MS = 30_000;
+/**
+ * How long a sound waits for the live game when it asks between one session and the next - a page
+ * entering as a game is quit, before the menu's session is up. Long enough for a menu environment
+ * to come back; bounded so a session that never arrives costs one skipped clip, not a stuck graph.
+ */
+const LIVE_GAME_ARRIVAL_WAIT_MS = 10_000;
 const LOCALE_RESUME_POLL_MS = 200;
 /**
  * How long the environment has to stand still before the parked run is loaded into it. Covers the
@@ -846,6 +858,22 @@ export function GameApp(props: GameAppProps): ReactNode {
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    /** Callers waiting for the next live game; answered where it is published. */
+    const liveGameWaitersRef = useRef(new Set<(liveGame: LiveGame | null) => void>());
+    const waitForLiveGame = useCallback((): Promise<LiveGame | null> => {
+        if (nlrLiveGameRef.current) {
+            return Promise.resolve(nlrLiveGameRef.current);
+        }
+        return new Promise(resolve => {
+            const waiter = (liveGame: LiveGame | null) => {
+                clearTimeout(timer);
+                liveGameWaitersRef.current.delete(waiter);
+                resolve(liveGame);
+            };
+            const timer = setTimeout(() => waiter(null), LIVE_GAME_ARRIVAL_WAIT_MS);
+            liveGameWaitersRef.current.add(waiter);
+        });
+    }, []);
     // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
     // when its session was mounted. Both members read the refs above at call time.
     /**
@@ -965,6 +993,31 @@ export function GameApp(props: GameAppProps): ReactNode {
      * while the stage owns the keyboard (see `keyboardOwner`).
      */
     const [stageKeyboardSurfaces] = useState(() => new AmbientSurfaceTargets());
+    /**
+     * Redraw when a surface comes onto the stage or leaves it, for a host that draws overlays: the
+     * Dev Mode Layers panel lists the Game UI on the stage, and nothing else in this component changes
+     * when a choice list comes up or the dialogue box goes. A host with no overlays - a packaged game -
+     * subscribes to nothing and never renders for it.
+     */
+    const drawsOverlays = Boolean(renderOverlays);
+    const subscribeStageSurfaces = useCallback((listener: () => void): (() => void) => {
+        if (!drawsOverlays) {
+            return () => undefined;
+        }
+        const leaveLive = ambientSurfaces.subscribe(listener);
+        const leaveKeyboard = stageKeyboardSurfaces.subscribe(listener);
+        return () => {
+            leaveLive();
+            leaveKeyboard();
+        };
+    }, [ambientSurfaces, drawsOverlays, stageKeyboardSurfaces]);
+    // A constant without overlays, so React's own check after each commit never finds the stage
+    // changed under it either and renders again for nobody.
+    const readStageSurfacesRevision = useCallback(
+        () => (drawsOverlays ? ambientSurfaces.getRevision() + stageKeyboardSurfaces.getRevision() : 0),
+        [ambientSurfaces, drawsOverlays, stageKeyboardSurfaces],
+    );
+    useSyncExternalStore(subscribeStageSurfaces, readStageSurfacesRevision);
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -2243,6 +2296,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
+        waitForLiveGame,
         resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
         // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
         // which the transport reads as the built-ins.
@@ -2259,7 +2313,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // playback from.
         getClip: assetId => bundle.audio?.clips?.[assetId],
         log: (level, message) => host.log(level, message),
-    }), [bundle, host]);
+    }), [bundle, host, waitForLiveGame]);
 
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
@@ -4953,6 +5007,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     const keyboardOwnerHost = keyboardOwnerEntry
         ? hostAdapterBundleFor(keyboardOwnerEntry.entry, keyboardOwnerEntry.surface)
         : null;
+    /** The entry a key reaches, keyed so the Layers panel can mark the row it is drawn as. */
+    const keyboardOwnerTarget = keyboardOwnerEntry && keyboardOwnerHost
+        ? { key: keyboardOwnerEntry.entry.key, surface: keyboardOwnerEntry.surface, host: keyboardOwnerHost }
+        : null;
 
     /**
      * The owner half's target, read when a key arrives rather than closed over.
@@ -4961,10 +5019,8 @@ export function GameApp(props: GameAppProps): ReactNode {
      * listener re-registered whenever the owner changed would keep swapping that order. So the effect
      * below depends only on the host, and the entry a key may reach comes from here.
      */
-    const keyboardOwnerRef = useRef<KeyboardOwner | null>(null);
-    keyboardOwnerRef.current = keyboardOwnerEntry && keyboardOwnerHost
-        ? { surface: keyboardOwnerEntry.surface, host: keyboardOwnerHost }
-        : null;
+    const keyboardOwnerRef = useRef<(KeyboardOwner & { key: string }) | null>(null);
+    keyboardOwnerRef.current = keyboardOwnerTarget;
 
     /**
      * Every live surface a preference, fullscreen, focus or close-request event reaches, in the order
@@ -5330,11 +5386,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The engine's NVL page, when it is up in place of the dialogue box, reads on for the keys
             // the box does.
             readKeyboardOwner: () => {
-                if (keyboardOwnerRef.current) {
-                    return keyboardOwnerRef.current;
-                }
-                if (!isStoryOnScreen()) {
-                    return null;
+                const lane = resolveKeyboardOwnerLane({ entry: keyboardOwnerRef.current, isStoryOnScreen });
+                if (lane?.kind !== "stage") {
+                    return lane?.entry ?? null;
                 }
                 const stage = stageKeyboardSurfaces.list();
                 return {
@@ -5799,6 +5853,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     }
 
     const gameViewport = nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null;
+    /**
+     * Whether the stage is painted: while a game has it, and through a quit's hand-off until the
+     * page taking over is up (see `stageRetainedForQuit`).
+     */
+    const stageDrawn = gameStageVisible || stageRetainedForQuit;
 
     /**
      * What a host overlay is handed, built only if there is one asking.
@@ -5815,11 +5874,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         storyRuntime,
         saves: savesBridge,
         composite: buildCompositeView({
-            activePageEntry: activeEntry,
+            pageStack: navStack,
+            pagesHiddenForGame: studioPageHiddenForGame,
+            gameHiddenKeys: gameHiddenNavKeys,
             layers,
             queued: layerState.queued,
             renderedLayerKeys,
             resolution: compositeInput,
+            // The lane the key listener reads, asked of the same two inputs at this render.
+            keyboardLane: resolveKeyboardOwnerLane({ entry: keyboardOwnerTarget, isStoryOnScreen }),
+            stage: stageDrawn
+                ? {
+                    storyOnScreen: isStoryOnScreen(),
+                    coveredByPage: stageCoveredByPage,
+                    // What the stage layer below is handed as `interactive`.
+                    pointerLive: gameStageVisible,
+                    surfaces: listStageSurfaces({
+                        live: ambientSurfaces.list(),
+                        takingInput: stageKeyboardSurfaces.list(),
+                    }),
+                }
+                : null,
             exitPending: layerState.exitPending,
             surfaceName: surfaceId => findSurface(bundle, surfaceId)?.name ?? null,
         }),
@@ -5851,8 +5926,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             // which is before the surface system starts; painting it that early would flash its
             // black backdrop over the first frame. It only becomes visible on reveal - and stays
             // painted through a quit until the page taking over is up (see stageRetainedForQuit).
-            visible={gameStageVisible || stageRetainedForQuit}
-            renderOnStage={gameStageVisible || stageRetainedForQuit}
+            visible={stageDrawn}
+            renderOnStage={stageDrawn}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
                 if (!pending) {
@@ -5925,6 +6000,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 nlrLiveGameRef.current = liveGame;
                 nlrLiveGameSessionIdRef.current = sessionId;
+                for (const waiter of [...liveGameWaitersRef.current]) {
+                    waiter(liveGame);
+                }
                 // Puppets have no authoring surface yet, so the only way to put one on a stage is
                 // from a console. Published on the window rather than a panel because the audience
                 // is whoever is bringing a backend up, and what they need is to poke at a live one.

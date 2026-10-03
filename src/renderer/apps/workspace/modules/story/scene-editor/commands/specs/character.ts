@@ -363,13 +363,13 @@ export const show = defineStoryCommand({
 });
 
 /**
- * `name=` on a `/show` whose subject is already on stage.
+ * `name=` on a `/show` (or a `/play`) whose subject is already on stage.
  *
  * The key names the element the row CREATES, so on a subject that exists it names nothing: the object
  * has a name already, and the one written here would be stored and read by nobody. Refused rather
  * than dropped, so an author who meant to rename something is told that this is not the row for it.
  */
-function validateNameTarget(
+export function validateNameTarget(
     args: { readonly target?: StoryCommandValue; readonly name?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {

@@ -192,7 +192,17 @@ export const devMode = {
         title: "Layers",
         empty: "Nothing is on screen",
         stack: "Stack, bottom to top",
+        // The four kinds of thing on screen, by the names the docs give them.
+        stage: "Stage",
+        gameUi: "Game UI",
         page: "Page",
+        layer: "Layer",
+        // A Game UI surface stepped off the screen while a page is drawn over the stage.
+        faded: "Faded out",
+        // A page the stack holds and the screen does not draw: hidden by the running game, or
+        // under the page on screen.
+        hiddenForGame: "Hidden while the game runs",
+        returnsOnBack: "Shown again on Go back",
         onScreenCount: "{onScreen} of {total} on screen",
         offScreen: "Not on screen",
         offScreenNote: "A layer stays off screen while this project has no surface with its id.",
@@ -200,6 +210,8 @@ export const devMode = {
         queued: "Waiting for a group",
         takesClicks: "Takes clicks",
         takesNoClicks: "Takes no clicks",
+        // A display-only Game UI slot, the notifications.
+        takesNoInput: "Takes no clicks or keys",
         keyboard: "Keyboard",
         modal: "Modal",
         dismissible: "Go back closes it",

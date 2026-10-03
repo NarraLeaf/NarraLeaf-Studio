@@ -34,7 +34,12 @@ import { blueprintDocumentOf, graphOf, type GraphNode } from "@/lib/ui-editor/ru
 import type { AppSurfaceLayerNavEntry } from "./AppSurfaceLayer";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles, type PageHostInputs } from "./hostAdapterBundles";
-import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import {
+    listenForGameKeys,
+    resolveKeyboardOwnerEntry,
+    resolveKeyboardOwnerLane,
+    type KeyboardOwner,
+} from "./keyboardOwner";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { LayerStackController } from "./layers/LayerStackController";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
@@ -252,7 +257,22 @@ function runningGame(options: {
         return [...lines].sort();
     };
 
-    return { pressEscape, layerStack, errors };
+    /** Escape held down long enough for the system to repeat it, then released. */
+    const holdEscape = async (repeats: number) => {
+        lines.length = 0;
+        const init = { key: "Escape", code: "Escape", bubbles: true, cancelable: true };
+        window.dispatchEvent(new KeyboardEvent("keydown", init));
+        await settle();
+        for (let index = 0; index < repeats; index++) {
+            window.dispatchEvent(new KeyboardEvent("keydown", { ...init, repeat: true }));
+            await settle();
+        }
+        window.dispatchEvent(new KeyboardEvent("keyup", init));
+        await settle();
+        return [...lines].sort();
+    };
+
+    return { pressEscape, holdEscape, layerStack, errors };
 }
 
 beforeAll(() => {
@@ -270,6 +290,18 @@ describe("the keys go to whichever entry owns the keyboard", () => {
         const game = runningGame({});
 
         expect(await game.pressEscape()).toEqual([
+            "global: key down",
+            "page: cancel",
+            "page: key down",
+            "page: key up",
+        ]);
+        expect(game.errors).toEqual([]);
+    });
+
+    it("hears a held Escape as one press: the repeats reach no key head and no action", async () => {
+        const game = runningGame({});
+
+        expect(await game.holdEscape(5)).toEqual([
             "global: key down",
             "page: cancel",
             "page: key down",
@@ -341,5 +373,25 @@ describe("the keys go to whichever entry owns the keyboard", () => {
         const game = runningGame({ dialog: { modal: true }, dialogReady: false });
 
         expect(await game.pressEscape()).toEqual(["global: key down"]);
+    });
+});
+
+describe("the lane a key reaches", () => {
+    it("is the owning entry whenever there is one, without asking about the story", () => {
+        const asked: string[] = [];
+        const lane = resolveKeyboardOwnerLane({
+            entry: { key: "page:1" },
+            isStoryOnScreen: () => {
+                asked.push("story");
+                return true;
+            },
+        });
+        expect(lane).toEqual({ kind: "entry", entry: { key: "page:1" } });
+        expect(asked).toEqual([]);
+    });
+
+    it("is the stage with no owning entry while the story is on screen, and nothing otherwise", () => {
+        expect(resolveKeyboardOwnerLane({ entry: null, isStoryOnScreen: () => true })).toEqual({ kind: "stage" });
+        expect(resolveKeyboardOwnerLane({ entry: null, isStoryOnScreen: () => false })).toBeNull();
     });
 });

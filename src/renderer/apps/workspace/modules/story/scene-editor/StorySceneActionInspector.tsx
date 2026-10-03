@@ -24,6 +24,7 @@ import type {
 import {
     authoredCharacterStageName,
     declarationDefaultForType,
+    declaresStageObject,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
@@ -1140,6 +1141,11 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "video") {
+        // The clip is read only where a row can build one: `create`, and the `show` and `play` that
+        // name their own clip. Every other operation addresses a clip by name, so an asset picked
+        // there would be a setting the compiler never reads. Mute rides on the clip the row builds,
+        // so it is offered exactly where the row builds one.
+        const readsClip = payload.operation === "create" || payload.operation === "show" || payload.operation === "play";
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1149,14 +1155,18 @@ function ActionPayloadFields(props: {
                     onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "video" }>["operation"] })}
                 />
                 <TextField label={t("storyInspector.video.videoName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                <AssetField
-                    label={t("storyInspector.video.videoAsset")}
-                    assetType={AssetType.Video}
-                    assetId={payload.assetId}
-                    onChange={assetId => props.onChange({ ...payload, assetId })}
-                    allowAssetSets
-                />
-                <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                {readsClip ? (
+                    <AssetField
+                        label={t("storyInspector.video.videoAsset")}
+                        assetType={AssetType.Video}
+                        assetId={payload.assetId}
+                        onChange={assetId => props.onChange({ ...payload, assetId })}
+                        allowAssetSets
+                    />
+                ) : null}
+                {declaresStageObject(payload) ? (
+                    <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                ) : null}
                 {payload.operation === "seek" ? (
                     <SecondsField
                         label={t("storyInspector.video.seekTime")}

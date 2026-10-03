@@ -175,6 +175,23 @@ describe("projectStoryCommandLine", () => {
         expect((build("/show night", staged).payload as { assetId?: string }).assetId).toBeUndefined();
     });
 
+    it("names the clip a play row creates, on the same terms as a show row", () => {
+        expect(project("/play intro")).toBe("/play intro name=intro");
+        expect(project("/play intro name=cutscene")).toBe("/play intro name=cutscene");
+        // A clip already on stage is addressed, and the line is the name and nothing else.
+        expect(project("/play clip")).toBe("/play clip");
+
+        // Once the row exists the clip answers to its own name on stage, and the key is what keeps
+        // the line reading back as the row that builds it.
+        const staged: StoryCommandContext = {
+            ...CONTEXT,
+            stageObjects: { ...CONTEXT.stageObjects, video: [...CONTEXT.stageObjects.video, "intro"] },
+        };
+        expect(comparable(build("/play intro name=intro", staged))).toMatchObject({
+            action: "video", operation: "play", objectName: "intro", assetId: "v1",
+        });
+    });
+
     it("keeps the loop flag on the row, because it is what the row IS", () => {
         // A `loop` row does not hold the scene up, and the only thing that says so on the line is
         // the word - so it prints next to the subject rather than being inferred from the payload.

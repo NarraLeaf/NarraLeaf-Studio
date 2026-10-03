@@ -298,7 +298,12 @@ export function StageSlotSurfaceBody(props: {
     // The keys leave the whole stage with the story, notifications included: a page or a modal layer
     // over it owns them (see `keyboardOwner`), and a key head on a widget down here answering the same
     // press would be a second owner. They come back as the cover goes.
-    const hearsKeys = !useStageCovered();
+    //
+    // So does the pointer. A page conceals the slot, which already takes it out of reach; a modal layer
+    // leaves it on screen, and without this its buttons stayed live under the layer's scrim - the quick
+    // menu's Log opened a page underneath a confirmation that had declared everything below it inert.
+    const covered = useStageCovered();
+    const hearsKeys = !covered;
     // The runtime store comes from the game's capabilities rather than from a second field beside
     // them: the store the widgets render against has to be the one the host API writes into.
     const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetPatchesByScopeRef } = options;
@@ -402,7 +407,9 @@ export function StageSlotSurfaceBody(props: {
                     surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
-                    passive={passive}
+                    // Covered, the slot is display-only for as long as the cover stays: inert, so no
+                    // widget on it takes a press (see `passive`).
+                    passive={passive || covered}
                     concealed={concealed}
                     keyboardInteractive={hearsKeys}
                     // A Game UI slot has no page animation of its own - it appears when the scene

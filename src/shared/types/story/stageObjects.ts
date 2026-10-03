@@ -414,8 +414,8 @@ const REVEALABLE_KINDS: ReadonlySet<StageObjectKind> =
 export function revealableStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
     const declarations: StageObjectDeclaration[] = [];
     for (const block of liveSceneBlocks(scene)) {
-        // A `/show <asset>` row declares and reveals in one line, so there is no later row for it to
-        // be waiting on - it is not a candidate for "declared and never shown" at all.
+        // A `/show <asset>` or `/play <clip>` row declares and reveals in one line, so there is no
+        // later row for it to be waiting on - it is not a candidate for "declared and never shown".
         if (block.kind === "action" && revealCreates(block.payload)) {
             continue;
         }
@@ -430,9 +430,11 @@ export function revealableStageObjectDeclarations(scene: StoryScene | null | und
 /**
  * The `kind:name` keys this scene REVEALS - what a `show` row in it puts on screen.
  *
- * Only `show`. Playing a video does not reveal it (an element is on stage and hidden until something
- * shows it, so a `/play` on its own is a clip the player hears and never sees), and neither does a
- * transform or a rate change. That is the whole point of the distinction the declaration draws.
+ * Only `show`. Playing a video an earlier row declared does not reveal it (an element is on stage and
+ * hidden until something shows it, so a `/play` on its own is a clip the player hears and never sees),
+ * and neither does a transform or a rate change. That is the whole point of the distinction the
+ * declaration draws. A `/play` that names its own clip does reveal it, but it is a declaration rather
+ * than a reference, so it never waits on this list - see {@link revealableStageObjectDeclarations}.
  */
 export function shownStageObjectKeys(scene: StoryScene | null | undefined): ReadonlySet<string> {
     const shown = new Set<string>();

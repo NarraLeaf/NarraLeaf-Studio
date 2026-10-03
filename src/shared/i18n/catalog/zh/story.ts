@@ -1213,7 +1213,7 @@ export const story = {
         vfx: { label: "氛围特效", detail: "声明全屏循环叠加：落花、雨雪、尘埃、光斑" },
         layer: { label: "图层", detail: "创建渲染图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
-        play: { label: "播放", detail: "播放视频" },
+        play: { label: "播放", detail: "播放舞台上的视频，或资产库中的视频" },
         front: { label: "置顶", detail: "将角色或舞台对象绘制在所在图层的最前" },
         font: { label: "字体", detail: "修改文本字号或颜色" },
         bgm: { label: "背景音乐", detail: "设置背景音乐" },
