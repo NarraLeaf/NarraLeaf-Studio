@@ -10,7 +10,7 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { uiInteractionSoundPatch } from "@shared/types/ui-editor/interactionSounds";
 import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import type { DevModeBundle } from "@shared/types/devMode";
-import { createDevModeBlueprintHostApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { createDevModeBlueprintHostApi, type BlueprintSoundPlayInput } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -21,6 +21,8 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { listUIElementAssetIds } from "@/lib/workspace/services/references/referenceModel";
 import { createDevModeBlueprintHostAdapter } from "./hostAdapters/devModeBlueprintHostAdapter";
 import { collectSurfaceWarmupAssetIds } from "./surfaceAssetWarmup";
+import { resolveSoundPlayback } from "./app/soundTransport";
+import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 
 afterEach(() => {
     cleanup();
@@ -105,6 +107,7 @@ function createClickFixture(specs: ElementSpec[], components: { id: string; root
         },
     };
     const played: string[] = [];
+    const requests: BlueprintSoundPlayInput[] = [];
     const scope = new ScopeStoreBridge();
     const debug = new DebugBridge();
     const hostApi = createDevModeBlueprintHostApi({
@@ -118,6 +121,7 @@ function createClickFixture(specs: ElementSpec[], components: { id: string; root
         widgetRuntimeStore: new WidgetRuntimeStateStore(),
         onPlaySound: input => {
             played.push(input.assetId);
+            requests.push(input);
             return null;
         },
     });
@@ -128,7 +132,7 @@ function createClickFixture(specs: ElementSpec[], components: { id: string; root
         debug,
         hostApi,
     });
-    return { adapter, played, document };
+    return { adapter, played, requests, document };
 }
 
 describe("click sounds", () => {
@@ -140,6 +144,26 @@ describe("click sounds", () => {
         await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("start", "mouseClick", { x: 1, y: 1 });
 
         expect(played).toEqual(["confirm"]);
+    });
+
+    it("plays at the slot's own volume, on its own track, once", async () => {
+        const { adapter, requests, document } = createClickFixture([
+            { id: "start", type: "nl.button", parentId: "root", click: "confirm" },
+            { id: "quit", type: "nl.button", parentId: "root", click: "confirm" },
+        ]);
+        document.elements.start!.props = { clickSound: { assetId: "confirm", volume: 0.4, audioTrackId: "bgm" } };
+
+        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("start", "mouseClick", { x: 1, y: 1 });
+        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("quit", "mouseClick", { x: 1, y: 1 });
+
+        // Sent to the Music track on purpose: it loops by default, and a click must not.
+        expect(requests[0]).toEqual({ assetId: "confirm", audioTrackId: "bgm", volume: 0.4, loop: false });
+        // Untuned: no volume and no track, so the transport plays it at full volume on the SFX track.
+        expect(requests[1]).toEqual({ assetId: "confirm", audioTrackId: null, volume: null, loop: false });
+
+        // And the transport honours both halves: the Music bus, at the slot's volume, not looping.
+        expect(resolveSoundPlayback(requests[0]!, BUILTIN_AUDIO_TRACKS)).toMatchObject({ busId: "bgm", volume: 0.4, loop: false });
+        expect(resolveSoundPlayback(requests[1]!, BUILTIN_AUDIO_TRACKS)).toMatchObject({ busId: "sound", volume: 1, loop: false });
     });
 
     it("plays the nearest ancestor's sound for a press on something inside it", async () => {

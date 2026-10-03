@@ -187,6 +187,19 @@ describe("blueprint layer templates", () => {
         expect(idsFor(OWNERS.game, { ...FACTS, confirmPage: undefined })).not.toContain("confirmClose");
     });
 
+    it("does not bind a key the blueprint already answers through an input action", () => {
+        // Escape on a page that already closes on Escape would step back twice per press.
+        const page = idsFor(OWNERS.page, { ...FACTS, takenKeys: ["Escape"] });
+        expect(page).not.toContain("escapeBack");
+        expect(page).not.toContain("escapeMenu");
+        expect(page).toContain("splash");
+        // Spelled however the vocabulary spells it.
+        const game = idsFor(OWNERS.game, { ...FACTS, takenKeys: ["s", "F11"] });
+        expect(game).not.toContain("screenshotKey");
+        expect(game).not.toContain("fullscreenKey");
+        expect(game).toContain("confirmClose");
+    });
+
     it("offers nothing a widget could not run", () => {
         // A list has no click; a value binding and a story action take none of these layers.
         const onClick = BLUEPRINT_LAYER_TEMPLATES
@@ -351,6 +364,22 @@ describe("what a project answers for a template", () => {
         // A page the interface no longer has is not an answer, however often it is named.
         expect(facts({ blueprintDocument: blueprintDocument(confirmGraph("gone", "gone", "confirm")) }).confirmPage)
             .toBe("confirm");
+    });
+
+    it("takes the keys of the actions a page answers, and every bound key for the game's blueprint", () => {
+        const uiDocument = {
+            ...UI_DOCUMENT,
+            surfaces: UI_DOCUMENT.surfaces.map(surface =>
+                surface.id === "menu" ? { ...surface, actions: [{ actionId: "dismiss" }] } : surface),
+            actions: {
+                dismiss: { id: "dismiss", name: "Dismiss", bindings: [{ kind: "key", key: "Escape" }] },
+                advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: " " }] },
+            },
+        } as unknown as Pick<UIDocument, "surfaces" | "elements" | "actions">;
+        expect(facts({ uiDocument, owner: { kind: "surfaceMain", surfaceId: "menu" } }).takenKeys).toEqual(["Escape"]);
+        expect(facts({ uiDocument, owner: { kind: "surfaceMain", surfaceId: "title" } }).takenKeys).toEqual([]);
+        expect([...(facts({ uiDocument, owner: OWNERS.game }).takenKeys ?? [])].sort())
+            .toEqual(["Escape", formatBlueprintKeyboardBinding(" ")].sort());
     });
 
     it("starts the game where the default story opens", () => {

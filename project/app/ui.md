@@ -132,9 +132,12 @@ one), which is why writing one is a note rather than a refusal.
 
 `hoverSound` and `clickSound` are on every type but `nl.root`, and are what the
 inspector's Sound section writes. Each holds an audio asset id or an asset set id,
-written as one key of the record: `clickSound.assetId = <id>`. A click plays the
-sound of the nearest element on its way up the tree that has one, so a button's own
-sound wins over the card it sits on; both play on the SFX track. The shipped
+written as one key of the record: `clickSound.assetId = <id>`. Two more keys are
+optional and written the same way: `clickSound.volume = 0.5` (0..1, absent is 1)
+and `clickSound.audioTrackId = <track id>` (absent is the SFX track, `sound`). A
+sound never loops, whatever its track's default. A click plays the sound of the
+nearest element on its way up the tree that has one, so a button's own sound wins
+over the card it sits on. The shipped
 skeleton's buttons carry theirs this way, and keep a blueprint only for a sound
 that depends on something - a locked scene card that stays silent.
 
