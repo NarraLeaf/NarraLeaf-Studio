@@ -45,6 +45,9 @@ import { useBrowserDropTarget } from "./useBrowserItemGestures";
 
 export type AssetBrowserViewMode = "grid" | "details";
 
+/** The trail of a place no set has been walked into. One array, so the items are not worked out again per render. */
+const NO_SETS: string[] = [];
+
 /** The narrowest tray that still draws the folder tree beside the contents. */
 const TREE_MIN_TRAY_WIDTH_PX = 520;
 
@@ -182,7 +185,7 @@ export function AssetBrowserView({
      * else leaves every set behind.
      */
     const [setTrail, setSetTrail] = useState<{ key: string; ids: string[] }>({ key: locationKey, ids: [] });
-    const setTrailIds = setTrail.key === locationKey ? setTrail.ids : [];
+    const setTrailIds = setTrail.key === locationKey ? setTrail.ids : NO_SETS;
     const setPath = useMemo(() => {
         const byId = new Map(assetSets[location.category].map(entry => [entry.set.id, entry]));
         const path: ResolvedAssetSet[] = [];
