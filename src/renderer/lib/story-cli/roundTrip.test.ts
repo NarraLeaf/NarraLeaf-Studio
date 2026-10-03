@@ -547,7 +547,7 @@ describe("the branches of one /if", () => {
 });
 
 /**
- * A clip declared in a file, then paused, resumed, sought and stopped further down.
+ * A clip a file plays, then pauses, resumes, seeks and stops further down.
  *
  * The transport verbs reach sound as well as video, and a name nothing on stage answers to is taken
  * for a sound - the row editor's rule for a name made somewhere it cannot see. The first reading of
@@ -555,14 +555,20 @@ describe("the branches of one /if", () => {
  * sound on every one of those lines; the second reading then found `clip` twice on the stage the
  * first one built - the clip, and the sound those rows had made up - and refused every line as
  * ambiguous. Typed into the editor in this order, each line finds the clip and nothing else.
+ *
+ * Every shape a clip can come on with: a play the story waits on and that holds its last frame, one
+ * the story does not wait for (the shape the later rows are written for), the same through `/video`,
+ * the word that names `/play` too, and a clip played a second time by its name alone.
  */
-describe("a clip the file declares, then pauses or stops", () => {
+describe("a clip the file plays, then pauses or stops", () => {
     const declarations: readonly (readonly string[])[] = [
         ["/play festival name=clip hide=false"],
-        ["/video festival name=clip", "/show clip"],
+        ["/play festival name=clip wait=false"],
+        ["/video festival name=clip wait=false"],
+        ["/play festival name=clip", "/play clip wait=false"],
     ];
     for (const declaration of declarations) {
-        it(`lands the rows the editor lands, after ${declaration[0].split(" ")[0]}`, () => {
+        it(`lands the rows the editor lands, after ${declaration.join(" + ")}`, () => {
             commandI18nStore.setPreference(false);
             const project = skeletonProject();
             expect(project).not.toBeNull();
