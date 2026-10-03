@@ -55,6 +55,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
@@ -62,6 +63,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
@@ -245,6 +247,32 @@ describe("the starter template's EXTRA screen", () => {
         // One visible at rest, so the screen is never blank before a press.
         const visible = SEGMENTS.filter(({ list }) => on(list, "nl.list").layout?.visible !== false);
         expect(visible.map(segment => segment.list)).toEqual(["CG grid"]);
+    });
+
+    it("opens on the CG segment with its button lit, every time the page opens", () => {
+        // The list shown at rest and the lit button have to agree: a pane showing CG pictures beside
+        // four unlit buttons does not say which segment it is. The page's own blueprint sets both
+        // as the page opens, the way the segment buttons set them when pressed.
+        const page = blueprints.find(candidate =>
+            candidate.owner.kind === "surfaceMain" && candidate.owner.surfaceId === EXTRA.id);
+        expect(page, "the Extra page has no blueprint").toBeDefined();
+        const opening = Object.values(page!.graphs.events).map(entry => entry.graph).filter(graph =>
+            Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT));
+        expect(opening, "the Extra page has no layer that runs as it opens").toHaveLength(1);
+        const graph = opening[0]!;
+        const head = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT);
+
+        const shown = ranAfter(graph, head.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            .map(node => [elementAt(graph, node.id), node.params?.property, node.params?.value]);
+        expect(shown).toEqual(expect.arrayContaining(SEGMENTS.map(({ list }) =>
+            [on(list, "nl.list").id, "visible", list === "CG grid"])));
+        expect(shown).toHaveLength(SEGMENTS.length);
+
+        const lit = ranAfter(graph, head.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)
+            .map(node => [elementAt(graph, node.id), node.params?.variantId]);
+        expect(lit).toEqual(expect.arrayContaining(SEGMENTS.map(({ button }) =>
+            [on(button, "nl.button").id, button === "CG" ? "selected" : "default"])));
+        expect(lit).toHaveLength(SEGMENTS.length);
     });
 
     it.each(SEGMENTS)("$button lays its rows out as the content deserves", ({ list, wraps }) => {
