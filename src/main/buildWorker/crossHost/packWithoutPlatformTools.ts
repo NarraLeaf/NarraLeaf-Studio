@@ -52,6 +52,8 @@ export async function packWithoutPlatformTools(input: {
     const staging = path.join(path.dirname(appDir), "cross-host", target.platformKey);
     await fsPromises.rm(staging, { recursive: true, force: true });
     await fsPromises.mkdir(staging, { recursive: true });
+    // electron-builder creates the output folder for what it writes; here it writes elsewhere.
+    await fsPromises.mkdir(config.outputDir, { recursive: true });
     try {
         switch (target.platform) {
             case "macos":
@@ -63,6 +65,8 @@ export async function packWithoutPlatformTools(input: {
         }
     } finally {
         await fsPromises.rm(staging, { recursive: true, force: true });
+        // And the folder holding every target's staging, once the last of them is gone.
+        await fsPromises.rmdir(path.dirname(staging)).catch(() => undefined);
     }
 }
 
