@@ -1,6 +1,6 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import {
-    readUIInteractionSoundAssetId,
+    readUIInteractionSound,
     type UIInteractionSoundKind,
 } from "@shared/types/ui-editor/interactionSounds";
 import { resolveNodeStoredAssetSet } from "@/lib/ui-editor/blueprint-nodes/built-in/nodeAssetSets";
@@ -10,9 +10,13 @@ import type { UIHostAdapterBlueprintRuntime } from "./types";
  * Play the sound an element was given for a hover or a click.
  *
  * Through the host API's sound family, the path a `Play Sound` node takes, so the clip lands on the
- * same bus (the SFX track, which an unqualified play has always meant), follows the player's sound
- * volume and mute, and carries the in/out marks and gain set on the asset. An editor canvas has no
- * host API and plays nothing; a click there is a selection, not a press.
+ * track the slot names (the SFX track when it names none, which an unqualified play has always meant),
+ * follows the player's volume and mute for that track, plays at the slot's own volume, and carries the
+ * in/out marks and gain set on the asset. An editor canvas has no host API and plays nothing; a click
+ * there is a selection, not a press.
+ *
+ * Never looped, whatever the track's own default is: a hover or a click is one sound per gesture, and
+ * a click routed to a Music track would otherwise go on playing after the gesture ended.
  *
  * Returns whether the element has a sound for this gesture, whether or not one could be played. That
  * is the question the callers ask: the nearest element with a sound is the one that sounds, and an
@@ -27,7 +31,7 @@ export function playUIElementInteractionSound(
     element: Pick<UIElement, "props" | "assetVariants"> | null | undefined,
     kind: UIInteractionSoundKind,
 ): boolean {
-    const stored = readUIInteractionSoundAssetId(element, kind);
+    const stored = readUIInteractionSound(element, kind);
     if (!stored) {
         return false;
     }
@@ -35,11 +39,18 @@ export function playUIElementInteractionSound(
     if (!sound) {
         return true;
     }
-    const resolved = resolveNodeStoredAssetSet(element ?? undefined, stored);
-    const assetId = typeof resolved === "string" && resolved.trim() ? resolved.trim() : stored;
+    const resolved = resolveNodeStoredAssetSet(element ?? undefined, stored.assetId);
+    const assetId = typeof resolved === "string" && resolved.trim() ? resolved.trim() : stored.assetId;
     // Not awaited: the gesture's own handling must not wait on audio, and a clip that cannot be
     // resolved is reported by the transport itself.
-    void sound.play({ assetId }).catch(() => undefined);
+    void sound
+        .play({
+            assetId,
+            audioTrackId: stored.audioTrackId ?? null,
+            volume: stored.volume ?? null,
+            loop: false,
+        })
+        .catch(() => undefined);
     return true;
 }
 

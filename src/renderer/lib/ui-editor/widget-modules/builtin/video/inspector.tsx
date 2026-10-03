@@ -1,14 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
 import { Film, Image as ImageIcon } from "lucide-react";
 import type { UIVideoObjectFit, UIVideoPreload, UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
-import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { Services } from "@/lib/workspace/services/services";
-import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
-import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { Select } from "@/lib/components/elements/Select";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
@@ -16,6 +11,7 @@ import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { i18nStore, useTranslation } from "@/lib/i18n";
 import { AssetPickerRow } from "@/lib/ui-editor/widget-modules/shared/assets/AssetPickerRow";
+import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
 import { getVideoProps, patchVideoProps } from "./helpers";
 
 /** Always read through the live document: a schema closure can outlive the props it captured. */
@@ -48,28 +44,12 @@ function patchChrome(data: UIInspectorData, partial: Partial<RectangleLikeProps>
  * Which project audio track the clip's sound lands on.
  *
  * A custom field rather than a `select` with static options because the list is project data an
- * author can add to: an "Ambience" track created on the project Audio surface has to appear here
- * without the schema being rebuilt. Falls back to the built-in ids when there is no service to ask
- * (a component canvas outside a workspace), so the control is never empty and never dead.
+ * author can add to (`useProjectAudioTracks`), and has to stay current without the schema being
+ * rebuilt.
  */
 function VideoAudioTrackField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [revision, setRevision] = useState(0);
-    const trackService = useMemo(
-        () => (context ? context.services.get<AudioTrackService>(Services.AudioTracks) : null),
-        [context],
-    );
-
-    useEffect(() => trackService?.onTracksChanged(() => setRevision(value => value + 1)), [trackService]);
-
-    const tracks = useMemo(
-        () => trackService?.listTracks() ?? [...BUILTIN_AUDIO_TRACKS],
-        // `revision` is the subscription's only job: the service mutates its list in place.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [trackService, revision],
-    );
-
+    const tracks = useProjectAudioTracks();
     const current = getLiveVideoProps(props.data);
     return (
         <div className="flex flex-col gap-1">
