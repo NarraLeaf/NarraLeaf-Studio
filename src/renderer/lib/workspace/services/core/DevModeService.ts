@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { EventEmitter } from "../ui/EventEmitter";
 import { flushPendingSaves } from "../autosave/flushPendingSaves";
+import { refreshDependenciesForRun } from "./refreshDependenciesForRun";
 
 type DevModeServiceEvents = {
     statusChanged: DevModeStatus;
@@ -111,6 +112,8 @@ export class DevModeService extends Service<DevModeService> {
         if (!result.flushed) {
             console.warn("[DevMode] launching with stores that could not be saved:", result.failures.join(", "));
         }
+        // After the flush: the scan reads the documents the run is about to be compiled from.
+        await refreshDependenciesForRun(this.getContext());
     }
 
     public async stop(): Promise<DevModeStatus> {

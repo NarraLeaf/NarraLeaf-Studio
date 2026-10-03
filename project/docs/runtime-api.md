@@ -45,6 +45,10 @@ type RuntimePluginApp = {
       register(def: RuntimeWidgetRendererDef): void;
       registerMany(defs: RuntimeWidgetRendererDef[]): void;
     };
+    storyActions: {
+      register(def: RuntimeStoryActionDef): void;
+      registerMany(defs: RuntimeStoryActionDef[]): void;
+    };
     log(level: "info" | "warning" | "error", message: string): void;
   };
 };
@@ -53,6 +57,11 @@ type RuntimeBlueprintNodeDef = {
   type: string;
   displayName?: string;
   execute: BlueprintNodeExecuteFn;
+};
+
+type RuntimeStoryActionDef = {
+  id: string;                          // 与 studio 侧 story.actions 注册的 id 相同
+  run(ctx: { params: Record<string, unknown>; signal: AbortSignal; game: RuntimePluginGame }): void | Promise<void>;
 };
 
 type RuntimeWidgetRendererDef = {
@@ -230,23 +239,40 @@ for (const type of ["mark", "measure"]) {
 
 **开销与缓冲**：没有逐帧条目，每条都对应一件本来就在发生的事。页面缓冲按名字封顶（资产 1000 条，启动相位合计 400 条，其余各 100–200 条），到顶时清掉该名字重新计数——**已经在订阅的 observer 照样收到每一条**，被清掉的只是给晚到的 `buffered: true` 订阅回放的那份。所以在 `setup()` 里就订阅，要留的自己留。
 
+### game.storyActions
+
+故事行的游戏侧执行：studio entry 的 `app.services.story.actions` 注册作者插入的动作，`createBlock` 写出一行
+`{action:"plugin", pluginId, actionId, params}`；runtime entry 用**同一个 id** 在这里注册 `run`。
+
+- 编译器遇到这行时查 `actionId`：有 `run` 且注册者就是行上的 `pluginId`，这行编译成一个**故事等待它的** NLR action
+  （`storyAwaitedAction.ts`，NLR `Service` 的 async handler）；没有就照旧什么都不编（Auto-Highlight 那种只给编译 pass 读的标记行）。
+- **故事停在这一行，直到 `run` 的 promise 结束**。`run` 抛错会记进插件日志，故事照常往下走，不会卡死。
+- 存档：等待中存的档，读档时**重新执行这一行**（NLR 存的是正在等待的 action，不存 awaitable）。所以 `run` 必须能从零开始。
+- 回退越过这一行、或等待中读档：`ctx.signal` 被 abort。`run` 要在这时撤掉自己画的东西并停止，之后写的东西不会再到故事里。
+- 跳过（按住跳过键、跳过模式）不会越过它，和选项一样停在这里。
+- `params` 每次执行都是一份新拷贝；`game` 就是这个插件 `setup(app)` 收到的那个 `app.game`，结果要回到故事里就经 `game.state.set`（声明 `state.read` + `state.write`）写作者的变量。
+- id 必须以插件 ID 为前缀；不需要声明能力，也不在 manifest 里登记（与 studio 侧一致，故事行自带 `pluginId`，依赖表凭它记硬依赖）。
+- 编辑器里的 `app.game`（蓝图节点编辑器预览拿到的那个）调用它会抛错：只有游戏环境会执行故事行。
+
 ### game.log
 
 写入宿主日志，自动带 `[plugin:{id}]` 前缀。Dev Mode 输出到窗口 console；Preview/Production 经 runtime bridge 输出到游戏进程日志。
 
 ## 故事级逻辑的运行时模式
 
-不存在独立的"story action 运行时执行器"——故事级插件逻辑的运行时路径是蓝图：
+故事级插件逻辑有两条运行时路径，两条都让故事等它跑完：
 
-1. studio entry 注册蓝图节点（palette 元数据 + 编辑器预览 execute），runtime entry 注册同一批节点的游戏 execute。
-2. 作者在故事中使用 Blueprint 块（`{action:"blueprint"}`），块内使用插件节点。
-3. 游戏中该块编译为 NLR `Script` action，经共享行为图解释器执行插件节点——save/load/回退安全由现有 `ScriptCleaner` 机制保证。
+1. **插件自己的故事行**：studio entry 注册 `app.services.story.actions`（`createBlock` 写 `{action:"plugin"}` 行），
+   runtime entry 用同一个 id 注册 `app.game.storyActions`（见上文）。适合「这一行就是这个插件的一件事」，例如小游戏。
+2. **蓝图行**：作者在故事中使用 Blueprint 块（`{action:"blueprint"}`），块内使用插件节点（studio entry 注册节点元数据与编辑器预览
+   execute，runtime entry 注册游戏 execute）。游戏中该块编译为与第 1 条相同的等待型 action：故事等整张图跑完（含 latent 节点）再走下一行，
+   回退与读档 abort 图的 signal。
 
-studio entry 可以额外注册 palette 动作（`app.services.story.actions`，见 [studio-api.md](./studio-api.md)）帮作者一键插入预构造的故事块；这些块是标准故事块，文档不因此依赖插件。
+studio entry 的 palette 动作也可以只插入标准故事块（不写 `{action:"plugin"}`），那样文档不依赖插件。
 
 ## 限制
 
-- 当前 API 面：`blueprintNodes` + `widgets` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`），以及不需要声明的性能时间线。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
+- 当前 API 面：`blueprintNodes` + `widgets` + `storyActions` + `data` + `config` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`），以及不需要声明的性能时间线。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
 - runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件；React 相关包与 `narraleaf-studio/runtime` 除外（host external）。
 - `react-dom/client` 不可用：插件不得在游戏内挂载自己的 React root。
 - 无 cleanup、无跨插件依赖排序。

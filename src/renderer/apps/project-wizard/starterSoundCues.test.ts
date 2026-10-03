@@ -248,6 +248,14 @@ function assertHoverSound(element: Element): void {
  */
 const RAIL_ENTRIES = ["Save", "Load", "Config", "Back"];
 
+/**
+ * The entries a page's rail can press: every one but the entry for the page itself, which is a
+ * label (see "the rail's entry for the page it is on" below). The Log page has no such entry.
+ */
+function pressableRailEntries(page: string): string[] {
+    return RAIL_ENTRIES.filter(entry => entry !== page);
+}
+
 /** Every button that answers a click, and the clip it uses. Back is the one that means undo. */
 const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({
@@ -262,7 +270,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         clip: "ui-confirm",
     })),
     ...[
-        "Save", "Load", "Config", "Text", "Sound", "All text", "Read only", "On", "Off",
+        "Save", "Load", "Text", "Sound", "All text", "Read only", "On", "Off",
         // The sound page's own pair, named apart from the fullscreen pair above because two
         // buttons on one screen cannot both be called On.
         "Mute on", "Mute off",
@@ -274,7 +282,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     // The Config page's other rail entries are in the block above, among its controls.
     { page: "Config", button: "Back", clip: "ui-back" },
     ...["Log", "Save", "Load"].flatMap(page =>
-        RAIL_ENTRIES.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
+        pressableRailEntries(page).map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
     ),
     { page: "Extra", button: "Back", clip: "ui-back" },
 ];
@@ -282,7 +290,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({ page: "Title", button })),
-    ...["Config", "Log", "Save", "Load"].flatMap(page => RAIL_ENTRIES.map(button => ({ page, button }))),
+    ...["Config", "Log", "Save", "Load"].flatMap(page => pressableRailEntries(page).map(button => ({ page, button }))),
     { page: "Extra", button: "Back" },
     // The segment rail is a menu, so it answers the pointer the way the nav rails do.
     ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
@@ -381,7 +389,15 @@ describe("the sounds the starter template makes", () => {
     it("the save card answers being picked, wherever it is placed", () => {
         // One card, placed six times on Save and six times on Load. The sound is on the card, so a
         // page cannot have a slot that answers and a slot that does not.
-        assertClickSound(elementById(SAVE_CARD), "ui-confirm");
+        expect(soundOf(elementById(SAVE_CARD), "click")).toBe(CLIP["ui-confirm"]);
+        // Two layers answer the press - saving on the Save page, loading on the Load page - and
+        // neither plays a cue of its own on top of the card's sound.
+        const pressGraphs = graphsFor(SAVE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        expect(pressGraphs).toHaveLength(2);
+        for (const graph of pressGraphs) {
+            const acted = next(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK).id, "then");
+            expect(isCueCall(acted)).toBe(false);
+        }
 
         // Deleting a slot is a right-click, and it stays silent: a click sound answers clicks
         // alone, and the question a right-click raises answers with a cue of its own.

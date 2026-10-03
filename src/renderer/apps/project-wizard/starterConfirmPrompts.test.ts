@@ -25,13 +25,17 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -128,7 +132,11 @@ function graphFor(elementId: string, headType?: string) {
     );
     expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
     const { nodes, edges } = graphs[0]!.graph;
+    return graphOf(nodes, edges);
+}
 
+/** Lookups over one event graph. */
+function graphOf(nodes: Graph["nodes"], edges: Graph["edges"]) {
     /**
      * The node an exec output leads to, asserted to be the only one and of the expected type.
      *
@@ -166,6 +174,21 @@ function graphFor(elementId: string, headType?: string) {
         return found[0]!;
     };
     return { nodes, edges, step, source, leadsTo, only };
+}
+
+/** A function a blueprint declares, by the reference a `Call Fn` names: its head and its layer. */
+function fnBody(blueprint: Blueprint, fnRef: string) {
+    const layers = Object.values(blueprint.graphs.events).filter(event =>
+        Object.values(event.graph.nodes).some(
+            node => node.type === BLUEPRINT_NODE_TYPE_FN_HEAD && `fn:${blueprint.id}:${node.id}` === fnRef,
+        ),
+    );
+    expect(layers, `${fnRef} is declared in ${layers.length} layers`).toHaveLength(1);
+    const { nodes, edges } = layers[0]!.graph;
+    const head = Object.values(nodes).find(
+        node => node.type === BLUEPRINT_NODE_TYPE_FN_HEAD && `fn:${blueprint.id}:${node.id}` === fnRef,
+    )!;
+    return { ...graphOf(nodes, edges), head };
 }
 
 /**
@@ -306,25 +329,47 @@ describe("the questions the starter template asks before it takes something away
     });
 
     /**
-     * The click, which is now two acts behind one gesture.
+     * The layer that answers a press of the card for one mode, and the gate it opens with.
      *
-     * The card is placed on the Save page as `mode: "save"` and on the Load page as `mode: "load"`,
-     * so the press branches on that param before it does anything. Both sides are walked from here
-     * because they are one graph: a change that broke the load half while leaving the save half
-     * standing would otherwise pass on the strength of the half it did not touch.
+     * The card is placed on the Save page as `mode: "save"` and on the Load page as `mode: "load"`.
+     * Saving and loading are two jobs, so they are two layers, each opening on a check of the mode
+     * it is for: exactly one of them acts on any press. Both are found here by that check rather
+     * than by position, and each must exist - a page whose half had gone would otherwise pass on the
+     * strength of the half that is still there.
      */
-    function slotClickBranch() {
-        const graph = graphFor(SLOT_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+    function slotClickLayer(wanted: "save" | "load") {
+        const blueprint = blueprints.find(
+            candidate => candidate.owner.kind === "componentWidgetMain" && candidate.owner.elementId === SLOT_CARD,
+        )!;
+        const matching = Object.values(blueprint.graphs.events).filter(event => {
+            const { nodes, edges } = event.graph;
+            const click = Object.values(nodes).find(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+            const gate = click && edges.find(edge => edge.from.nodeId === click.id && edge.from.port === "then");
+            const condition = gate && edges.find(edge => edge.to.nodeId === gate.to.nodeId && edge.to.port === "condition");
+            const equals = condition && nodes[condition.from.nodeId];
+            return equals?.type === BLUEPRINT_NODE_TYPE_STRING_EQUALS && equals.params?.b === wanted;
+        });
+        expect(matching, `${matching.length} layers of the card act on a press in ${wanted} mode`).toHaveLength(1);
+        const { nodes, edges } = matching[0]!.graph;
+        const graph = graphOf(nodes, edges);
         const click = graph.only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
         const mode = graph.step(click.id, "then", BLUEPRINT_NODE_TYPE_FLOW_IF);
-        const isSave = graph.source(mode.id, "condition", BLUEPRINT_NODE_TYPE_STRING_EQUALS);
-        expect(graph.source(isSave.id, "a", BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM).params?.paramId).toBe("mode");
-        expect(isSave.params?.b).toBe("save");
-        return { ...graph, mode };
+        const isMode = graph.source(mode.id, "condition", BLUEPRINT_NODE_TYPE_STRING_EQUALS);
+        expect(graph.source(isMode.id, "a", BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM).params?.paramId).toBe("mode");
+        // Nothing on the other side of the gate: a press in the other mode is the other layer's.
+        expect(edges.filter(edge => edge.from.nodeId === mode.id && edge.from.port === "false")).toHaveLength(0);
+        return { ...graph, blueprint, mode };
     }
 
+    it("acts on a press of a save slot in exactly one way per page", () => {
+        // Two layers answer the press and each checks its own mode, so neither can run where the
+        // other one should.
+        expect(slotClickLayer("save").mode.id).toBeTruthy();
+        expect(slotClickLayer("load").mode.id).toBeTruthy();
+    });
+
     it("asks before overwriting a save, and only when that slot holds one", () => {
-        const { step, source, leadsTo, mode } = slotClickBranch();
+        const { step, source, mode, blueprint } = slotClickLayer("save");
 
         // The gate reads the same question the card's own refresh asks: is this id among the saves
         // that exist? An empty slot is written without a word.
@@ -337,16 +382,23 @@ describe("the questions the starter template asks before it takes something away
         const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
         assertPrompt(source, confirm, "This slot already holds a save. Overwrite it?", "Overwrite");
 
-        const write = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PERSISTENT_GET);
-        expect(leadsTo(confirm.id, "button_1_pressed", write.id)).toBe(true);
+        // Answering yes and finding the slot empty end in the same function, so the two ways a save
+        // is written cannot drift apart: one write, reached from both.
+        const direct = step(branch.id, "false", BLUEPRINT_NODE_TYPE_FN_CALL);
+        const asked = step(confirm.id, "button_1_pressed", BLUEPRINT_NODE_TYPE_FN_CALL);
+        expect(asked.params?.fnRef).toBe(direct.params?.fnRef);
+        const write = fnBody(blueprint, String(direct.params?.fnRef));
+        const place = write.step(write.head.id, "then", BLUEPRINT_NODE_TYPE_PERSISTENT_GET);
+        const save = write.step(place.id, "next", BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
+        expectReadsSlotParam(write.source, save.id, "id");
     });
 
     it("asks before loading a save over a running game, and not from the title", () => {
-        const { step, source, leadsTo, mode } = slotClickBranch();
+        const { step, source, mode, nodes } = slotClickLayer("load");
 
         // The slot-exists branch was already here; the question goes inside it, so pressing an
         // empty slot still does nothing at all.
-        const listIds = step(mode.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
+        const listIds = step(mode.id, "true", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
         const exists = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
         const contains = source(exists.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
         expectReadsSlotParam(source, contains.id, "item");
@@ -357,8 +409,13 @@ describe("the questions the starter template asks before it takes something away
         const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
         assertPrompt(source, confirm, "Load this save? Unsaved progress is lost.", "Load");
 
-        const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
-        expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
+        // Each side ends in its own Load Save, so each frame reads to its end; both load this
+        // slot's save and nothing else in the layer loads.
+        const asked = step(confirm.id, "button_1_pressed", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        const direct = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        expectReadsSlotParam(source, asked.id, "id");
+        expectReadsSlotParam(source, direct.id, "id");
+        expect(Object.values(nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)).toHaveLength(2);
     });
 
     // A right click deletes the slot under the cursor, and it is the one act here that nothing can
@@ -415,7 +472,10 @@ describe("the questions the starter template asks before it takes something away
     });
 
     it("asks before loading an auto save over a running game, and not from the title", () => {
-        const { step, source, leadsTo, only } = graphFor("3d379905-7bf0-4070-b528-d2098ce9034e");
+        const { step, source, only, nodes } = graphFor(
+            "3d379905-7bf0-4070-b528-d2098ce9034e",
+            BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+        );
         const itemClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const branch = step(itemClick.id, "then", BLUEPRINT_NODE_TYPE_FLOW_IF);
         source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
@@ -423,7 +483,12 @@ describe("the questions the starter template asks before it takes something away
         const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
         assertPrompt(source, confirm, "Load this auto save? The game you are in is left behind.", "Load");
 
-        const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
-        expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
+        // Each side ends in its own Load Save, and both load the row that was pressed.
+        const asked = step(confirm.id, "button_1_pressed", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        const direct = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        for (const load of [asked, direct]) {
+            expect(source(load.id, "id", BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD).params?.field).toBe("id");
+        }
+        expect(Object.values(nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)).toHaveLength(2);
     });
 });

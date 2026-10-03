@@ -55,14 +55,15 @@ function builderCacheRoot(): string | null {
 }
 
 /**
- * Where the bundle comes from.
+ * Where electron-builder's binaries come from: this bundle, and the AppImage toolset that
+ * `linuxPackage/appImageToolset.ts` fetches on hosts where electron-builder cannot build one.
  *
  * The Studio setting wins over the environment: it is the one a user can actually reach, and a
  * host with a stale `ELECTRON_BUILDER_BINARIES_MIRROR` exported years ago should not silently
  * override what the author just typed. The environment variables stay honored below it, because
  * CI images set them and were working before this setting existed.
  */
-function binariesMirror(configured?: string): string {
+export function binariesMirror(configured?: string): string {
     const mirror =
         configured?.trim() ||
         process.env.NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR ||

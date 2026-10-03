@@ -151,7 +151,7 @@ describe("tidying an unpacked Electron runtime", () => {
         await expect(tidyElectronStage({ appOutDir, platform: "windows" })).rejects.toThrow(/no LICENSE\b/);
     });
 
-    it("moves a downloaded macOS release's licences inside the bundle before electron-builder deletes them", async () => {
+    it("moves a downloaded macOS release's licences into the bundle's Resources before electron-builder deletes them", async () => {
         const appOutDir = path.join(root, "mac-arm64");
         await lay(appOutDir, [
             "Electron.app/Contents/Info.plist",
@@ -165,11 +165,11 @@ describe("tidying an unpacked Electron runtime", () => {
 
         expect(await listed(path.join(appOutDir, "Electron.app"))).toEqual([
             "Contents/Info.plist",
-            "Contents/LICENSE.electron.txt",
-            "Contents/LICENSES.chromium.html",
             "Contents/MacOS/Electron",
+            "Contents/Resources/LICENSE.electron.txt",
+            "Contents/Resources/LICENSES.chromium.html",
         ]);
-        await expect(fs.readFile(path.join(appOutDir, "Electron.app", "Contents", "LICENSE.electron.txt"), "utf-8"))
+        await expect(fs.readFile(path.join(appOutDir, "Electron.app", "Contents", "Resources", "LICENSE.electron.txt"), "utf-8"))
             .resolves.toBe("LICENSE");
     });
 
@@ -188,8 +188,8 @@ describe("tidying an unpacked Electron runtime", () => {
 
         expect(await listed(appOutDir)).toEqual([
             "Electron.app/Contents/Info.plist",
-            "Electron.app/Contents/LICENSE.electron.txt",
-            "Electron.app/Contents/LICENSES.chromium.html",
+            "Electron.app/Contents/Resources/LICENSE.electron.txt",
+            "Electron.app/Contents/Resources/LICENSES.chromium.html",
         ]);
         expect(report.removedLitter).toEqual(["Electron.app/Contents/Resources/.DS_Store"]);
         // The installation itself is only read from.

@@ -18,11 +18,20 @@ export const build = {
     },
     unavailable: {
         windows: "Cannot build Windows apps on this machine.",
-        macos: "macOS apps can only be built on a Mac.",
+        macos: "Cannot build macOS apps on this machine.",
         linux: "Cannot build Linux apps on this machine.",
         web: "Web builds are available on every machine.",
         android: "Android builds are available on every machine.",
         ios: "iOS builds are available on every machine.",
+    },
+    // A format a platform offers that this machine cannot produce, shown on its greyed-out chip.
+    formatUnavailable: {
+        windows: "Not available on this machine.",
+        macos: "Requires a Mac.",
+        linux: "Not available on Windows.",
+        web: "Not available on this machine.",
+        android: "Not available on this machine.",
+        ios: "Not available on this machine.",
     },
     format: {
         zip: "Portable ZIP",
@@ -293,6 +302,7 @@ export const build = {
     preflight: {
         "no-targets": "Select at least one platform and format.",
         "unbuildable-platform": "This machine cannot build for {platform}.",
+        "unbuildable-format": "This machine cannot build the {format} format for {platform}.",
         "version-invalid": "Version {version} is not a valid semantic version; the build will fail.",
         "version-missing": "No version set; the game builds as 0.0.0.",
         "identifier-missing": "No project identifier; using the app id {appId}.",

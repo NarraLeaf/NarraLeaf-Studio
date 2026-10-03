@@ -141,6 +141,15 @@ describe("guard mask table re-key", () => {
         debugging: ["remote-debugging-port"],
         logs: "use-logs",
         refusalPrefix: "refusing to start: this build does not accept ",
+        fallback: {
+            switchName: "no-sandbox",
+            environmentVariable: "ELECTRON_DISABLE_SANDBOX",
+            helper: "chrome-sandbox",
+            programs: ["/usr/bin/unshare"],
+            programArguments: ["-Ur", "true"],
+            restrictions: ["/proc/sys/user/max_user_namespaces=0"],
+            notice: "accepting a launch without the sandbox this machine cannot provide: ",
+        },
     };
 
     it("re-keys the blob in place, changing the shipped bytes but not the decoded table", () => {
@@ -154,9 +163,10 @@ describe("guard mask table re-key", () => {
         expect(decoded.debugging).toEqual(table.debugging);
         expect(decoded.logs).toBe(table.logs);
         expect(decoded.refusalPrefix).toBe(table.refusalPrefix);
+        expect(decoded.fallback).toEqual(table.fallback);
         // ...and still carries no plaintext name a search could match (deterministic byte-difference
         // under a changed key is pinned in runtimeStartupArguments.test.ts).
-        for (const name of ["disable-gpu", "remote-debugging-port", "refusing to start"]) {
+        for (const name of ["disable-gpu", "remote-debugging-port", "refusing to start", "no-sandbox", "unshare"]) {
             expect(newBlob).not.toContain(name);
         }
         // The rest of the source is untouched.
