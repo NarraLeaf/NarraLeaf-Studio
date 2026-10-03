@@ -56,7 +56,6 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
-    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -67,6 +66,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
     BLUEPRINT_NODE_TYPE_MATH_MODULO,
@@ -275,8 +275,9 @@ describe("the starter template's EXTRA screen", () => {
         const entries = only(graph, GET_ENTRIES);
         expect(entries.params?.galleryKind).toBe(kind);
         // Straight into the widget, with nothing in between: every row the node hands over already
-        // carries its own lock state, its resolved picture and a masked name.
-        const fill = only(graph, BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
+        // carries its own lock state, its resolved picture and a masked name. The graph is the
+        // list's own, so it is the Set List Content that fills the list it belongs to.
+        const fill = only(graph, BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS);
         expect(wired(graph, entries.id, "entries", fill.id, "items")).toBe(true);
 
         // On Init rather than on the surface: a pane that is not visible is not mounted, so each

@@ -71,6 +71,19 @@ and the `content.<locale>/` overlays only).
   the sound depends on something — a locked card that opens nothing, a dialog whose first answer
   acts and whose others back out — and then it calls `UI confirm cue` or `UI back cue` from the
   Global blueprint after the check.
+- A list that fills itself, in its own blueprint, uses the **Set List Content** that takes no
+  Element input. The Log, Load and Extra lists are written that way.
+- Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
+  question. Each text's wire then runs forwards into its own input, and none crosses another.
+  Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather
+  than keeping the press in a Memo.
+- When both branches of an If end by doing the same thing, that thing is a function called from
+  both. Wires run back together would pass under every card between them, and a copy would have
+  to be kept in step.
+- A Blueprint Value has one Init head. Every Init and Flush head on every layer runs each time the
+  value is read and the last one returned wins, so a second head only does the work twice.
+- A page's rail shows the entry for the page itself as text, not as a button: a button there would
+  open a second copy of the page on top of it.
 
 ## 5. Repetition becomes structure
 
@@ -82,6 +95,8 @@ and the `content.<locale>/` overlays only).
   in the note:
   - which node runs (the three toggle pairs each change their setting with a different node; the
     master volume is set with Set Global Volume, not a track);
+  - a setting that is a field on the node with no pin, because a param reaches only a pin (the
+    Gallery nodes' Type, which is why the four Extra lists stay copies; Play Sound's track);
   - a label or any other prop: a component instance draws its definition's props, so instances
     cannot differ in text on the canvas. That is why the volume component holds the slider and its
     number but not the row's label.
