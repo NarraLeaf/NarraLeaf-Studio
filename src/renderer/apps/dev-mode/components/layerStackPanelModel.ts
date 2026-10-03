@@ -1,11 +1,13 @@
+import type { UIStageSlotId } from "@shared/types/ui-editor/document";
 import type {
     GameAppCompositeLayer,
+    GameAppCompositeOffScreenPage,
     GameAppCompositeQueuedLayer,
     GameAppCompositeSlot,
     GameAppCompositeView,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 
-/** What every row of the panel carries, whatever slot it describes. */
+/** What every row about a surface carries: a page, a layer, a queued layer. */
 type CompositeStackRowBase = {
     key: string;
     /**
@@ -19,6 +21,39 @@ type CompositeStackRowBase = {
     label: string;
     /** True when {@link label} had to fall back to the id. */
     surfaceMissing: boolean;
+};
+
+/** The game stage itself, under everything else, while a game has it on screen. */
+export type CompositeStackStageRow = {
+    kind: "stage";
+    key: string;
+    /** Whether a click on the stage reaches the story. */
+    interactive: boolean;
+    /**
+     * True when the stage owns the keys and has no Game UI surface to hear them - a project that
+     * leaves every slot to the engine's own interface. With Game UI on it, the group is marked.
+     */
+    keyboardOwner: boolean;
+};
+
+/** One Game UI surface on the stage. */
+export type CompositeStackGameUiSurfaceRow = {
+    key: string;
+    label: string;
+    slotId: UIStageSlotId;
+    /** Stepped off the screen while a page is drawn over the stage. */
+    concealed: boolean;
+    interactive: boolean;
+    /** False for a display-only slot, which takes neither clicks nor keys. */
+    takesInput: boolean;
+};
+
+/** The Game UI on the stage, as one group: the keys reach all of it at once, or none of it. */
+export type CompositeStackGameUiRow = {
+    kind: "gameUi";
+    key: string;
+    keyboardOwner: boolean;
+    surfaces: readonly CompositeStackGameUiSurfaceRow[];
 };
 
 export type CompositeStackPageRow = CompositeStackRowBase & {
@@ -47,9 +82,24 @@ export type CompositeStackQueuedRow = CompositeStackRowBase & {
     owner: string | null;
 };
 
+/** A page the page stack holds and the screen does not draw. */
+export type CompositeStackOffScreenPageRow = CompositeStackRowBase & {
+    kind: "offScreenPage";
+    /** Hidden by a running game until it ends, rather than under the page on screen. */
+    hiddenForGame: boolean;
+};
+
+export type CompositeStackRow =
+    | CompositeStackStageRow
+    | CompositeStackGameUiRow
+    | CompositeStackPageRow
+    | CompositeStackLayerRow;
+
 export type CompositeStackView = {
-    /** Bottom to top: the page lane, then every layer in mount order. */
-    rows: readonly (CompositeStackPageRow | CompositeStackLayerRow)[];
+    /** Bottom to top: the stage, its Game UI, the page on screen, then every layer in mount order. */
+    rows: readonly CompositeStackRow[];
+    /** Pages on the stack that are not on screen, bottom to top. */
+    offScreenPages: readonly CompositeStackOffScreenPageRow[];
     /** Layers waiting for their group, in arrival order. */
     queued: readonly CompositeStackQueuedRow[];
     /** How many layers the stack holds, and how many of them the screen has. */
@@ -83,12 +133,15 @@ export function buildCompositeStackView(composite: GameAppCompositeView): Compos
     // or one that belongs to a nested surface inside a page, keeps its id: it is still the answer to
     // "who showed this", and inventing a friendlier name for it would be inventing a fact.
     const namesByKey = new Map<string, string>();
-    const remember = (slot: GameAppCompositeSlot | GameAppCompositeLayer | null): void => {
+    const remember = (
+        slot: GameAppCompositeSlot | GameAppCompositeLayer | GameAppCompositeOffScreenPage | null,
+    ): void => {
         if (slot) {
             namesByKey.set(slot.key, labelOf(slot));
         }
     };
     remember(composite.page);
+    composite.offScreenPages.forEach(remember);
     composite.layers.forEach(remember);
 
     const ownerOf = (ownerScopeId: string): string | null => {
@@ -98,7 +151,28 @@ export function buildCompositeStackView(composite: GameAppCompositeView): Compos
         return namesByKey.get(ownerScopeId) ?? ownerScopeId;
     };
 
-    const rows: (CompositeStackPageRow | CompositeStackLayerRow)[] = [];
+    const rows: CompositeStackRow[] = [];
+    if (composite.stage) {
+        const { stage } = composite;
+        const surfaces = stage.gameUi.map((surface): CompositeStackGameUiSurfaceRow => ({
+            key: surface.key,
+            label: surface.surfaceName,
+            slotId: surface.slotId,
+            concealed: surface.concealed,
+            interactive: surface.interactive,
+            takesInput: surface.takesInput,
+        }));
+        // One mark for the stage's keys, on the group when there is one to hear them.
+        rows.push({
+            kind: "stage",
+            key: "stage",
+            interactive: stage.interactive,
+            keyboardOwner: stage.keyboardOwner && surfaces.length === 0,
+        });
+        if (surfaces.length > 0) {
+            rows.push({ kind: "gameUi", key: "gameUi", keyboardOwner: stage.keyboardOwner, surfaces });
+        }
+    }
     if (composite.page) {
         rows.push({
             kind: "page",
@@ -127,6 +201,15 @@ export function buildCompositeStackView(composite: GameAppCompositeView): Compos
         });
     }
 
+    const offScreenPages: CompositeStackOffScreenPageRow[] = composite.offScreenPages.map(page => ({
+        kind: "offScreenPage",
+        key: page.key,
+        keyTail: keyTailOf(page.key),
+        label: labelOf(page),
+        surfaceMissing: page.surfaceName === null,
+        hiddenForGame: page.hiddenForGame,
+    }));
+
     const queued: CompositeStackQueuedRow[] = composite.queued.map((layer: GameAppCompositeQueuedLayer) => ({
         kind: "queued",
         key: layer.key,
@@ -140,6 +223,7 @@ export function buildCompositeStackView(composite: GameAppCompositeView): Compos
 
     return {
         rows,
+        offScreenPages,
         queued,
         layerCount: composite.layers.length,
         onScreenCount: composite.layers.filter(layer => layer.onScreen).length,

@@ -41,6 +41,19 @@ describe("actionableSourceIdentity", () => {
             .toBeNull();
     });
 
+    it("answers for a play row that names its own clip, which builds what it runs", () => {
+        // The one-row cutscene declares exactly as a `/video` row does, so a later `/stop` or `/hide`
+        // anchors to it. The asset is the whole of the difference from the transport-only `play`
+        // above - a `play` that names a clip and no source still only addresses one.
+        expect(actionableSourceIdentity(action("a", { action: "video", operation: "play", objectName: "cutscene", assetId: "asset-cutscene" })))
+            .toEqual({ kind: "video", name: "cutscene", label: "cutscene" });
+        expect(actionableSourceIdentity(action("b", { action: "video", operation: "play", objectName: "cutscene", assetId: "  " })))
+            .toBeNull();
+        // The other transport verbs never build, asset or not: nothing reads one there.
+        expect(actionableSourceIdentity(action("c", { action: "video", operation: "pause", objectName: "cutscene", assetId: "asset-cutscene" })))
+            .toBeNull();
+    });
+
     it("treats playSound as the declaration and setBgm as none", () => {
         expect(actionableSourceIdentity(action("a", { action: "audio", operation: "playSound", objectName: "piano" })))
             .toEqual({ kind: "audio", name: "piano", label: "piano" });

@@ -962,6 +962,11 @@ export type StoryActionPayload =
            * arm's - it builds the clip, names it and reveals it. Revealing is still not playing: the
            * element is on screen holding its first frame, and `/play` is what runs it.
            *
+           * A `play` carrying {@link assetId} is the one-row cutscene: it builds the clip, names it,
+           * reveals it and runs it to the end. Without one, `play` runs a clip an earlier row put on
+           * stage and leaves its visibility alone. No document needs migrating for this: a `play` row
+           * could always hold an asset, and one that did now does what it says.
+           *
            * Additive: the four transport operations and `timeMs` are new in A3, and no document
            * written before them carries either, so no schema bump.
            */

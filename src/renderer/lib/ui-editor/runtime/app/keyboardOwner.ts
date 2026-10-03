@@ -147,6 +147,33 @@ export function resolveKeyboardOwnerEntry<TEntry extends { key: string }>(input:
     return owner?.ready ? { entry: owner.entry, surface: owner.surface } : null;
 }
 
+/**
+ * Which lane a key press reaches: an entry, the stage, or nothing.
+ *
+ * The rule the module comment states, written once so the key listener and the Dev Mode Layers
+ * panel read the same function: the entry {@link resolveKeyboardOwnerEntry} found ready, or - with no
+ * entry owning the keys - the stage, while the story is what the player is looking at.
+ */
+export type KeyboardOwnerLane<TEntry> =
+    | { kind: "entry"; entry: TEntry }
+    | { kind: "stage" };
+
+/**
+ * Decide the lane for this instant.
+ *
+ * `isStoryOnScreen` is asked only when no entry owns the keys, as the listener has always asked it:
+ * it reads the live page and layer stacks, and an owning entry already answers the question.
+ */
+export function resolveKeyboardOwnerLane<TEntry>(input: {
+    entry: TEntry | null;
+    isStoryOnScreen: () => boolean;
+}): KeyboardOwnerLane<TEntry> | null {
+    if (input.entry) {
+        return { kind: "entry", entry: input.entry };
+    }
+    return input.isStoryOnScreen() ? { kind: "stage" } : null;
+}
+
 export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
     /** The project's action vocabulary, as `UIDocument.actions` holds it. */
     vocabulary: UIDocument["actions"];
