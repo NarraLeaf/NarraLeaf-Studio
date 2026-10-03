@@ -36,6 +36,7 @@ import { checkBlueprintSource, checkProjectDocument, formatDiagnostics } from ".
 import { readAssetNameContext } from "./project";
 import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "./remove";
 import { printBlueprint, printBlueprints } from "./dsl/print";
+import { formatBlueprintSource } from "./format";
 import {
     applyBlueprints,
     assertWritableSchema,
@@ -74,6 +75,9 @@ const USAGE = `blueprint - query the node catalogue, write blueprints as text, c
   show                        Print a project's blueprints in the text format. Needs --project.
                               --blueprint <name|id> --owner <ownerKey> --out [file]
   check [file.bp]             Check a text file, or the whole project when given no file.
+  format <file.bp>            Lay a file's graphs out the way Studio's Format graph does, in place.
+                              --project <dir> (sizes save nodes' pins) --direction horizontal|vertical
+                              --out <file>
   apply <file.bp>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
   remove                      Take one blueprint out of a project. Needs --project.
@@ -131,6 +135,7 @@ const COMMANDS: Record<string, CommandSpec> = {
         run: commandShow,
     },
     check: { flags: { project: "string" }, run: commandCheck },
+    format: { flags: { project: "string", direction: "string", out: "string" }, run: commandFormat },
     apply: { flags: { project: "string", write: "boolean" }, run: commandApply },
     remove: { flags: { project: "string", blueprint: "string", write: "boolean" }, run: commandRemove },
 };
@@ -465,6 +470,63 @@ function commandCheck(args: Args, io: CliIo): number {
             : formatDiagnostics(result.diagnostics, { fileName: reportPath(resolved), source }),
     );
     return result.ok ? 0 : 1;
+}
+
+function commandFormat(args: Args, io: CliIo): number {
+    const given = args.positional[0];
+    if (!given) {
+        throw new UsageError("Which file? `blueprint format <file.bp> --project <dir>`.");
+    }
+    const direction = enumFlag(args, "direction", ["horizontal", "vertical"] as const);
+    const projectDir = stringFlag(args, "project") ? requireProject(args) : null;
+    if (projectDir) {
+        // Save nodes grow a pin for every field the project's saves carry, and a card is only
+        // sized right with those pins on it.
+        loadSaveSchema(projectDir);
+    }
+    const resolved = resolveBlueprintFile(given, { forWriting: false });
+    const source = readTextFile(resolved);
+    const targets = projectDir ? readUiDocumentTargets(projectDir) : null;
+    const result = formatBlueprintSource(source, {
+        direction,
+        compile: projectDir && targets
+            ? {
+                  existing: readUiGraphs(projectDir).blueprintDocument,
+                  resolveElementType: elementTypeResolver(targets),
+                  uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+              }
+            : {},
+    });
+    const errors = result.diagnostics.filter(item => item.severity === "error");
+    if (errors.length > 0) {
+        io.err(formatDiagnostics(errors, { fileName: reportPath(resolved), source }));
+        io.err("Nothing was written.");
+        return 1;
+    }
+    const outFlag = stringFlag(args, "out");
+    const target = outFlag ? resolveBlueprintFile(outFlag, { forWriting: true }) : resolved;
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, result.text, "utf8");
+    if (args.flags.json === true) {
+        io.out(JSON.stringify({ file: target, layers: result.layers }, null, 2));
+        return 0;
+    }
+    const lines = result.layers.map(layer => {
+        const left = [
+            layer.after.crossings > 0 ? `${layer.after.crossings} crossing(s)` : null,
+            layer.after.throughCards > 0 ? `${layer.after.throughCards} wire(s) under a card` : null,
+            layer.after.backwards > 0 ? `${layer.after.backwards} backwards (a loop)` : null,
+        ].filter(Boolean);
+        return `  ${layer.blueprint} / ${layer.layer}: ${layer.cards} card(s)${left.length > 0 ? `, ${left.join(", ")}` : ""}`;
+    });
+    io.out(
+        [
+            `Formatted ${result.layers.length} layer(s) into ${target}.`,
+            ...lines,
+            `Then: blueprint check ${path.basename(target)} --project <dir>`,
+        ].join("\n"),
+    );
+    return 0;
 }
 
 function commandApply(args: Args, io: CliIo): number {
