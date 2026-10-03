@@ -1269,7 +1269,7 @@ export const story = {
         vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
-        play: { label: "再生", detail: "動画を再生する" },
+        play: { label: "再生", detail: "舞台の動画、またはアセットライブラリの動画を再生する" },
         front: { label: "最前面へ", detail: "キャラクターや舞台オブジェクトを同じレイヤーの最前面に描く" },
         font: { label: "書式", detail: "テキストの大きさや色を変える" },
         bgm: { label: "BGM", detail: "背景音楽を決める" },

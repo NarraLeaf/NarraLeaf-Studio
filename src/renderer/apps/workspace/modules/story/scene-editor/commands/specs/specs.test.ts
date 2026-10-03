@@ -65,18 +65,23 @@ const generateId = () => `id_${nextId++}`;
 
 /** Parse, resolve and build one line; throws if any stage refuses - a test asserting a block implies a committable line. */
 function build(source: string): StoryBlock {
+    return buildIn(source, CONTEXT);
+}
+
+/** {@link build} against a context of the test's own - a stage that already holds what a line made. */
+function buildIn(source: string, context: StoryCommandContext): StoryBlock {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
         throw new Error(`not a command: ${source}`);
     }
     expect(line.issues).toEqual([]);
-    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    const { args, issues } = resolveCommandLine(line, context);
     expect(issues).toEqual([]);
     const spec = getCommandSpec(line.def.commandId);
     if (!spec?.build) {
         throw new Error(`no build on ${line.def.commandId}`);
     }
-    return spec.build(args, { generateId, context: CONTEXT });
+    return spec.build(args, { generateId, context });
 }
 
 /** Resolution issues for a line - for asserting what must NOT commit. */
@@ -319,6 +324,33 @@ describe("generic verbs", () => {
 
     it("/play plays a video by name", () => {
         expect(build("/play clip")).toMatchObject({ payload: { action: "video", operation: "play", objectName: "clip" } });
+        // A clip on stage is addressed, never rebuilt: no asset rides along.
+        expect((build("/play clip").payload as { assetId?: string }).assetId).toBeUndefined();
+    });
+
+    it("/play names a clip out of the library, building the clip it runs", () => {
+        // `intro` is a file and nothing on stage answers to it - the one-row cutscene. The clip takes
+        // the file's own name, which is what every later `/stop` or `/hide` addresses.
+        expect(build("/play intro")).toMatchObject({
+            payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1" },
+        });
+        expect(build("/play intro name=cutscene")).toMatchObject({
+            payload: { action: "video", operation: "play", objectName: "cutscene", assetId: "v1" },
+        });
+    });
+
+    it("/play reads the library first when the line names the clip it creates", () => {
+        // Once a `/play intro name=intro` row exists, `intro` answers on stage too. The key is what
+        // keeps that row reading back as the one that builds the clip.
+        const staged: StoryCommandContext = { ...CONTEXT, stageObjects: { ...CONTEXT.stageObjects, video: ["clip", "intro"] } };
+        expect(buildIn("/play intro name=intro", staged)).toMatchObject({
+            payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1" },
+        });
+        expect((buildIn("/play intro", staged).payload as { assetId?: string }).assetId).toBeUndefined();
+    });
+
+    it("refuses name= on a /play whose clip is already on stage", () => {
+        expect(issuesOf("/play clip name=cutscene")).toEqual(["unsupportedParam"]);
     });
 });
 

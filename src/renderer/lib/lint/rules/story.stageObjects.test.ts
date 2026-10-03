@@ -295,6 +295,23 @@ describe("story/stage-object-missing", () => {
         ])).toEqual([]);
     });
 
+    it("treats a play row that names its own clip as the row that creates it", async () => {
+        // The one-row cutscene: a scene whose first row plays a clip out of the library. Nothing above
+        // it declares the clip and nothing has to; the rows after it find the clip it left on stage.
+        expect(await reportedRows("story/stage-object-missing", [
+            actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
+            actionBlock("pause", { action: "video", operation: "pause", objectName: "festival" }),
+            actionBlock("stop", { action: "video", operation: "stop", objectName: "festival" }),
+            actionBlock("hide", { action: "video", operation: "hide", objectName: "festival" }),
+        ])).toEqual([]);
+    });
+
+    it("still reports a play row that names neither a clip nor anything on stage", async () => {
+        expect(await reportedRows("story/stage-object-missing", [
+            actionBlock("play", { action: "video", operation: "play", objectName: "festival" }),
+        ])).toEqual(["play"]);
+    });
+
     it("does not run at all when the project switches it off", async () => {
         const ctx = createTestLintContext({
             stories: [storyEntry([actionBlock("show", { action: "image", operation: "show", objectName: "poster" })])],
@@ -347,6 +364,12 @@ describe("story/declared-never-shown", () => {
         expect(await reportedRows("story/declared-never-shown", [
             actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
             actionBlock("clip", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
+        ])).toEqual([]);
+    });
+
+    it("says nothing about a play row that names its own clip, which reveals it too", async () => {
+        expect(await reportedRows("story/declared-never-shown", [
+            actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
         ])).toEqual([]);
     });
 
@@ -415,6 +438,23 @@ describe("story/stage-object-duplicate", () => {
         expect(await reportedRows("story/stage-object-duplicate", [
             createImage("image", "fx"),
             actionBlock("layer", { action: "layer", operation: "create", objectName: "fx" }),
+        ])).toEqual([]);
+    });
+
+    it("reports a play row naming its own clip under a name an earlier row already declared", async () => {
+        // The same rule `/show <clip>` follows: the first declaration stands and this row runs it,
+        // so the clip this row picked is the part that goes nowhere.
+        expect(await reportedRows("story/stage-object-duplicate", [
+            actionBlock("create", { action: "video", operation: "create", objectName: "festival", assetId: "asset-a" }),
+            actionBlock("show", { action: "video", operation: "show", objectName: "festival", assetId: "asset-b" }),
+            actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-c" }),
+        ])).toEqual(["show", "play"]);
+    });
+
+    it("says nothing about a play row that only runs a clip an earlier row declared", async () => {
+        expect(await reportedRows("story/stage-object-duplicate", [
+            actionBlock("create", { action: "video", operation: "create", objectName: "festival", assetId: "asset-a" }),
+            actionBlock("play", { action: "video", operation: "play", objectName: "festival" }),
         ])).toEqual([]);
     });
 
@@ -573,6 +613,9 @@ describe("lint and the story compiler answer as one", () => {
         // exit addresses it. The asset is on the row so the compile needs no character profile.
         actionBlock("character-enter", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),
         actionBlock("character-exit", { action: "character", operation: "exit", characterId: "char-alice" }),
+        // A clip that one row plays out of the library, and a later row stops.
+        actionBlock("video-play-own", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
+        actionBlock("video-stop", { action: "video", operation: "stop", objectName: "festival" }),
         // Seven kinds with nothing behind them.
         actionBlock("character-missing", { action: "character", operation: "exit", characterId: "char-bob" }),
         actionBlock("image-missing", { action: "image", operation: "hide", objectName: "ghost" }),

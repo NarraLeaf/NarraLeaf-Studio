@@ -221,6 +221,69 @@ describe("a row that names a row the same file adds", () => {
     });
 
     /**
+     * `/play <clip>` through the same two passes, then printed and read back, with the row after it
+     * addressing the clip it made. The skeleton ships no video, so this one is added to the library.
+     */
+    it("keeps a /play that names a clip reading as the row that creates it", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const clipId = "11111111-2222-4333-8444-555555555555";
+        const data: ProjectData = {
+            ...project!.data,
+            assets: {
+                ...project!.data.assets,
+                video: {
+                    [clipId]: {
+                        id: clipId,
+                        type: "video",
+                        name: "festival",
+                        ext: "mp4",
+                        hash: "hash",
+                        source: "local",
+                        meta: {},
+                        tags: [],
+                        description: "",
+                    },
+                },
+            } as ProjectData["assets"],
+        };
+        const document = project!.document;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/play festival name=festival\n/hide festival\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const [play, hide] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(play?.kind === "action" && play.payload).toMatchObject({
+            action: "video",
+            operation: "play",
+            objectName: "festival",
+            assetId: clipId,
+        });
+        expect(declaredStageObject(play!)).toMatchObject({ kind: "video", name: "festival" });
+        // The row after it binds to the row that declared the clip.
+        const target = hide?.kind === "action" && hide.payload.action === "video" ? hide.payload.target : undefined;
+        expect(target?.sourceBlockId).toBe(play!.id);
+
+        const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
+        expect(printed.text).toContain("/play festival name=festival");
+        for (const [id, block] of Object.entries(compiled.scene!.blocks)) {
+            expect(sameRowContent(reread.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+
+    /**
      * `/image` and `/hide` naming one picture in one file, then the whole scene printed and read back.
      *
      * The second pass reads names off the scene the first one built, and both halves of the stage

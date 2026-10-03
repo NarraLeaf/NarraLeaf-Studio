@@ -15,8 +15,17 @@ import {
     targetParam,
     type StoryCommandValidateContext,
 } from "../spec";
-import { actionableTargetRef, deriveObjectName, displayableTargetRef, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
+import {
+    actionableTargetRef,
+    deriveObjectName,
+    deriveShownObjectName,
+    displayableTargetRef,
+    withPlacementTransform,
+    withRevealTransform,
+    withTransitionRef,
+} from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
+import { validateNameTarget } from "./character";
 
 /** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
 
@@ -226,26 +235,44 @@ export const swap = defineStoryCommand({
     },
 });
 
+/**
+ * `/play` - run a clip to its end.
+ *
+ * Two subjects, on the terms `/show` already reads them. A clip on stage is what a name means, and
+ * the row runs it and leaves its visibility alone. A clip out of the library is a whole cutscene in
+ * one row: the row builds it, names it (`name=`, or the file's own name), reveals it and runs it -
+ * which is what an author who picks a clip and writes "play" expects to see, and what used to take a
+ * `/video` row and a `/show` row above it.
+ */
 export const play = defineStoryCommand({
     id: "play",
     token: "play",
     category: "video",
     icon: Play,
-    examples: ["/play clip"],
+    examples: ["/play clip", "/play intro name=cutscene"],
     params: {
-        target: targetParam(["video"], { core: true }),
+        target: targetParam(["video"], { core: true, assets: ["video"], namedBy: "name" }),
+        // What the clip this row creates is called on stage, for the rows that address it later -
+        // `/pause`, `/stop`, `/hide`. Only meaningful on the library form; refused on a clip already
+        // on stage, which has a name of its own.
+        name: { hint: "objectName", type: { kind: "text" } },
     },
+    deriveArgs: deriveShownObjectName(),
     build(args, ctx) {
         const block = createBlockForCommand("videoPlay", ctx.generateId);
         if (block.kind !== "action" || block.payload.action !== "video") {
             return block;
         }
         const target = asTarget(args.target);
+        if (target?.type === "asset") {
+            return { ...block, payload: { ...block.payload, objectName: asText(args.name) ?? target.name, assetId: target.assetId } };
+        }
         if (target?.type !== "stageObject") {
             return block;
         }
         return { ...block, payload: { ...block.payload, objectName: target.name, target: actionableTargetRef(target) } };
     },
+    validate: (args, ctx) => validateNameTarget(args, ctx),
 });
 
 /**
