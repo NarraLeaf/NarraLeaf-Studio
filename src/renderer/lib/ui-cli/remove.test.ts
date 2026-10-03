@@ -4,8 +4,6 @@
  * The cases are built by hand, one per thing that can still point at a definition, because the
  * shipped skeleton no longer holds a definition nothing uses - which is asserted at the bottom, against
  * the real thing, so a dead one cannot be shipped again without this file saying so.
- *
- * Comments in English per project convention.
  */
 
 import * as fs from "node:fs";

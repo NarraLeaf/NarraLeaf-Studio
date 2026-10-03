@@ -23,8 +23,6 @@
  *   from one of its blueprints);
  * - any other project file that names one of those ids - the author's scripts, a story, a service
  *   table - which this module is handed as text rather than reading itself.
- *
- * Comments in English per project convention.
  */
 
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
