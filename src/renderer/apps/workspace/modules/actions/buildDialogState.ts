@@ -1,5 +1,7 @@
 import {
     defaultGameBuildArch,
+    hostBuildableFormats,
+    hostCanBuildFormat,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     normalizeGameBuildArch,
@@ -187,9 +189,11 @@ export function initialDialogState(
         const enabled = config
             ? (config.platforms.includes(platform) && Boolean(stored?.length))
             : platform === hostPlatform;
-        const chosen = stored?.length ? stored : DEFAULT_FORMATS[platform];
+        const chosen = stored?.length ? stored : startingFormats(platform, hostPlatform);
+        // Filtered by what this host can produce as well as by what the platform offers: a
+        // selection remembered on a Mac can name a disk image, which a Windows host cannot make.
         formats[platform] = new Set(
-            enabled ? chosen.filter(format => OFFERED_FORMATS[platform].includes(format)) : [],
+            enabled ? chosen.filter(format => hostCanBuildFormat(hostPlatform, platform, format)) : [],
         );
     }
     const archs = {} as Record<GameBuildDesktopPlatform, GameBuildArch>;
@@ -275,7 +279,9 @@ export function stateFromRequest(
         archs[platform] = defaultGameBuildArch(platform, hostPlatform, hostArch);
     }
     for (const target of request.targets) {
-        formats[target.platform] = new Set(target.formats);
+        formats[target.platform] = new Set(
+            target.formats.filter(format => hostCanBuildFormat(hostPlatform, target.platform, format)),
+        );
         if (isDesktopPlatform(target.platform) && target.arch) {
             archs[target.platform] = normalizeGameBuildArch(target.platform, target.arch);
         }
@@ -290,13 +296,28 @@ export function stateFromRequest(
     };
 }
 
+/**
+ * The formats a platform switches on with on this host: its defaults where the host can make them,
+ * otherwise whatever it can make. A Windows host cannot make a macOS disk image, so macOS switches
+ * on with its zip alone there rather than with nothing.
+ */
+function startingFormats(platform: GameBuildPlatform, hostPlatform?: GameBuildPlatform): GameBuildFormat[] {
+    if (!hostPlatform) {
+        return DEFAULT_FORMATS[platform];
+    }
+    const buildable = hostBuildableFormats(hostPlatform, platform);
+    const defaults = DEFAULT_FORMATS[platform].filter(format => buildable.includes(format));
+    return defaults.length > 0 ? defaults : buildable.slice(0, 1);
+}
+
 export function togglePlatform(
     state: BuildDialogState,
     platform: GameBuildPlatform,
     enabled: boolean,
+    hostPlatform?: GameBuildPlatform,
 ): BuildDialogState {
     const formats = { ...state.formats };
-    formats[platform] = new Set(enabled ? DEFAULT_FORMATS[platform] : []);
+    formats[platform] = new Set(enabled ? startingFormats(platform, hostPlatform) : []);
     return { ...state, formats };
 }
 

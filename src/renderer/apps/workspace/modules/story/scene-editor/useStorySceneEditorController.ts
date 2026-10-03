@@ -42,7 +42,8 @@ import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessi
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
-import { createBlockForCommand, dialogueSpeakerOf, type ActionCommandId } from "./storyActionCommands";
+import { createBlockForCommand, dialogueSpeakerOf, pluginActionToPaletteCommand, type ActionCommandId } from "./storyActionCommands";
+import { findPluginActionsByCommandWord } from "./storyCommandSearch";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -2419,6 +2420,35 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
     }, [storyService, uiService, uuidService]);
 
+    /**
+     * A typed line that names a plugin action by its first word, committed as that action with the
+     * rest of the line as its text: `/rock rpsResult` lands Rock, Paper, Scissors with `rpsResult`.
+     *
+     * The menu offers commands only while the caret is on the command word, so a plugin action whose
+     * params are the text after it could otherwise be reached only by picking it first - and then the
+     * text was never typed. Read only after the line has failed to commit as a built-in command, and
+     * never for a built-in's own word (see `findPluginActionsByCommandWord`).
+     */
+    const commitPluginActionFromInsert = useCallback((line: string): boolean => {
+        if (editorMode.kind !== "insert" || !storyService) {
+            return false;
+        }
+        const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(line);
+        if (!match) {
+            return false;
+        }
+        const [best] = findPluginActionsByCommandWord(storyService.listPluginActions().map(pluginActionToPaletteCommand), match[1]);
+        if (!best) {
+            return false;
+        }
+        const block = createPluginActionBlock(best.id, match[2] ?? "");
+        if (!block) {
+            return false;
+        }
+        insertBlock(block, editorMode.slot.afterBlockId, true, { target: editorMode.slot.target, replaceBlockId: editorMode.slot.replaceBlockId });
+        return true;
+    }, [createPluginActionBlock, editorMode, insertBlock, storyService]);
+
     const chooseCharacterForInsert = useCallback((characterId: string) => {
         if (editorMode.kind !== "insert") {
             return;
@@ -2615,7 +2645,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         if (isActionCommandLine(value, slashAtAlias)) {
             // Parse and commit against the canonical "/" line; an "@" the author typed is only display.
-            if (!commitCommandFromInsert(toCanonicalCommandLine(value, slashAtAlias))) {
+            const canonical = toCanonicalCommandLine(value, slashAtAlias);
+            if (!commitCommandFromInsert(canonical) && !commitPluginActionFromInsert(canonical)) {
                 commitInvalidFromInsert();
             }
             return;
@@ -2626,7 +2657,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, commitPluginActionFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
