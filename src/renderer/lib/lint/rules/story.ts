@@ -11,6 +11,7 @@ import {
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
     duplicateStoryEndingNames,
+    finishedClipControls,
     isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneIdsInDocumentOrder,
@@ -1226,6 +1227,38 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageParams: { object: duplicate.label },
                         location: storyLocation(entry, scene, duplicate.blockId),
                         target: blockTarget(entry, scene, duplicate.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A `/pause`, `/resume`, `/seek` or `/stop` that names a clip which has always finished by the
+         * time the row runs: the play defining the clip waits for its end, earlier in the same run of
+         * rows, and nothing between them plays it again. The row then addresses a clip that has left
+         * the stage, so it does nothing - and the author almost always meant the clip to keep playing
+         * under the rows in between, which is what a play that does not wait is for.
+         *
+         * `warning`: the row is harmless, only pointless, and a draft may hold one on its way to the
+         * scene the author means. Which rows count is decided in `finishedClipControls`, and it reports
+         * only what is certain - nothing inside a parallel group or across branches.
+         */
+        id: "story/video-control-after-end",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyVideoControlAfterEnd",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const reference of finishedClipControls(scene)) {
+                    findings.push({
+                        ruleId: "story/video-control-after-end",
+                        messageKey: "lint.rule.storyVideoControlAfterEnd.message",
+                        messageParams: { object: reference.label },
+                        location: storyLocation(entry, scene, reference.blockId),
+                        target: blockTarget(entry, scene, reference.blockId),
                     });
                 }
             }

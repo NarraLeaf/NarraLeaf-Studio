@@ -284,7 +284,7 @@ describe("a row that names a row the same file adds", () => {
     });
 
     /**
-     * How a clip leaves - `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
+     * How a clip plays and leaves - `wait=`, `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
      * into a scene and printed back as the same lines, so every one of them is a row the file can
      * carry rather than a `»` line.
      */
@@ -309,8 +309,7 @@ describe("a row that names a row the same file adds", () => {
         const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
         const lines = [
             "/play festival name=festival hide=false",
-            "/play festival out=fade d=1.2s",
-            "/show festival",
+            "/play festival name=festival wait=false out=fade d=1.2s",
             "/hide festival out=fade d=0.5s",
         ];
         const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
@@ -331,8 +330,8 @@ describe("a row that names a row the same file adds", () => {
             return block?.kind === "action" ? block.payload : null;
         });
         expect(payloads[0]).toMatchObject({ operation: "play", assetId: clipId, hideOnEnd: false });
-        expect(payloads[1]).toMatchObject({ operation: "play", hideOnEnd: true, durationMs: 1200 });
-        expect(payloads[3]).toMatchObject({ operation: "hide", durationMs: 500 });
+        expect(payloads[1]).toMatchObject({ operation: "play", assetId: clipId, waitForEnd: false, durationMs: 1200 });
+        expect(payloads[2]).toMatchObject({ operation: "hide", durationMs: 500 });
 
         const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
         for (const line of lines) {

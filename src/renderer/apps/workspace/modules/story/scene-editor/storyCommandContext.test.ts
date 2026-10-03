@@ -26,7 +26,7 @@ describe("buildStoryCommandContext - stage objects", () => {
             b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
             b2: { action: "text", operation: "create", objectName: "title", text: "Hi" },
             b3: { action: "layer", operation: "create", objectName: "fx" },
-            b4: { action: "video", operation: "create", objectName: "clip", assetId: "vid-1" },
+            b4: { action: "video", operation: "play", objectName: "clip", assetId: "vid-1" },
             b5: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
             b6: { action: "vfx", operation: "create", objectName: "rain", assetId: "vid-2" },
         });
@@ -90,7 +90,7 @@ describe("buildStoryCommandContext - stage objects", () => {
         const document = documentWith({
             b1: { action: "image", operation: "show", objectName: "poster" },
             b2: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
-            b3: { action: "video", operation: "create", objectName: "Clip", assetId: "vid-1" },
+            b3: { action: "video", operation: "play", objectName: "Clip", assetId: "vid-1" },
             b4: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
             b5: { action: "audio", operation: "setVolume", objectName: "ambience", volume: 0.5 },
         });

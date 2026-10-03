@@ -106,6 +106,7 @@ import {
     storyTransitionKindOf,
     storyVariableRefKey,
     videoLeaveFadeMs,
+    videoPlayWaits,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
@@ -1789,9 +1790,6 @@ async function buildLaunchEntryScene(params: {
         }
         if (record.staged) {
             statements.push(video.preload());
-        }
-        if (record.visible) {
-            statements.push(video.show());
         }
     }
 
@@ -4391,19 +4389,97 @@ function videoFadeOptions(durationMs: number): { duration: number } | undefined 
     return durationMs > 0 ? { duration: durationMs } : undefined;
 }
 
+/**
+ * Whether the player has auto-forward on, read when the clip starts rather than when the story is built.
+ */
+function autoForwardIsOn(scriptCtx: ScriptCtx): boolean {
+    return scriptCtx.game.preference.getPreference("autoForward") === true;
+}
+
+/**
+ * A `play` row: reveal the clip, run it, and take it away when it ends - as ONE statement, so the
+ * three stay one run wherever the row sits. A parallel group hands the engine one branch per statement
+ * of its body, and three statements there would reveal, run and hide the clip all at once.
+ *
+ * The reveal comes first because the engine's `play` only runs the clip: an element nothing revealed
+ * is heard and not seen. It resolves once the clip can play, so `play` starts on a loaded clip; an
+ * element that is still loading draws nothing, and the stage shows through it until the first frame.
+ *
+ * A row that clears its clip away hides it after: `play` settles when the clip ends (or is stopped),
+ * so the hide runs then and fades out the frame the clip is on. Without it that frame stays above
+ * every scene - the stage draws videos over the scene group and a jump does not remove them, while the
+ * next scene has no name for the clip to hide it by.
+ *
+ * **A play that waits** is a `Control.do`, so the story holds on it, and the player can cut it short
+ * - see {@link skippableVideoPlay}. **A play that does not wait** is the same chain in a
+ * `Control.doAsync`: the story moves on at once, the chain runs on beside it and still hides the clip
+ * when it ends, and a later `/stop` ends its `play` early so that hide runs then. Nothing in it listens
+ * for the player, so the clicks that advance the lines written over the clip advance only the lines.
+ */
+function compileVideoPlay(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "video" }>,
+    video: Video,
+): NlrStatement {
+    const record = (statement: NlrStatement): NlrStatement => recordStatement(ctx, statement, block);
+    const steps: NlrStatement[] = [record(video.show())];
+    if (videoPlayWaits(payload)) {
+        steps.push(skippableVideoPlay(record, video));
+    } else {
+        steps.push(record(video.play()));
+    }
+    const leaveFadeMs = videoLeaveFadeMs(payload);
+    if (leaveFadeMs !== null) {
+        steps.push(record(video.hide(videoFadeOptions(leaveFadeMs))));
+    }
+    return record(videoPlayWaits(payload) ? Control.do(steps as any) : Control.doAsync(steps as any));
+}
+
+/**
+ * Run a clip the story waits on, ending it early when the player clicks the stage or presses skip.
+ *
+ * The engine has a switch for skipping clips (`allowSkipVideo`), and it is not this: it answers only
+ * the skip key, not a click, and it cuts every clip mounted on the stage - a clip a non-waiting play
+ * left running under the dialogue included - and winds it back to its first frame. So it stays off,
+ * and the waiting play races the clip against `waitForClick`, which both a stage click and a skip
+ * settle. Whichever finishes first ends the race; `stop` then pauses the clip on the frame it reached
+ * (a clip that ran out is already paused there) and settles the engine's own wait on it, and the
+ * row's hide fades that frame out.
+ *
+ * Two things around the race:
+ *  - **A click that arrived just before it is drained first.** The engine keeps a stage click for
+ *    200 ms so a `waitForClick` that starts a moment late still sees it - which here would be the very
+ *    click that advanced the line before the clip, ending the clip as it began. The drain is a
+ *    `waitForClick` raced against nothing at all: it takes a click that is waiting and lets go at once
+ *    when there is none.
+ *  - **Auto-forward plays the clip out.** `waitForClick` settles by itself after the auto-forward
+ *    delay when auto-forward is on, which would cut every clip longer than a few seconds. So when it
+ *    is on as the clip starts, the clip just runs to its end.
+ */
+function skippableVideoPlay(record: (statement: NlrStatement) => NlrStatement, video: Video): NlrStatement {
+    const drain = record(Control.any([record(Control.waitForClick()), record(Control.sleep(0))] as any));
+    const race = record(Control.any([record(video.play()), record(Control.waitForClick())] as any));
+    const settle = record(video.stop());
+    return record(Condition.If(
+        autoForwardIsOn as never,
+        [record(video.play())] as never,
+    ).Else([drain, race, settle] as never));
+}
+
 async function compileVideoAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
-    // `create` builds the clip, and so do a `show` and a `play` that name one (`revealCreates`); the
-    // other transport verbs address one an earlier row built. `show` needs no `preload` beside it -
-    // the engine mounts the element on the show itself - so the one-row reveal is one statement.
+    // `play` defines the clip it runs (`declaresStageObject`); every other verb addresses the clip a
+    // play defined.
     //
-    // Building through `getVideo` is also what warms a one-row clip as early as a declaring row
-    // would: the warm order records the clip against this row, and the preload plan puts every clip
-    // ahead of the play head on the stage hidden, so the element is buffering from the moment the
-    // scene starts rather than from the moment this row is reached.
+    // Building through `getVideo` is also what warms a clip ahead of its row: the warm order records
+    // the clip against this row, and the preload plan puts every clip ahead of the play head on the
+    // stage hidden, so the element is buffering from the moment the scene starts rather than from the
+    // moment this row is reached. A play that does not wait is built here exactly as one that does, so
+    // it is warmed exactly as one is.
     const video = declaresStageObject(payload)
         ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
         : findStageVideo(ctx, block.id, payload);
@@ -4411,36 +4487,7 @@ async function compileVideoAction(
         return [];
     }
     if (payload.operation === "play") {
-        // Up to three statements, because the engine's `play` only runs the clip.
-        //
-        // The one-row cutscene reveals first: a clip played without a reveal is heard and not seen,
-        // which is what a `play` addressing a clip a hidden `/video` row declared still does. The
-        // reveal resolves once the clip can play, so `play` starts on a loaded clip; an element that
-        // is still loading draws nothing, and the stage shows through it until the first frame.
-        //
-        // A row that clears its clip away hides it after: `play` waits for the end, so the hide runs
-        // the moment the clip finishes and fades out the frame it ended on. Without it that frame
-        // stays above every scene - the stage draws videos over the scene group and a jump does not
-        // remove them, while the next scene has no name for the clip to hide it by.
-        const statements: NlrStatement[] = [];
-        if (revealCreates(payload)) {
-            statements.push(video.show());
-        }
-        statements.push(video.play());
-        const leaveFadeMs = videoLeaveFadeMs(payload);
-        if (leaveFadeMs !== null) {
-            statements.push(video.hide(videoFadeOptions(leaveFadeMs)));
-        }
-        return statements.map(statement => recordStatement(ctx, statement, block));
-    }
-    if (payload.operation === "create") {
-        // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
-        // its own row: the element mounts hidden and starts buffering, so the `/show` or `/play`
-        // that follows is not the first moment anything has been fetched.
-        return [recordStatement(ctx, video.preload(), block)];
-    }
-    if (payload.operation === "show") {
-        return [recordStatement(ctx, video.show(), block)];
+        return [compileVideoPlay(ctx, block, payload, video)];
     }
     if (payload.operation === "hide") {
         return [recordStatement(ctx, video.hide(videoFadeOptions(videoLeaveFadeMs(payload) ?? 0)), block)];
@@ -5185,11 +5232,11 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
 }
 
 /**
- * Builds the clip a declaring row names - `/video`, or a `/show` or `/play` naming its own clip - and
- * hands back the one already built when an earlier row declared the name. That second case is the
- * same get-or-create every stage object follows: the first declaration stands, the later row's asset
- * goes nowhere, and lint's `story/stage-object-duplicate` is what tells the author. The transport
- * verbs look up instead.
+ * Builds the clip a `/play` row defines, and hands back the one already built when an earlier play
+ * defined the name. That second case is how a clip is played again - the row names the same file -
+ * and otherwise the same get-or-create every stage object follows: the first definition stands, a
+ * later row's different file goes nowhere, and lint's `story/stage-object-duplicate` is what tells
+ * the author. The other verbs look up instead.
  */
 async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: string | undefined, muted: boolean | undefined, blockId: string): Promise<Video | null> {
     const name = normalizeObjectName(objectName);

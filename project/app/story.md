@@ -29,7 +29,7 @@ so does a `--category` value that is not one of the ones there are.
 ## Finding a command
 
 ```sh
-node project/app/story.js commands                 # all 53, by category
+node project/app/story.js commands                 # all 52, by category
 node project/app/story.js commands sound           # search token, id, params, examples
 node project/app/story.js commands --category flow
 node project/app/story.js commands --limit 0     # the first 60 otherwise
@@ -133,16 +133,19 @@ whole scene.
 
 ### `/show <asset>` and `/play <clip>` write `name=`, and have to
 
-`/show` reaches the picture and clip libraries as well as the stage: `/show sunset` on
-a file no row has put on stage creates the element and reveals it in one row, the way
-`/sound hit` plays a clip without a row declaring it first. `name=` is what the element
-is called afterwards - `/hide`, `/transform` and every other verb address it by that
-word - and it defaults to the file's own name.
+`/show` reaches the picture library as well as the stage: `/show sunset` on a file no
+row has put on stage creates the element and reveals it in one row, the way `/sound hit`
+plays a clip without a row declaring it first. `name=` is what the element is called
+afterwards - `/hide`, `/transform` and every other verb address it by that word - and it
+defaults to the file's own name.
 
-`/play` reaches the clip library on the same terms: `/play intro name=intro` creates the
-clip, reveals it and runs it to the end in one row. `/play intro` with no `name=` means
-the clip on stage called `intro` when an earlier row declared one, and then only runs it -
-it does not reveal a clip that row left hidden.
+`/play` is the only row that puts a video on the stage, and every `/play` carries its
+file: `/play intro name=intro` defines the clip `intro`, reveals it, runs it to the end
+and clears it away. `/play intro` with no `name=` means the clip called `intro` when an
+earlier play in the scene defined one - it plays that clip again, and `show` prints the
+row it builds as `/play <file> name=intro`, because the row holds the file like every
+other play. A clip name no play gave a file is reported on the line. `/video` and `/vid`
+are other names for `/play`; `/show` refuses a clip, and nothing declares one.
 
 **The key is always written, even where it repeats the file's name.** Once the row
 exists, the element it made answers to that word on the stage, so a line without the key
@@ -156,29 +159,37 @@ above it), and the second reading finds the object the first one created. `check
 `story/stage-object-missing` and `apply` writes nothing, so it fails loudly - but the
 message names the wrong problem. Write `name=`, or run `show` and copy what it prints.
 
-### A cutscene clears itself away
+### A video plays, then clears itself away
 
-`/play intro name=intro` takes the clip off the stage when it has played to the end,
-fading out over 0.25s - the fade every other hide row starts with. A `/play` that runs a
-clip an earlier row put on stage leaves it there, as it always did. `hide=` says otherwise
-either way, and `out=` / `d=` say how it goes - the pair `/hide` takes, with the two words
-a clip can do, `fade` and `none`:
+A `/play` holds the story until the clip ends, then takes the clip off the stage, fading
+out over 0.25s - the fade every other hide row starts with. The player can end a clip the
+story waits on early, with a click or the skip key; it then fades out from the frame it
+reached. Each of those is a setting on the row:
 
 ```
+/play intro name=intro wait=false
 /play intro name=intro hide=false
 /play intro name=intro out=fade d=1.5s
-/play clip out=none
+/play intro name=intro out=none
+/play intro name=intro muted
 ```
 
-Saying how a clip leaves is asking for it to leave, so the last line hides a clip the
-row would otherwise keep, and `show` prints it without a `hide=`. Where the line states
-nothing the row's form does not already do, `show` prints nothing: the first form above
-is the only way a cutscene keeps its last frame, and `/play intro name=intro` alone is a
-cutscene that fades out.
+`wait=false` lets the story move on at once while the clip plays; the clip still clears
+itself away when it ends, and clicks that advance the lines written over it do not touch
+it. `hide=false` holds the last frame until a `/hide` takes it. `out=` / `d=` are the
+pair `/hide` takes, with the two words a clip can do, `fade` and `none`. `show` prints
+each one only when the row states it.
+
+The rows after a play name the clip: `/pause intro`, `/resume intro`, `/seek intro 2`,
+`/stop intro` and `/hide intro`. `/stop` ends the clip as though it had reached its end,
+so the play then clears it away or holds its frame, as the play says. They are for a clip
+the story did not wait for - after a play that waits, the clip has already finished, and
+`check` reports `story/video-control-after-end` on a row that names it in the same run of
+rows.
 
 `/hide` on a clip cuts unless it says `out=fade` or `d=`; `out=fade` with no `d=` is
-written back as `d=0.25s`. A clip already gone from the stage - after a cutscene that
-cleared itself away, or a second `/hide` - has nothing to hide, and the row does nothing.
+written back as `d=0.25s`. A clip already gone from the stage - after a play that cleared
+it away, or a second `/hide` - has nothing to hide, and the row does nothing.
 
 ### A scene variable is a row
 
