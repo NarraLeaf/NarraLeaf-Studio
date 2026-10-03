@@ -66,7 +66,7 @@ export function builderConfiguration(
     target: GameBuildWorkerTarget,
     log: GameBuildLogger,
 ): Configuration {
-    const extraFiles = extraFilesFor(config);
+    const extraFiles = extraFilesFor(config, target.platform);
     return {
         // Each platform's options are gated on the target's own platform, not
         // just on the block being present: a stray block would otherwise put a
@@ -102,10 +102,8 @@ export function builderConfiguration(
         },
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
-        // `to` is the app's content root, which is next to the executable on Windows and Linux and
-        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in, and
-        // the one that holds Electron's own LICENSE.electron.txt and LICENSES.chromium.html (put
-        // there by electron-builder on Windows and Linux, by tidyElectronStage on macOS).
+        // Beside Electron's own LICENSE.electron.txt and LICENSES.chromium.html: next to the
+        // executable on Windows and Linux, `Contents/Resources/` on macOS. See extraFilesFor.
         ...(extraFiles.length > 0 ? { extraFiles } : {}),
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
@@ -159,11 +157,27 @@ export function builderConfiguration(
     };
 }
 
-/** The notices shipped beside the executable, outside the asar where a player can open them. */
-function extraFilesFor(config: GameBuildWorkerConfig): Array<{ from: string; to: string }> {
+/**
+ * The notices shipped outside the asar, where a player can open them, in the folder that holds
+ * Electron's own licence texts (put there by electron-builder on Windows and Linux, and by
+ * tidyElectronStage on macOS).
+ *
+ * `to` is relative to the app's content root: the executable's folder on Windows and Linux,
+ * `Contents/` inside the bundle on macOS. On macOS they go one level further, into `Resources/`: a
+ * top-level file in `Contents/` counts as nested code to codesign, which signs it into extended
+ * attributes that no zip carries, so the app a player unpacked would fail verification. See
+ * `macLicenceDestination` in electronRuntimeFiles.ts.
+ */
+export function extraFilesFor(
+    config: GameBuildWorkerConfig,
+    platform: GameBuildDesktopPlatform,
+): Array<{ from: string; to: string }> {
+    const folder = platform === "macos" ? "Resources/" : "";
     return [
-        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] : []),
-        ...(config.thirdPartyNoticesFile ? [{ from: config.thirdPartyNoticesFile, to: "THIRD-PARTY-NOTICES.txt" }] : []),
+        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: `${folder}COPYRIGHT.txt` }] : []),
+        ...(config.thirdPartyNoticesFile
+            ? [{ from: config.thirdPartyNoticesFile, to: `${folder}THIRD-PARTY-NOTICES.txt` }]
+            : []),
     ];
 }
 
