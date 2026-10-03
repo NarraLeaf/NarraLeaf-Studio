@@ -6261,6 +6261,62 @@
       "params": [],
       "createdAt": "2026-08-26T00:38:00.201Z",
       "updatedAt": "2026-08-26T00:38:00.202Z"
+    },
+    {
+      "id": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+      "name": "Back button",
+      "rootElementId": "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be",
+      "elements": {
+        "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be": {
+          "id": "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be",
+          "type": "nl.button",
+          "name": "Back button",
+          "parentId": null,
+          "childrenIds": [],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "width": 230,
+            "height": 58,
+            "visible": true,
+            "opacity": 1
+          },
+          "props": {
+            "label": "Back",
+            "fontSize": 26,
+            "color": "nlbrand:text.muted",
+            "fontWeight": "normal",
+            "textAlign": "left",
+            "textVerticalAlign": "center",
+            "lineHeight": 1.2,
+            "textWrapMode": "nowrap",
+            "backgroundColor": "transparent",
+            "fillType": "color",
+            "fillOpacity": 1,
+            "fillVisible": false,
+            "backgroundFit": "cover",
+            "borderRadius": 0,
+            "borderWidth": 0,
+            "borderColor": "nlbrand:container.border",
+            "borderStyle": "none",
+            "paddingX": 0,
+            "paddingY": 8,
+            "clipContent": true,
+            "cursor": "pointer",
+            "localizationKey": "nav.back",
+            "clickSound": {
+              "assetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394"
+            },
+            "hoverSound": {
+              "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
+            }
+          }
+        }
+      },
+      "previewMeta": {
+        "width": 230,
+        "height": 58
+      }
     }
   ],
   "elements": {
@@ -10236,7 +10292,7 @@
         "814a0061-ce85-4e29-982d-2a8c92026995",
         "3fe6d95c-c054-4aee-821d-01a978f62dbf",
         "d0dc011f-1c2d-4817-a673-178a4fdf7f70",
-        "698c5179-f91a-4c4a-9802-15bdf43fff72",
+        "4eed0058-88e7-4767-a0aa-9f8e00ecc93b",
         "0f7bed84-816e-4cfd-b840-72ffe92356af"
       ],
       "layout": {
@@ -11623,51 +11679,6 @@
           ]
         },
         "localizationKey": "nav.config"
-      }
-    },
-    "698c5179-f91a-4c4a-9802-15bdf43fff72": {
-      "id": "698c5179-f91a-4c4a-9802-15bdf43fff72",
-      "type": "nl.button",
-      "name": "Back",
-      "parentId": "39146e02-45af-4afc-9168-b83796f2fccc",
-      "childrenIds": [],
-      "layout": {
-        "x": 40,
-        "y": 442,
-        "width": 230,
-        "height": 58,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "label": "Back",
-        "fontSize": 26,
-        "color": "nlbrand:text.muted",
-        "fontWeight": "normal",
-        "textAlign": "left",
-        "textVerticalAlign": "center",
-        "lineHeight": 1.2,
-        "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.back",
-        "clickSound": {
-          "assetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394"
-        },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
       }
     },
     "0f7bed84-816e-4cfd-b840-72ffe92356af": {
@@ -27449,7 +27460,7 @@
         "2c1f9691-a3f1-42f9-8239-b789456cbd74",
         "b0687a7f-227d-4886-9d25-1c533e3f1f40",
         "2bd4d5de-6e58-4438-92f1-13db78304813",
-        "b919294e-a700-4365-8cac-c98292a63ec4",
+        "e386b48a-6996-49e3-8603-a189d90814cd",
         "3b48abce-4359-40fc-ad3e-808cc8dc7f05"
       ],
       "layout": {
@@ -28832,51 +28843,6 @@
         "localizationKey": "nav.config",
         "clickSound": {
           "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
-        },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
-      }
-    },
-    "b919294e-a700-4365-8cac-c98292a63ec4": {
-      "id": "b919294e-a700-4365-8cac-c98292a63ec4",
-      "type": "nl.button",
-      "name": "Back",
-      "parentId": "006f4d5e-88ea-4752-864a-dab4423f9421",
-      "childrenIds": [],
-      "layout": {
-        "x": 40,
-        "y": 442,
-        "width": 230,
-        "height": 58,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "label": "Back",
-        "fontSize": 26,
-        "color": "nlbrand:text.muted",
-        "fontWeight": "normal",
-        "textAlign": "left",
-        "textVerticalAlign": "center",
-        "lineHeight": 1.2,
-        "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.back",
-        "clickSound": {
-          "assetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394"
         },
         "hoverSound": {
           "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
@@ -38444,7 +38410,7 @@
         "32a5585a-6502-4c13-b150-1293d171ee0b",
         "ae957fd5-836a-4444-90a8-98bf775365b4",
         "c51ff06a-1d55-4698-98f5-539825b59a87",
-        "6a041a92-623c-4d48-bb46-ee0d0e2c2a68",
+        "7a015fd2-184d-4ce1-ba48-5cb1649d003a",
         "8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5"
       ],
       "layout": {
@@ -39827,51 +39793,6 @@
         "localizationKey": "nav.config",
         "clickSound": {
           "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
-        },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
-      }
-    },
-    "6a041a92-623c-4d48-bb46-ee0d0e2c2a68": {
-      "id": "6a041a92-623c-4d48-bb46-ee0d0e2c2a68",
-      "type": "nl.button",
-      "name": "Back",
-      "parentId": "684fb728-dab4-4c68-8844-b3d39c9b8cf8",
-      "childrenIds": [],
-      "layout": {
-        "x": 40,
-        "y": 442,
-        "width": 230,
-        "height": 58,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "label": "Back",
-        "fontSize": 26,
-        "color": "nlbrand:text.muted",
-        "fontWeight": "normal",
-        "textAlign": "left",
-        "textVerticalAlign": "center",
-        "lineHeight": 1.2,
-        "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.back",
-        "clickSound": {
-          "assetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394"
         },
         "hoverSound": {
           "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
@@ -45900,7 +45821,7 @@
       "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
       "childrenIds": [
         "f9e9ef68-527d-457c-8801-e0f566349aa1",
-        "9a7c2f1b-f36b-4c27-a813-681b14f9081a"
+        "fc7fed21-4d98-4774-b910-226e964bf1d0"
       ],
       "layout": {
         "x": 0,
@@ -46635,51 +46556,6 @@
               ]
             }
           ]
-        }
-      }
-    },
-    "9a7c2f1b-f36b-4c27-a813-681b14f9081a": {
-      "id": "9a7c2f1b-f36b-4c27-a813-681b14f9081a",
-      "type": "nl.button",
-      "name": "Back",
-      "parentId": "5270fa6a-54b2-416d-8da2-fc73ef03f50e",
-      "childrenIds": [],
-      "layout": {
-        "x": 40,
-        "y": 220,
-        "width": 230,
-        "height": 58,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "label": "Back",
-        "fontSize": 26,
-        "color": "nlbrand:text.muted",
-        "fontWeight": "normal",
-        "textAlign": "left",
-        "textVerticalAlign": "center",
-        "lineHeight": 1.2,
-        "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.back",
-        "clickSound": {
-          "assetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394"
-        },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
         }
       }
     },
@@ -52522,6 +52398,90 @@
         "exitWaitsForChildren": true,
         "exitBlocking": true
       }
+    },
+    "7a015fd2-184d-4ce1-ba48-5cb1649d003a": {
+      "id": "7a015fd2-184d-4ce1-ba48-5cb1649d003a",
+      "type": "nl.button",
+      "name": "Back",
+      "parentId": "684fb728-dab4-4c68-8844-b3d39c9b8cf8",
+      "childrenIds": [],
+      "layout": {
+        "x": 40,
+        "y": 442,
+        "width": 230,
+        "height": 58,
+        "visible": true,
+        "opacity": 1
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+          "linked": true
+        }
+      }
+    },
+    "e386b48a-6996-49e3-8603-a189d90814cd": {
+      "id": "e386b48a-6996-49e3-8603-a189d90814cd",
+      "type": "nl.button",
+      "name": "Back",
+      "parentId": "006f4d5e-88ea-4752-864a-dab4423f9421",
+      "childrenIds": [],
+      "layout": {
+        "x": 40,
+        "y": 442,
+        "width": 230,
+        "height": 58,
+        "visible": true,
+        "opacity": 1
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+          "linked": true
+        }
+      }
+    },
+    "4eed0058-88e7-4767-a0aa-9f8e00ecc93b": {
+      "id": "4eed0058-88e7-4767-a0aa-9f8e00ecc93b",
+      "type": "nl.button",
+      "name": "Back",
+      "parentId": "39146e02-45af-4afc-9168-b83796f2fccc",
+      "childrenIds": [],
+      "layout": {
+        "x": 40,
+        "y": 442,
+        "width": 230,
+        "height": 58,
+        "visible": true,
+        "opacity": 1
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+          "linked": true
+        }
+      }
+    },
+    "fc7fed21-4d98-4774-b910-226e964bf1d0": {
+      "id": "fc7fed21-4d98-4774-b910-226e964bf1d0",
+      "type": "nl.button",
+      "name": "Back",
+      "parentId": "5270fa6a-54b2-416d-8da2-fc73ef03f50e",
+      "childrenIds": [],
+      "layout": {
+        "x": 40,
+        "y": 220,
+        "width": 230,
+        "height": 58,
+        "visible": true,
+        "opacity": 1
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+          "linked": true
+        }
+      }
     }
   },
   "actions": {
@@ -52590,7 +52550,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-03T20:00:09.255Z"
+    "updatedAt": "2026-10-03T21:15:51.882Z"
   },
   "structs": {
     "extra.galleryEntry": {
