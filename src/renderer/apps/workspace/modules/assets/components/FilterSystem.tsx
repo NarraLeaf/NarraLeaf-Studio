@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { Filter, ChevronDown, X, Tag, FileImage, Shapes, Link2, Scale } from "lucide-react";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
-import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { useDismissWhenHidden, useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { AnchoredPanel } from "@/lib/components/elements/HintPopover";
+import { CONTROL_SIZE_CLASS } from "@/lib/components/elements/controlSize";
+import { cn } from "@/lib/utils/cn";
 import type { Translator } from "@shared/i18n";
 
 /** The one thing this factory needs from `useTranslation`: a key in, a string out. */
@@ -33,15 +36,25 @@ export interface FilterSystemProps {
     onFiltersChange: (filters: ActiveFilter[]) => void;
     onFilterOpen?: () => void;
     className?: string;
+    /**
+     * For a toolbar row: the toggle on the 28px step, no summary row under it, and the options
+     * portalled against the toggle. A panel rendered in place is clipped by the panel it was opened
+     * from and always opens downward, which in the bottom tray is off the bottom of the window.
+     * The pressed options and the clear row inside the panel say what the summary row said.
+     */
+    compact?: boolean;
 }
 
 /** The options of the open panel, which the arrow keys walk. */
 const FILTER_OPTION_SELECTOR = "[data-filter-option]";
 
+/** The compact panel's width. Wide enough for the option chips of one group to sit side by side. */
+const COMPACT_PANEL_WIDTH_PX = 288;
+
 /**
  * Extensible filter system component
  */
-export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilterOpen, className = "" }: FilterSystemProps) {
+export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilterOpen, className = "", compact = false }: FilterSystemProps) {
     const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
     const toggleRef = useRef<HTMLButtonElement | null>(null);
@@ -73,6 +86,9 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
         doc.addEventListener("mousedown", onPointerDown, true);
         return () => doc.removeEventListener("mousedown", onPointerDown, true);
     }, [doc, isExpanded]);
+    // The panel this is drawn in is kept alive behind `display: none` when the author moves off it,
+    // and a portalled panel would go on hanging over whatever they moved to.
+    useDismissWhenHidden(() => setIsExpanded(false), isExpanded);
 
     const hasActiveFilters = activeFilters.length > 0;
 
@@ -109,8 +125,54 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
         });
     };
 
+    const optionGroups = (
+        <div className="p-3 space-y-3">
+            {filters.filter(filter => filter.options.length > 0).map(filter => (
+                <div key={filter.id} className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-fg-muted">
+                        {filter.icon}
+                        <span>{filter.label}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {filter.options.map(option => {
+                            const isActive = activeFilters.some(f => f.filterId === filter.id && f.optionId === option.id);
+                            return (
+                                <button
+                                    key={option.id}
+                                    data-filter-option=""
+                                    aria-pressed={isActive}
+                                    onClick={() => handleFilterToggle(filter.id, option.id)}
+                                    className={`
+                                        px-2 py-1 text-xs rounded-md transition-colors
+                                        ${isActive
+                                            ? 'bg-primary text-on-primary'
+                                            : 'bg-fill text-fg-muted hover:bg-fill-strong'
+                                        }
+                                    `}
+                                >
+                                    {option.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+            {/* The compact toggle has no summary row to clear from, so the panel carries it. */}
+            {compact && hasActiveFilters && (
+                <button
+                    data-filter-option=""
+                    onClick={handleClearAllFilters}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-fg-muted rounded-md hover:bg-fill transition-colors"
+                >
+                    <X className="w-3 h-3" />
+                    {t("common.clear")}
+                </button>
+            )}
+        </div>
+    );
+
     return (
-        <div className={`relative ${className}`}>
+        <div className={cn("relative", className)}>
             {/* Filter Toggle Button */}
             <button
                 ref={toggleRef}
@@ -121,23 +183,31 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                         onFilterOpen();
                     }
                 }}
-                className={`
-                    flex min-h-9 cursor-default items-center gap-2 px-3 py-1 rounded-md border transition-colors
-                    ${hasActiveFilters
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-edge-strong bg-fill-subtle hover:bg-fill'
-                    }
-                `}
+                className={cn(
+                    "flex cursor-default items-center rounded-md border transition-colors",
+                    compact ? cn(CONTROL_SIZE_CLASS.sm, "min-w-7 justify-center gap-1 px-1.5") : "min-h-9 gap-2 px-3 py-1 text-sm",
+                    hasActiveFilters
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-edge-strong bg-fill-subtle hover:bg-fill",
+                )}
+                // The compact toggle is the funnel alone, as a toolbar button is: the label is its tooltip.
+                {...(compact ? { "aria-label": t("assets.filter.label"), "data-tip": t("assets.filter.label") } : {})}
             >
-                <Filter className="w-4 h-4" />
-                <span className="text-sm">
-                    {t("assets.filter.label")} {hasActiveFilters && `(${activeFilters.length})`}
-                </span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                <Filter className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
+                {compact ? (
+                    hasActiveFilters && <span className="tabular-nums">{activeFilters.length}</span>
+                ) : (
+                    <>
+                        <span>
+                            {t("assets.filter.label")} {hasActiveFilters && `(${activeFilters.length})`}
+                        </span>
+                        <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </>
+                )}
             </button>
 
             {/* Active Filters Summary */}
-            {hasActiveFilters && (
+            {!compact && hasActiveFilters && (
                 <div className="flex flex-wrap gap-1 mt-2">
                     {getActiveFilterLabels().map((label, index) => (
                         <span
@@ -161,41 +231,20 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                 110px — which stacked every option on its own line and made five groups taller than
                 the panel they filter. A floor width lets the chips sit side by side; a group with
                 nothing to offer (no tags in this project) is not printed at all. */}
-            {isExpanded && (
+            {isExpanded && !compact && (
                 <div ref={panelRef} className="absolute top-full left-0 right-0 mt-2 min-w-64 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
-                    <div className="p-3 space-y-3">
-                        {filters.filter(filter => filter.options.length > 0).map(filter => (
-                            <div key={filter.id} className="space-y-2">
-                                <div className="flex items-center gap-2 text-sm text-fg-muted">
-                                    {filter.icon}
-                                    <span>{filter.label}</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {filter.options.map(option => {
-                                        const isActive = activeFilters.some(f => f.filterId === filter.id && f.optionId === option.id);
-                                        return (
-                                            <button
-                                                key={option.id}
-                                                data-filter-option=""
-                                                aria-pressed={isActive}
-                                                onClick={() => handleFilterToggle(filter.id, option.id)}
-                                                className={`
-                                                    px-2 py-1 text-xs rounded-md transition-colors
-                                                    ${isActive
-                                                        ? 'bg-primary text-on-primary'
-                                                        : 'bg-fill text-fg-muted hover:bg-fill-strong'
-                                                    }
-                                                `}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    {optionGroups}
                 </div>
+            )}
+            {isExpanded && compact && (
+                <AnchoredPanel
+                    anchor={() => toggleRef.current?.getBoundingClientRect() ?? null}
+                    width={COMPACT_PANEL_WIDTH_PX}
+                    panelRef={panelRef}
+                    className="z-[110] max-h-96 overflow-y-auto bg-surface-overlay border border-edge-strong rounded-lg shadow-xl"
+                >
+                    {optionGroups}
+                </AnchoredPanel>
             )}
         </div>
     );

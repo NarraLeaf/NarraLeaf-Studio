@@ -26,11 +26,21 @@ export function useAssetSearch() {
         setSearchQuery(query);
     }, []);
 
+    /**
+     * End the search now rather than a debounce later: leaving the results for a place should not
+     * show the results for another fifth of a second after the place has been chosen.
+     */
+    const clearSearch = useCallback(() => {
+        setSearchQuery("");
+        setActiveQuery("");
+    }, []);
+
     return {
         searchQuery,
         /** Trimmed and lower-cased; empty when nothing is being searched for. */
         activeQuery,
         setSearchQuery: handleSearchQueryChange,
+        clearSearch,
     };
 }
 

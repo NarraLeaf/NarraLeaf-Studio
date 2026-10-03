@@ -6,7 +6,7 @@ import { installVirtualLayoutStub } from "@/lib/utils/virtualLayoutTestStub";
 import { makeAssetSetAxis, resolveAssetSetContents, validateAssetSet, type AssetSet } from "@shared/types/assetSet";
 import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset, type AssetGroup } from "@/lib/workspace/services/assets/types";
-import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
+import { AssetsPanelContext } from "../AssetsPanelContext";
 import { createEmptyAssetCategoryRecord } from "../state/assetCategoryRecord";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { AssetsIconView } from "./AssetsIconView";
@@ -38,12 +38,6 @@ const OUTER = group("g-outer", "UI");
 const INNER = group("g-inner", "Buttons", OUTER.id);
 
 /**
- * The panel around the grid, kept as unhelpful as a caller is allowed to be: `onGroupPathChange` is a
- * fresh closure on every render, and so is the context object. That is what {@link AssetsPanel} used
- * to pass, and the grid has to settle anyway - it publishes its "leave this folder" handler into the
- * panel's own state, so a handler identity that moves every render is a render loop.
- */
-/**
  * A clip rather than a picture: an image tile draws a real thumbnail, which reaches for a cache this
  * test has no window to stand it up in. What is being counted is tiles, and a clip is one.
  */
@@ -60,8 +54,18 @@ function clip(index: number): Asset {
     };
 }
 
-function Harness({ onRender, library = [], sets = [], assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
+function Harness({
+    onRender,
+    library = [],
+    sets = [],
+    assetTransfers = {},
+    unreadableCategories = new Set<AssetCategory>(),
+    onImport = () => undefined,
+    onCreateGroup = () => undefined,
+}: {
     onRender?: () => void;
+    onImport?: (category: AssetCategory, groupId?: string) => void;
+    onCreateGroup?: (category: AssetCategory, parentGroupId?: string) => void;
     library?: Asset[];
     /** Sets of clips, filed at the top of the Media section. */
     sets?: ResolvedAssetSet[];
@@ -69,7 +73,6 @@ function Harness({ onRender, library = [], sets = [], assetTransfers = {}, unrea
     unreadableCategories?: ReadonlySet<AssetCategory>;
 }) {
     const [pathIds, setPathIds] = useState<string[]>([]);
-    const [toolbarCenter, setToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
     onRender?.();
 
     const groups = createEmptyAssetCategoryRecord<AssetGroup>();
@@ -115,8 +118,6 @@ function Harness({ onRender, library = [], sets = [], assetTransfers = {}, unrea
         handleImportToGroup: () => undefined,
         isFocused: () => false,
         isNarrowed: false,
-        compactToolbar: true,
-        setAssetsIconToolbarCenter: setToolbarCenter,
         mediaSupport: new Map(),
         unreadableCategories,
         handleConvertMedia: () => undefined,
@@ -126,20 +127,14 @@ function Harness({ onRender, library = [], sets = [], assetTransfers = {}, unrea
 
     return (
         <AssetsPanelContext.Provider value={contextValue}>
-            {/* Stands in for the compact toolbar's centre slot. */}
-            {toolbarCenter && (
-                <button type="button" data-testid="crumb" onClick={toolbarCenter.onBack}>
-                    {toolbarCenter.title}
-                </button>
-            )}
             <AssetsIconView
                 dropTargetId={null}
                 handleRootDrop={async () => undefined}
                 actionLoading={false}
                 setDropTargetId={() => undefined}
-                handleImport={() => undefined}
+                handleImport={onImport}
                 handleImportRemote={() => undefined}
-                handleCreateGroup={() => undefined}
+                handleCreateGroup={onCreateGroup}
                 iconSize={120}
                 onIconSizeChange={() => undefined}
                 groupPathIds={pathIds}
@@ -240,7 +235,7 @@ describe("AssetsIconView inside a set", () => {
     });
 });
 
-describe("AssetsIconView breadcrumb on a compact toolbar", () => {
+describe("AssetsIconView inside a folder", () => {
     it("settles after entering a folder", () => {
         let renders = 0;
         render(<Harness onRender={() => { renders += 1; }} />);
@@ -248,24 +243,45 @@ describe("AssetsIconView breadcrumb on a compact toolbar", () => {
 
         enter(OUTER.id);
 
-        expect(screen.getByTestId("crumb").textContent).toBe("UI");
-        // Entering costs a render for the path and a render for the published breadcrumb. The
-        // number is loose on purpose; what it rules out is the runaway that made React throw
-        // "Maximum update depth exceeded" and take the panel down with it.
+        // The number is loose on purpose; what it rules out is a runaway render loop.
         expect(renders - beforeEnter).toBeLessThan(10);
     });
 
-    it("goes back to where the grid is now, not where it was when the handler was published", () => {
+    it("makes what its header makes in the folder it is showing, not at the root", () => {
+        const onImport = vi.fn();
+        const onCreateGroup = vi.fn();
+        render(<Harness onImport={onImport} onCreateGroup={onCreateGroup} />);
+
+        enter(OUTER.id);
+        fireEvent.click(document.querySelector('button[data-tip="New Group"]') as HTMLElement);
+        fireEvent.click(document.querySelector('button[data-tip="Import"]') as HTMLElement);
+
+        expect(onCreateGroup).toHaveBeenCalledWith(AssetCategory.Image, OUTER.id);
+        expect(onImport).toHaveBeenCalledWith(AssetCategory.Image, OUTER.id);
+    });
+
+    it("makes things at the root of a section it has not walked into", () => {
+        const onCreateGroup = vi.fn();
+        render(<Harness onCreateGroup={onCreateGroup} />);
+
+        const header = document.querySelector(`[data-asset-category="${AssetCategory.Image}"]`) as HTMLElement;
+        fireEvent.click(header.querySelector('button[data-tip="New Group"]') as HTMLElement);
+
+        expect(onCreateGroup).toHaveBeenCalledWith(AssetCategory.Image, undefined);
+    });
+
+    it("steps back out one folder at a time", () => {
         render(<Harness />);
 
         enter(OUTER.id);
         enter(INNER.id);
-        expect(screen.getByTestId("crumb").textContent).toBe("Buttons");
+        expect(screen.getByText("Buttons")).toBeTruthy();
 
-        fireEvent.click(screen.getByTestId("crumb"));
-        expect(screen.getByTestId("crumb").textContent).toBe("UI");
+        fireEvent.click(screen.getByLabelText("Back to parent group"));
+        expect(document.querySelector(`[data-asset-group-id="${INNER.id}"]`)).not.toBeNull();
 
-        fireEvent.click(screen.getByTestId("crumb"));
-        expect(screen.queryByTestId("crumb")).toBeNull();
+        fireEvent.click(screen.getByLabelText("Back to parent group"));
+        expect(document.querySelector(`[data-asset-group-id="${OUTER.id}"]`)).not.toBeNull();
+        expect(screen.queryByLabelText("Back to parent group")).toBeNull();
     });
 });

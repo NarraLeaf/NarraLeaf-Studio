@@ -24,6 +24,8 @@ export const dialogs = {
     createGroup: {
         title: "Create Group",
         prompt: "Please enter a name for the {type} group",
+        // When the group is made inside another one: the parent is named so the author can see where it goes.
+        promptIn: "Please enter a name for the group in {parent}",
         placeholder: "Enter group name…",
         empty: "Group name cannot be empty",
     },

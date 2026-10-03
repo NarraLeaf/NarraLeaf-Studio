@@ -190,6 +190,7 @@ export const assets = {
         list: "List view",
         icons: "Icon view",
         overview: "Overview",
+        details: "Details view",
     },
     filter: {
         label: "Filters",
@@ -209,6 +210,22 @@ export const assets = {
     },
     list: {
         emptyFiltered: "No assets matched the current filters.",
+    },
+    /**
+     * The bottom tray's browser: a folder tree beside the contents of one folder. `results` stands in
+     * for the folder path while a search or a filter is up, since the results come from the whole
+     * library rather than from the folder. `location` heads the column that says where a result is.
+     */
+    browser: {
+        results: {
+            one: "{count} result",
+            other: "{count} results",
+        },
+        selected: {
+            one: "{count} selected",
+            other: "{count} selected",
+        },
+        location: "Location",
     },
     iconView: {
         updating: "Updating…",
