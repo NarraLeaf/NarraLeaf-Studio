@@ -104,7 +104,8 @@ function describeStage(input: CompositeViewInput): GameAppCompositeStage | null 
         .map(({ entry }): GameAppCompositeGameUi => {
             const slotId = entry.surface.mount.slotId;
             // The same expression the slot surface steps off by (`StageSlotSurfaceBody`), and the
-            // same rule its element tree goes inert by: concealed, or display-only.
+            // same rule its element tree goes inert by: display-only, or anything over the story -
+            // a page or a modal layer, which is exactly when the story is not on screen.
             const concealed = stage.coveredByPage && isStageSlotConcealedByPage(slotId);
             return {
                 key: entry.runtimeScopeId,
@@ -112,7 +113,7 @@ function describeStage(input: CompositeViewInput): GameAppCompositeStage | null 
                 surfaceName: entry.surface.name,
                 slotId,
                 concealed,
-                interactive: stage.pointerLive && entry.takesInput && !concealed,
+                interactive: stage.pointerLive && entry.takesInput && stage.storyOnScreen,
                 takesInput: entry.takesInput,
             };
         });

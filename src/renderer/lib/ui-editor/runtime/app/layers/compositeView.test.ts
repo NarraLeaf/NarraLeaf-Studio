@@ -152,6 +152,29 @@ describe("buildCompositeView", () => {
         expect(view.page).toMatchObject({ key: "settings:3", keyboardOwner: true, interactive: true });
     });
 
+    it("takes clicks from the Game UI under a modal layer over the story, without fading it", () => {
+        const controller = new LayerStackController();
+        controller.show({ surfaceId: "confirm", modal: true });
+        const view = describeStack({
+            controller,
+            gameHiddenKeys: ["menu:1"],
+            stage: {
+                storyOnScreen: false,
+                coveredByPage: false,
+                pointerLive: true,
+                surfaces: [
+                    { runtimeScopeId: "s:dialog", surface: stageSurface("box", "dialog"), takesInput: true },
+                    { runtimeScopeId: "s:onStage", surface: stageSurface("quick", "onStage"), takesInput: true },
+                ],
+            },
+        });
+        expect(view.stage?.gameUi.map(ui => [ui.slotId, ui.concealed, ui.interactive])).toEqual([
+            ["dialog", false, false],
+            ["onStage", false, false],
+        ]);
+        expect(view.layers[0]).toMatchObject({ interactive: true, keyboardOwner: true, modal: true });
+    });
+
     it("marks a layer the host could not put on screen", () => {
         const controller = new LayerStackController();
         const shown = controller.show({ surfaceId: "confirm" });

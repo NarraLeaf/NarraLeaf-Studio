@@ -501,3 +501,23 @@ describe("the keys on the stage", () => {
         expect(game.errors).toEqual([]);
     });
 });
+
+describe("the pointer on the stage", () => {
+    it("goes off the Game UI while anything covers the story, and the Game UI stays on screen under a layer", async () => {
+        const { game, view } = await onStage(true);
+        const shell = (id: string) => view.container.querySelector<HTMLElement>(`[data-ui-surface-id='${id}']`)!;
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(false);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(false);
+
+        // A modal layer over the story: no page, so nothing is concealed, and nothing on the stage
+        // may take a press either - the layer has declared everything under it inert.
+        view.rerender(<Stage options={game.slotOptions} menu covered />);
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(true);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(true);
+        expect(shell(DIALOGUE).style.opacity).not.toBe("0");
+
+        view.rerender(<Stage options={game.slotOptions} menu />);
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(false);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(false);
+    });
+});
