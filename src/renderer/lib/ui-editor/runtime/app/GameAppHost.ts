@@ -18,7 +18,7 @@ import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { GameMenuModel } from "@shared/types/gameMenu";
 import type { GameStorageDurability } from "@shared/types/gameRuntime";
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -663,17 +663,63 @@ export type GameAppCompositeQueuedLayer = {
     ownerScopeId: string;
 };
 
+/** One Game UI surface the story has on the stage. */
+export type GameAppCompositeGameUi = {
+    /** Its runtime scope: one per drawing of a choice list, one per surface otherwise. */
+    key: string;
+    surfaceId: string;
+    /** The surface's authored name. */
+    surfaceName: string;
+    slotId: UIStageSlotId;
+    /** Stepped off the screen, still mounted, because a page is drawn over the stage. */
+    concealed: boolean;
+    /** Whether its controls take pointer input this frame. */
+    interactive: boolean;
+    /**
+     * Whether it is one of the surfaces the keys reach while the stage owns them. False for a
+     * display-only slot, which answers neither a pointer nor a key.
+     */
+    takesInput: boolean;
+};
+
+/** The game stage, while a game has it on screen. */
+export type GameAppCompositeStage = {
+    /** Whether a click on the stage reaches the story this frame. */
+    interactive: boolean;
+    /** True when the keys go to the Game UI on the stage, rather than to a page or a layer. */
+    keyboardOwner: boolean;
+    /** The Game UI surfaces mounted on the stage, bottom to top. */
+    gameUi: readonly GameAppCompositeGameUi[];
+};
+
+/** A page the page stack holds and the screen does not draw. */
+export type GameAppCompositeOffScreenPage = {
+    key: string;
+    surfaceId: string;
+    surfaceName: string | null;
+    /**
+     * True for a page a running game took the screen from. It stays hidden until the game ends;
+     * the others are under the page on screen and return as the pages above them close.
+     */
+    hiddenForGame: boolean;
+};
+
 /**
  * The whole composite, as the debug panel reads it.
  *
  * Assembled where the composite is assembled, and never recomputed by a reader: input ownership has
- * exactly one arbiter (`resolveCompositeInput`), and a panel that worked out for itself who holds
- * the keyboard would be reporting its own second opinion at precisely the moment the author is
- * trying to find out why the first one is not what they expected.
+ * exactly one arbiter (`resolveCompositeInput`, and `resolveKeyboardOwnerLane` for whether the keys
+ * reach anything at all), and a panel that worked out for itself who holds the keyboard would be
+ * reporting its own second opinion at precisely the moment the author is trying to find out why the
+ * first one is not what they expected.
  */
 export type GameAppCompositeView = {
-    /** The entry the page lane is settling on, or null while it has none. */
+    /** The game stage and its Game UI, or null while no game has the stage on screen. */
+    stage: GameAppCompositeStage | null;
+    /** The page the page lane draws, or null while it draws none - a running game hides them all. */
     page: GameAppCompositeSlot | null;
+    /** Pages on the page stack that are not on screen, bottom to top. */
+    offScreenPages: readonly GameAppCompositeOffScreenPage[];
     /** Layers bottom to top. */
     layers: readonly GameAppCompositeLayer[];
     /** Queued layers in arrival order. */
