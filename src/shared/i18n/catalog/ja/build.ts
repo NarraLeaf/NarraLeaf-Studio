@@ -20,11 +20,19 @@ export const build = {
     },
     unavailable: {
         windows: "この端末では Windows 向けにビルドできない",
-        macos: "macOS 向けのビルドは Mac でしかできない",
+        macos: "この端末では macOS 向けにビルドできない",
         linux: "この端末では Linux 向けにビルドできない",
         web: "Web 向けのビルドはどの端末でもできる",
         android: "Android 向けのビルドはどの端末でもできる",
         ios: "iOS 向けのビルドはどの端末でもできる",
+    },
+    formatUnavailable: {
+        windows: "この端末では使えない",
+        macos: "Mac でのビルドが必要",
+        linux: "Windows では使えない",
+        web: "この端末では使えない",
+        android: "この端末では使えない",
+        ios: "この端末では使えない",
     },
     format: {
         zip: "ポータブル ZIP",
@@ -271,6 +279,7 @@ export const build = {
     preflight: {
         "no-targets": "プラットフォームと形式を少なくとも 1 つ選ぶ",
         "unbuildable-platform": "この端末では {platform} 向けにビルドできない",
+        "unbuildable-format": "この端末では {platform} 向けの {format} 形式をビルドできない",
         "version-invalid": "バージョン {version} はセマンティックバージョンとして不正で、ビルドは失敗する",
         "version-missing": "バージョンが未設定。ゲームは 0.0.0 としてビルドされる",
         "identifier-missing": "プロジェクトの識別子が未設定。アプリ ID の {appId} を使う",

@@ -19,11 +19,19 @@ export const build = {
     },
     unavailable: {
         windows: "当前设备无法为 Windows 平台构建",
-        macos: "只有 Mac 才能为 macOS 平台构建",
+        macos: "当前设备无法为 macOS 平台构建",
         linux: "当前设备无法为 Linux 平台构建",
         web: "任何设备都可以为 Web 平台构建",
         android: "任何设备都可以为 Android 平台构建",
         ios: "任何设备都可以为 iOS 平台构建",
+    },
+    formatUnavailable: {
+        windows: "当前设备不可用",
+        macos: "需要在 Mac 上构建",
+        linux: "在 Windows 上不可用",
+        web: "当前设备不可用",
+        android: "当前设备不可用",
+        ios: "当前设备不可用",
     },
     format: {
         zip: "便携 ZIP",
@@ -265,6 +273,7 @@ export const build = {
     preflight: {
         "no-targets": "请至少选择一个平台和格式",
         "unbuildable-platform": "当前设备无法为 {platform} 平台构建",
+        "unbuildable-format": "当前设备无法为 {platform} 平台构建 {format} 格式",
         "version-invalid": "项目版本 {version} 不是合法的语义化版本号，构建会失败",
         "version-missing": "未设置项目版本，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",

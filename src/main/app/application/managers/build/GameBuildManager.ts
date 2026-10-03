@@ -19,7 +19,10 @@ import {
     deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     gameBuildArtifactBaseName,
+    hostBuildLimitsSentence,
+    hostCanBuildFormat,
     hostCanBuildTarget,
+    hostPackagesWithoutPlatformTools,
     iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -643,6 +646,17 @@ export class GameBuildManager {
                     section: "targets",
                     detail: { platform: target.platform },
                 });
+                continue;
+            }
+            for (const format of target.formats) {
+                if (!hostCanBuildFormat(hostPlatform, target.platform, format)) {
+                    findings.push({
+                        code: "unbuildable-format",
+                        severity: "error",
+                        section: "targets",
+                        detail: { platform: target.platform, format },
+                    });
+                }
             }
         }
         const crossTargets = desktopTargets.filter(
@@ -1956,12 +1970,11 @@ export class GameBuildManager {
         // stored selection carried across hosts (or any non-UI caller) could still
         // ask for one. Fail early and clearly rather than deep inside electron-builder.
         // (The web target builds everywhere and needs no check.)
-        const unbuildable = desktopTargets.filter(target => !hostCanBuildTarget(hostPlatform, target.platform));
+        const unbuildable = desktopTargets.flatMap(target => target.formats
+            .filter(format => !hostCanBuildFormat(hostPlatform, target.platform, format))
+            .map(format => `${target.platform} ${format}`));
         if (unbuildable.length > 0) {
-            throw new Error(
-                `Cannot build for ${unbuildable.map(t => t.platform).join(", ")} on this machine. ` +
-                `macOS builds require a Mac; Linux builds require a Unix host.`,
-            );
+            throw new Error(`Cannot build ${unbuildable.join(", ")} on this machine. ${hostBuildLimitsSentence(hostPlatform)}`);
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
         this.noteRunVariant(session, appTag);
@@ -2265,6 +2278,8 @@ export class GameBuildManager {
             ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
+            hostCacheRoot: this.app.getCacheRootDir(),
+            downloadRewrites: currentDownloadRewrites(),
             asarUnpack: buildAsarUnpackPatterns(protectAssets),
             electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
@@ -2287,6 +2302,9 @@ export class GameBuildManager {
                     hostPlatform,
                 )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
+                    : {}),
+                ...(hostPackagesWithoutPlatformTools(hostPlatform, target.platform)
+                    ? { hostElectronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
                 ...await this.resolveDesktopTargetSigning(session, target.platform, signing),

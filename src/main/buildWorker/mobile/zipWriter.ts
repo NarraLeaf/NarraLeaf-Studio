@@ -102,6 +102,13 @@ export type ZipWriteEntry = {
     /** Unix permission bits (0o644/0o755); the writer adds the file-type bits. */
     unixMode?: number;
     /**
+     * The entry is a symbolic link, whose source holds the link's target. Written the way Info-ZIP
+     * and macOS's Archive Utility read one back: the target as stored data, `S_IFLNK` in the mode.
+     * A macOS bundle's frameworks are joined by such links, and an archive is the only form in which
+     * a Windows host can carry them.
+     */
+    symlink?: boolean;
+    /**
      * Align this entry's data start regardless of the archive-wide stored
      * alignment - resources.arsc needs 4 even if it were compressed-eligible.
      */
@@ -314,7 +321,7 @@ export async function writeZip(
             uncompressedSize = source.uncompressedSize;
             openData = () => toIterable(source.open());
         } else if (source.kind === "buffer") {
-            const wantsDeflate = (entry.method ?? defaultMethodForName(entry.name)) === "deflate";
+            const wantsDeflate = !entry.symlink && (entry.method ?? defaultMethodForName(entry.name)) === "deflate";
             uncompressedSize = source.data.length;
             knownCrc = crc32(source.data);
             // Buffer sources are small (manifests, html, patched binaries):
@@ -326,7 +333,7 @@ export async function writeZip(
                 yield encoded;
             };
         } else {
-            const wantsDeflate = (entry.method ?? defaultMethodForName(entry.name)) === "deflate";
+            const wantsDeflate = !entry.symlink && (entry.method ?? defaultMethodForName(entry.name)) === "deflate";
             uncompressedSize = source.size;
             if (wantsDeflate) {
                 if (source.size >= MAX_UINT32) {
@@ -426,8 +433,8 @@ export async function writeZip(
             }
         }
 
-        const unixMode = entry.unixMode ?? (isDirectory ? 0o755 : 0o644);
-        const fileType = isDirectory ? 0o040000 : 0o100000;
+        const unixMode = entry.unixMode ?? (isDirectory || entry.symlink ? 0o755 : 0o644);
+        const fileType = isDirectory ? 0o040000 : entry.symlink ? 0o120000 : 0o100000;
         // Unix mode in the high word, the MS-DOS directory bit in the low
         // byte. The final >>> 0 matters: every 32-bit operator in JS returns
         // a SIGNED value, and a negative number blows up writeUInt32LE.
