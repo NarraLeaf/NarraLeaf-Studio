@@ -186,7 +186,13 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
-import { createStoryStartGate, publishMenuEnvironmentMount, surfacesMayDraw } from "./storyBootGate";
+import {
+    createStoryStartGate,
+    layersMayDraw,
+    publishMenuEnvironmentMount,
+    resolveBootPaint,
+    surfacesMayDraw,
+} from "./storyBootGate";
 import { errorMessage, normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { needsRunningGame, refusal } from "./runtimeRefusals";
 import { createPlayHead, type PlayHead } from "./playHead";
@@ -862,45 +868,55 @@ export function GameApp(props: GameAppProps): ReactNode {
     /** The last host launch token acted on, so one request cannot start two runs. */
     const consumedLaunchTokenRef = useRef<number | null>(null);
     /**
-     * Whether a story is being put back on the stage of this running window in place of the one
-     * that was playing - and so whether the surface stack is held back (see `surfacesMayDraw`).
+     * A story is still on its way back to the stage of this running window, in place of the one that
+     * was playing.
      *
      * Two things do that: a launch the host asked for (a story row's play control pressed while Dev
-     * Mode is open), and a hot reload of a game that had been entered. A fresh window making the
-     * same launch never paints its pages: they wait for the boot, and the boot is the launch. A
-     * window that is already running had no such wait. The new bundle resets the page stack to the
-     * page the window opens on, the mount hides the stage, and that page faded in and back out over
-     * the stage for as long as the story took to come up - with the story already playing
-     * underneath it by the time it had gone. What is shown instead is what a fresh window shows
-     * before its first frame: the shell's own background, then the stage.
+     * Mode is open), and a hot reload of a game that had been entered. While one is in flight the
+     * window behaves as one opened on that story does during its boot: no page is drawn and
+     * `App Boot` waits for the stage - see `surfacesMayDraw` and `resolveBootPaint`. The revision it
+     * arrived with has put the page stack back on the entry page, and without this that page faded in
+     * and back out over the stage for as long as the story took to come up, with the story already
+     * playing underneath it; it also fired `App Boot` before the story's own `On Game Ready`, and the
+     * story's entry then cleared whatever layer that had opened.
      *
-     * Raised and lowered through {@link raiseInPlaceStartCover} only. Each raise has its own token,
-     * so a start overtaken by a newer one does not lower the cover the newer one is mounting under.
+     * Raised and lowered through {@link holdForStoryLaunch} only.
      */
-    const [inPlaceStartPending, setInPlaceStartPending] = useState(false);
-    const inPlaceStartCoverRef = useRef<number | null>(null);
-    const inPlaceStartCoverSeqRef = useRef(0);
+    const [storyLaunchPending, setStoryLaunchPendingState] = useState(false);
     /**
-     * Hold the surface stack back for one start in place; the returned function lets it go.
-     *
-     * Called in the same commit as the page-stack reset the new bundle triggered (that effect runs
-     * before the two that call this), so not one frame of the opening page is drawn. Bounded like
-     * the boot it stands in for: a start that never lands must not leave the window blank for good,
-     * and by then the page underneath is the honest thing to show.
+     * The same flag, for the `App Boot` effect to read in the pass that claims the launch: the new
+     * revision arrives in a render where the state is still false and the previous run's stage is
+     * still marked visible, so that effect would otherwise fire `App Boot` for the launch's revision
+     * before the launch had started.
      */
-    const raiseInPlaceStartCover = useCallback((): (() => void) => {
-        const token = ++inPlaceStartCoverSeqRef.current;
-        inPlaceStartCoverRef.current = token;
-        setInPlaceStartPending(true);
-        const lower = (): void => {
+    const storyLaunchPendingRef = useRef(false);
+    /** The hold that may lower the flag: a start overtaken by a newer one must not reveal the pages under it. */
+    const storyLaunchHoldRef = useRef<number | null>(null);
+    const storyLaunchHoldSeqRef = useRef(0);
+    /**
+     * Raise the flag for one start in place; the returned function lowers it, if no newer start has
+     * raised it since.
+     *
+     * Called from the effects that claim the new revision, which run in the same commit as the
+     * page-stack reset it triggered, so not one frame of the entry page is drawn. Bounded like the
+     * boot it stands in for: a start that never lands must not leave the window blank for good, and
+     * by then the page underneath is the honest thing to show. A failed start lowers it too.
+     */
+    const holdForStoryLaunch = useCallback((): (() => void) => {
+        const hold = ++storyLaunchHoldSeqRef.current;
+        storyLaunchHoldRef.current = hold;
+        storyLaunchPendingRef.current = true;
+        setStoryLaunchPendingState(true);
+        const release = (): void => {
             window.clearTimeout(cap);
-            if (inPlaceStartCoverRef.current === token) {
-                inPlaceStartCoverRef.current = null;
-                setInPlaceStartPending(false);
+            if (storyLaunchHoldRef.current === hold) {
+                storyLaunchHoldRef.current = null;
+                storyLaunchPendingRef.current = false;
+                setStoryLaunchPendingState(false);
             }
         };
-        const cap = window.setTimeout(lower, NLR_BOOT_PRELOAD_TIMEOUT_MS);
-        return lower;
+        const cap = window.setTimeout(release, NLR_BOOT_PRELOAD_TIMEOUT_MS);
+        return release;
     }, []);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
@@ -5092,9 +5108,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         storyBootFinished: nlrPreloadDone,
         hostDrawsBeforeStoryBoot: host.surfacesBeforeStoryBoot === true,
         localeResumePending,
-        inPlaceStartPending,
+        storyLaunchPending,
     });
-    const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
+    /** The layer lane's own gate, which the story boot does not hold - see `layersMayDraw`. */
+    const layersReady = layersMayDraw({ localeResumePending });
+    const renderedLayerKeys = new Set(layersReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
         .filter(layer => !renderedLayerKeys.has(layer.key))
         .map(layer => layer.key);
@@ -5260,8 +5278,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             ...(launch.snapshotId ? { snapshotId: launch.snapshotId } : {}),
         };
         // The page this bundle reset the stack to stays undrawn until the story is up: see
-        // `inPlaceStartPending`.
-        const lowerCover = raiseInPlaceStartCover();
+        // `storyLaunchPending`.
+        const releaseHold = holdForStoryLaunch();
         void (async () => {
             try {
                 await startStoryInGame(request, { forceReinit: true });
@@ -5276,11 +5294,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportFailure(err, { prefix: `[${host.id}] launch failed: ` });
             } finally {
                 // By here the story is on the stage and the pages are hidden behind it, or the
-                // launch failed and the page underneath is what the author should see.
-                lowerCover();
+                // launch failed and the page underneath is what the author should see. A launch
+                // overtaken by a newer one leaves the flag to that one.
+                releaseHold();
             }
         })();
-    }, [bundle.bundleId, bundle.revision, bundleSuperseded, host, raiseInPlaceStartCover, reportFailure, startStoryInGame]);
+    }, [bundle.bundleId, bundle.revision, bundleSuperseded, holdForStoryLaunch, host, reportFailure, startStoryInGame]);
 
     useEffect(() => {
         if (activeStoryRevisionRef.current === null) {
@@ -5309,9 +5328,9 @@ export function GameApp(props: GameAppProps): ReactNode {
          */
         const resumeState = wasEntered ? captureStoryResumeState() : null;
         // A game on screen comes straight back, without the page this bundle reset the stack to
-        // being drawn over it in between - see `inPlaceStartPending`. Sitting on a page, that page
+        // being drawn over it in between - see `storyLaunchPending`. Sitting on a page, that page
         // is what the author is looking at, and nothing is held.
-        const lowerCover = wasEntered && request ? raiseInPlaceStartCover() : null;
+        const releaseHold = wasEntered && request ? holdForStoryLaunch() : null;
         void (async () => {
             try {
                 if (request) {
@@ -5365,7 +5384,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             } finally {
-                lowerCover?.();
+                releaseHold?.();
             }
         })();
     }, [
@@ -5378,7 +5397,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host,
         mountNlrSession,
         playHead,
-        raiseInPlaceStartCover,
+        holdForStoryLaunch,
         resolveRunningStoryDocument,
         startEmptyNlrEnvironment,
     ]);
@@ -5458,23 +5477,36 @@ export function GameApp(props: GameAppProps): ReactNode {
         pluginHost?.detachSession();
     }, [clearCurrentDialogState, detachTextReadTracker, nlrDialogClickTargets, nlrSession?.id, playHead, pluginHost]);
 
+    /** A layer being drawn has had its first paint - a splash `On Game Ready` put up, during a boot. */
+    const layerPainted = visibleLayers.some(
+        item => renderedLayerKeys.has(item.layer.key) && prepaintReadyKeys.has(item.layer.key),
+    );
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
             return;
         }
-        // Wait for the initial surface to prepaint, unless the game stage has already been
-        // revealed (a direct story launch covers the surfaces, which then never prepaint).
-        if (activeEntry && !prepaintReadyKeys.has(activeEntry.key) && !gameStageVisible) {
-            return;
-        }
-        // The boot is over: something the player can see is on the screen. Reported here rather
-        // than beside it because this is already the one place that knows the condition - the first
-        // surface has prepainted, or the stage covered the surfaces before any of them could - and
+        // The initial surface has prepainted, or the game stage has been revealed (a direct story
+        // launch covers the surfaces, which then never prepaint), or a layer opened during the boot
+        // has painted. Which of those allow what is `resolveBootPaint`'s answer.
+        const paint = resolveBootPaint({
+            pagePainted: !activeEntry || prepaintReadyKeys.has(activeEntry.key),
+            stageVisible: gameStageVisible,
+            layerPainted,
+            storyBootFinished: nlrPreloadDone,
+            // The ref, not the state: see `storyLaunchPendingRef`. The state is still a dependency
+            // below, so the effect runs again once the launch has reached its stage.
+            storyLaunchPending: storyLaunchPendingRef.current,
+        });
+        // Something the player can see is on the screen, so the loading state may go. Reported here
+        // rather than beside it because this is already the one place that knows the condition, and
         // a second copy of that rule would be the one that drifts. Once per window: a hot reload
         // comes back through here with a new signature, and it restarts the story, not the boot.
-        if (!bootFirstFrameRef.current) {
+        if (paint.firstFrame && !bootFirstFrameRef.current) {
             bootFirstFrameRef.current = true;
             bootReporter.firstFrame();
+        }
+        if (!paint.appBoot) {
+            return;
         }
         const sig = `${bundle.bundleId}:${bundle.revision}`;
         if (appBootFiredRef.current === sig) {
@@ -5492,7 +5524,19 @@ export function GameApp(props: GameAppProps): ReactNode {
             setSurfaceState: (key, value) => surfaceStore.set(key, value),
             executionManager: core.executionManager,
         });
-    }, [activeEntry, bootReporter, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
+    }, [
+        activeEntry,
+        bootReporter,
+        bundle,
+        core,
+        gameStageVisible,
+        host.ready,
+        hostAdapterBundle,
+        layerPainted,
+        nlrPreloadDone,
+        prepaintReadyKeys,
+        storyLaunchPending,
+    ]);
 
     /**
      * What the engine's NVL page reads on for while it stands in for the dialogue box: the actions the
@@ -6314,8 +6358,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                         <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
                     </div>
                 ) : null}
-                {/* Surface system starts only after the NLR environment boot preload finishes. The box
-                    also guards the stage while a page or layer plays its exit - see `SurfaceStackBox`. */}
+                {/* The pages start only after the NLR environment boot preload finishes; the layers do
+                    not wait for it (see `layersMayDraw`). The box also guards the stage while a page
+                    or layer plays its exit - see `SurfaceStackBox`. */}
                 <SurfaceStackBox className="absolute inset-0 z-10">
                     <AnimatePresence
                         custom={navState.direction}
@@ -6368,7 +6413,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         mode="sync"
                         onExitComplete={handleLayerExitComplete}
                     >
-                        {surfacesReady
+                        {layersReady
                             ? visibleLayers.map(({ layer, surface }, index) => (
                                 <AppSurfaceLayerWithAdapter
                                     key={layer.key}

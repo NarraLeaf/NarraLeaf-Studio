@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createStoryStartGate, publishMenuEnvironmentMount, surfacesMayDraw } from "./storyBootGate";
+import {
+    createStoryStartGate,
+    layersMayDraw,
+    publishMenuEnvironmentMount,
+    resolveBootPaint,
+    surfacesMayDraw,
+} from "./storyBootGate";
 
 /**
  * Drawing the interface and having a story to start used to be the same moment. Dev Mode pulls
@@ -14,7 +20,6 @@ describe("surfacesMayDraw", () => {
             storyBootFinished: false,
             hostDrawsBeforeStoryBoot: false,
             localeResumePending: false,
-            inPlaceStartPending: false,
         })).toBe(false);
     });
 
@@ -23,7 +28,6 @@ describe("surfacesMayDraw", () => {
             storyBootFinished: false,
             hostDrawsBeforeStoryBoot: true,
             localeResumePending: false,
-            inPlaceStartPending: false,
         })).toBe(true);
     });
 
@@ -33,24 +37,96 @@ describe("surfacesMayDraw", () => {
                 storyBootFinished: true,
                 hostDrawsBeforeStoryBoot,
                 localeResumePending: true,
-                inPlaceStartPending: false,
             })).toBe(false);
         }
     });
 
-    it("holds a running window's pages while it puts a story back on its stage", () => {
-        // A story row's play control pressed while Dev Mode is open, or a hot reload mid-game. The
-        // window booted long ago and draws its interface ahead of any boot, so neither of those holds
-        // anything back - and the page the window opens on used to fade in and out over the stage
-        // that was being mounted.
+    it("holds the pages while a story asked for in place is on its way to its stage", () => {
+        // The window has booted long ago and may even draw early; the launch still opens on the
+        // stage, as a window opened on that story does, and not on the title the new bundle reset to.
         for (const hostDrawsBeforeStoryBoot of [false, true]) {
             expect(surfacesMayDraw({
                 storyBootFinished: true,
                 hostDrawsBeforeStoryBoot,
                 localeResumePending: false,
-                inPlaceStartPending: true,
+                storyLaunchPending: true,
             })).toBe(false);
         }
+        expect(surfacesMayDraw({
+            storyBootFinished: true,
+            hostDrawsBeforeStoryBoot: false,
+            localeResumePending: false,
+            storyLaunchPending: false,
+        })).toBe(true);
+    });
+});
+
+/**
+ * A splash opened by `On Game Ready` is drawn in every launch, not only where the pages happen to be
+ * up early. The boot waits for that graph, so a layer held back with the pages opened and closed
+ * again behind the loading screen - in a story launch, in Preview and in a built game.
+ */
+describe("layersMayDraw", () => {
+    it("does not wait for the story boot", () => {
+        expect(layersMayDraw({ localeResumePending: false })).toBe(true);
+    });
+
+    it("waits for a language restart, as the pages do", () => {
+        expect(layersMayDraw({ localeResumePending: true })).toBe(false);
+    });
+
+    it("is the gate that differs from the pages' during a boot", () => {
+        const boot = { storyBootFinished: false, hostDrawsBeforeStoryBoot: false, localeResumePending: false };
+        expect(surfacesMayDraw(boot)).toBe(false);
+        expect(layersMayDraw(boot)).toBe(true);
+    });
+});
+
+describe("resolveBootPaint", () => {
+    const nothing = {
+        pagePainted: false,
+        stageVisible: false,
+        layerPainted: false,
+        storyBootFinished: false,
+        storyLaunchPending: false,
+    };
+
+    it("ends the loading state for a layer painted during the boot, without running App Boot", () => {
+        // The splash is the first thing the player sees, so the loading screen over it has to go;
+        // but `On Game Ready` is still running it, and App Boot is promised that it is over.
+        expect(resolveBootPaint({ ...nothing, layerPainted: true })).toEqual({ firstFrame: true, appBoot: false });
+    });
+
+    it("runs App Boot on the first page only once the story boot is over", () => {
+        // A host that draws its pages early painted the title before On Game Ready had run, and the
+        // two events fired the other way round from a built game.
+        expect(resolveBootPaint({ ...nothing, pagePainted: true })).toEqual({ firstFrame: true, appBoot: false });
+        expect(resolveBootPaint({ ...nothing, pagePainted: true, storyBootFinished: true }))
+            .toEqual({ firstFrame: true, appBoot: true });
+    });
+
+    it("runs App Boot on the stage of a story launch", () => {
+        expect(resolveBootPaint({ ...nothing, stageVisible: true, storyBootFinished: true }))
+            .toEqual({ firstFrame: true, appBoot: true });
+    });
+
+    it("holds App Boot for a story asked for in place until that story is on its stage", () => {
+        expect(resolveBootPaint({
+            ...nothing,
+            pagePainted: true,
+            storyBootFinished: true,
+            storyLaunchPending: true,
+        }).appBoot).toBe(false);
+        expect(resolveBootPaint({
+            ...nothing,
+            stageVisible: true,
+            storyBootFinished: true,
+            storyLaunchPending: false,
+        }).appBoot).toBe(true);
+    });
+
+    it("says nothing while nothing is on the screen", () => {
+        expect(resolveBootPaint({ ...nothing, storyBootFinished: true })).toEqual({ firstFrame: false, appBoot: false });
     });
 });
 

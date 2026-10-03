@@ -10,12 +10,18 @@ import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import { needsRunningGame } from "./runtimeRefusals";
 
 /**
- * Whether the surface stack may draw.
+ * Whether the page lane of the surface stack may draw.
  *
  * A host that draws ahead of the story boot still waits on a language restart: that one is putting
- * a playthrough back on screen, and drawing over it would show the player the wrong one. It waits
- * the same way while a running window puts a story back on its stage in place of the one that was
- * playing, which is the boot of a fresh window happening again in place.
+ * a playthrough back on screen, and drawing over it would show the player the wrong one.
+ *
+ * And on a story the host asked for in place (Dev Mode's row play control, pressed while the window
+ * is open). That launch brings a new bundle, which puts the page stack back on the entry page, and
+ * the window already has its boot behind it - so nothing else would stop the title screen from
+ * painting, cold and with its buttons live, for as long as the story takes to compile and mount.
+ * A window opened on a story never shows it; one asked for a story in place must not either. A hot
+ * reload of a game that had been entered is the same thing - the story is put back on its stage
+ * under a page stack the new bundle has just reset - and is held the same way.
  */
 export function surfacesMayDraw(input: {
     /** The boot preload finished (or timed out, which counts). */
@@ -25,18 +31,66 @@ export function surfacesMayDraw(input: {
     /** A language restart is putting a saved playthrough back. */
     localeResumePending: boolean;
     /**
-     * A running window is putting a story on its stage in place of the one that was playing: a
-     * launch the host asked for (a story row's play control pressed while Dev Mode is open), or a
-     * hot reload of a game that had been entered. A fresh window making the same launch holds its
-     * surfaces until the story is on the stage, so it never paints the page it opens on; without
-     * this the running window painted that page for as long as the story took to mount, and played
-     * its entrance and exit over the stage.
+     * A story the host asked for in place, or a hot reload of a game that had been entered, has not
+     * reached its stage yet.
      */
-    inPlaceStartPending: boolean;
+    storyLaunchPending?: boolean;
 }): boolean {
     return (input.storyBootFinished || input.hostDrawsBeforeStoryBoot)
         && !input.localeResumePending
-        && !input.inPlaceStartPending;
+        && !input.storyLaunchPending;
+}
+
+/**
+ * Whether the layers may draw.
+ *
+ * Not held for the story boot the way the pages are. A layer open during a boot was opened by the
+ * author's own graphs - `On Game Ready` above all: a splash, a notice, a first-run question - and
+ * that graph is what the boot waits for, so holding its layer back until the boot was over meant the
+ * layer opened, ran its course and closed again behind the loading screen. It only showed where a host
+ * draws the pages early (Dev Mode opening on its interface), which made the same blueprint behave
+ * differently in a story launch, in Preview and in the built game.
+ *
+ * A language restart still holds them, for the reason it holds the pages.
+ */
+export function layersMayDraw(input: {
+    /** A language restart is putting a saved playthrough back. */
+    localeResumePending: boolean;
+}): boolean {
+    return !input.localeResumePending;
+}
+
+/**
+ * What the screen so far allows the boot to say: that the player is looking at the game, and that
+ * `App Boot` may run.
+ *
+ * Two answers, because they stopped being one when a layer could be drawn during the boot. A
+ * splash opened by `On Game Ready` is the first thing the player sees, so it ends the loading state
+ * - but it is not the first screen `App Boot` is promised: that event runs once the game has
+ * finished starting, with `On Game Ready` already over, on the page or stage the game opens on.
+ *
+ * `App Boot` also waits for the story boot itself. A host that draws its pages early (Dev Mode)
+ * painted the entry page before `On Game Ready` had run, and the two events fired in the opposite
+ * order to a built game's. And for a story asked for in place, it waits for that story's stage:
+ * that is the screen such a launch opens on, as it is for a window opened on a story.
+ */
+export function resolveBootPaint(input: {
+    /** The page the stack is settling on has had its first paint, or there is no page to wait for. */
+    pagePainted: boolean;
+    /** The story stage has been revealed. */
+    stageVisible: boolean;
+    /** A layer that is being drawn has had its first paint. */
+    layerPainted: boolean;
+    /** The boot preload finished (or timed out, which counts), so `On Game Ready` has run. */
+    storyBootFinished: boolean;
+    /** A story put back on the stage in place (see `surfacesMayDraw`) has not reached it yet. */
+    storyLaunchPending: boolean;
+}): { firstFrame: boolean; appBoot: boolean } {
+    const screenShowing = input.pagePainted || input.stageVisible;
+    return {
+        firstFrame: screenShowing || input.layerPainted,
+        appBoot: screenShowing && input.storyBootFinished && !input.storyLaunchPending,
+    };
 }
 
 export type StoryStartGate = (
