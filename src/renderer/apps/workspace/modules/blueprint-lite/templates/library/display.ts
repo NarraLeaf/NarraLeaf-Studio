@@ -1,10 +1,15 @@
 /**
- * Display: a text that shows something the game knows - play time, the date, a setting's value.
+ * Display: a text or a picture that shows something the game knows - play time, the time, who is
+ * speaking.
+ *
+ * Each one writes into the widget itself from its own blueprint rather than through a value binding,
+ * as the starter's dialogue box does: a value binding is re-run when a variable it read changes, and
+ * none of these is a variable.
  *
  * Comments in English per project convention.
  */
 
-import { Clock, History, Timer } from "lucide-react";
+import { Clock, History, MessageCircleMore, Timer, UserRound } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines, WIDGET_OWNERS } from "./templateText";
 
@@ -85,6 +90,50 @@ export const DISPLAY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             "        timeStyle = short",
             "        locale = \"\"",
             "    now.timestamp -> format.timestamp",
+        ),
+    },
+    {
+        id: "speakerNameText",
+        category: "display",
+        owners: WIDGET_OWNERS,
+        icon: MessageCircleMore,
+        text: {
+            en: { title: "Speaker name", description: "Shows the name of whoever is speaking and follows each new line." },
+            zh: { title: "说话人名字", description: "显示正在说话的角色名字，随每句台词更新" },
+            ja: { title: "話者の名前", description: "話しているキャラクターの名前を表示し、台詞ごとに更新する" },
+        },
+        // For a text on the dialogue box: On Flush runs there as each line arrives. The narrator has
+        // no name, so the text empties for a narrated line.
+        graph: () => lines(
+            "    init: blueprint.event.head.init @0,0",
+            "    flush: blueprint.event.head.flush @0,150",
+            "    name: blueprint.game.getNametag @260,240",
+            "    show: blueprint.text.setText @520,60",
+            "    init -> show",
+            "    flush -> show",
+            "    name.nametag -> show.text",
+        ),
+    },
+    {
+        id: "speakerPortraitImage",
+        category: "display",
+        owners: WIDGET_OWNERS,
+        icon: UserRound,
+        text: {
+            en: { title: "Speaker portrait", description: "Shows the portrait of whoever is speaking and follows each new line." },
+            zh: { title: "说话人头像", description: "显示正在说话的角色头像，随每句台词更新" },
+            ja: { title: "話者の顔画像", description: "話しているキャラクターの顔画像を表示し、台詞ごとに更新する" },
+        },
+        // The same shape for a picture on the dialogue box. A line with no portrait - the narrator's,
+        // or a character's that has none - clears the picture rather than leaving the last one up.
+        graph: () => lines(
+            "    init: blueprint.event.head.init @0,0",
+            "    flush: blueprint.event.head.flush @0,150",
+            "    portrait: blueprint.game.getSpeakerAvatar @260,240",
+            "    show: blueprint.image.setImageAsset @520,60",
+            "    init -> show",
+            "    flush -> show",
+            "    portrait.avatar -> show.asset",
         ),
     },
 ];

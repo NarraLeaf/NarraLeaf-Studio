@@ -11,6 +11,32 @@ import { ArrowLeft, Camera, EyeOff, Maximize, PanelsTopLeft, TimerReset } from "
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines } from "./templateText";
 
+/**
+ * The graph's first column for a key that acts on the story: the head, then an If that lets the
+ * press through only while the story is what the player is looking at.
+ *
+ * The game's own blueprint hears keys on every page. Is In Game keeps a key off the title screen,
+ * where a preference set now would be waiting in the next game the player starts. Is Game Overlay -
+ * asked of the page the player is looking at, which is whose host the game's blueprint runs on -
+ * keeps it off a menu opened over the story: H pressed in the settings would otherwise hide the
+ * dialogue box behind them, and the player would come back to a story with no box until they clicked.
+ */
+function storyOnScreenGate(key: string): string {
+    return lines(
+        `    key: blueprint.event.head.keyDown key=${key} @0,0`,
+        "    playing: blueprint.game.isInGame @0,160",
+        "    overlay: blueprint.game.isGameOverlay @0,300",
+        "    uncovered: blueprint.boolean.not @260,300",
+        "    onScreen: blueprint.boolean.and @260,160",
+        "    gate: if @520,0",
+        "    key -> gate",
+        "    playing.isInGame -> onScreen.a",
+        "    overlay.isGameOverlay -> uncovered.a",
+        "    uncovered.result -> onScreen.b",
+        "    onScreen.result -> gate.condition",
+    );
+}
+
 export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
     {
         id: "escapeBack",
@@ -88,22 +114,15 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         owners: ["globalMain"],
         icon: TimerReset,
         text: {
-            en: { title: "Auto forward key", description: "A turns auto forward on and off while a story plays." },
-            zh: { title: "自动前进快捷键", description: "游戏进行中按 A 开启或关闭自动前进" },
-            ja: { title: "自動送りキー", description: "ゲーム中に A で自動送りを切り替える" },
+            en: { title: "Auto forward key", description: "A turns auto forward on and off while the story is on screen." },
+            zh: { title: "自动前进快捷键", description: "剧情画面中按 A 开启或关闭自动前进" },
+            ja: { title: "自動送りキー", description: "ストーリー画面で A を押すと自動送りを切り替える" },
         },
-        // The game's own blueprint hears keys on every page, the title screen included, where a
-        // preference set now would be waiting in the next game the player starts: Is In Game keeps
-        // the key to a running one.
         graph: () => lines(
-            "    key: blueprint.event.head.keyDown key=A @0,0",
-            "    playing: blueprint.game.isInGame @0,160",
-            "    gate: if @260,0",
-            "    current: blueprint.game.getAutoForward @260,160",
-            "    flip: blueprint.boolean.not @520,160",
-            "    set: blueprint.game.setAutoForward @520,0",
-            "    key -> gate",
-            "    playing.isInGame -> gate.condition",
+            storyOnScreenGate("A"),
+            "    current: blueprint.game.getAutoForward @780,160",
+            "    flip: blueprint.boolean.not @1040,160",
+            "    set: blueprint.game.setAutoForward @1040,0",
             "    gate.true -> set",
             "    current.autoForward -> flip.a",
             "    flip.result -> set.autoForward",
@@ -115,18 +134,13 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         owners: ["globalMain"],
         icon: EyeOff,
         text: {
-            en: { title: "Hide dialog key", description: "H hides and shows the dialog box while a story plays." },
-            zh: { title: "隐藏对话框快捷键", description: "游戏进行中按 H 隐藏或显示对话框" },
-            ja: { title: "ダイアログ非表示キー", description: "ゲーム中に H でダイアログの表示を切り替える" },
+            en: { title: "Hide dialog key", description: "H hides and shows the dialog box while the story is on screen." },
+            zh: { title: "隐藏对话框快捷键", description: "剧情画面中按 H 隐藏或显示对话框" },
+            ja: { title: "ダイアログ非表示キー", description: "ストーリー画面で H を押すとダイアログの表示を切り替える" },
         },
-        // Kept to a running game, for the reason the auto forward key gives.
         graph: () => lines(
-            "    key: blueprint.event.head.keyDown key=H @0,0",
-            "    playing: blueprint.game.isInGame @0,160",
-            "    gate: if @260,0",
-            "    toggle: blueprint.game.toggleDialogDisplay @520,0",
-            "    key -> gate",
-            "    playing.isInGame -> gate.condition",
+            storyOnScreenGate("H"),
+            "    toggle: blueprint.game.toggleDialogDisplay @780,0",
             "    gate.true -> toggle",
         ),
     },
