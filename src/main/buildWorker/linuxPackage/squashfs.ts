@@ -451,11 +451,11 @@ function compressorFor(compression: SquashfsCompression): Compressor {
         // The asynchronous API does not tell zstd how much input is coming, and left to itself
         // zstd then plans for an unbounded stream: a 4 MiB window, and level-15 match tables sized
         // for it - tens of megabytes allocated per block, which is slow, and which a few blocks in
-        // flight at once turn into an allocation failure. `pledgedSrcSize` (Node 22.15 and later,
-        // absent from the typings) gives it the size, so it picks the parameters for a 128 KiB
-        // input - those `mksquashfs` gets from zstd's one-shot call - and writes a frame that
-        // records its content size. The window log is pinned as well, so a Node that ignored the
-        // pledge would still write frames a kernel can read.
+        // flight at once turn into an allocation failure. `pledgedSrcSize` (honoured by the Node in
+        // Studio's Electron, absent from the typings) gives it the size, so it picks the parameters
+        // for a 128 KiB input - those `mksquashfs` gets from zstd's one-shot call - and writes a
+        // frame that records its content size. The window log is pinned as well, so a Node that
+        // ignored the pledge would still write frames a kernel can read.
         const params = {
             [zlib.constants.ZSTD_c_compressionLevel]: ZSTD_LEVEL,
             [zlib.constants.ZSTD_c_windowLog]: BLOCK_LOG,
