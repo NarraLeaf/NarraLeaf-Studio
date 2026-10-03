@@ -226,6 +226,19 @@ describe("the expressibility gate", () => {
         expect(printNarralangScene(fixture, lookups).issues).toEqual([{ blockId: "b1", reason: "customTransform" }]);
     });
 
+    it("refuses a clip row that says how the clip leaves, which the script cannot say", () => {
+        const fixture = scene([
+            { id: "b1", kind: "action", payload: { action: "video", operation: "play", objectName: "intro", hideOnEnd: false } },
+            { id: "b2", kind: "action", payload: { action: "video", operation: "hide", objectName: "intro", durationMs: 500 } },
+            { id: "b3", kind: "action", payload: { action: "video", operation: "hide", objectName: "intro" } },
+        ] as never);
+
+        expect(printNarralangScene(fixture, lookups).issues).toEqual([
+            { blockId: "b1", reason: "customTransition" },
+            { blockId: "b2", reason: "customTransition" },
+        ]);
+    });
+
     it("passes a scene whose rows all have spellings", () => {
         const fixture = scene([
             { id: "b1", kind: "action", payload: { action: "wait", mode: "click" } },

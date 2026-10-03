@@ -156,6 +156,30 @@ above it), and the second reading finds the object the first one created. `check
 `story/stage-object-missing` and `apply` writes nothing, so it fails loudly - but the
 message names the wrong problem. Write `name=`, or run `show` and copy what it prints.
 
+### A cutscene clears itself away
+
+`/play intro name=intro` takes the clip off the stage when it has played to the end,
+fading out over 0.25s - the fade every other hide row starts with. A `/play` that runs a
+clip an earlier row put on stage leaves it there, as it always did. `hide=` says otherwise
+either way, and `out=` / `d=` say how it goes - the pair `/hide` takes, with the two words
+a clip can do, `fade` and `none`:
+
+```
+/play intro name=intro hide=false
+/play intro name=intro out=fade d=1.5s
+/play clip out=none
+```
+
+Saying how a clip leaves is asking for it to leave, so the last line hides a clip the
+row would otherwise keep, and `show` prints it without a `hide=`. Where the line states
+nothing the row's form does not already do, `show` prints nothing: the first form above
+is the only way a cutscene keeps its last frame, and `/play intro name=intro` alone is a
+cutscene that fades out.
+
+`/hide` on a clip cuts unless it says `out=fade` or `d=`; `out=fade` with no `d=` is
+written back as `d=0.25s`. A clip already gone from the stage - after a cutscene that
+cleared itself away, or a second `/hide` - has nothing to hide, and the row does nothing.
+
 ### A scene variable is a row
 
 `/local hp 5` declares a scene variable, and the row it lands is the variable -

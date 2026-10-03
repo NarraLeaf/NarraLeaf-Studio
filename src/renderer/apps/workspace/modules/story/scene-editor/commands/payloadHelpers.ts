@@ -96,6 +96,27 @@ export function vfxOperationBlock(
 }
 
 /**
+ * How long a clip's fade out is, from a line's `out=` and `d=` - the `durationMs` a video `hide` or a
+ * hiding `play` stores.
+ *
+ * `out=none` is a cut whatever `d=` says, the way `d=` is inert on a picture's `t=none`. A `d=` on its
+ * own is a fade that long. `out=fade` with no `d=` is the fade the row has when it states none, which
+ * is not the same on both verbs - a `hide` has always cut, so it writes the default fade down, while a
+ * hiding `play` fades by default and writes nothing - so the caller says which it is.
+ */
+export function clipLeaveDurationMs(
+    out: StoryCommandValue | undefined,
+    d: StoryCommandValue | undefined,
+    unstatedFadeMs: number | undefined,
+): number | undefined {
+    const word = asEnum(out);
+    if (word === "none") {
+        return 0;
+    }
+    return asDurationMs(d) ?? (word === undefined ? undefined : unstatedFadeMs);
+}
+
+/**
  * The auto-name pass for a `create` command (`deriveArgs`): fill in the object name the author left
  * blank, so `/image forest.png` lands an image called `forest` - the same "no name needed" feel as
  * `/bg`. Derived from the asset's filename when `assetParam` names one, else a deduped `base`, so two

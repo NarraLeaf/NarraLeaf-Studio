@@ -623,6 +623,7 @@ export const story = {
         mirrorState: "オン / オフ",
         waitFor: "秒またはクリック",
         waitForEnd: "再生の終了を待つ",
+        hideOnEnd: "再生の終了後に隠す",
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
         loop: "ループ",

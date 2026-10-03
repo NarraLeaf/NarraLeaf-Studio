@@ -17,6 +17,7 @@ import {
 } from "../spec";
 import {
     actionableTargetRef,
+    clipLeaveDurationMs,
     deriveObjectName,
     deriveShownObjectName,
     displayableTargetRef,
@@ -24,7 +25,7 @@ import {
     withRevealTransform,
     withTransitionRef,
 } from "../payloadHelpers";
-import { transitionOptions } from "../transitions";
+import { clipConcealOptions, transitionOptions } from "../transitions";
 import { validateNameTarget } from "./character";
 
 /** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
@@ -243,19 +244,29 @@ export const swap = defineStoryCommand({
  * one row: the row builds it, names it (`name=`, or the file's own name), reveals it and runs it -
  * which is what an author who picks a clip and writes "play" expects to see, and what used to take a
  * `/video` row and a `/show` row above it.
+ *
+ * **And then whether it goes.** A clip that ends holds its last frame above every scene, a jump
+ * included, and the next scene has no name for it to hide it by - so the cutscene form clears itself
+ * away by default, and the other form keeps leaving the clip as an earlier row left it. `hide=` says
+ * otherwise either way. How the clip leaves is the conceal half `/hide` already writes, `out=` and
+ * `d=`, cut down to the two a clip can do: a fade (the default) and none. Stating one is asking for
+ * the clip to leave, so on a row that would otherwise keep it, it does.
  */
 export const play = defineStoryCommand({
     id: "play",
     token: "play",
     category: "video",
     icon: Play,
-    examples: ["/play clip", "/play intro name=cutscene"],
+    examples: ["/play clip", "/play intro name=cutscene", "/play intro name=cutscene out=fade d=1", "/play intro name=cutscene hide=false"],
     params: {
         target: targetParam(["video"], { core: true, assets: ["video"], namedBy: "name" }),
         // What the clip this row creates is called on stage, for the rows that address it later -
         // `/pause`, `/stop`, `/hide`. Only meaningful on the library form; refused on a clip already
         // on stage, which has a name of its own.
         name: { hint: "objectName", type: { kind: "text" } },
+        hide: { hint: "hideOnEnd", type: { kind: "boolean" } },
+        out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: clipConcealOptions() } },
+        d: secondsParam(),
     },
     deriveArgs: deriveShownObjectName(),
     build(args, ctx) {
@@ -264,13 +275,27 @@ export const play = defineStoryCommand({
             return block;
         }
         const target = asTarget(args.target);
+        const createsClip = target?.type === "asset";
+        const payload = { ...block.payload };
         if (target?.type === "asset") {
-            return { ...block, payload: { ...block.payload, objectName: asText(args.name) ?? target.name, assetId: target.assetId } };
+            payload.objectName = asText(args.name) ?? target.name;
+            payload.assetId = target.assetId;
+        } else if (target?.type === "stageObject") {
+            payload.objectName = target.name;
+            payload.target = actionableTargetRef(target);
         }
-        if (target?.type !== "stageObject") {
-            return block;
+        // A cutscene already leaves with the default fade, so an `out=fade` with no `d=` on it says
+        // nothing that needs storing; on a clip the row would keep, it is what turns leaving on.
+        const statesLeave = args.out !== undefined || args.d !== undefined;
+        const hideOnEnd = asBoolean(args.hide) ?? (statesLeave && !createsClip ? true : undefined);
+        if (hideOnEnd !== undefined) {
+            payload.hideOnEnd = hideOnEnd;
         }
-        return { ...block, payload: { ...block.payload, objectName: target.name, target: actionableTargetRef(target) } };
+        const durationMs = clipLeaveDurationMs(args.out, args.d, undefined);
+        if (durationMs !== undefined) {
+            payload.durationMs = durationMs;
+        }
+        return { ...block, payload };
     },
     validate: (args, ctx) => validateNameTarget(args, ctx),
 });

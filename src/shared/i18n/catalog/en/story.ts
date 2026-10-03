@@ -713,6 +713,7 @@ export const story = {
         mirrorState: "On / Off",
         waitFor: "Seconds or click",
         waitForEnd: "Wait for the clip",
+        hideOnEnd: "Hide when finished",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
         fade: "Fade Seconds",

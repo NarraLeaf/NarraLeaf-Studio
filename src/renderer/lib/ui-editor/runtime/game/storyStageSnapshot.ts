@@ -24,6 +24,7 @@ import {
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
+    videoPlayHidesOnEnd,
 } from "@shared/types/story";
 import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
@@ -803,9 +804,10 @@ class SnapshotWalker {
      * A declaring row builds the clip through the compiler's get-or-create, so the first declaration
      * of a name is the one that stands and a later one only acts on it. What each operation leaves:
      * `create` mounts the clip hidden; a reveal (`show`, or a `play` naming its own clip) puts it on
-     * screen; `hide` takes it off the stage altogether; and anything that runs or moves the clip
-     * leaves it showing a frame a launch cannot reproduce. A row addressing a clip nothing on the
-     * path declared changes nothing here - the compile of the tail reports it.
+     * screen; `hide` takes it off the stage altogether, and so does a `play` that clears its clip away
+     * when it ends; and anything else that runs or moves the clip leaves it showing a frame a launch
+     * cannot reproduce. A row addressing a clip nothing on the path declared changes nothing here -
+     * the compile of the tail reports it.
      */
     private applyVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): void {
         const declares = declaresStageObject(payload);
@@ -829,6 +831,13 @@ class SnapshotWalker {
                 record.visible = false;
                 return;
             case "play":
+                // A play that clears its clip away when it ends leaves the stage as a hide does:
+                // nothing to put back, however the clip got there.
+                if (videoPlayHidesOnEnd(payload)) {
+                    record.staged = false;
+                    record.visible = false;
+                    return;
+                }
                 // A play that names its own clip reveals it on the way in; it then runs to the end,
                 // which is a frame this record cannot describe either way.
                 record.staged = record.staged || declares;
