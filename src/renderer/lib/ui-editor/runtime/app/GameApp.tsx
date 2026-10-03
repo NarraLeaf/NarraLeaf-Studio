@@ -175,6 +175,7 @@ import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audio
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
 import { createGameMenuController, type GameMenuPort } from "./gameMenu";
 import {
     applyLocaleChange,
@@ -824,6 +825,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
         ) => Promise<void>) | null
     >(null);
+    /**
+     * Compile and mount a story without entering it - what a title screen stands on. A ref for the
+     * reason `startStoryInGameRef` is one: the load that calls it is declared long before it.
+     */
+    const mountStoryEnvironmentRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
     /** The player's way into a story, held open while a boot is still running. */
     const storyStartGate = useMemo(
         () => createStoryStartGate({ pendingBoot: nlrBootPromiseRef, start: startStoryInGameRef }),
@@ -2992,7 +2998,31 @@ export function GameApp(props: GameAppProps): ReactNode {
          * Cancelled on every path that does not reach the wait, so a refused load leaves no
          * listener behind.
          */
-        const routerExit = liveGame.waitForRouterExit();
+        // Re-registered on the live game a remount puts up, which is the one `apply` clears.
+        let routerExit = liveGame.waitForRouterExit();
+
+        /**
+         * Whether the session on the stage - a session of this save's own story - can receive the
+         * save, or where to enter that story afresh so it can. Null when the library cannot say.
+         */
+        const planMountFor = (storyId: string, target: { sceneId: string; sceneIds: readonly string[] }): SaveMountPlan | null => {
+            const document = bundle.storyLibrary?.documents?.[storyId];
+            const mounted = activeStoryRequestRef.current;
+            if (!document || !mounted) {
+                return null;
+            }
+            const normalEntry = resolveStagePreloadTarget(bundle);
+            return planSaveMount({
+                document,
+                mounted,
+                // What Start Game enters, when that is this story: the session ordinary play was in.
+                preferredEntrySceneId: normalEntry?.storyId === storyId
+                    ? normalEntry.sceneId
+                    : document.entrySceneId ?? null,
+                saveSceneId: target.sceneId,
+                sceneIds: target.sceneIds,
+            });
+        };
 
         // Captured on the way past rather than re-read afterwards: a save record carries a whole
         // serialized playthrough, and reading one twice to look at one number would double the
@@ -3044,11 +3074,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     game.newGame().deserialize(savedGame);
                 },
                 /**
-                 * Put the run back - and, when this load switched stories, put the story back too.
+                 * Put the run back - and, when this load switched stories or mounted this one
+                 * again, put the session back too.
                  *
-                 * The snapshot names ids that belong to the story that was mounted when the load
-                 * began. Handing it to the story the switch mounted instead would refuse every one
-                 * of them, so the mount is undone first and only then is the snapshot applied.
+                 * The snapshot names ids that belong to the session that was mounted when the load
+                 * began. Handing it to the one the switch or remount mounted instead would refuse
+                 * them, so the mount is undone first and only then is the snapshot applied.
                  * `forceReinit` for the same reason the relaunch below passes it: the fast path
                  * would see a matching request and skip the recompile the put-back depends on.
                  */
@@ -3058,10 +3089,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         if (!start) {
                             throw new Error(translate("game.run.storyNotRestartable"));
                         }
-                        await start({
-                            storyId: storyBeforeLoad.storyId,
-                            sceneId: storyBeforeLoad.sceneId,
-                        }, { forceReinit: true });
+                        // The whole request, row included: a session started at a row is a
+                        // different compile from one started at its scene, and the snapshot names
+                        // what that compile built.
+                        await start(storyBeforeLoad, { forceReinit: true });
                         switchedStory = false;
                     }
                     activeLiveGame().deserialize(snapshot);
@@ -3089,7 +3120,36 @@ export function GameApp(props: GameAppProps): ReactNode {
                         return "nowhere";
                     }
                     const mounted = activeStoryRequestRef.current;
-                    return mounted && mounted.storyId === found.storyId ? "same" : "switch";
+                    if (!mounted || mounted.storyId !== found.storyId) {
+                        return "switch";
+                    }
+                    // The right story - but a session reaches only what its entry reaches, and a
+                    // row launch enters through a scene of its own. See `planSaveMount`.
+                    return planMountFor(found.storyId, target)?.kind ?? "same";
+                },
+                /**
+                 * Mount the story again, entered where every scene the save names is reachable.
+                 *
+                 * Mounted rather than started, as a title screen's story is: `apply` opens with
+                 * `newGame()` and the reveal follows the load, so starting the story first would
+                 * only put its opening on screen for a moment. The flag goes up first for the
+                 * reason `switchStory` gives, and the router the reveal waits on is now the new
+                 * game's.
+                 */
+                remountStory: async target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    const plan = found ? planMountFor(found.storyId, target) : null;
+                    const mount = mountStoryEnvironmentRef.current;
+                    if (!found || !plan || plan.kind !== "remount") {
+                        throw new Error(translate("game.run.saveStoryMissing"));
+                    }
+                    if (!mount) {
+                        throw new Error(translate("game.run.storyCannotStart"));
+                    }
+                    switchedStory = true;
+                    await mount({ storyId: found.storyId, sceneId: plan.entrySceneId });
+                    routerExit.cancel();
+                    routerExit = activeLiveGame().waitForRouterExit();
                 },
                 /**
                  * Put that story on the stage, so `apply` has somewhere to deserialize into.
@@ -3221,6 +3281,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         hideCurrentStudioPagesForGame();
         return outcome;
     }, [
+        bundle,
         hideCurrentStudioPagesForGame,
         host.log,
         host.reportIssue,
@@ -4563,6 +4624,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         startStoryInGameRef.current = startStoryInGame;
     }, [startStoryInGame]);
+
+    useEffect(() => {
+        mountStoryEnvironmentRef.current = initDefaultSceneEnvironment;
+    }, [initDefaultSceneEnvironment]);
 
     /**
      * Publish the drive handle to a shell that asked for one, and take it back on unmount.

@@ -983,6 +983,12 @@ type SceneCompileContext = {
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
+    /**
+     * Set only while the opening scene of a row-precise launch compiles: the prefix every element
+     * that scene builds is named under, in place of `nl:<kind>:<scene id>` (see
+     * {@link launchSceneIdPrefix} and {@link sceneElementStaticId}).
+     */
+    launchElementIdPrefix?: string;
     nextActionIndex: (blockId: string) => number;
     /**
      * What a plugin compile pass attached around each row, keyed by block id.
@@ -1595,6 +1601,8 @@ async function buildLaunchEntryScene(params: {
             ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
         },
     );
+    const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
+    setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
 
     const ctx: SceneCompileContext = {
         document: input.document,
@@ -1645,6 +1653,7 @@ async function buildLaunchEntryScene(params: {
         diagnostics,
         actionIdBindings: params.actionIdBindings,
         elementIdBindings: params.elementIdBindings,
+        launchElementIdPrefix: launchIdPrefix,
         nextActionIndex: params.nextActionIndex,
     };
 
@@ -1661,12 +1670,13 @@ async function buildLaunchEntryScene(params: {
             getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
         }
     }
-    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
+    const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
     for (const record of preposed) {
         if (record.kind === "layer") {
             continue;
         }
         const layer = resolveLayerForRef(ctx, record.layer);
+        const id = sceneElementStaticId(ctx, record.kind, normalizeObjectName(record.objectName));
         if (record.kind === "image") {
             const src = await resolveSnapshotImageSource(ctx, record);
             const image = getImage(ctx, record.objectName, {
@@ -1681,7 +1691,7 @@ async function buildLaunchEntryScene(params: {
             if (record.source?.type === "character") {
                 await bindCharacterPortrait(ctx, record.source.characterId, image);
             }
-            registrations.push({ element: image, layer });
+            registrations.push({ element: image, layer, id });
         } else {
             const text = getText(ctx, record.objectName, {
                 text: record.text ?? "",
@@ -1690,11 +1700,15 @@ async function buildLaunchEntryScene(params: {
                 layer,
                 initialProps: snapshotPoseProps(record),
             });
-            registrations.push({ element: text, layer });
+            registrations.push({ element: text, layer, id });
         }
     }
-    registrations.forEach((registration, index) => {
-        DevTools.setElementId(registration.element as any, `launch-e-${index}`);
+    // Registered by hand rather than reached by a row, so story construction never names these: an
+    // element no action calls keeps whatever id it had. They take their own stable names now rather
+    // than a counter's, which is both unique (the engine keys their React nodes by it) and the name
+    // a save written in this launch carries for them.
+    registrations.forEach(registration => {
+        DevTools.setElementId(registration.element as any, registration.id);
     });
 
     const statements: NlrStatement[] = [];
@@ -3974,7 +3988,7 @@ async function getPuppetElement(
         // puppet character is her own size on the same terms.
         ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
     });
-    setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
+    setStableElementId(ctx.elementIdBindings, puppet, sceneElementStaticId(ctx, "puppet", key));
     ctx.puppets.set(key, puppet);
     return puppet;
 }
@@ -5102,7 +5116,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
-    setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, image, sceneElementStaticId(ctx, "image", name));
     ctx.images.set(name, image);
     recordEntryImage(ctx, options?.src);
     return image;
@@ -5136,7 +5150,7 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
         layer: options.layer,
         ...(options.initialProps ?? {}),
     } as any);
-    setStableElementId(ctx.elementIdBindings, text, `nl:text:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, text, sceneElementStaticId(ctx, "text", name));
     ctx.texts.set(name, text);
     return text;
 }
@@ -5154,7 +5168,7 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
         return existing;
     }
     const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
-    setStableElementId(ctx.elementIdBindings, layer, `nl:layer:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -5206,7 +5220,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
-    setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, video, sceneElementStaticId(ctx, "video", name));
     ctx.videos.set(name, video);
     // The warm order recorded the url a moment ago, when the asset resolved. Only here is there an
     // element to go with it, and the element is what a preload plan can actually warm.
@@ -7365,16 +7379,52 @@ function stableActionId(storyId: string, sceneId: string, blockId: string, textI
  * around them stopped moving, and a save would still put a layer's pose onto a background.
  */
 function setStableSceneElementIds(sink: string[], scene: Scene, sceneId: string): void {
-    setStableElementId(sink, scene, `nl:scene:${sceneId}`);
-    setStableElementId(sink, scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
-    setStableElementId(sink, scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
-    setStableElementId(sink, scene.background, `nl:scene:${sceneId}:background`);
+    setSceneOwnElementIds(sink, scene, `nl:scene:${sceneId}`);
     // The narrator is the engine's own `Character(null)`, shared by every narration line in every
-    // scene, and nothing here constructs it - so like the three above it would keep a positional
-    // name. It began carrying state in engine 0.26.0, when `Character` started serialising its
+    // scene, and nothing here constructs it - so like a scene's own three elements it would keep a
+    // positional name. It began carrying state in engine 0.26.0, when `Character` started serialising its
     // name, and a positional name is only harmless while an element reaches no save. Naming a
     // singleton repeatedly is the same write each time.
     setStableElementId(sink, Narrator, "nl:character:narrator");
+}
+
+/** A scene and the three elements every scene owns, named under one id. */
+function setSceneOwnElementIds(sink: string[], scene: Scene, sceneElementId: string): void {
+    setStableElementId(sink, scene, sceneElementId);
+    setStableElementId(sink, scene.backgroundLayer, `${sceneElementId}:layer:background`);
+    setStableElementId(sink, scene.displayableLayer, `${sceneElementId}:layer:displayable`);
+    setStableElementId(sink, scene.background, `${sceneElementId}:background`);
+}
+
+/**
+ * Where everything the opening scene of a row-precise launch builds is named.
+ *
+ * That scene is not a scene of the document: it is built for one launch, from the stage the walk to
+ * one row arrived at, and nothing outside a launch of that same row has it. So it and everything it
+ * builds are named apart from the document's own elements, under the scene and row the launch is
+ * for - and everything under the prefix is recognisably one launch's (see `isRowLaunchSave` in the
+ * save loader, which is what reads it).
+ *
+ * Named apart, rather than reusing `nl:scene:<id>` and `nl:image:<id>:<name>`, for two reasons.
+ * The scene the launch stands for is compiled as well, for anything that jumps back to it, so the
+ * same names would put two different elements under one id and a save would restore one's state
+ * onto the other. And before this the scene and its layers took positional names (`e-0`, `e-1`),
+ * which a normal compile hands to unrelated elements - so a save written in a launch and loaded
+ * anywhere else was checked against the wrong things entirely.
+ */
+function launchSceneIdPrefix(sceneId: string, targetBlockId: string): string {
+    return `nl:launch:${sceneId}:${targetBlockId}`;
+}
+
+/** The id an element a scene builds is stamped with: its kind and name, under the scene's own namespace. */
+function sceneElementStaticId(
+    ctx: SceneCompileContext,
+    kind: "image" | "text" | "layer" | "video" | "puppet",
+    name: string,
+): string {
+    return ctx.launchElementIdPrefix
+        ? `${ctx.launchElementIdPrefix}:${kind}:${name}`
+        : `nl:${kind}:${ctx.scene.id}:${name}`;
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {
