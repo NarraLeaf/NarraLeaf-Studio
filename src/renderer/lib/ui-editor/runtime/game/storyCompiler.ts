@@ -183,6 +183,8 @@ import {
     type SceneCompileContext as PluginSceneCompileContext,
     type StageImage,
 } from "./storyCompilePass";
+import { getStoryPluginAction } from "./storyPluginActions";
+import { createStoryAwaitedAction } from "./storyAwaitedAction";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -3463,12 +3465,33 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "plugin") {
-        // A marker emits nothing by itself. Its owner's compile pass has already read it out of the
-        // scene prescan and attached whatever it wants around this block; `withPluginInjections`
-        // splices that in for every block, so there is nothing to do here and nothing to warn about.
-        // A marker whose plugin is absent therefore compiles to exactly nothing - the scene still
-        // plays, minus the behaviour, and `ProjectDependencyService` is what says so out loud.
-        return [];
+        // A row whose action the plugin's runtime entry answers (`app.game.storyActions`) runs that
+        // answer, and the story waits on the row until it settles: see `storyAwaitedAction.ts`.
+        //
+        // Otherwise the row is a marker and emits nothing by itself. Its owner's compile pass has
+        // already read it out of the scene prescan and attached whatever it wants around this block;
+        // `withPluginInjections` splices that in for every block, so there is nothing to do here and
+        // nothing to warn about. A row whose plugin is absent therefore compiles to exactly nothing -
+        // the scene still plays, minus the behaviour, and `ProjectDependencyService` is what says so
+        // out loud.
+        const registered = getStoryPluginAction(payload.actionId);
+        if (!registered || registered.owner !== payload.pluginId) {
+            return [];
+        }
+        const { def, game } = registered;
+        const params = payload.params;
+        const action = createStoryAwaitedAction({
+            run: async (_scriptCtx, signal) => {
+                // A copy per run: the row runs again on rollback and on load, and a runner that
+                // edited its params in place would otherwise see its own edits the second time.
+                await def.run({ params: structuredClone(params), signal, game });
+            },
+            onError: error => {
+                const message = error instanceof Error ? error.message : String(error);
+                game.log("error", `story action ${payload.actionId} failed: ${message}`);
+            },
+        });
+        return [recordStatement(ctx, action, block)];
     }
 
     if (payload.action === "wait") {
