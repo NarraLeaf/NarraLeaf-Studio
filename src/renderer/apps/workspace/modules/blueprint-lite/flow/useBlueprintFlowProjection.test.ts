@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     applyBlueprintFlowNodeSelection,
+    blueprintDynamicSelectOptionsSignature,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowNodes,
     BLUEPRINT_FLOW_Z_NODE,
@@ -34,6 +35,23 @@ describe("blueprintElementPreviewsSignature", () => {
         const b: ElementPreview = { revisionKey: "b:1", name: "B", type: "nl.image" };
 
         expect(blueprintElementPreviewsSignature({ a, b })).toBe(blueprintElementPreviewsSignature({ b, a }));
+    });
+});
+
+describe("blueprintDynamicSelectOptionsSignature", () => {
+    it("changes when the stories load and a scene list fills in", () => {
+        const stories = [{ value: "story-a", label: "Story" }];
+        const before = { stories, storyScenes: [] };
+        const after = { stories, storyScenes: [{ value: "scene-a", label: "Scene 1", meta: { storyId: "story-a" } }] };
+
+        expect(blueprintDynamicSelectOptionsSignature(before)).not.toBe(blueprintDynamicSelectOptionsSignature(after));
+    });
+
+    it("is stable across object entry order", () => {
+        const a = { stories: [{ value: "s", label: "S" }], characters: [{ value: "c", label: "C" }] };
+        const b = { characters: [{ value: "c", label: "C" }], stories: [{ value: "s", label: "S" }] };
+
+        expect(blueprintDynamicSelectOptionsSignature(a)).toBe(blueprintDynamicSelectOptionsSignature(b));
     });
 });
 

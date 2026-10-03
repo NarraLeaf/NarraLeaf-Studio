@@ -656,10 +656,15 @@ const PLATFORM_DETAIL_FIELDS: Record<string, "one" | "list"> = {
     platforms: "list",
 };
 
-/** A finding's detail with every platform id replaced by its display name. */
+/**
+ * A finding's detail with every platform id replaced by its display name.
+ *
+ * A list of platforms is joined the way the interface's language writes a list - 、 in Chinese and
+ * Japanese - in the narrow style, which is a plain enumeration with no "and".
+ */
 function localizePlatformDetail(
     detail: BuildPreflightFinding["detail"],
-    t: ReturnType<typeof useTranslation>["t"],
+    { t, formatList }: Pick<ReturnType<typeof useTranslation>, "t" | "formatList">,
 ): Record<string, string> {
     const name = (id: string): string => {
         const key = `build.platform.${id as GameBuildPlatform}` as const;
@@ -675,7 +680,7 @@ function localizePlatformDetail(
             continue;
         }
         localized[field] = arity === "list"
-            ? value.split(",").map(part => name(part.trim())).join(", ")
+            ? formatList(value.split(",").map(part => name(part.trim())), { style: "narrow" })
             : name(value);
     }
     if (detail?.format) {
@@ -687,7 +692,8 @@ function localizePlatformDetail(
 }
 
 function Findings({ findings, section }: { findings: BuildPreflightFinding[]; section: BuildPreflightSection }) {
-    const { t } = useTranslation();
+    const translation = useTranslation();
+    const { t } = translation;
     const mine = findings.filter(finding => finding.section === section);
     if (mine.length === 0) {
         return null;
@@ -705,7 +711,7 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
                         finding.severity === "error" ? "text-danger" : "text-fg-subtle",
                     )}
                 >
-                    {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
+                    {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, translation))}
                 </p>
             ))}
         </div>
@@ -844,7 +850,8 @@ function VariantBlocking({
     findings: BuildPreflightFinding[];
     onOpenSection: (section: BuildPreflightSection) => void;
 }) {
-    const { t } = useTranslation();
+    const translation = useTranslation();
+    const { t } = translation;
     const blocking = findings.filter(finding => finding.severity === "error");
 
     return (
@@ -872,7 +879,7 @@ function VariantBlocking({
                                     "nl-focus-ring transition-colors duration-150 hover:bg-fill",
                                 )}
                             >
-                                {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
+                                {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, translation))}
                             </button>
                         ))}
                     </div>

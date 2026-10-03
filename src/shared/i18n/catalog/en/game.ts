@@ -20,6 +20,10 @@ export const game = {
         // happened: the slot was honoured, in the only way the policy allows it to be.
         relaunchedRow: "Load Save: \"{id}\" was written by another build. The story was started again on the line the save records.",
         relaunchedScene: "Load Save: \"{id}\" was written by another build and the line it records is no longer present. The story was started again at the start of that scene.",
+        // A save from a run started with the story editor's row play control, loaded where that
+        // run's opening scene does not exist. Stated as what happened, like the two lines above.
+        rowLaunchRelaunchedRow: "Load Save: \"{id}\" was written in a run started with Play from this row. The story was started again on the line the save records.",
+        rowLaunchRelaunchedScene: "Load Save: \"{id}\" was written in a run started with Play from this row, and the line it records is no longer present. The story was started again at the start of that scene.",
         detail: {
             unreadable: "The save could not be read. {error}",
             missing: "No save is stored under that id.",
