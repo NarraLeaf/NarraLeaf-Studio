@@ -4,12 +4,18 @@ import { cn } from "@/lib/utils/cn";
 import { EmptyState } from "@/lib/components/elements/EmptyState";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import type { GameAppCompositeView } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 import {
     buildCompositeStackView,
+    type CompositeStackGameUiRow,
+    type CompositeStackGameUiSurfaceRow,
     type CompositeStackLayerRow,
+    type CompositeStackOffScreenPageRow,
     type CompositeStackPageRow,
     type CompositeStackQueuedRow,
+    type CompositeStackRow,
+    type CompositeStackStageRow,
 } from "./layerStackPanelModel";
 
 export type LayerStackPanelProps = {
@@ -24,11 +30,14 @@ export type LayerStackPanelProps = {
  * Everything on screen at once, and who owns input.
  *
  * With more than one surface up, "I clicked it and nothing happened" has no other answer: a modal
- * layer turns everything under it inert, exactly one slot on the whole stack takes the keys, and
+ * layer turns everything under it inert, exactly one place on the whole screen takes the keys, and
  * neither fact is visible in the pixels. So each row states both, and the keyboard owner is marked
- * on the one row that holds it.
+ * on the one row that holds it - a page, a layer, or the Game UI on the stage while the story is on
+ * screen with nothing over it.
  *
- * It also reports the two states that are invisible by construction: a layer the stack holds and
+ * The rows follow the screen from the bottom: the stage and its Game UI while a game runs, the page,
+ * the layers. It also reports what is invisible by construction: the pages the stack holds that are
+ * not drawn (under the page on screen, or hidden by a running game), a layer the stack holds and
  * the screen does not (its surface is missing from the running project), and a layer queued behind
  * an occupied group, which has a live handle and no frame.
  */
@@ -70,7 +79,7 @@ export function LayerStackPanel(props: LayerStackPanelProps): ReactNode {
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-2">
-                {view.rows.length === 0 && view.queued.length === 0 ? (
+                {view.rows.length === 0 && view.queued.length === 0 && view.offScreenPages.length === 0 ? (
                     <EmptyState size="sm" description={t("devMode.layers.empty")} />
                 ) : (
                     <div className="flex flex-col gap-3">
@@ -84,9 +93,19 @@ export function LayerStackPanel(props: LayerStackPanelProps): ReactNode {
                                 <ul className="flex flex-col gap-2">
                                     {view.rows.map(row => (
                                         <li key={row.key} className={rowClass}>
-                                            {row.kind === "page"
-                                                ? <PageRow row={row} />
-                                                : <LayerRow row={row} />}
+                                            <StackRow row={row} />
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        ) : null}
+                        {view.offScreenPages.length > 0 ? (
+                            <section>
+                                <FieldLabel as="div">{t("devMode.layers.offScreen")}</FieldLabel>
+                                <ul className="flex flex-col gap-2">
+                                    {view.offScreenPages.map(row => (
+                                        <li key={row.key} className={rowClass}>
+                                            <OffScreenPageRow row={row} />
                                         </li>
                                     ))}
                                 </ul>
@@ -114,14 +133,17 @@ export function LayerStackPanel(props: LayerStackPanelProps): ReactNode {
 /** The frame every row shares: a hairline under it, none under the last. */
 const rowClass = "flex flex-col gap-0.5 border-b border-edge-subtle pb-2 last:border-0 last:pb-0";
 
-/** Surface name on the left, the mount counter off the end of the key on the right. */
-function RowHeading(props: { label: string; keyTail: string; missing: boolean }): ReactNode {
+/**
+ * Surface name on the left, the mount counter off the end of the key on the right. The stage and the
+ * Game UI have no mount counter of their own: there is one stage, and one Game UI surface per slot.
+ */
+function RowHeading(props: { label: string; keyTail?: string; missing?: boolean }): ReactNode {
     return (
         <div className="flex items-baseline justify-between gap-2">
             <span className={cn("min-w-0 truncate text-xs", props.missing ? "text-warning" : "text-fg")}>
                 {props.label}
             </span>
-            <span className="shrink-0 text-fg-subtle">{props.keyTail}</span>
+            {props.keyTail ? <span className="shrink-0 text-fg-subtle">{props.keyTail}</span> : null}
         </div>
     );
 }
@@ -153,6 +175,98 @@ function InputFacts(props: { interactive: boolean; keyboardOwner: boolean }): Re
     );
 }
 
+function StackRow(props: { row: CompositeStackRow }): ReactNode {
+    const { row } = props;
+    switch (row.kind) {
+        case "stage":
+            return <StageRow row={row} />;
+        case "gameUi":
+            return <GameUiRow row={row} />;
+        case "page":
+            return <PageRow row={row} />;
+        case "layer":
+            return <LayerRow row={row} />;
+    }
+}
+
+function StageRow(props: { row: CompositeStackStageRow }): ReactNode {
+    const { row } = props;
+    const { t } = useTranslation();
+    return (
+        <>
+            <RowHeading label={t("devMode.layers.stage")} />
+            <InputFacts interactive={row.interactive} keyboardOwner={row.keyboardOwner} />
+        </>
+    );
+}
+
+/**
+ * The Game UI as one group: the keys reach every surface in it that takes input, so the keyboard is
+ * marked once, on the group, and each surface says whether it takes clicks.
+ */
+function GameUiRow(props: { row: CompositeStackGameUiRow }): ReactNode {
+    const { row } = props;
+    const { t } = useTranslation();
+    return (
+        <>
+            <RowHeading label={t("devMode.layers.gameUi")} />
+            {row.keyboardOwner ? (
+                <RowFacts>
+                    <span className="text-primary">{t("devMode.layers.keyboard")}</span>
+                </RowFacts>
+            ) : null}
+            <ul className="mt-1 flex flex-col gap-1.5 border-l border-edge-subtle pl-2">
+                {row.surfaces.map(surface => (
+                    <li key={surface.key} className="flex flex-col gap-0.5">
+                        <GameUiSurfaceRow row={surface} />
+                    </li>
+                ))}
+            </ul>
+        </>
+    );
+}
+
+function GameUiSurfaceRow(props: { row: CompositeStackGameUiSurfaceRow }): ReactNode {
+    const { row } = props;
+    const { t } = useTranslation();
+    return (
+        <>
+            <RowHeading label={row.label} />
+            <RowFacts>
+                <span>{getStageSlotLabel(row.slotId, t)}</span>
+                {row.concealed ? (
+                    <>
+                        <Separator />
+                        <span>{t("devMode.layers.faded")}</span>
+                    </>
+                ) : null}
+            </RowFacts>
+            {row.takesInput ? (
+                <InputFacts interactive={row.interactive} keyboardOwner={false} />
+            ) : (
+                <div className="text-fg-subtle">{t("devMode.layers.takesNoInput")}</div>
+            )}
+        </>
+    );
+}
+
+function OffScreenPageRow(props: { row: CompositeStackOffScreenPageRow }): ReactNode {
+    const { row } = props;
+    const { t } = useTranslation();
+    return (
+        <>
+            <RowHeading label={row.label} keyTail={row.keyTail} missing={row.surfaceMissing} />
+            <RowFacts>
+                <span>{t("devMode.layers.page")}</span>
+                <Separator />
+                <span>
+                    {row.hiddenForGame ? t("devMode.layers.hiddenForGame") : t("devMode.layers.returnsOnBack")}
+                </span>
+            </RowFacts>
+        </>
+    );
+}
+
 function PageRow(props: { row: CompositeStackPageRow }): ReactNode {
     const { row } = props;
     const { t } = useTranslation();
@@ -174,6 +288,8 @@ function LayerRow(props: { row: CompositeStackLayerRow }): ReactNode {
         <>
             <RowHeading label={row.label} keyTail={row.keyTail} missing={row.surfaceMissing} />
             <RowFacts>
+                <span>{t("devMode.layers.layer")}</span>
+                <Separator />
                 {row.modal ? (
                     <>
                         <span>{t("devMode.layers.modal")}</span>
