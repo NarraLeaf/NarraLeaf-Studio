@@ -664,7 +664,15 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             subtitle: t("uiEditor.panel.globalSubtitle"),
             typeLabel: t("uiEditor.panel.blueprintType"),
             // Fills the box the list gives it, which is sized like the surface previews beside it.
-            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-full" />,
+            // No layer name in the corner: at tile size it sat on top of the nodes, and the card's
+            // own caption already says which blueprint this is.
+            preview: (
+                <BlueprintLayerPreview
+                    model={globalBlueprintPreviewModel}
+                    heightClassName="h-full"
+                    showGraphName={false}
+                />
+            ),
             canOpen: Boolean(globalBlueprintId),
             onClick: () => handleOpenGlobalBlueprint(),
             onOpenInWindow: () => handleOpenGlobalBlueprint({ inOwnWindow: true }),
