@@ -285,9 +285,11 @@ changes, comments included. Then `check` and `apply` as usual.
 It is the same layout function the button runs, so the rules are the button's:
 execution runs along a row with every card's execution pin on one line; a
 branch's first output continues the row and each later one starts a row of its
-own just below the card it leaves; a card that only computes a value sits just
-before and below the input it feeds, a card's feeders stacked in the order of its
-inputs; a note goes above the piece of graph it was written over, and a frame is
+own below everything the first one led to, just right of the card it leaves, so
+it reads true then false and its wire drops beside the true side crossing nothing;
+a card that only computes a value sits just before and below the input it feeds,
+a card's feeders stacked in the order of its inputs; a note goes above the piece
+of graph it was written over, and a frame is
 re-fitted around the cards it held. Where wires still cross, it is because no
 arrangement of those rules avoids it - a value computed before one framed section
 and read after it, say, has to pass that section's own feeders.
