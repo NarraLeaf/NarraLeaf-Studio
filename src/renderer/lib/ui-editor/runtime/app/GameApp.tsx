@@ -855,6 +855,47 @@ export function GameApp(props: GameAppProps): ReactNode {
     const claimedLaunchRevisionRef = useRef<number | null>(null);
     /** The last host launch token acted on, so one request cannot start two runs. */
     const consumedLaunchTokenRef = useRef<number | null>(null);
+    /**
+     * Whether a story is being put back on the stage of this running window in place of the one
+     * that was playing - and so whether the surface stack is held back (see `surfacesMayDraw`).
+     *
+     * Two things do that: a launch the host asked for (a story row's play control pressed while Dev
+     * Mode is open), and a hot reload of a game that had been entered. A fresh window making the
+     * same launch never paints its pages: they wait for the boot, and the boot is the launch. A
+     * window that is already running had no such wait. The new bundle resets the page stack to the
+     * page the window opens on, the mount hides the stage, and that page faded in and back out over
+     * the stage for as long as the story took to come up - with the story already playing
+     * underneath it by the time it had gone. What is shown instead is what a fresh window shows
+     * before its first frame: the shell's own background, then the stage.
+     *
+     * Raised and lowered through {@link raiseInPlaceStartCover} only. Each raise has its own token,
+     * so a start overtaken by a newer one does not lower the cover the newer one is mounting under.
+     */
+    const [inPlaceStartPending, setInPlaceStartPending] = useState(false);
+    const inPlaceStartCoverRef = useRef<number | null>(null);
+    const inPlaceStartCoverSeqRef = useRef(0);
+    /**
+     * Hold the surface stack back for one start in place; the returned function lets it go.
+     *
+     * Called in the same commit as the page-stack reset the new bundle triggered (that effect runs
+     * before the two that call this), so not one frame of the opening page is drawn. Bounded like
+     * the boot it stands in for: a start that never lands must not leave the window blank for good,
+     * and by then the page underneath is the honest thing to show.
+     */
+    const raiseInPlaceStartCover = useCallback((): (() => void) => {
+        const token = ++inPlaceStartCoverSeqRef.current;
+        inPlaceStartCoverRef.current = token;
+        setInPlaceStartPending(true);
+        const lower = (): void => {
+            window.clearTimeout(cap);
+            if (inPlaceStartCoverRef.current === token) {
+                inPlaceStartCoverRef.current = null;
+                setInPlaceStartPending(false);
+            }
+        };
+        const cap = window.setTimeout(lower, NLR_BOOT_PRELOAD_TIMEOUT_MS);
+        return lower;
+    }, []);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
@@ -4986,6 +5027,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         storyBootFinished: nlrPreloadDone,
         hostDrawsBeforeStoryBoot: host.surfacesBeforeStoryBoot === true,
         localeResumePending,
+        inPlaceStartPending,
     });
     const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
@@ -5152,6 +5194,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             ...(launch.startBlockId ? { startBlockId: launch.startBlockId } : {}),
             ...(launch.snapshotId ? { snapshotId: launch.snapshotId } : {}),
         };
+        // The page this bundle reset the stack to stays undrawn until the story is up: see
+        // `inPlaceStartPending`.
+        const lowerCover = raiseInPlaceStartCover();
         void (async () => {
             try {
                 await startStoryInGame(request, { forceReinit: true });
@@ -5164,9 +5209,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 reportFailure(err, { prefix: `[${host.id}] launch failed: ` });
+            } finally {
+                // By here the story is on the stage and the pages are hidden behind it, or the
+                // launch failed and the page underneath is what the author should see.
+                lowerCover();
             }
         })();
-    }, [bundle.bundleId, bundle.revision, bundleSuperseded, host, reportFailure, startStoryInGame]);
+    }, [bundle.bundleId, bundle.revision, bundleSuperseded, host, raiseInPlaceStartCover, reportFailure, startStoryInGame]);
 
     useEffect(() => {
         if (activeStoryRevisionRef.current === null) {
@@ -5194,6 +5243,10 @@ export function GameApp(props: GameAppProps): ReactNode {
          * for.
          */
         const resumeState = wasEntered ? captureStoryResumeState() : null;
+        // A game on screen comes straight back, without the page this bundle reset the stack to
+        // being drawn over it in between - see `inPlaceStartPending`. Sitting on a page, that page
+        // is what the author is looking at, and nothing is held.
+        const lowerCover = wasEntered && request ? raiseInPlaceStartCover() : null;
         void (async () => {
             try {
                 if (request) {
@@ -5246,6 +5299,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     return;
                 }
                 reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
+            } finally {
+                lowerCover?.();
             }
         })();
     }, [
@@ -5258,6 +5313,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host,
         mountNlrSession,
         playHead,
+        raiseInPlaceStartCover,
         resolveRunningStoryDocument,
         startEmptyNlrEnvironment,
     ]);

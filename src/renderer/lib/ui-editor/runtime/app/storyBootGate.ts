@@ -13,7 +13,9 @@ import { needsRunningGame } from "./runtimeRefusals";
  * Whether the surface stack may draw.
  *
  * A host that draws ahead of the story boot still waits on a language restart: that one is putting
- * a playthrough back on screen, and drawing over it would show the player the wrong one.
+ * a playthrough back on screen, and drawing over it would show the player the wrong one. It waits
+ * the same way while a running window puts a story back on its stage in place of the one that was
+ * playing, which is the boot of a fresh window happening again in place.
  */
 export function surfacesMayDraw(input: {
     /** The boot preload finished (or timed out, which counts). */
@@ -22,8 +24,19 @@ export function surfacesMayDraw(input: {
     hostDrawsBeforeStoryBoot: boolean;
     /** A language restart is putting a saved playthrough back. */
     localeResumePending: boolean;
+    /**
+     * A running window is putting a story on its stage in place of the one that was playing: a
+     * launch the host asked for (a story row's play control pressed while Dev Mode is open), or a
+     * hot reload of a game that had been entered. A fresh window making the same launch holds its
+     * surfaces until the story is on the stage, so it never paints the page it opens on; without
+     * this the running window painted that page for as long as the story took to mount, and played
+     * its entrance and exit over the stage.
+     */
+    inPlaceStartPending: boolean;
 }): boolean {
-    return (input.storyBootFinished || input.hostDrawsBeforeStoryBoot) && !input.localeResumePending;
+    return (input.storyBootFinished || input.hostDrawsBeforeStoryBoot)
+        && !input.localeResumePending
+        && !input.inPlaceStartPending;
 }
 
 export type StoryStartGate = (

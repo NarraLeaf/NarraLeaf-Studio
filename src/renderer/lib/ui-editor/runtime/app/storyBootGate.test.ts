@@ -14,6 +14,7 @@ describe("surfacesMayDraw", () => {
             storyBootFinished: false,
             hostDrawsBeforeStoryBoot: false,
             localeResumePending: false,
+            inPlaceStartPending: false,
         })).toBe(false);
     });
 
@@ -22,6 +23,7 @@ describe("surfacesMayDraw", () => {
             storyBootFinished: false,
             hostDrawsBeforeStoryBoot: true,
             localeResumePending: false,
+            inPlaceStartPending: false,
         })).toBe(true);
     });
 
@@ -31,6 +33,22 @@ describe("surfacesMayDraw", () => {
                 storyBootFinished: true,
                 hostDrawsBeforeStoryBoot,
                 localeResumePending: true,
+                inPlaceStartPending: false,
+            })).toBe(false);
+        }
+    });
+
+    it("holds a running window's pages while it puts a story back on its stage", () => {
+        // A story row's play control pressed while Dev Mode is open, or a hot reload mid-game. The
+        // window booted long ago and draws its interface ahead of any boot, so neither of those holds
+        // anything back - and the page the window opens on used to fade in and out over the stage
+        // that was being mounted.
+        for (const hostDrawsBeforeStoryBoot of [false, true]) {
+            expect(surfacesMayDraw({
+                storyBootFinished: true,
+                hostDrawsBeforeStoryBoot,
+                localeResumePending: false,
+                inPlaceStartPending: true,
             })).toBe(false);
         }
     });
