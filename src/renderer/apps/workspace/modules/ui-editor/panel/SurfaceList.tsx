@@ -1,11 +1,12 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
-import { MoreVertical } from "lucide-react";
+import { LayoutTemplate, MoreVertical } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { DropIndicator } from "@/lib/components/elements/DropIndicator";
+import type { FrozenControlProps } from "../../../components/ui/freezeGuard";
 
 import { formatStageMountLabel } from "./constants";
 import { LivePreviewFrame } from "./LivePreviewFrame";
@@ -45,6 +46,20 @@ type SurfaceListProps = {
      * may not be written - the cards then do not pick up at all, rather than picking up and refusing.
      */
     onReorder?: (draggedId: string, gap: SurfaceDropGap) => void;
+    /** The tile under the cards that makes a title page, while the project has no interface yet. */
+    starterTile?: SurfaceListStarterTile;
+};
+
+/**
+ * The first action an empty interface offers, drawn the way an empty blueprint offers its first
+ * layers: a dashed tile beside what is already there, under the cards rather than over them.
+ */
+export type SurfaceListStarterTile = {
+    title: string;
+    description: string;
+    onClick: () => void;
+    /** The tile writes the interface document, so a frozen project greys it. */
+    writeProps: FrozenControlProps;
 };
 
 export type SurfaceListGlobalBlueprintCard = {
@@ -318,6 +333,7 @@ export function SurfaceList({
     onSurfaceClick,
     onOpenMenu,
     onReorder,
+    starterTile,
 }: SurfaceListProps) {
     const { t } = useTranslation();
     const [contentWidth, attachList] = useListContentWidth();
@@ -491,6 +507,29 @@ export function SurfaceList({
                         />
                     );
                 })}
+                {starterTile ? (
+                    <button
+                        type="button"
+                        onClick={starterTile.onClick}
+                        data-surface-starter-title-page=""
+                        // A row of its own in the grid: it is not one of the pages, and at a tile's
+                        // width its description would wrap to a column of single words.
+                        style={layout.mode === "tiles" ? { gridColumn: "1 / -1" } : undefined}
+                        className={cn(
+                            "group flex w-full flex-col items-start gap-1.5 rounded-md border border-dashed border-edge-strong p-3 text-left",
+                            "transition-colors duration-150 hover:border-primary hover:bg-fill-subtle focus-visible:border-primary focus-visible:bg-fill-subtle",
+                            "disabled:cursor-not-allowed disabled:opacity-50",
+                        )}
+                        {...starterTile.writeProps}
+                    >
+                        <LayoutTemplate
+                            className="h-4 w-4 text-fg-muted transition-colors duration-150 group-hover:text-primary group-disabled:text-fg-muted"
+                            aria-hidden
+                        />
+                        <span className="text-xs font-medium text-fg">{starterTile.title}</span>
+                        <span className="text-2xs text-fg-subtle">{starterTile.description}</span>
+                    </button>
+                ) : null}
             </div>
         </div>
     );

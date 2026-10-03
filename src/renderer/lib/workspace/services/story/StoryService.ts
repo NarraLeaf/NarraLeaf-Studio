@@ -224,7 +224,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await registerAutoSaver(ctx, depend, "story", "workspace.shell.save.stores.story", this.autoSaver);
 
         await this.ensureStoryDirs();
-        await this.loadLibrary();
+        await this.readLibraryFromDisk();
         await this.loadAnimationIndex();
     }
 
@@ -604,7 +604,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         // still there.
         this.forgetVerifiedDirs();
 
-        await this.loadLibrary();
+        await this.readLibraryFromDisk();
         await this.loadAnimationIndex();
 
         this.documents.clear();
@@ -634,7 +634,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
     }
 
+    /**
+     * The library, read from disk the first time and as it stands in memory after that.
+     *
+     * What the search index, the reference index and the dictionary scan ask for before they walk
+     * every story. It must not re-read: the index is saved on a debounce, so a story created a moment
+     * ago is in memory and not yet on disk, and a re-read here replaced the library with the copy on
+     * disk and dropped that story's pending write - the story vanished from the panel the moment a
+     * search index resynced on the change its creation announced. Reading back what the disk holds
+     * is {@link reloadFromDisk}'s job, which a replaced working tree calls for.
+     */
     public async loadLibrary(): Promise<StoryLibraryIndex> {
+        return this.index ?? this.readLibraryFromDisk();
+    }
+
+    private async readLibraryFromDisk(): Promise<StoryLibraryIndex> {
         const fs = this.getFileSystem();
         const indexPath = this.getIndexPath();
         const exists = await fs.isFileExists(indexPath);

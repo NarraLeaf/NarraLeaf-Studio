@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { listProjectTemplates, scaffoldProjectFromTemplate } from "./projectTemplates";
+import {
+    listProjectTemplates,
+    readProjectTemplateAssets,
+    readProjectTemplateInterface,
+    scaffoldProjectFromTemplate,
+} from "./projectTemplates";
 
 let root: string;
 let templatesDir: string;
@@ -244,5 +249,78 @@ describe("scaffoldProjectFromTemplate", () => {
             .rejects.toThrow(/Unsafe project template id/);
         await expect(scaffoldProjectFromTemplate(templatesDir, "..", projectDir))
             .rejects.toThrow(/Unsafe project template id/);
+    });
+});
+
+describe("readProjectTemplateInterface", () => {
+    const ui = (name: string) => JSON.stringify({ surfaces: [{ name }] });
+
+    it("reads the interface, its blueprints, the palette and the asset records as shipped", async () => {
+        const content = path.join(templatesDir, "skeleton", "content");
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({ name: "Skeleton" }));
+        await writeFile(path.join(content, "editor", "ui", "uidoc.json"), ui("Title"));
+        await writeFile(path.join(content, "editor", "ui", "uigraphs.json"), JSON.stringify({ blueprintDocument: {} }));
+        await writeFile(path.join(content, "editor", "brand.json"), JSON.stringify({ colors: [] }));
+        await writeFile(path.join(content, "assets", "assets.metadata.image.json"), JSON.stringify({ a: { name: "art" } }));
+        await writeFile(path.join(content, "assets", "assets.groups.image.json"), "{}");
+
+        const read = await readProjectTemplateInterface(templatesDir, "skeleton");
+
+        expect(read.contentLocale).toBeUndefined();
+        expect(read.uiDocument).toEqual({ surfaces: [{ name: "Title" }] });
+        expect(read.uiGraphs).toEqual({ blueprintDocument: {} });
+        expect(read.brand).toEqual({ colors: [] });
+        expect(read.assetRecords).toEqual({ image: { a: { name: "art" } } });
+    });
+
+    it("reads the copy written in the author's language, and the base for what it does not replace", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: { remove: [] } },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "ui", "uidoc.json"), ui("Title"));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "brand.json"), JSON.stringify({ colors: [1] }));
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "ui", "uidoc.json"), ui("标题"));
+
+        const read = await readProjectTemplateInterface(templatesDir, "skeleton", "zh-CN");
+
+        expect(read.contentLocale).toBe("zh");
+        expect(read.uiDocument).toEqual({ surfaces: [{ name: "标题" }] });
+        expect(read.brand).toEqual({ colors: [1] });
+        expect(read.uiGraphs).toBeNull();
+    });
+
+    it("refuses an id that would read outside the templates directory", async () => {
+        await writeFile(path.join(root, "secrets", "content", "editor", "ui", "uidoc.json"), "{}");
+
+        await expect(readProjectTemplateInterface(templatesDir, "../secrets")).rejects.toThrow(/Unsafe project template id/);
+    });
+});
+
+describe("readProjectTemplateAssets", () => {
+    const assetId = "5322b0e3-f48d-4b77-bfcd-7406613191ce";
+    const shard = ["53", "22", "b0e3f48d4b77bfcd7406613191ce"];
+
+    beforeEach(async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({ name: "Skeleton" }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "assets", "content", ...shard), "pixels");
+    });
+
+    it("reads a file by the id its shards are made from", async () => {
+        const read = await readProjectTemplateAssets(templatesDir, "skeleton", undefined, [assetId]);
+
+        expect(read).toEqual([{ assetId, dataBase64: Buffer.from("pixels").toString("base64") }]);
+    });
+
+    it("leaves out an id the template does not ship, and never treats a value as a path", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "brand.json"), "{}");
+
+        const read = await readProjectTemplateAssets(templatesDir, "skeleton", undefined, [
+            "00000000-0000-4000-8000-000000000000",
+            "../editor/brand.json",
+            assetId,
+        ]);
+
+        expect(read.map(entry => entry.assetId)).toEqual([assetId]);
     });
 });

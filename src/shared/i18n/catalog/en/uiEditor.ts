@@ -60,6 +60,11 @@ export const uiEditor = {
         pageValidationHint: "Check the page name and size before creating it.",
         gameUiSlotHint: "Select an available Game UI slot before creating it.",
         allSlotsUsed: "All Game UI slots already have a surface. Open an existing Game UI from the list.",
+        // Offered while no page has anything on it. The page comes from the starter template.
+        starterTitlePage: {
+            title: "Create Title Page",
+            description: "Includes Start and Continue buttons with their blueprints. Replaces the empty entry page.",
+        },
     },
     naming: {
         page: "Page {index}",

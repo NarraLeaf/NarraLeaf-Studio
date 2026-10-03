@@ -23,6 +23,10 @@ export const welcome = {
             label: "ヘルプ",
             description: "Studio の各部分がどう動くか",
         },
+        titlePage: {
+            label: "タイトルページを新規作成",
+            description: "「はじめから」「つづきから」ボタン付き",
+        },
     },
     reopenHint: {
         menu: "このページは「ヘルプ → ようこそページを開く」から開き直せる",

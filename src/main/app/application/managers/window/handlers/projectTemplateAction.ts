@@ -1,9 +1,19 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import type { ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
+import type {
+    ProjectTemplateAssetContent,
+    ProjectTemplateDescriptor,
+    ProjectTemplateInterfaceContent,
+} from "@shared/types/projectTemplate";
 import { PROJECT_TEMPLATES_DIR } from "@shared/constants/projectTemplate";
 import { requireWindowProjectOrWriteGrant } from "../../../utils/windowProject";
-import { listProjectTemplates, scaffoldProjectFromTemplate, type ScaffoldResult } from "../../projectTemplates";
+import {
+    listProjectTemplates,
+    readProjectTemplateAssets,
+    readProjectTemplateInterface,
+    scaffoldProjectFromTemplate,
+    type ScaffoldResult,
+} from "../../projectTemplates";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -85,5 +95,45 @@ export class ProjectTemplateScaffoldHandler extends IPCHandler<IPCEventType.proj
             await switchOnBuiltInDependencies(window, scaffolded.data.dependencies);
         }
         return scaffolded;
+    }
+}
+
+/**
+ * A template's interface documents, read for a workspace that is bringing a page out of it.
+ *
+ * Needs no grant for the same reason the list does: nothing is written, and the files are the app's
+ * own. The window's project is never touched here - the page is joined to it in the renderer.
+ */
+export class ProjectTemplateReadInterfaceHandler extends IPCHandler<IPCEventType.projectTemplateReadInterface> {
+    readonly name = IPCEventType.projectTemplateReadInterface;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.projectTemplateReadInterface]["data"],
+    ): Promise<RequestStatus<ProjectTemplateInterfaceContent>> {
+        return this.tryUse(() => readProjectTemplateInterface(
+            window.app.resolveResource(PROJECT_TEMPLATES_DIR),
+            data.templateId,
+            data.locale,
+        ));
+    }
+}
+
+/** A template's own asset files, by id, for the page being brought out of it. */
+export class ProjectTemplateReadAssetsHandler extends IPCHandler<IPCEventType.projectTemplateReadAssets> {
+    readonly name = IPCEventType.projectTemplateReadAssets;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.projectTemplateReadAssets]["data"],
+    ): Promise<RequestStatus<ProjectTemplateAssetContent[]>> {
+        return this.tryUse(() => readProjectTemplateAssets(
+            window.app.resolveResource(PROJECT_TEMPLATES_DIR),
+            data.templateId,
+            data.locale,
+            Array.isArray(data.assetIds) ? data.assetIds.filter(id => typeof id === "string") : [],
+        ));
     }
 }
