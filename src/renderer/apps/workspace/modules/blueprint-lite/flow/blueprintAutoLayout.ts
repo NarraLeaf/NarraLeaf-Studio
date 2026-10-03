@@ -13,9 +13,11 @@
  *
  *  1. **Rows.** A depth-first walk along the execution wires, each card's outputs taken top to
  *     bottom. The first output a card continues through stays on the card's row; every later one -
- *     an If's False, a Switch's later cases, a dialog's second button - starts a row of its own.
- *     Every card in a row is placed so its execution pin sits on the row's line, which is what makes
- *     the row's wires straight.
+ *     an If's False, a Switch's later cases, a dialog's second button - starts a row of its own,
+ *     below everything the first one led to, beginning just right of the card it leaves. So a branch
+ *     reads top to bottom as true then false, the way every node editor draws one, and its wire runs
+ *     down a clear corridor beside the true side and turns right. Every card in a row is placed so
+ *     its execution pin sits on the row's line, which is what makes the row's wires straight.
  *  2. **Feeders.** A card that only computes a value (it has no execution pins) belongs to the input
  *     it feeds and is drawn just before and below that input. A card's feeders are stacked in the
  *     order of the card's own input pins, so no two wires into one card cross; a feeder's own feeders
@@ -25,20 +27,19 @@
  *     to the rest.
  *  3. **Across.** Every execution card is as far left as its constraints allow: after the card
  *     before it in its row with room between them for its feeders, after every card it takes a wire
- *     from, and - where its row branched just before it - after the far end of that branch.
+ *     from, and - where its row branched just before it - far enough right to leave the branch's wire
+ *     its corridor.
  *  4. **Down.** Rows are dropped into place one at a time, each as high as it can go without
- *     touching anything placed before it, the execution wire of the row above included. Because the
- *     row a branch leaves has already been pushed past the branch, the branch's row lands directly
- *     under the card it leaves and its wire is short.
+ *     touching anything placed before it, the execution wire of the row above included. How far a
+ *     branch's wire drops does not matter; that it crosses nothing and runs under no card does.
  *  5. **Choices.** Two things the rules above leave open are settled by trying them. A branch can
- *     sit directly under the card it leaves, with the rest of that card's row pushed right past it,
- *     or under the rest of the row - which reads better when the two are versions of one sequence
- *     reading the same values, so that is where such a branch starts. And a value shared by several
- *     inputs can be drawn beside any of them. Each alternative is kept only if it leaves less to
- *     untangle, counted on the curves the canvas actually draws: crossings, then wires hidden under
- *     a card, then - only to choose between equals - how far the wires run, an execution wire's drop
- *     counting several times its run. A feeder that a wire from elsewhere runs through is lowered
- *     below that wire, which turns a hidden wire into a visible crossing.
+ *     also sit directly under the card it leaves, with the rest of that card's row pushed right past
+ *     it - but only where that strictly lowers what there is to untangle, counted on the curves the
+ *     canvas actually draws: crossings and wires hidden under a card. As good is not good enough;
+ *     the true-then-false reading wins every tie. And a value shared by several inputs can be drawn
+ *     beside any of them; there, between arrangements that untangle equally well, the shorter wiring
+ *     is kept. A feeder that a wire from elsewhere runs through is lowered below that wire, which
+ *     turns a hidden wire into a visible crossing.
  *  6. **Pieces, notes and frames.** Disconnected pieces are laid out one by one and stacked down the
  *     page in the order the author had them. A note (a comment card) goes above the piece it was
  *     written over. A frame (a comment in frame mode) holds the same cards afterwards as before:
@@ -168,9 +169,6 @@ const MAX_CHOICE_ROUNDS = 3;
  * untangle equally well, never enough to buy a crossing back.
  */
 const LENGTH_WEIGHT = 0.1;
-
-/** How many times an execution wire's drop counts against its run. */
-const EXEC_DROP_WEIGHT = 3;
 
 /** How often feeder trees are lowered out from under wires before the placement is taken as it is. */
 const MAX_REPAIR_PASSES = 3;
@@ -611,13 +609,19 @@ type Structure = {
     externalInputs: ReadonlyMap<string, readonly Wire[]>;
 };
 
-type Choice = "under" | "after";
+/**
+ * Where a branch's row goes: below everything its card's first output led to (the default), or
+ * directly under the card with the rest of the card's row pushed right past the branch.
+ */
+type Choice = "belowRow" | "underCard";
 
 type Placement = {
     positions: Map<string, { x: number; y: number }>;
     width: number;
     height: number;
     score: number;
+    /** The part of the score that counts what there is to untangle, without the wires' length. */
+    defects: number;
     /** Where each feeder tree's root went, from its row's line, and where that line went. */
     treeTops: Map<string, { top: number; line: number }>;
 };
@@ -632,22 +636,24 @@ function layoutIsland(
     const wires = allWires.filter(wire => member.has(wire.from) && member.has(wire.to));
 
     // Two kinds of decision are left open by the rules above, and both are settled by trying them:
-    // whether each branch sits directly under its card or under the rest of its row, and which of
-    // its inputs a value that feeds several of them is drawn beside. Each is tried the other way in
-    // turn and kept only if that untangles something, so on a tie every branch stays directly under
-    // its card and every shared value stays with the first input that reads it.
+    // whether a branch may sit directly under its card instead of below its row, and which of its
+    // inputs a value that feeds several of them is drawn beside. A branch moves under its card only
+    // when that strictly untangles something, and comes back as soon as it no longer does; a shared
+    // value moves when the result is better at all, shorter wiring included.
     let owners = new Map<string, Wire>();
     let structure = analyseIsland(ids, cards, wires, settings, owners);
-    let choices = new Map<string, Choice>(structure.branchCards.map(id => [id, firstChoice(structure, id)]));
+    let choices = new Map<string, Choice>(structure.branchCards.map(id => [id, "belowRow"]));
     let best = placeAndRepair(structure, choices, settings);
     const shared = sharedValues(ids, cards, wires);
     for (let round = 0; round < MAX_CHOICE_ROUNDS && best.score > 0; round += 1) {
         let improved = false;
         for (const id of structure.branchCards) {
             const trial = new Map(choices);
-            trial.set(id, choices.get(id) === "under" ? "after" : "under");
+            const next: Choice = choices.get(id) === "underCard" ? "belowRow" : "underCard";
+            trial.set(id, next);
             const candidate = placeAndRepair(structure, trial, settings);
-            if (candidate.score < best.score) {
+            const better = next === "underCard" ? candidate.defects < best.defects : candidate.defects <= best.defects;
+            if (better) {
                 choices = trial;
                 best = candidate;
                 improved = true;
@@ -662,7 +668,7 @@ function layoutIsland(
                 trialOwners.set(id, wire);
                 const trialStructure = analyseIsland(ids, cards, wires, settings, trialOwners);
                 const trialChoices = new Map<string, Choice>(
-                    trialStructure.branchCards.map(card => [card, choices.get(card) ?? "under"]),
+                    trialStructure.branchCards.map(card => [card, choices.get(card) ?? "belowRow"]),
                 );
                 const candidate = placeAndRepair(trialStructure, trialChoices, settings);
                 if (candidate.score < best.score) {
@@ -1068,7 +1074,20 @@ function place(
         }
         if (row.from !== null) {
             const first = row.cards[0]!;
-            constraints.push({ from: row.from, to: first, delta: card(row.from).w + gapBefore(first, row.from) });
+            if (choices.get(row.from) === "underCard") {
+                constraints.push({ from: row.from, to: first, delta: card(row.from).w + gapBefore(first, row.from) });
+            } else {
+                // Below the row, the card it branches from is out of the way: the branch starts a
+                // wire's gap right of that card, and its first card's feeders reach back under it -
+                // no further left than its left edge.
+                constraints.push({
+                    from: row.from,
+                    to: first,
+                    delta: card(row.from).w + settings.execGap +
+                        framePadding(card(row.from).frames, card(first).frames, "right", "left", settings),
+                });
+                constraints.push({ from: row.from, to: first, delta: gapReach(first) });
+            }
         }
     }
     for (const wire of structure.joins) {
@@ -1094,8 +1113,9 @@ function place(
             delta: relX.get(wire.from)! + card(wire.from).w + settings.dataGap - relX.get(wire.to)!,
         });
     }
-    // Branches: either the rest of the row passes the whole branch, or it leaves a corridor for the
-    // branch's wire to drop through.
+    // Branches: below the row, the rest of the row leaves the branch's wire a corridor to drop
+    // through - clear of its cards, and of the frames around them; directly under the card, the
+    // rest of the row passes the whole branch.
     for (const branchCard of structure.branchCards) {
         const row = rows[structure.rowOf.get(branchCard)!]!;
         const next = row.cards[row.cards.indexOf(branchCard) + 1];
@@ -1103,7 +1123,7 @@ function place(
             continue;
         }
         const branchRows = row.children.filter(index => rows[index]!.from === branchCard);
-        if (choices.get(branchCard) === "under") {
+        if (choices.get(branchCard) === "underCard") {
             for (const id of anchorsUnder(rows, branchRows)) {
                 constraints.push({
                     from: id,
@@ -1114,7 +1134,13 @@ function place(
             }
         } else {
             const first = rows[branchRows[0]!]!.cards[0]!;
-            constraints.push({ from: first, to: next, delta: gapReach(next) });
+            constraints.push({
+                from: first,
+                to: next,
+                delta: gapReach(next) +
+                    settings.framePadding.left *
+                        card(next).frames.filter(frame => !card(branchCard).frames.includes(frame)).length,
+            });
         }
     }
     const x = longestPaths(anchors, constraints);
@@ -1265,6 +1291,7 @@ function place(
         shifted.set(id, next);
         rects.set(id, { x: next.x, y: next.y, w: card(id).w, h: card(id).h });
     }
+    const defects = scoreOf(countDefects(structure.wires, rects, { skipHidden: true }));
     const treeTops = new Map<string, { top: number; line: number }>();
     for (const [root, top] of treeTopOf) {
         treeTops.set(root, { top, line: lineOfRow.get(treeRowOf.get(root)!)! - minY });
@@ -1273,7 +1300,8 @@ function place(
         positions: shifted,
         width: maxX - minX,
         height: maxY - minY,
-        score: scoreOf(countDefects(structure.wires, rects, { skipHidden: true })) + LENGTH_WEIGHT * wireLength(structure.wires, rects),
+        defects,
+        score: defects + LENGTH_WEIGHT * wireLength(structure.wires, rects),
         treeTops,
     };
 }
@@ -1286,11 +1314,7 @@ function scoreOf(defects: BlueprintLayoutMeasure): number {
     return defects.overlaps * 100000 + defects.backwards * 50000 + defects.throughCards * 1500 + defects.crossings * 1000;
 }
 
-/**
- * How far the wires run, for choosing between arrangements that untangle equally well. An execution
- * wire's drop counts several times its run: execution reads along a row, and a branch whose wire
- * falls past a band of other cards is the thing a reader loses, where a long straight run is not.
- */
+/** How far the wires run, for choosing between arrangements that untangle equally well. */
 function wireLength(wires: readonly Wire[], rects: ReadonlyMap<string, Rect>): number {
     let total = 0;
     for (const wire of wires) {
@@ -1301,7 +1325,7 @@ function wireLength(wires: readonly Wire[], rects: ReadonlyMap<string, Rect>): n
         }
         const dx = Math.abs(b.x - (a.x + a.w));
         const dy = Math.abs(b.y + wire.toOffset - (a.y + wire.fromOffset));
-        total += dx + (wire.kind === "exec" ? EXEC_DROP_WEIGHT : 1) * dy;
+        total += dx + dy;
     }
     return total;
 }
@@ -1386,48 +1410,6 @@ function treesUnderWires(structure: Structure, placement: Placement, settings: S
         }
     }
     return wanted;
-}
-
-/**
- * Where a branch starts out before the search has its say: directly under its card, unless the rest of
- * the row and the branch read values from the same cards. Then they are two versions of one sequence -
- * an If that lights one button or the other, a slot that fills its labels or clears them - and they
- * read best one above the other, each shared value between its two readers.
- */
-function firstChoice(structure: Structure, branchCard: string): Choice {
-    const { rows } = structure;
-    const row = rows[structure.rowOf.get(branchCard)!]!;
-    const at = row.cards.indexOf(branchCard);
-    if (at === row.cards.length - 1) {
-        return "under";
-    }
-    const continuation = new Set<string>();
-    for (const id of row.cards.slice(at + 1)) {
-        continuation.add(id);
-    }
-    for (const index of row.children) {
-        if (rows[index]!.from !== null && continuation.has(rows[index]!.from!)) {
-            for (const id of anchorsUnder(rows, [index])) {
-                continuation.add(id);
-            }
-        }
-    }
-    const branch = new Set(anchorsUnder(rows, row.children.filter(index => rows[index]!.from === branchCard)));
-    const readers = new Map<string, { continuation: boolean; branch: boolean }>();
-    for (const wire of structure.wires) {
-        if (wire.kind !== "data" || structure.cards.get(wire.from)!.exec) {
-            continue;
-        }
-        const anchor = structure.anchorOf.get(wire.to);
-        if (anchor === undefined) {
-            continue;
-        }
-        const seen = readers.get(wire.from) ?? { continuation: false, branch: false };
-        seen.continuation ||= continuation.has(anchor);
-        seen.branch ||= branch.has(anchor);
-        readers.set(wire.from, seen);
-    }
-    return [...readers.values()].some(seen => seen.continuation && seen.branch) ? "after" : "under";
 }
 
 /** Every anchor in the given rows and in every row that branches off them, however deep. */

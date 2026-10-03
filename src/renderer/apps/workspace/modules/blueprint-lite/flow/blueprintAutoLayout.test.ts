@@ -125,17 +125,69 @@ describe("layoutBlueprintGraph", () => {
             expect(pinY(graph, positions, "no1.next")).toBe(pinY(graph, positions, "no2.in"));
         });
 
-        it("puts the second row directly under the card it leaves, to its right", () => {
+        it("starts the second row just right of the card it leaves", () => {
             const { positions } = layoutBlueprintGraph(graph);
 
             expect(positions.no1!.x).toBeGreaterThan(rightOf(graph, positions, "if"));
             expect(positions.no1!.x - rightOf(graph, positions, "if")).toBeLessThanOrEqual(90);
-            // A short drop: the second row is not pushed below the first row's whole band.
-            expect(pinY(graph, positions, "no1.in") - pinY(graph, positions, "if.false")).toBeLessThan(150);
         });
 
         it("crosses nothing and runs nothing backwards", () => {
             expect(untangled(graph).measure).toEqual({ crossings: 0, backwards: 0, throughCards: 0, overlaps: 0 });
+        });
+
+        describe("whose first output has feeders of its own", () => {
+            // The true side's cards each read a value drawn just below them, the way Set Element
+            // Variant reads its Element: the false row has to clear those too.
+            const fed = {
+                cards: [
+                    head("start"),
+                    card("if", { in: true, out: ["true", "false"], data: ["condition"] }),
+                    step("yes1", ["v"]),
+                    step("yes2", ["v"]),
+                    { ...value("feedYes1"), height: 211, pins: [{ id: "result", side: "out" as const, kind: "data" as const, offset: 194 }] },
+                    { ...value("feedYes2"), height: 211, pins: [{ id: "result", side: "out" as const, kind: "data" as const, offset: 194 }] },
+                    step("no1", ["v"]),
+                    step("no2"),
+                    value("feedNo1"),
+                ],
+                wires: [
+                    wire("start.then", "if.in"),
+                    wire("if.true", "yes1.in"),
+                    wire("feedYes1.result", "yes1.v"),
+                    wire("yes1.next", "yes2.in"),
+                    wire("feedYes2.result", "yes2.v"),
+                    wire("if.false", "no1.in"),
+                    wire("feedNo1.result", "no1.v"),
+                    wire("no1.next", "no2.in"),
+                ],
+            };
+
+            it("reads true then false: the false row goes below the whole true side", () => {
+                const { positions } = layoutBlueprintGraph(fed);
+                const trueBottom = Math.max(...["yes1", "yes2", "feedYes1", "feedYes2"].map(id => bottomOf(fed, positions, id)));
+
+                for (const id of ["no1", "no2", "feedNo1"]) {
+                    expect(positions[id]!.y).toBeGreaterThan(trueBottom);
+                }
+                expect(pinY(fed, positions, "if.true")).toBe(pinY(fed, positions, "yes1.in"));
+            });
+
+            it("keeps the graph compact: the true side starts where its feeders need it to", () => {
+                const { positions } = layoutBlueprintGraph(fed);
+
+                // One feeder column and the false row's corridor - not the whole false row's width.
+                expect(positions.yes1!.x - rightOf(fed, positions, "if")).toBeLessThanOrEqual(90 + 200 + 2 * 60);
+            });
+
+            it("drops the false wire down a corridor beside the true side, crossing nothing", () => {
+                const { result, measure } = untangled(fed);
+
+                expect(measure).toEqual({ crossings: 0, backwards: 0, throughCards: 0, overlaps: 0 });
+                for (const id of ["yes1", "yes2", "feedYes1", "feedYes2"]) {
+                    expect(result.positions[id]!.x).toBeGreaterThanOrEqual(result.positions.no1!.x);
+                }
+            });
         });
     });
 
