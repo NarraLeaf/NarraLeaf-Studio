@@ -14,6 +14,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { parseBlueprintOwnerKey } from "@/lib/workspace/services/search/blueprintOwnerKey";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../../modules/blueprint-lite/openBlueprintEditorTab";
+import { blueprintOwnerOpenTarget } from "../../modules/search/blueprintJumpTarget";
 import { createSurfaceEditorTab } from "../../modules/ui-editor/UISurfacesPanel";
 import { openAssetPreviewTabsInEditor } from "../../modules/assets/dnd/openDraggedAssetsInEditor";
 
@@ -160,18 +161,10 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 kind: "blueprint",
                 title: blueprint.name,
                 icon: <Workflow className="h-4 w-4" />,
+                // Addressed and named as the interface panel and the inspector open it, so picking a
+                // blueprint whose editor is already open focuses that tab instead of adding another.
                 open: () => {
-                    uiService.editor.open(
-                        createBlueprintEntryEditorTab({
-                            blueprintId: blueprint.id,
-                            ownerKind: owner.ownerKind,
-                            surfaceId: owner.surfaceId,
-                            componentId: owner.componentId,
-                            elementId: owner.elementId,
-                            propPath: owner.propPath,
-                            title: blueprint.name,
-                        }),
-                    );
+                    uiService.editor.open(createBlueprintEntryEditorTab(blueprintOwnerOpenTarget(blueprint.id, owner, ctx)));
                 },
             });
         }

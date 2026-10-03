@@ -23,6 +23,7 @@ export const WorkspaceMenuAction = {
     CloseWorkspace: "narraleaf-studio:file-close-workspace",
     ReturnToLauncher: "narraleaf-studio:file-return-to-launcher",
     OpenWelcome: "narraleaf-studio:open-welcome",
+    ExportLogs: "narraleaf-studio:export-logs",
     About: "narraleaf-studio:about",
     Build: "narraleaf-studio:build",
     ToggleLeftSidebar: "narraleaf-studio:toggle-left-sidebar",

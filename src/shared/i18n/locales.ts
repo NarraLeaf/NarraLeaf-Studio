@@ -12,7 +12,7 @@
  * catalog to translate every English key, so step 3 is not optional in practice.
  */
 
-import { pickPreferredLocale } from "./preferredLocale";
+import { matchPreferredLocale, type OfferedLocale } from "./preferredLocale";
 import { getOverlayMeta, listOverlayLocales } from "./registry";
 
 export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
@@ -132,10 +132,28 @@ export function normalizeLocale(value: unknown): LocaleCode {
  * `navigator.languages`, the main process reads `app.getPreferredSystemLanguages()` — and two
  * implementations of "which language is this machine in" is two answers waiting to disagree.
  *
- * The walk itself is {@link pickPreferredLocale}, which carries no imports. A shipped game's main
- * process calls that one directly against its own three-language table: it needs the same answer
- * and must not pull the catalog in to get it.
+ * A language a plugin contributes is matched by BCP-47 fallback rather than as text, the way the
+ * built-in ones always effectively were: a `zh-TW` machine finds a pack registered as `zh-Hant`, a
+ * `zh-Hant` machine one registered as `zh-TW`, and an `fr-CA` one a pack registered as `fr-FR`. The
+ * built-in catalogs are offered first and win whenever they can answer, because they are complete
+ * and a pack may not be - a pack is picked only for a reader none of them serves in their own
+ * script. The built-in `zh` is matched as what it is, Simplified Chinese (`zh-CN`), so a `zh-TW`
+ * machine reaches a Traditional pack before it settles for it. See {@link matchPreferredLocale}.
+ *
+ * A shipped game's main process calls {@link pickPreferredLocale} directly against its own
+ * three-language table: it needs the same answer for those three and must not pull the catalog in
+ * to get it.
  */
 export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
-    return pickPreferredLocale(tags, getRegisteredLocales(), DEFAULT_LOCALE);
+    const builtIn: OfferedLocale<LocaleCode>[] = SUPPORTED_LOCALES.map(code => ({
+        code,
+        tags: [code, LOCALE_META[code].intl],
+    }));
+    const contributed: OfferedLocale<LocaleCode>[] = listOverlayLocales()
+        .filter(code => !isLocale(code))
+        .map(code => {
+            const intl = getOverlayMeta(code)?.intl;
+            return { code, tags: intl ? [code, intl] : [code] };
+        });
+    return matchPreferredLocale(tags, [builtIn, contributed], DEFAULT_LOCALE);
 }

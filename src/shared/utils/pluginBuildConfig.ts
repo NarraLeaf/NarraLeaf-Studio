@@ -7,7 +7,9 @@ import {
     type PluginBuildConfigField,
     type PluginBuildConfigFieldContribution,
     type PluginBuildConfigValueField,
+    type PluginManifestLocalized,
 } from "../types/plugins";
+import { pluginDisplayName } from "./pluginDisplayText";
 
 /**
  * What a build has to be told before it can ship, folded out of the installed plugins.
@@ -27,6 +29,7 @@ export type PluginBuildConfigDeclaringPlugin = {
     enabled: boolean;
     manifest: {
         name?: string;
+        localized?: PluginManifestLocalized;
         contributes?: { buildConfig?: PluginBuildConfigFieldContribution[] };
     };
 };
@@ -51,10 +54,14 @@ export type PluginBuildConfigSlot = {
  *
  * `platforms` is what is being built. Pass every platform to list what the project can configure at
  * all; pass none and nothing is required, which is the honest answer for a build with no targets.
+ *
+ * `locale` is the editor's, for a surface that shows `pluginName` to the author; without one the
+ * plain manifest name is used, which is what a build log says.
  */
 export function collectPluginBuildConfigFields(
     plugins: readonly PluginBuildConfigDeclaringPlugin[],
     platforms: readonly GameBuildPlatform[],
+    locale?: string,
 ): PluginBuildConfigField[] {
     const fields: PluginBuildConfigField[] = [];
     for (const plugin of plugins) {
@@ -71,7 +78,7 @@ export function collectPluginBuildConfigFields(
                 pluginId: plugin.pluginId,
                 // The id is the fallback rather than an empty string: a surface grouping fields by
                 // plugin has to print something, and the id is at least identifying.
-                pluginName: plugin.manifest.name?.trim() || plugin.pluginId,
+                pluginName: pluginDisplayName(plugin.manifest, locale)?.trim() || plugin.pluginId,
             });
         }
     }

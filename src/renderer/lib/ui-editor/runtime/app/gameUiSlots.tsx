@@ -22,6 +22,7 @@ import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
 import { needsRunningGame, refusal } from "./runtimeRefusals";
 import { translate } from "@/lib/i18n";
+import { takeGlobalInputTurn } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -77,6 +78,32 @@ export function createGameUiSlotComponents(input: {
             ? createOnStageSlotNode(slotHostOptions, onStageSurface)
             : undefined,
     };
+}
+
+/**
+ * A click in the middle of the stage, as the engine's stage announcer has to see it to answer it.
+ *
+ * Positioned, because the announcer reads where a click landed: it answers only a click inside the
+ * player and inside the stage. `element.click()` lands at the window's top-left corner, which is
+ * inside the stage only when the stage starts there - so `Next` moved the engine's box on in a
+ * game that filled its window, and did nothing in Dev Mode, whose window draws its own bar above the
+ * stage, or in a game letterboxed inside a window of another shape.
+ *
+ * Marked as already offered to the game's global blueprint. It is not a press the player made but the
+ * engine's half of one - a key, a click on a button, a graph - which has had its turn at the global
+ * actions already; heard there as a click of its own, a global answering Advance would read on twice.
+ */
+function clickStageAtCentre(target: HTMLElement): void {
+    const rect = target.getBoundingClientRect();
+    const click = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+    });
+    takeGlobalInputTurn(click);
+    target.dispatchEvent(click);
 }
 
 /**
@@ -474,8 +501,8 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
                 dialogClickTarget.click();
                 return;
             }
-            // No dialog surface of its own: the engine draws the box, and its stage announcer
-            // answers a click anywhere on the player.
+            // No dialog surface of its own: the engine draws the box - or the NVL page - and its
+            // stage announcer answers a click anywhere on the player.
             const liveGame = requireLiveGame("blueprint.node.next");
             const gameState = liveGame.getGameState();
             if (!gameState) {
@@ -485,7 +512,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             if (!clickTarget) {
                 throw needsRunningGame("blueprint.node.next");
             }
-            clickTarget.click();
+            clickStageAtCentre(clickTarget);
         },
 
         onSkip: async (): Promise<void> => {

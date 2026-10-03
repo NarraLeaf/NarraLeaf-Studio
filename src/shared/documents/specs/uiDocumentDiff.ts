@@ -4,6 +4,7 @@ import type {
     UIElement,
     UISurface,
 } from "@shared/types/ui-editor/document";
+import {resolveEntrySurface} from "@shared/types/ui-editor/entrySurface";
 import {buildDocumentDiff, DocumentChange, DocumentDiff} from "../diff";
 import {authoredName, byId, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
 import {isJsonObject} from "./parseHelpers";
@@ -19,6 +20,7 @@ import {isJsonObject} from "./parseHelpers";
  *
  * ```
  * ["name"]                                            the document's own name
+ * ["entrySurfaceId"]                                  which page the game starts on
  * ["surfaces", <surfaceId>]                           a Surface appeared, went, or its own fields changed
  * ["surfaces", <surfaceId>, <field>]                  one of those fields
  * ["surfaces", <surfaceId>, "elements", <elementId>]  an element of that Surface
@@ -63,6 +65,7 @@ import {isJsonObject} from "./parseHelpers";
 
 const LABEL = {
     renamed: "documentDiff.uiDocument.renamed",
+    entryPage: "documentDiff.uiDocument.entryPage",
     surfaceAdded: "documentDiff.uiDocument.surfaceAdded",
     surfaceRemoved: "documentDiff.uiDocument.surfaceRemoved",
     surfaceChanged: "documentDiff.uiDocument.surfaceChanged",
@@ -123,6 +126,18 @@ export function diffUIDocument(
         rows.push(DOCUMENT_SLOT, change(["name"], "changed", LABEL.renamed, {
             params: fromToParams(base?.name, head?.name),
             subject: authoredName(head?.name),
+        }));
+    }
+
+    // Compared as stored, drawn as resolved. The stored pointer is what changed in the file, so a
+    // change to it is what earns the row; the page names are what the author knows the entry by, and
+    // a side that names no entry still has one.
+    if (!sameJsonValue(base?.entrySurfaceId ?? null, head?.entrySurfaceId ?? null)) {
+        const from = readEntrySurface(base);
+        const to = readEntrySurface(head);
+        rows.push(DOCUMENT_SLOT, change(["entrySurfaceId"], "changed", LABEL.entryPage, {
+            params: fromToParams(authoredName(from?.name), authoredName(to?.name)),
+            subject: authoredName(to?.name),
         }));
     }
 
@@ -444,6 +459,13 @@ function walkTree(
         }
     }
     return out;
+}
+
+/** The page one side starts on, read without trusting the side's shape. See `resolveEntrySurface`. */
+function readEntrySurface(document: UIDocument | undefined): UISurface | undefined {
+    const surfaces = Array.isArray(document?.surfaces) ? document.surfaces.filter(isJsonObject) as UISurface[] : [];
+    const stored = document?.entrySurfaceId;
+    return resolveEntrySurface({surfaces, entrySurfaceId: typeof stored === "string" ? stored : undefined});
 }
 
 function elementsOf(component: UIComponentDefinition | undefined): Record<string, UIElement> {

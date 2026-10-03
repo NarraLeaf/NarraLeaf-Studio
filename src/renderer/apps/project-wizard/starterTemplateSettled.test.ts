@@ -15,8 +15,9 @@
  * a defect. This is what stops a new project starting there.
  *
  * Each assertion below is one of the reasons `load` saves. The two it cannot reach need a service
- * container, and both are pinned by their observable precondition instead: the main surface has to
- * exist with a root element, or `ensureMainSurface` mints one.
+ * container, and both are pinned by their observable precondition instead: the entry page - the main
+ * surface, since the template names no other - has to exist with a root element, or
+ * `ensureEntrySurface` mints one.
  */
 import fs from "node:fs";
 import path from "node:path";

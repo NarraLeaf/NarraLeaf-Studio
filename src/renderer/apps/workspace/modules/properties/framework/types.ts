@@ -202,6 +202,8 @@ export interface IconButtonGroupOption {
     icon: ReactNode;
     label?: string;
     disabled?: boolean;
+    /** Hover text when it should say more than the label - why an option is unavailable, say. */
+    tip?: string;
 }
 
 export type IconButtonSelection = string | string[] | null;

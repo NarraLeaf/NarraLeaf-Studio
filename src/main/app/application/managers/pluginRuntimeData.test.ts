@@ -18,6 +18,7 @@ function manifest(runtimeData: string[]): NormalizedPluginManifestV2 {
             blueprintNodes: [],
             widgets: [],
             tests: [],
+            reservedSaveIds: [],
             runtimeData,
             locales: [],
             runtimeCapabilities: [],

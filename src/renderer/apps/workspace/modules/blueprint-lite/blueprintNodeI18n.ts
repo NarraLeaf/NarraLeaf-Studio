@@ -7,12 +7,18 @@
  * default locale and would NOT update when the user switches language, so these lookups
  * resolve at RENDER time instead, keyed by the original English display text.
  *
+ * A node the host did not define brings its own translations instead (see
+ * `BlueprintNodeDeclaration.translations`), indexed by the same English text. The tables here are
+ * asked first, so a word Studio already translates reads the same on a plugin's node as on its own.
+ *
  * Strings with no mapping (math symbols like "+", single-letter operand labels such as
  * "A"/"B"/"X"/"Y", and labels derived from runtime data like function parameter names)
  * intentionally fall back to their original English text unchanged.
  */
 import type { TranslationKey } from "@shared/i18n";
 import type { UseTranslation } from "@/lib/i18n";
+import { i18nStore } from "@/lib/i18n/store";
+import { lookupBlueprintNodeTranslation } from "@/lib/ui-editor/blueprint-nodes/nodeTranslations";
 
 type Translate = UseTranslation["t"];
 
@@ -943,10 +949,15 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Offset Minutes": "blueprint.port.offsetMinutes",
 };
 
+/** A node's own translation of `text` in the active locale - see the module comment. */
+function declaredTranslation(text: string): string | undefined {
+    return lookupBlueprintNodeTranslation(text, i18nStore.getLocale());
+}
+
 /** Localize a node title, falling back to the original English text when unmapped. */
 export function resolveBlueprintNodeTitle(displayName: string, t: Translate): string {
     const key = NODE_TITLE_KEYS[displayName];
-    return key ? t(key) : displayName;
+    return key ? t(key) : declaredTranslation(displayName) ?? displayName;
 }
 
 /**
@@ -967,7 +978,7 @@ export function blueprintLabelKey(text: string): TranslationKey | undefined {
 /** Localize a palette category name, falling back to the original English text when unmapped. */
 export function resolveBlueprintCategoryLabel(category: string, t: Translate): string {
     const key = CATEGORY_KEYS[category];
-    return key ? t(key) : category;
+    return key ? t(key) : declaredTranslation(category) ?? category;
 }
 
 /**
@@ -980,11 +991,16 @@ export function resolveBlueprintCategoryLabel(category: string, t: Translate): s
  * label that genuinely reads as one phrase - `Case 0`, `Then 1` - keeps its own translation.
  */
 export function resolveBlueprintLabel(text: string, t: Translate): string {
-    const key = PORT_LABEL_KEYS[text];
-    if (key) {
-        return t(key);
+    const whole = resolveWholeLabel(text, t);
+    if (whole !== undefined) {
+        return whole;
     }
     const ordinal = /^(.*\S)\s+(\d+)$/.exec(text);
-    const stemKey = ordinal ? PORT_LABEL_KEYS[ordinal[1]] : undefined;
-    return stemKey ? `${t(stemKey)} ${ordinal![2]}` : text;
+    const stem = ordinal ? resolveWholeLabel(ordinal[1], t) : undefined;
+    return stem !== undefined ? `${stem} ${ordinal![2]}` : text;
+}
+
+function resolveWholeLabel(text: string, t: Translate): string | undefined {
+    const key = PORT_LABEL_KEYS[text];
+    return key ? t(key) : declaredTranslation(text);
 }

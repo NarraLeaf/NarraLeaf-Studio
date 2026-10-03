@@ -227,9 +227,17 @@ export function listSceneDisplayableTargets(
         return [];
     }
     const scene = document.scenes[sceneId];
-    if (!scene) {
-        return [];
-    }
+    return scene ? listDisplayableTargetsInScene(scene, blockId) : [];
+}
+
+/**
+ * {@link listSceneDisplayableTargets} for a scene the caller already holds.
+ *
+ * For a caller whose scene is not (yet) the one the document carries - the story command line's
+ * second reading of a `.story` file, whose scene holds the rows the file is adding - so a name the
+ * file declares above a row resolves on that row, as it does once the file is applied.
+ */
+export function listDisplayableTargetsInScene(scene: StoryScene, blockId: StoryBlockId | undefined): SceneDisplayableRef[] {
     const blocks = flattenSceneBlocks(scene);
     const activeIndex = blockId ? blocks.findIndex(block => block.id === blockId) : -1;
     const priorBlocks = activeIndex >= 0 ? blocks.slice(0, activeIndex) : blocks;

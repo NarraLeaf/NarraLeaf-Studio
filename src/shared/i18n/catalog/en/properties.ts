@@ -37,6 +37,7 @@ export const properties = {
             addCreate: "Create action",
             removeAction: "Stop answering {name}",
             answer: "Answer {name}",
+            reveal: "Show {name} in Input Actions",
             bubble: "After it fires",
             bubbleStop: "Intercept",
             bubbleContinue: "Continue",
@@ -63,9 +64,27 @@ export const properties = {
         uiElement: "UI Element",
         linkedComponent: "Linked Component",
     },
+    // The sounds an element plays when it is pointed at and when it is clicked.
+    interactionSound: {
+        title: "Sound",
+        hover: "Hover",
+        hoverTip: "Plays when the pointer moves onto the element, on the SFX track unless its options name another. Of nested elements with a hover sound, only the innermost one plays.",
+        click: "Click",
+        clickTip: "Plays when the element is clicked, on the SFX track unless its options name another. Of nested elements with a click sound, only the innermost one plays.",
+        none: "No sound",
+        // The folded line under a sound, which states its volume and track while closed.
+        options: "Playback options",
+        summary: "Volume {volume} · {track}",
+        volume: "Volume",
+        track: "Track",
+        chooseHover: "Choose hover sound",
+        chooseClick: "Choose click sound",
+        missing: "Missing sound",
+    },
     linkedComponent: {
         missing: "Missing component",
         info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",
+        reveal: "Show in Component Library",
     },
     componentParams: {
         title: "Params",

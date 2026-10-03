@@ -23,6 +23,7 @@ import {
     type PluginContributes,
     type PluginLocaleContribution,
     type PluginManifestEntries,
+    type PluginManifestLocalized,
     type PluginManifestV2,
     type PluginSidecarContribution,
     type PluginSidecarTargetContribution,
@@ -96,6 +97,10 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
     }
 
     const description = readOptionalString(value, "description");
+    const localized = value.localized === undefined ? undefined : validateLocalized(value.localized);
+    if (typeof localized === "string") {
+        return invalid(localized);
+    }
     const publisher = readOptionalString(value, "publisher");
     const declared = value.permissions === undefined
         ? []
@@ -121,11 +126,51 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
         contributes,
         permissions,
         ...(description ? { description } : {}),
+        ...(localized ? { localized } : {}),
         ...(publisher ? { publisher } : {}),
         ...(icon ? { icon } : {}),
     };
 
     return { ok: true, manifest };
+}
+
+/**
+ * The `localized` table, `undefined` when it declares nothing, or an error.
+ *
+ * Keys use the same locale-code shape as `contributes.locales`, which is every code Studio's
+ * language setting can hold. An entry that translates neither field is refused rather than
+ * dropped: it is almost always a misspelt key (`title`, `desc`), and dropping it would leave the
+ * author wondering why the plugin list still shows the plain name.
+ */
+function validateLocalized(value: unknown): PluginManifestLocalized | undefined | string {
+    if (!isRecord(value)) {
+        return "Plugin localized must be an object keyed by locale code";
+    }
+    const out: PluginManifestLocalized = {};
+    for (const [code, entry] of Object.entries(value)) {
+        if (!LOCALE_CODE_PATTERN.test(code)) {
+            return `Plugin localized has an invalid locale code: ${code}`;
+        }
+        if (!isRecord(entry)) {
+            return `Plugin localized["${code}"] must be an object with name and/or description`;
+        }
+        if (entry.name !== undefined && typeof entry.name !== "string") {
+            return `Plugin localized["${code}"].name must be a string`;
+        }
+        if (entry.description !== undefined && typeof entry.description !== "string") {
+            return `Plugin localized["${code}"].description must be a string`;
+        }
+        const name = readString(entry, "name");
+        const description = readString(entry, "description");
+        if (!name && !description) {
+            return `Plugin localized["${code}"] must declare a name or a description`;
+        }
+        out[code] = {
+            ...(name ? { name } : {}),
+            ...(description ? { description } : {}),
+        };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -168,6 +213,9 @@ function validateIcon(value: unknown): string | undefined | { error: string } {
  * `contributes.buildConfig` is absent for the same reason and a simpler one: a
  * declared field is a blank the author fills in, and filling it in gives the
  * plugin no reach it did not already have.
+ *
+ * `contributes.reservedSaveIds` is absent for that same reason: it only takes
+ * ids in the plugin's own namespace out of the player's save listing.
  */
 function derivePermissionsFromContributes(
     contributes: Required<PluginContributes>,
@@ -220,8 +268,8 @@ function hostnameOf(url: string): string | null {
     }
 }
 
-/** Contribution kinds whose value is an array of `<pluginId>.`-prefixed type strings. */
-const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests"] as const;
+/** Contribution kinds whose value is an array of `<pluginId>.`-prefixed identifiers. */
+const CONTRIBUTES_TYPE_KEYS = ["blueprintNodes", "widgets", "runtimeData", "tests", "reservedSaveIds"] as const;
 
 /** Every recognized `contributes` key, including the object-shaped ones. */
 const CONTRIBUTES_KEYS = [
@@ -287,6 +335,7 @@ const CONTRIBUTES_KIND_LABEL: Record<(typeof CONTRIBUTES_TYPE_KEYS)[number], str
     widgets: "widget",
     runtimeData: "storage namespace",
     tests: "test",
+    reservedSaveIds: "reserved save id",
 };
 
 /** BCP-47-ish locale code: primary subtag plus optional hyphen-joined subtags. */
@@ -298,6 +347,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         widgets: [],
         runtimeData: [],
         tests: [],
+        reservedSaveIds: [],
         locales: [],
         runtimeCapabilities: [],
         sidecars: [],

@@ -43,6 +43,7 @@ import {
     collectPluginBuildConfigFields,
     type PluginBuildConfigDeclaringPlugin,
 } from "@shared/utils/pluginBuildConfig";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { countAppTagStoryUsage, type AppTagStoryUsage } from "@shared/story/appTagStoryUsage";
 import {
@@ -189,6 +190,11 @@ export type BuildPluginEntry = {
     installedEnabled?: boolean;
     /** The installed plugin's own state: waiting for its permissions, or failed to load. */
     installedStatus?: DependencyResolutionEntry["installedStatus"];
+    /**
+     * The installed plugin's translations of `label`, applied when the row draws so the list follows
+     * the editor's language.
+     */
+    localized?: DependencyResolutionEntry["installedLocalized"];
 };
 
 /**
@@ -212,6 +218,7 @@ export function buildPluginEntries(
             suppressed: entry.suppressed,
             installedEnabled: entry.installedEnabled,
             ...(entry.installedStatus ? { installedStatus: entry.installedStatus } : {}),
+            ...(entry.installedLocalized ? { localized: entry.installedLocalized } : {}),
         }));
     }
     return (table?.plugins ?? []).map(plugin => ({
@@ -286,7 +293,7 @@ export function BuildDialogContent({
     onCancel: () => void;
     runPreflight: (request: GameBuildRequest) => Promise<BuildPreflightFinding[]>;
 }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [state, setState] = useState<BuildDialogState>(initialState);
     /** The variant every page after the first one describes. */
     const variant = useMemo(
@@ -318,8 +325,8 @@ export function BuildDialogContent({
      * declared for Android alone is not a question until Android is being built.
      */
     const pluginFields = useMemo(
-        () => collectPluginBuildConfigFields(info.configurablePlugins, selectedPlatforms),
-        [info.configurablePlugins, selectedPlatforms],
+        () => collectPluginBuildConfigFields(info.configurablePlugins, selectedPlatforms, locale),
+        [info.configurablePlugins, locale, selectedPlatforms],
     );
     /**
      * A project whose only variant is the release one has nothing to pick, and a build no plugin asks
@@ -1339,7 +1346,7 @@ function PluginList({
     frozen: FrozenControlProps;
     onRescan: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     return (
         <div className="grid gap-1">
             <div className="flex items-center justify-between gap-3">
@@ -1365,7 +1372,7 @@ function PluginList({
                     {plugins.map(plugin => (
                         <div key={plugin.id} className="flex items-baseline justify-between gap-3">
                             <span className="min-w-0 truncate text-2xs text-fg-muted">
-                                {`${plugin.label} ${plugin.version}`}
+                                {`${pluginDisplayName({ name: plugin.label, localized: plugin.localized }, locale)} ${plugin.version}`}
                             </span>
                             <PluginStatus plugin={plugin} />
                         </div>

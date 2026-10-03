@@ -235,8 +235,9 @@ export function describeParamType(type: StoryCommandParamType): string {
             const refuses = type.refuses?.length ? ` (refuses ${type.refuses.join(", ")})` : "";
             // A slot that reads a library creates its subject from a file, so the file kinds are named
             // beside the stage kinds: a reader of this line has to know the name may be an asset's.
+            const article = /^[aeiou]/.test(type.assets?.[0] ?? "") ? "an" : "a";
             const assets = type.assets?.length
-                ? `, or an ${type.assets.join(" / ")} asset (creates it; name= says what it is called)`
+                ? `, or ${article} ${type.assets.join(" / ")} asset (creates it; name= says what it is called)`
                 : "";
             return `stage object: ${type.accepts.join(" / ")}${reserved}${assets}${refuses}`;
         }

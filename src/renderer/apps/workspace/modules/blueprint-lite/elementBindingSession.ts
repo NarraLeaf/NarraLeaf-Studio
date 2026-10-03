@@ -1,4 +1,10 @@
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
+import { normalizeUIElementRefSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 
 export type BlueprintElementBindingSession = {
     id: string;
@@ -15,6 +21,26 @@ export type BlueprintElementBindingTarget = {
     elementId: string;
     elementType: string;
 };
+
+/**
+ * A node's params once the element picker has answered for it.
+ *
+ * An element is picked on the surface it is shown on, and inside a component definition that is the
+ * component editor's own surface. The reference is stored under the definition's surface instead
+ * (`buildUIComponentSurfaceId`, by way of `normalizeUIElementRefSurfaceId`), the one every check at
+ * runtime compares a reference against.
+ */
+export function withPickedElement(
+    params: Record<string, unknown> | undefined,
+    target: BlueprintElementBindingTarget,
+): Record<string, unknown> {
+    return {
+        ...(params ?? {}),
+        [ELEMENT_REF_PARAM_SURFACE_ID]: normalizeUIElementRefSurfaceId(target.surfaceId),
+        [ELEMENT_REF_PARAM_ELEMENT_ID]: target.elementId,
+        [ELEMENT_REF_PARAM_ELEMENT_TYPE]: target.elementType,
+    };
+}
 
 export type BlueprintElementBindingCompletion = {
     session: BlueprintElementBindingSession;

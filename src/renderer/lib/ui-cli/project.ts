@@ -40,14 +40,6 @@ import {
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
 
-/**
- * The surface every shipped game boots into.
- *
- * It cannot be deleted and no other surface can be given this id, so a title page authored anywhere
- * else is a title page the game never shows.
- */
-export const MAIN_SURFACE_ID = "narraleaf-studio:main-surface";
-
 export class ProjectIoError extends Error {}
 
 /**

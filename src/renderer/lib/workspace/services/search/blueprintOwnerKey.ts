@@ -1,4 +1,5 @@
 import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 
 /**
  * A blueprint owner slot key, in the shape a search hit needs to open an editor on it.
@@ -22,9 +23,11 @@ export type ParsedBlueprintOwnerKey = {
 
 export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKey | null {
     const owner = decodeBlueprintOwnerKey(ownerKey);
-    if (!owner) {
-        return null;
-    }
+    return owner ? flattenBlueprintOwner(owner) : null;
+}
+
+/** The same flattened view, for a caller holding the owner itself rather than its key. */
+export function flattenBlueprintOwner(owner: BlueprintOwnerRef): ParsedBlueprintOwnerKey {
     switch (owner.kind) {
         case "globalMain":
             return { ownerKind: "globalMain" };
@@ -46,9 +49,9 @@ export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKe
             // jump target resolves the row from the blueprint itself.
             return { ownerKind: "storyAction" };
         default: {
-            // An owner kind added without an arm here would otherwise return null, and a null owner
-            // is "this hit has nowhere to go" - so every blueprint of the new kind would be found by
-            // search and refuse to open.
+            // An owner kind added without an arm here would otherwise fall through to nothing, and a
+            // hit with no owner has nowhere to go - so every blueprint of the new kind would be found
+            // by search and refuse to open.
             const unreachable: never = owner;
             return unreachable;
         }

@@ -5,6 +5,7 @@ import { hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
 import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 
 export interface PluginDetailsModalProps {
     installed: PluginListItem | null;
@@ -31,10 +32,10 @@ export function PluginDetailsModal({
     onUninstall,
     onInstall,
 }: PluginDetailsModalProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
 
     const pluginId = installed?.pluginId ?? registryEntry?.id ?? "";
-    const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
+    const name = (installed ? pluginDisplayName(installed.manifest, locale) : registryEntry?.name) ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
     // No window here runs a plugin, so writing the record is the whole change and there is nothing

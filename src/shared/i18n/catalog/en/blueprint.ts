@@ -40,7 +40,6 @@ export const blueprint = {
         collapse: "Collapse side panel",
     },
     canvas: {
-        addLayer: "Add layer",
         selectLayer: "Select a layer on the left.",
         previewUnavailable: "Preview unavailable",
         unknownNode: "Unknown node",
@@ -303,6 +302,50 @@ export const blueprint = {
             other: "Already run by {count} layers",
         },
     },
+    /**
+     * What a blueprint with no layers shows: a few templates that suit its owner, the template library,
+     * and a blank layer last.
+     */
+    layerTemplates: {
+        heading: "New layer",
+        description: "Start from a template or from a blank layer.",
+        listLabel: "Layer templates",
+        blank: {
+            title: "Blank layer",
+            description: "An empty canvas, or one of your own scripts.",
+        },
+        library: {
+            title: "More templates",
+            description: "Browse every template for this blueprint by category.",
+        },
+    },
+    /** The template library: every template that suits a blueprint, shelved by category. */
+    templateLibrary: {
+        title: "Template library",
+        open: "Add from template library",
+        all: "All",
+        categoriesLabel: "Categories",
+        search: "Search templates",
+        emptyFiltered: "No templates match.",
+        empty: "No templates suit this blueprint.",
+        add: "Add",
+        back: "Back",
+        openDetail: "Show details",
+        choicesHeading: "To choose after adding",
+        choicesNone: "Runs as it is once added.",
+        previewLabel: "Graph preview",
+        category: {
+            pageFlow: "Page flow",
+            navigation: "Navigation",
+            game: "Game",
+            settings: "Settings",
+            audio: "Audio",
+            motion: "Motion",
+            keys: "Keys",
+            window: "Window",
+            display: "Display",
+        },
+    },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
     owner: {
         global: "Global",
@@ -413,6 +456,8 @@ export const blueprint = {
         select: "Select element",
         selectNamed: "Select element {name}",
         unbound: "Unbound",
+        // An Element card whose element is no longer in the project, in place of its name and preview.
+        missing: "Missing element",
     },
     pin: {
         addInput: "Add input pin",
@@ -1495,9 +1540,50 @@ export const blueprint = {
         getPlaytime: "Get Playtime",
         getTotalPlaytime: "Get Total Playtime",
     },
+    /**
+     * What a node does, shown when the pointer rests on it in the add-node palette and on its card.
+     * Keyed by the node rather than by its English title, and written first for the nodes an author
+     * can mistake for one another.
+     */
+    nodeDescription: {
+        compareEqual: "True when A and B are the same value of the same type. The number 1 and the text \"1\" are not equal.",
+        compareNotEqual: "True when A and B differ in value or in type. The number 1 and the text \"1\" count as different.",
+        compareGreaterThan: "True when A is greater than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
+        compareGreaterThanOrEqual: "True when A is greater than or equal to B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
+        compareLessThan: "True when A is less than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
+        compareLessThanOrEqual: "True when A is less than or equal to B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
+        mathEqual: "True when A and B are the same number. Both sides are read as numbers first, so the text \"1\" equals the number 1.",
+        mathNotEqual: "True when A and B are different numbers. Both sides are read as numbers first, so the text \"1\" and the number 1 count as equal.",
+        flowReturn: "Stops the current run here. Nothing after it runs, including the remaining outputs of a Sequence. Gives back no value; to give one back, use Return Value, or Fn Return inside a function.",
+        returnValue: "Gives the value back as the result and ends the run. Used where a blueprint has to produce a value, such as a Blueprint Value.",
+        appBoot: "Runs once each time the game starts, after the first screen is showing, and does not hold that screen back. On Game Ready has already run by then. In Dev Mode it runs again after every reload.",
+        gameReady: "Runs when the game is ready, before any story starts and before the first screen shows; the screen waits for it to finish. Runs before App Boot, and can run again when a game is started or loaded.",
+        goBack: "Closes the current page and returns to the page beneath it. On the bottom page it does nothing.",
+    },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.
     live: {
         nodeClaimed: "{name} is editing this node",
+    },
+    // Every blueprint in the project on one page, grouped by the page, Game UI, component or story it
+    // belongs to. Reached from the interface panel and the command palette.
+    overview: {
+        title: "Blueprint Overview",
+        count: {
+            one: "{count} blueprint",
+            other: "{count} blueprints",
+        },
+        noBlueprints: "No blueprints",
+        search: "Search blueprints",
+        noMatches: "No blueprints match “{query}”.",
+        nodes: {
+            one: "{count} node",
+            other: "{count} nodes",
+        },
+        group: {
+            project: "Project",
+            componentCaption: "Component",
+            storyCaption: "Story",
+        },
     },
 } as const;

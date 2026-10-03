@@ -70,6 +70,16 @@ blueprint.sound.play
     audioTrackId  choose from the project's audioTracks  - Track
 ```
 
+A node that has a description - the sentence the add-node palette and the card show an author on
+hover - prints it in English on an `about` line under `name`. Descriptions exist so far for the
+nodes most easily mistaken for one another (`Return` and `Return Value`, `App Boot` and
+`On Game Ready`, `Go back`, the comparisons); most nodes have none.
+
+An input another one can stand in for says `alternative to <pin>`, and the node needs one of the
+group rather than each of them. The save nodes are the case: they take the save they act on as a
+typed `id` or a wired `slot`, so `Load Save` with a `Save Slot` wired into `slot` needs no `id`, and
+`check` warns about the pair only when neither is given.
+
 A node whose pins an author adds - `Show Confirm`, `If / Else If`, `Fn` - ends
 with an **extra pins** block naming the param the ids are listed in and spelling
 out the pins one add writes. They come in groups more often than not, and the

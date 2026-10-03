@@ -81,6 +81,12 @@ export const actions = {
             label: "关于",
             tooltip: "关于 NarraLeaf Studio",
         },
+        exportLogs: {
+            label: "导出日志…",
+            tooltip: "将 Studio 的全部日志保存为 ZIP 压缩包",
+            done: "日志已保存到 {path}",
+            failed: "无法导出日志",
+        },
     },
     export: {
         chooseFolder: "选择导出项目包的存放文件夹",

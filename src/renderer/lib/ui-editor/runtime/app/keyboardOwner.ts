@@ -34,21 +34,28 @@
  * surface answered was a binding that looked wired and never fired - every key reached the window,
  * and nothing on the stage was ever asked about it.
  *
+ * An NVL passage takes the dialogue box off the stage. A project that draws its own NVL page has a
+ * surface there instead, which hears the keys like any other; the engine's own page is not a surface,
+ * and stands in for the box: the keys that read the box on read it on (`engineNvlKeys`).
+ *
  * "Nothing drawn over it" is the question the skip loop and the auto-forward hold already ask
  * (`isStoryOnScreen`), so the keys leave the stage exactly when the story stops moving on its own: a
  * page opened over it or a modal layer takes them, and the page or the layer answers them instead.
  *
+ * ## One press, one key down
+ *
+ * The repeats the system sends while a key is held down reach nothing here: not an action, and not
+ * an `On Key Down` head either. A key down is the key going down, which happens once however long it
+ * is held. Holding a key is one gesture - the rule a wheel's inertia tail already follows - and
+ * answering its repeats made a held Escape step back through page after page, a held F11 flick
+ * fullscreen on and off, and a held Space read every line at the keyboard's repeat rate. Holding to
+ * skip is the skip key's, which watches the key itself rather than these events.
+ *
  * ## What raises an action
  *
- * A key heard by its owner raises the actions bound to it, with two exceptions that keep one press
- * meaning one thing:
- *
- *  - a key the focused control has spoken for raises none (`keyInputClaimedByControl`): Enter on a
- *    button the player moved to with Tab presses that button and does not also advance the story;
- *  - a key the system repeats because it is held down raises none. An action answers a gesture, and
- *    holding a key is one gesture - the rule a wheel's inertia tail already follows. Held down, Space
- *    would otherwise read every line at the keyboard's repeat rate, a skip that ignores the player's
- *    "skip read text only". Holding to skip is the skip key's; the key heads still hear the repeats.
+ * A key heard by its owner raises the actions bound to it, unless the focused control has spoken for
+ * it (`keyInputClaimedByControl`): Enter on a button the player moved to with Tab presses that button
+ * and does not also advance the story.
  *
  * Comments in English per project convention.
  */
@@ -68,6 +75,7 @@ import {
     resolveSurfaceInputActionHits,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
+import type { EngineNvlKeys } from "./engineNvlKeys";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -102,6 +110,11 @@ export type KeyboardOwner =
            * runtime scope (see `AmbientSurfaceTargets`). Read as the key arrives, like the entry.
            */
           stage: readonly AmbientSurfaceTarget[];
+          /**
+           * The engine's own NVL page, when it is up in place of the dialogue box: the keys that
+           * read the box on read it on too (see `engineNvlKeys`). Absent otherwise.
+           */
+          engineNvl?: EngineNvlKeys | null;
       };
 
 /** The surfaces an owner hears a key through: the entry's one, or every one on the stage. */
@@ -132,6 +145,33 @@ export function resolveKeyboardOwnerEntry<TEntry extends { key: string }>(input:
     const candidates = input.page ? [input.page, ...input.layers] : input.layers;
     const owner = candidates.find(candidate => candidate.entry.key === keyboardOwnerKey);
     return owner?.ready ? { entry: owner.entry, surface: owner.surface } : null;
+}
+
+/**
+ * Which lane a key press reaches: an entry, the stage, or nothing.
+ *
+ * The rule the module comment states, written once so the key listener and the Dev Mode Layers
+ * panel read the same function: the entry {@link resolveKeyboardOwnerEntry} found ready, or - with no
+ * entry owning the keys - the stage, while the story is what the player is looking at.
+ */
+export type KeyboardOwnerLane<TEntry> =
+    | { kind: "entry"; entry: TEntry }
+    | { kind: "stage" };
+
+/**
+ * Decide the lane for this instant.
+ *
+ * `isStoryOnScreen` is asked only when no entry owns the keys, as the listener has always asked it:
+ * it reads the live page and layer stacks, and an owning entry already answers the question.
+ */
+export function resolveKeyboardOwnerLane<TEntry>(input: {
+    entry: TEntry | null;
+    isStoryOnScreen: () => boolean;
+}): KeyboardOwnerLane<TEntry> | null {
+    if (input.entry) {
+        return { kind: "entry", entry: input.entry };
+    }
+    return input.isStoryOnScreen() ? { kind: "stage" } : null;
 }
 
 export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
@@ -234,6 +274,10 @@ export async function dispatchGameKey(
     if (isTextEntryTarget(event.target)) {
         return;
     }
+    // A held key's repeats are not presses; see the module comment.
+    if (eventName === "keyDown" && event.repeat) {
+        return;
+    }
     const payload = keyboardBlueprintPayload(event);
     const eventControl = getOrCreateDomEventPropagationControl(event);
     // Inert for a key today, and kept anyway. An element head is a subscription rather than a claim,
@@ -247,7 +291,15 @@ export async function dispatchGameKey(
     const owner = input.readKeyboardOwner();
     // Decided once, as the key arrives, for the global blueprint and the owner alike - see the
     // module comment. Read before any graph runs, because a graph can move the focus.
-    const raisesActions = eventName === "keyDown" && !event.repeat && !keyInputClaimedByControl(event);
+    const raisesActions = eventName === "keyDown" && !keyInputClaimedByControl(event);
+    // Every action this key is bound to, whoever answers it: the global blueprint hears all of them,
+    // and the engine's NVL page reads on for the dialogue box's.
+    const raisedActions = raisesActions
+        ? resolveGlobalInputActionPayloads({
+            vocabulary: input.vocabulary,
+            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+        })
+        : [];
     const { blueprintDocument, persistentVariables, core, globalHost } = input;
     await dispatchGlobalBlueprintEvent({
         blueprintDocument,
@@ -263,15 +315,17 @@ export async function dispatchGameKey(
     if (raisesActions && !eventControl.isPropagationStopped()) {
         // The whole vocabulary, not the owner's list: see `globalInputActions`. Resolved by the same
         // rule the owner's are, so a binding the owner answers the global answers too.
-        await answerGlobalInputActions(input, resolveGlobalInputActionPayloads({
-            vocabulary: input.vocabulary,
-            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
-        }), eventControl);
+        await answerGlobalInputActions(input, raisedActions, eventControl);
     }
     if (!owner || eventControl.isPropagationStopped()) {
         return;
     }
     await dispatchKeyToOwner(input, owner, eventName, payload, eventControl, raisesActions);
+    const engineNvl = "stage" in owner ? owner.engineNvl : null;
+    if (engineNvl && !eventControl.isPropagationStopped()
+        && raisedActions.some(action => engineNvl.actionIds.has(action.actionId))) {
+        await engineNvl.advance();
+    }
 }
 
 /**

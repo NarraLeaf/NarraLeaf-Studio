@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
 } from "@shared/types/blueprint/graph";
@@ -45,6 +46,25 @@ function renderComment(params: Record<string, unknown>): string {
                     params,
                     onPatchNodeParam: vi.fn(),
                     onFitGroupFrame: vi.fn(),
+                },
+            } as any)}
+        />,
+    );
+}
+
+function renderElementCard(params: Record<string, unknown>, elementPreview?: unknown): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_ELEMENT_REF);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: {
+                    catalog,
+                    nodeId: "ref",
+                    params,
+                    elementPreview,
+                    onBindElementLiteral: vi.fn(),
                 },
             } as any)}
         />,
@@ -180,5 +200,37 @@ describe("BlueprintFlowNode", () => {
         expect(markup).toContain("Unknown node");
         expect(markup).toContain("com.example.plugin.doThing");
         expect(markup).toContain("border-dashed");
+    });
+
+    /**
+     * An Element card whose element the editor cannot find. It used to print the id it holds in place
+     * of the name - a UUID on the canvas - over a placeholder asking the author to pick an element, so
+     * a broken reference read as an unbound one with a stray id on it.
+     */
+    it("draws an Element card it cannot resolve as missing, and never prints the id it holds", () => {
+        const elementId = "4dafd6a8-af4b-433b-9572-02fa59295531";
+        const markup = renderElementCard({ surfaceId: "component:slot", elementId, elementType: "nl.text" });
+
+        expect(markup).toContain("Missing element");
+        expect(markup).not.toContain(elementId);
+        expect(markup).not.toContain("Select element</div>");
+    });
+
+    it("still asks for an element on a card that names none", () => {
+        const markup = renderElementCard({});
+
+        expect(markup).toContain("Select element");
+        expect(markup).not.toContain("Missing element");
+    });
+
+    it("names the element and draws its preview on a card that resolves", () => {
+        const markup = renderElementCard(
+            { surfaceId: "page", elementId: "title", elementType: "nl.text" },
+            { revisionKey: "k", name: "Title", type: "nl.text", layout: { width: 10, height: 10 }, preview: <i data-preview="title" /> },
+        );
+
+        expect(markup).toContain("Title");
+        expect(markup).toContain('data-preview="title"');
+        expect(markup).not.toContain("Missing element");
     });
 });

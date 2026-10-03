@@ -193,6 +193,116 @@ function groupParam() {
 }
 
 /**
+ * What each EXTRA column is called. The node inspector offers these as the Kind
+ * options, and the editor tab and the panel name their columns with the same
+ * words (through {@link GALLERY_NODE_TRANSLATIONS}), so a step that says
+ * "Kind = Music" names the option the author will find in the dropdown.
+ */
+export const GALLERY_KIND_LABELS: Record<GalleryEntryKind, string> = {
+    cg: "CG",
+    scene: "Recollection",
+    music: "Music",
+    voice: "Voice",
+};
+
+/** The palette category every node below sits in. The panel and the editor tab carry the same name. */
+export const GALLERY_CATEGORY = "Gallery";
+
+/**
+ * The nodes' words in other languages, keyed by the English text the
+ * declarations below use. Studio draws a node's title, category and labels
+ * through it (see `BlueprintNodeDeclaration.translations`), and the panel and
+ * the editor tab read it for the words they share with the nodes.
+ *
+ * Words Studio's own catalogue already translates - In, Next, Count, Entries,
+ * Image, Index, Group, Name, Variant - read the host's way whatever is written
+ * here, so they are left out; `CG` reads the same in every language. The test
+ * beside this file holds the table to exactly the words the nodes use.
+ */
+const zhNodeWords = {
+    "Gallery": "画廊",
+    "Get Gallery": "获取画廊条目",
+    "Get Gallery Variants": "获取画廊变体",
+    "Get Gallery Groups": "获取画廊分组",
+    "Get Gallery Progress": "获取画廊进度",
+    "Unlock Gallery": "解锁画廊条目",
+    "Lock Gallery": "锁定画廊条目",
+    "Unlock Whole Gallery": "解锁整个画廊",
+    "Lock Whole Gallery": "锁定整个画廊",
+    "Is Gallery Unlocked": "画廊条目是否已解锁",
+    "Get Gallery Variant At": "按索引获取画廊变体",
+    "Get Gallery Variant Count": "获取画廊变体数量",
+    "Get Gallery Cover": "获取画廊封面",
+    "Get Gallery Artwork Count": "获取画廊条目数量",
+    "Get Gallery Artwork At": "按索引获取画廊条目",
+    "Artwork": "条目",
+    "Artwork Id": "条目 Id",
+    "Variant Id": "变体 Id",
+    "Variant Count": "变体数量",
+    "Group Id": "分组 Id",
+    "Groups": "分组列表",
+    "Only Unlocked": "仅已解锁",
+    "Unlocked": "已解锁",
+    "Unlocked Count": "已解锁数量",
+    "Total": "总数",
+    "Percent": "百分比",
+    "Variant Total": "变体总数",
+    "Variant Unlocked": "已解锁变体数",
+    "All groups": "全部分组",
+    "All variants": "全部变体",
+    "Any variant": "任一变体",
+    "Kind": "类型",
+    "All kinds": "全部类型",
+    "Recollection": "回想",
+    "Music": "音乐",
+    "Voice": "配音",
+};
+
+const jaNodeWords: Record<keyof typeof zhNodeWords, string> = {
+    "Gallery": "ギャラリー",
+    "Get Gallery": "ギャラリーの項目を取得",
+    "Get Gallery Variants": "ギャラリーのバリアントを取得",
+    "Get Gallery Groups": "ギャラリーのグループを取得",
+    "Get Gallery Progress": "ギャラリーの進捗を取得",
+    "Unlock Gallery": "ギャラリーの項目を解放",
+    "Lock Gallery": "ギャラリーの項目をロック",
+    "Unlock Whole Gallery": "ギャラリーをすべて解放",
+    "Lock Whole Gallery": "ギャラリーをすべてロック",
+    "Is Gallery Unlocked": "ギャラリーの項目が解放済みか",
+    "Get Gallery Variant At": "ギャラリーの指定位置のバリアントを取得",
+    "Get Gallery Variant Count": "ギャラリーのバリアントの数を取得",
+    "Get Gallery Cover": "ギャラリーのカバーを取得",
+    "Get Gallery Artwork Count": "ギャラリーの項目数を取得",
+    "Get Gallery Artwork At": "ギャラリーの指定位置の項目を取得",
+    "Artwork": "項目",
+    "Artwork Id": "項目 Id",
+    "Variant Id": "バリアント Id",
+    "Variant Count": "バリアントの個数",
+    "Group Id": "グループ Id",
+    "Groups": "グループ一覧",
+    "Only Unlocked": "解放済みのみ",
+    "Unlocked": "解放済み",
+    "Unlocked Count": "解放済みの個数",
+    "Total": "総数",
+    "Percent": "パーセント",
+    "Variant Total": "バリアントの総数",
+    "Variant Unlocked": "解放済みのバリアントの個数",
+    "All groups": "すべてのグループ",
+    "All variants": "すべてのバリアント",
+    "Any variant": "いずれかのバリアント",
+    "Kind": "種類",
+    "All kinds": "すべての種類",
+    "Recollection": "回想",
+    "Music": "音楽",
+    "Voice": "ボイス",
+};
+
+export const GALLERY_NODE_TRANSLATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    zh: zhNodeWords,
+    ja: jaNodeWords,
+};
+
+/**
  * Which EXTRA column this node reads. Static options rather than a dynamic
  * source: the kinds are a closed set in the plugin's own code, not project data.
  */
@@ -202,12 +312,7 @@ function kindParam() {
         label: "Kind",
         kind: "select" as const,
         emptyOptionLabel: "All kinds",
-        options: [
-            { value: "cg", label: "CG" },
-            { value: "scene", label: "Recollection" },
-            { value: "music", label: "Music" },
-            { value: "voice", label: "Voice" },
-        ],
+        options: GALLERY_ENTRY_KINDS.map(kind => ({ value: kind, label: GALLERY_KIND_LABELS[kind] })),
     };
 }
 
@@ -303,6 +408,13 @@ function countUnlockedRows(rows: readonly { unlocked: boolean }[]): number {
 }
 
 export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
+    return declareGalleryBlueprintNodes(readCatalog).map(def => ({
+        ...def,
+        translations: GALLERY_NODE_TRANSLATIONS,
+    }));
+}
+
+function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
     const store = (): GalleryStoreData => normalizeGalleryStore(readCatalog());
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
@@ -340,7 +452,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             // package carries. The other readers below say the same for the same reason.
             assetNames: "written",
             displayName: "Get Gallery",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "cg", "entries", "items", "list", "grid", "array", "artworks"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -381,7 +493,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.getVariants`,
             assetNames: "written",
             displayName: "Get Gallery Variants",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "variant", "differential", "cg", "list", "array", "strip"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -419,7 +531,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.getGroups`,
             assetNames: "written",
             displayName: "Get Gallery Groups",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "group", "category", "chapter", "tab", "section", "array"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -441,7 +553,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.getStats`,
             displayName: "Get Gallery Progress",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "progress", "completion", "percent", "stats", "count", "total"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -480,7 +592,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.add`,
             displayName: "Unlock Gallery",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "unlock", "add", "cg", "variant", "collect"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -495,7 +607,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.remove`,
             displayName: "Lock Gallery",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "lock", "remove", "cg", "variant"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -510,7 +622,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.unlockAll`,
             displayName: "Unlock Whole Gallery",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "unlock", "all", "everything", "complete", "extras", "reward"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -530,7 +642,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.clear`,
             displayName: "Lock Whole Gallery",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "clear", "reset", "lock", "all", "wipe"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -544,7 +656,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.isUnlocked`,
             displayName: "Is Gallery Unlocked",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "unlocked", "has", "cg", "variant", "check"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -583,7 +695,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.getVariant`,
             assetNames: "written",
             displayName: "Get Gallery Variant At",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "variant", "image", "cg", "differential", "index", "step"],
             graphKinds: ["event", "macro"],
             isPure: false,
@@ -638,7 +750,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.getVariantCount`,
             displayName: "Get Gallery Variant Count",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "variant", "count", "length", "cg"],
             graphKinds: ["event", "macro"],
             hideInPalette: true,
@@ -656,7 +768,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.getCover`,
             assetNames: "written",
             displayName: "Get Gallery Cover",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "cover", "thumbnail", "image", "cg"],
             graphKinds: ["event", "macro"],
             hideInPalette: true,
@@ -696,7 +808,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
         {
             type: `${PLUGIN_ID}.getArtworkCount`,
             displayName: "Get Gallery Artwork Count",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "artwork", "count", "length", "cg"],
             graphKinds: ["event", "macro"],
             hideInPalette: true,
@@ -711,7 +823,7 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
             type: `${PLUGIN_ID}.getArtworkAt`,
             assetNames: "written",
             displayName: "Get Gallery Artwork At",
-            category: "Gallery",
+            category: GALLERY_CATEGORY,
             keywords: ["gallery", "artwork", "index", "iterate", "cg"],
             graphKinds: ["event", "macro"],
             hideInPalette: true,

@@ -1,4 +1,4 @@
-import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
 } from "@shared/types/blueprint/graph";
@@ -72,14 +72,11 @@ type SurfaceElementSite = {
 };
 
 /**
- * The page's name as every other surface spells it.
- *
- * The main page is shown under a fixed name in the surface list, the canvas menu and the rename
- * dialog whatever its stored `name` says (`getSurfaceDisplayLabel`), so a report that used the
- * stored one would name a page the author cannot find in the panel they are being sent to.
+ * The page's name, as its card in the interface panel shows it - which is the stored name for every
+ * page, the entry page included. A report names the page the author will look for on that list.
  */
 function surfaceDisplayName(surface: UISurface): string {
-    return surface.id === MAIN_APP_SURFACE_ID ? DEFAULT_APP_SURFACE_NAME : surface.name;
+    return surface.name;
 }
 
 export function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
@@ -237,6 +234,72 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     return sites;
 }
 
+/**
+ * The translation unit a widget's text is read through at run time, when it has one.
+ *
+ * `key` is a named key (`key:<name>`), whose source words live in the key registry rather than on
+ * the widget; `implicit` is the widget's own unit (`ui:<elementId>.<prop>`), whose source words are
+ * the literal the author typed.
+ */
+export type InterfaceTextUnitBinding =
+    | { kind: "key"; keyName: string }
+    | { kind: "implicit"; unitId: string; sourceText: string };
+
+/** One widget whose words a target locale is expected to translate, and where it lives. */
+export type InterfaceTextUnitSite = {
+    element: UIElement;
+    location: LintLocation;
+    target: SearchJumpTarget;
+    /** The widget's own literal, which is what renders when no translation is found. */
+    literal: string;
+    binding: InterfaceTextUnitBinding;
+};
+
+/**
+ * Every widget on a page or in a component definition that reads its words through a translation
+ * unit, in the order the pages and then the definitions are listed.
+ *
+ * The same precedence `useLocalizedWidgetText` applies: a named key wins over the opt-in, and the
+ * opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
+ * the localization panel leaves it out - there is no row for it to be translated in. Component
+ * definitions are walked once each, under the definition, for the reason the Page widget rules give;
+ * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
+ */
+export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
+    const sites: InterfaceTextUnitSite[] = [];
+    const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
+        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        if (!site || getUIComponentLink(element)) {
+            return;
+        }
+        const props = elementProps(element);
+        const literal = readStringProp(props, site.textProp);
+        const keyName = readStringProp(props, site.keyProp).trim();
+        if (keyName) {
+            sites.push({ element, location, target, literal, binding: { kind: "key", keyName } });
+            return;
+        }
+        if (site.optInProp !== undefined && props[site.optInProp] === true && literal.trim()) {
+            sites.push({
+                element,
+                location,
+                target,
+                literal,
+                binding: { kind: "implicit", unitId: uiTextUnitId(element.id, site.textProp), sourceText: literal },
+            });
+        }
+    };
+    for (const { surface, element } of listSurfaceElements(document)) {
+        read(element, surfaceLocation(surface, element), surfaceTarget(surface));
+    }
+    for (const component of document.components ?? []) {
+        for (const element of Object.values(component.elements ?? {})) {
+            read(element, componentLocation(component, element), componentTarget(component));
+        }
+    }
+    return sites;
+}
+
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;
 
@@ -252,7 +315,7 @@ function hasTranslatableWord(text: string): boolean {
     return /\p{L}/u.test(text);
 }
 
-function clipLiteral(text: string): string {
+export function clipLiteral(text: string): string {
     const flattened = text.replace(/\s+/g, " ").trim();
     return flattened.length > TEXT_EXCERPT_MAX_CHARS
         ? `${flattened.slice(0, TEXT_EXCERPT_MAX_CHARS - 1)}…`
@@ -403,23 +466,6 @@ function collectFrameSurfaceTargets(document: UIDocument): Set<string> {
         }
     }
     return embedded;
-}
-
-/**
- * The page a build starts on.
- *
- * Every launcher - Run, Test, and the compiled game - opens {@link MAIN_APP_SURFACE_ID} by name, so
- * that surface is entered whether or not anything navigates to it. The fallback to the first app
- * surface mirrors `resolveGameRuntimeEntrySurface`, which is what the shell falls back to when the
- * pack names no entry: without it a document that somehow lost its main page would report *every*
- * page as unreachable, including the one the game boots into.
- */
-function resolveEntrySurfaceId(document: UIDocument): string | undefined {
-    const surfaces = document.surfaces ?? [];
-    return (
-        surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID)?.id
-        ?? surfaces.find(surface => surface.kind === "appSurface")?.id
-    );
 }
 
 /**

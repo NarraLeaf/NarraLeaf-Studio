@@ -14,6 +14,7 @@ import type {
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
 import { describeDependencyBanner, describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
+import { dependencyDisplayName } from "@shared/utils/pluginDisplayText";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -141,7 +142,7 @@ function DependencyBannerStrip({ entries }: { entries: readonly DependencyResolu
 }
 
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
-    const { t, tn } = useTranslation();
+    const { t, tn, locale } = useTranslation();
     const { dependency, installedVersion } = entry;
     const usage = summarizeUsage(dependency.usedBy, tn);
     const state = describeDependencyState(entry);
@@ -161,7 +162,7 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
         <section className="rounded-md border border-edge bg-fill-subtle p-3">
             <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate text-sm font-medium text-fg">
-                    {dependency.name?.trim() || dependency.id}
+                    {dependencyDisplayName(entry, locale)}
                 </span>
                 {state ? (
                     <span className={`shrink-0 text-2xs font-medium ${state.className}`}>

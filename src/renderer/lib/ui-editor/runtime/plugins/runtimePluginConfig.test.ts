@@ -50,6 +50,7 @@ async function writePlugin(
             blueprintNodes: [],
             widgets: [],
             tests: [],
+            reservedSaveIds: [],
             runtimeData: [],
             locales: [],
             runtimeCapabilities: [],

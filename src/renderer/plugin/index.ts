@@ -56,6 +56,8 @@ export type {
     PluginManifestV2,
     NormalizedPluginManifestV2,
     PluginManifestEntries,
+    PluginManifestLocalized,
+    PluginManifestLocalizedText,
     PluginInstallRecord,
     PluginListItem,
     WorkspacePluginDescriptor,

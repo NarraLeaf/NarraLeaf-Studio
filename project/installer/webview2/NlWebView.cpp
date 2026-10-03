@@ -148,6 +148,8 @@ struct Host {
     std::atomic<long long> installed_files{0};
     std::atomic<long long> installed_bytes{0};
     std::atomic<long long> counter_generation{0};
+    // Whether the install directory has been seen empty (or absent) since Track; see counter_loop.
+    std::atomic<bool> install_dir_clear{false};
 };
 
 Host g_host;
@@ -286,8 +288,21 @@ void counter_loop(long long generation) {
         if (g_host.counter_generation.load() != generation) {
             return;
         }
-        g_host.installed_files.store(files);
-        g_host.installed_bytes.store(bytes);
+        // An upgrade - every update the app applies is one - starts with the previous version in
+        // the install directory, and the template moves it out (uninstallOldVersion) before it
+        // writes anything. Counted, those files read as a copy that is already complete: the bar
+        // went to the end at once and, since it never goes back, stayed there through the whole
+        // install. So the directory is only reported once it has been seen empty - at once for a
+        // fresh install, after the old version is gone for an upgrade. Should the empty moment be
+        // too short to catch, the copy simply goes unmeasured and the bar waits at the start of
+        // its slice, which understates rather than overstates.
+        if (files == 0) {
+            g_host.install_dir_clear.store(true);
+        }
+        if (g_host.install_dir_clear.load()) {
+            g_host.installed_files.store(files);
+            g_host.installed_bytes.store(bytes);
+        }
 
         // The staging tree is only a *total* once the extraction that fills it has finished, and
         // reaching the copy is what says it has.
@@ -698,6 +713,7 @@ NSIS_EXPORT(Track) {
     g_host.stage_files.store(-1);
     g_host.installed_files.store(0);
     g_host.installed_bytes.store(0);
+    g_host.install_dir_clear.store(false);
     g_host.stage_dir = stage;
     g_host.install_dir = install;
     g_host.expected_bytes = wcstoll(size_kib.c_str(), nullptr, 10) * 1024;

@@ -22,6 +22,7 @@ import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeSt
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 import { createWidgetDrawingRegistry } from "./widgetDrawingRegistry";
+import { playUIElementInteractionSound } from "../interactionSounds";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -204,6 +205,9 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         eventPayload,
         eventOptions,
     ) => {
+        if (eventName === "mouseClick") {
+            playClickSound(elementId, eventOptions);
+        }
         await fireElementListeners(elementId, eventName, eventPayload, eventOptions);
         if (!isPointerPositionElementEvent(eventName)) {
             return;
@@ -214,8 +218,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         // this runs on every click, so it ends at a visited element rather than hanging the renderer.
         const visited = new Set<string>([currentId]);
         while (!options?.eventControl?.isPropagationStopped()) {
-            const parentId = readRuntimeElement(currentId, options?.componentId)?.parentId;
-            const next = parentId ? { id: parentId, options: leavingListRow(parentId, options) } : leavingComponent(options);
+            const next = nextInChain(currentId, options);
             if (!next || visited.has(next.id)) {
                 return;
             }
@@ -223,6 +226,46 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             options = next.options;
             await fireElementListeners(next.id, eventName, eventPayload, options);
             currentId = next.id;
+        }
+    };
+
+    /** The element a pointer event goes on to after this one, in the drawing it is then in. */
+    const nextInChain = (
+        elementId: string,
+        options: UIHostAdapterElementEventOptions | undefined,
+    ): { id: string; options: UIHostAdapterElementEventOptions | undefined } | null => {
+        const parentId = readRuntimeElement(elementId, options?.componentId)?.parentId;
+        return parentId ? { id: parentId, options: leavingListRow(parentId, options) } : leavingComponent(options);
+    };
+
+    /**
+     * Play the click sound of the nearest element on the click's path that has one.
+     *
+     * The same path the click itself walks, so a sound plays exactly where a Mouse Click head would
+     * fire - a press on a disabled button reaches nothing and sounds nothing, and a key press standing
+     * in for a click sounds like one. Only the nearest sounds: a button with its own click sound inside
+     * a card with another is one press and one sound, and the card's plays for a press anywhere else
+     * on it.
+     *
+     * Found before any graph runs rather than as the walk reaches each element, because the walk
+     * awaits each element's graphs in turn: a sound on the card would otherwise wait for the button's
+     * graph to finish, which for a page change is the whole transition.
+     */
+    const playClickSound = (elementId: string, eventOptions: UIHostAdapterElementEventOptions | undefined): void => {
+        let currentId = elementId;
+        let options = eventOptions;
+        const visited = new Set<string>([currentId]);
+        for (;;) {
+            if (playUIElementInteractionSound(blueprintRuntime, readRuntimeElement(currentId, options?.componentId), "click")) {
+                return;
+            }
+            const next = nextInChain(currentId, options);
+            if (!next || visited.has(next.id)) {
+                return;
+            }
+            visited.add(next.id);
+            currentId = next.id;
+            options = next.options;
         }
     };
 

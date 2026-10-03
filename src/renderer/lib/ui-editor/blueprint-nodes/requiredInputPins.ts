@@ -47,6 +47,12 @@ export const BLUEPRINT_INPUT_MISSING_MESSAGE_KEY = "blueprint.diagnostics.node.i
  *    answer and not a missing one. An empty string counts as an answer: an author who cleared a
  *    field chose the empty string.
  *
+ * A pin the definition lists in **`alternativeInputs`** is judged with the rest of its group instead
+ * of on its own: the group is answered when any one of its pins is wired or carries a value, and when
+ * none is it is reported once, under the first pin the group names. That is how `Save Game` says that
+ * a wired `Slot` answers for its `Id` - the node runs on either and refuses with neither - without
+ * marking `Id` optional and so going quiet when both are empty.
+ *
  * Two kinds of pin are left out because another report already owns them, and one node reported
  * twice with two explanations is worse than one report:
  *
@@ -66,15 +72,39 @@ export function listUnwiredRequiredInputPins(
     if (!def || def.role === "valueReturn") {
         return [];
     }
+    const isAnswered = (pinId: string) => params?.[pinId] !== undefined || isPinWired(pinId);
+    const pins = resolveEffectiveBlueprintNodePins(def, params);
+    const groupOf = new Map<string, readonly string[]>();
+    for (const group of def.alternativeInputs ?? []) {
+        for (const pinId of group) {
+            groupOf.set(pinId, group);
+        }
+    }
+    const judgedGroups = new Set<readonly string[]>();
     const out: BlueprintUnwiredRequiredPin[] = [];
-    for (const pin of resolveEffectiveBlueprintNodePins(def, params)) {
-        if (pin.kind !== "input" || pin.semantic !== "data" || pin.optional) {
+    for (const pin of pins) {
+        if (pin.kind !== "input" || pin.semantic !== "data") {
             continue;
         }
-        if (saveSchemaFieldIdFromPin(pin.id) !== null) {
+        const group = groupOf.get(pin.id);
+        if (group) {
+            // Judged once, at whichever of its pins comes first, and named by the pin the group
+            // lists first - the one the author is expected to fill in.
+            if (judgedGroups.has(group)) {
+                continue;
+            }
+            judgedGroups.add(group);
+            if (group.some(isAnswered)) {
+                continue;
+            }
+            const named = pins.find(candidate => candidate.id === group[0]) ?? pin;
+            out.push({ pinId: named.id, label: named.label ?? named.id });
             continue;
         }
-        if (params?.[pin.id] !== undefined || isPinWired(pin.id)) {
+        if (pin.optional || saveSchemaFieldIdFromPin(pin.id) !== null) {
+            continue;
+        }
+        if (isAnswered(pin.id)) {
             continue;
         }
         out.push({ pinId: pin.id, label: pin.label ?? pin.id });

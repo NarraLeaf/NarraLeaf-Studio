@@ -22,6 +22,7 @@ import {
     useEdgesState,
     useNodesState,
     useReactFlow,
+    useStoreApi,
     type Connection,
     type Edge,
     type FinalConnectionState,
@@ -29,6 +30,7 @@ import {
     type OnNodeDrag,
     type Viewport,
 } from "@xyflow/react";
+import { frameBlueprintGraph } from "./blueprintFraming";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
@@ -167,6 +169,12 @@ const PAN_BUTTONS_SELECT_TOOL = [1];
  */
 type BlueprintNodeDragEvent = Parameters<OnNodeDrag>[0];
 const PAN_BUTTONS_HAND_TOOL = [0, 1];
+
+/**
+ * How long a newly opened graph waits for its cards to be measured and its pane to settle before
+ * it is framed anyway. The longest wait it is meant to cover is the canvas's 200ms slide.
+ */
+const MAX_FRAMES_BEFORE_FITTING = 30;
 
 /** A node the way the group and layout geometry sees it: where it is and how big it measured. */
 type BlueprintCanvasBox = BlueprintFrameBox & { isComment: boolean; isFrame: boolean };
@@ -503,7 +511,8 @@ function BlueprintFlowCanvasInner({
         const ctx = workspace?.context;
         return workspace?.isInitialized && ctx ? ctx.services.get<UIService>(Services.UI) : null;
     }, [workspace]);
-    const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
+    const { getNodes, screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow();
+    const store = useStoreApi();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     /**
@@ -1162,19 +1171,37 @@ function BlueprintFlowCanvasInner({
         if (initialViewport || focusPendingRef.current) {
             return undefined;
         }
-        let secondFrame = 0;
-        const firstFrame = window.requestAnimationFrame(() => {
-            secondFrame = window.requestAnimationFrame(() => {
-                fitView({ padding: 0.18, duration: 0 });
-            });
-        });
-        return () => {
-            window.cancelAnimationFrame(firstFrame);
-            if (secondFrame) {
-                window.cancelAnimationFrame(secondFrame);
+        // The zoom menu's own "fit", so the two agree, and so the graph is framed in the part of the
+        // canvas the layer panel leaves rather than partly behind it. Framed once every card has
+        // been measured - a card not sized yet would count as a point, and the frame would overshoot -
+        // and once the pane has stopped changing size: coming from a script layer, the canvas slides
+        // out from beside the panel to under it, and a frame taken mid-slide is a frame of a pane
+        // that is about to be wider.
+        let frame = 0;
+        let framesLeft = MAX_FRAMES_BEFORE_FITTING;
+        let lastWidth = Number.NaN;
+        const fitWhenMeasured = () => {
+            const state = store.getState();
+            const measured = [...state.nodeLookup.values()].every(node => node.hidden || node.measured.width !== undefined);
+            const settled = state.width === lastWidth;
+            lastWidth = state.width;
+            if ((!measured || !settled) && framesLeft > 0) {
+                framesLeft -= 1;
+                frame = window.requestAnimationFrame(fitWhenMeasured);
+                return;
+            }
+            const viewport = frameBlueprintGraph(state, "contain");
+            if (viewport) {
+                setViewport(viewport, { duration: 0 });
             }
         };
-    }, [fitView, graphKey, initialViewport]);
+        // Two frames at the least, as before: the graph's nodes reach the store a frame after it is
+        // switched to.
+        frame = window.requestAnimationFrame(() => {
+            frame = window.requestAnimationFrame(fitWhenMeasured);
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [graphKey, initialViewport, setViewport, store]);
 
     /**
      * Centre on the requested node, keeping the author's zoom: `setCenter` defaults to `maxZoom`,

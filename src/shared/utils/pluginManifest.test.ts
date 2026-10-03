@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { SOURCE_LOCALE, SUPPORTED_LOCALES } from "../i18n/locales";
 import { validatePluginManifest } from "./pluginManifest";
 
 describe("validatePluginManifest", () => {
@@ -233,6 +234,62 @@ describe("validatePluginManifest", () => {
             },
         });
 
+        expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
+    });
+
+    it("normalizes reserved save ids, and defaults them to an empty list", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: {
+                reservedSaveIds: ["acme.sample-plugin.slot", " acme.sample-plugin.slot "],
+                runtimeCapabilities: ["saves.read", "saves.write"],
+            },
+        });
+        expect(result).toMatchObject({
+            ok: true,
+            manifest: { contributes: { reservedSaveIds: ["acme.sample-plugin.slot"] } },
+        });
+
+        const without = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+        });
+        expect(without).toMatchObject({ ok: true, manifest: { contributes: { reservedSaveIds: [] } } });
+    });
+
+    it("refuses a reserved save id outside the plugin's own namespace", () => {
+        // An unprefixed reservation could name a slot the author's own Save Game writes - "1" is
+        // what the shipped skeleton's first slot is called - and take it off the player's screen.
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { reservedSaveIds: ["1"] },
+        });
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("Contributed reserved save id must be prefixed with the plugin id"),
+        });
+    });
+
+    it("derives no install permission from reserved save ids", () => {
+        const result = validatePluginManifest({
+            manifestVersion: 2,
+            id: "acme.sample-plugin",
+            name: "Sample Plugin",
+            version: "1.0.0",
+            entries: { runtime: "runtime.js" },
+            contributes: { reservedSaveIds: ["acme.sample-plugin.slot"] },
+        });
         expect(result).toMatchObject({ ok: true, manifest: { permissions: [] } });
     });
 
@@ -959,5 +1016,93 @@ describe("validatePluginManifest contributes.externalLinks", () => {
     it("rejects a declaration with no runtime entry to use it", () => {
         expect(validatePluginManifest(linksManifest(["steam://*"], { studio: "main.js" })))
             .toMatchObject({ ok: false });
+    });
+});
+
+describe("validatePluginManifest localized", () => {
+    const withLocalized = (localized: unknown) => validatePluginManifest({
+        manifestVersion: 2,
+        id: "acme.sample",
+        name: "Sample",
+        version: "1.0.0",
+        description: "A sample plugin.",
+        entries: { studio: "main.js" },
+        localized,
+    });
+
+    it("keeps each locale's name and description, trimmed", () => {
+        const result = withLocalized({
+            zh: { name: " 示例 ", description: "示例插件" },
+            ja: { name: "サンプル" },
+        });
+        expect(result).toMatchObject({ ok: true });
+        expect((result as { manifest: { localized?: unknown } }).manifest.localized).toEqual({
+            zh: { name: "示例", description: "示例插件" },
+            ja: { name: "サンプル" },
+        });
+    });
+
+    it("drops a blank field but keeps the entry when the other field is set", () => {
+        const result = withLocalized({ zh: { name: "  ", description: "示例插件" } });
+        expect((result as { manifest: { localized?: unknown } }).manifest.localized).toEqual({
+            zh: { description: "示例插件" },
+        });
+    });
+
+    it("leaves the field out when the table is empty", () => {
+        const result = withLocalized({});
+        expect(result).toMatchObject({ ok: true });
+        expect("localized" in (result as { manifest: object }).manifest).toBe(false);
+    });
+
+    it("rejects a table that is not an object", () => {
+        for (const value of [["zh"], "zh", 1, null]) {
+            const result = withLocalized(value);
+            expect(result).toMatchObject({ ok: false });
+            expect((result as { error: string }).error).toContain("localized must be an object");
+        }
+    });
+
+    it("rejects a key that is not a locale code", () => {
+        for (const code of ["zh_CN", "Chinese", "ZH", "__proto__"]) {
+            const result = withLocalized(JSON.parse(`{"${code}": {"name": "x"}}`));
+            expect(result).toMatchObject({ ok: false });
+            expect((result as { error: string }).error).toContain("invalid locale code");
+        }
+    });
+
+    it("rejects an entry that translates neither field, which is how a misspelt key arrives", () => {
+        const result = withLocalized({ zh: { title: "示例" } });
+        expect(result).toMatchObject({ ok: false });
+        expect((result as { error: string }).error).toContain("must declare a name or a description");
+    });
+
+    it("rejects a field that is not a string", () => {
+        expect(withLocalized({ zh: { name: 1 } })).toMatchObject({ ok: false });
+        expect(withLocalized({ zh: { name: "示例", description: ["x"] } })).toMatchObject({ ok: false });
+        expect(withLocalized({ zh: "示例" })).toMatchObject({ ok: false });
+    });
+});
+
+describe("built-in plugin manifests", () => {
+    const BUILT_INS = ["gallery", "menu-bar", "quick-save"];
+    /** Every language Studio ships besides the one the plain fields are written in. */
+    const TRANSLATED = SUPPORTED_LOCALES.filter(locale => locale !== SOURCE_LOCALE);
+
+    it.each(BUILT_INS)("%s validates and names itself in every shipped language without a closing full stop", async (dir) => {
+        const manifestPath = fileURLToPath(new URL(`../../builtin-plugins/${dir}/manifest.json`, import.meta.url));
+        const result = validatePluginManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
+        expect(result).toMatchObject({ ok: true });
+        const localized = (result as { manifest: { localized?: Record<string, { name?: string; description?: string }> } })
+            .manifest.localized ?? {};
+        expect(Object.keys(localized).sort()).toEqual([...TRANSLATED].sort());
+        for (const locale of TRANSLATED) {
+            const entry = localized[locale];
+            expect(entry?.name, `${dir} ${locale} name`).toBeTruthy();
+            expect(entry?.description, `${dir} ${locale} description`).toBeTruthy();
+            for (const text of [entry!.name!, entry!.description!]) {
+                expect(text).not.toMatch(/[。.]$/);
+            }
+        }
     });
 });

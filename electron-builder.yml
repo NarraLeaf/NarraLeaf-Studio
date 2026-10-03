@@ -396,8 +396,10 @@ nsis:
   allowToChangeInstallationDirectory: false
   # Per-user by default, with the "anyone who uses this computer" option still on the install-mode
   # page (allowElevation). This is the choice that decides what updating feels like: a per-user
-  # install updates silently, while an all-users one needs elevation on every update, which the
-  # template already handles by re-launching elevated (templates/nsis/installer.nsi).
+  # install updates without a UAC prompt, while an all-users one needs elevation on every update,
+  # which the template already handles by re-launching elevated (templates/nsis/multiUserUi.nsh for
+  # the update Studio starts, which shows its progress; templates/nsis/installer.nsi for the silent
+  # one applied when Studio quits).
   perMachine: false
   allowElevation: true
   createDesktopShortcut: true

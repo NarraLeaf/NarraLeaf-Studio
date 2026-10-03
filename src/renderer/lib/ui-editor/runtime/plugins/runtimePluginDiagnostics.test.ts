@@ -48,6 +48,7 @@ async function writePlugin(id: string, capabilities: PluginRuntimeCapability[]):
             blueprintNodes: [],
             widgets: [],
             tests: [],
+            reservedSaveIds: [],
             runtimeData: [],
             network: [],
             locales: [],

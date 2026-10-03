@@ -219,6 +219,125 @@ describe("a row that names a row the same file adds", () => {
         // the object it left on the stage.
         expect(declaredStageObject(show!)).toMatchObject({ kind: "image", name: "classroom" });
     });
+
+    /**
+     * `/play <clip>` through the same two passes, then printed and read back, with the row after it
+     * addressing the clip it made. The skeleton ships no video, so this one is added to the library.
+     */
+    it("keeps a /play that names a clip reading as the row that creates it", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const clipId = "11111111-2222-4333-8444-555555555555";
+        const data: ProjectData = {
+            ...project!.data,
+            assets: {
+                ...project!.data.assets,
+                video: {
+                    [clipId]: {
+                        id: clipId,
+                        type: "video",
+                        name: "festival",
+                        ext: "mp4",
+                        hash: "hash",
+                        source: "local",
+                        meta: {},
+                        tags: [],
+                        description: "",
+                    },
+                },
+            } as ProjectData["assets"],
+        };
+        const document = project!.document;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/play festival name=festival\n/hide festival\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const [play, hide] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(play?.kind === "action" && play.payload).toMatchObject({
+            action: "video",
+            operation: "play",
+            objectName: "festival",
+            assetId: clipId,
+        });
+        expect(declaredStageObject(play!)).toMatchObject({ kind: "video", name: "festival" });
+        // The row after it binds to the row that declared the clip.
+        const target = hide?.kind === "action" && hide.payload.action === "video" ? hide.payload.target : undefined;
+        expect(target?.sourceBlockId).toBe(play!.id);
+
+        const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
+        expect(printed.text).toContain("/play festival name=festival");
+        for (const [id, block] of Object.entries(compiled.scene!.blocks)) {
+            expect(sameRowContent(reread.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+
+    /**
+     * `/image` and `/hide` naming one picture in one file, then the whole scene printed and read back.
+     *
+     * The second pass reads names off the scene the first one built, and both halves of the stage
+     * scan have to: the image / text / layer half used to read the document on disk instead, which
+     * has none of the rows the file is adding, so the `/hide` below failed with "unknown target"
+     * while the same pair written with `/video` resolved.
+     */
+    it("resolves a picture declared above a /hide, and the scene reads back as itself", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = [
+            "#nlstory 1",
+            `#scene ${scene.name} ⟦${scene.id}⟧`,
+            "",
+            "/image classroom name=poster",
+            "/show poster",
+            "/text name=sign Closed today",
+            "/hide poster",
+            "/hide sign",
+            "",
+        ].join("\n");
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const [image, , text, hidePoster, hideSign] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        const targetOf = (block: (typeof image) | undefined) =>
+            block?.kind === "action" ? (block.payload as { target?: { kind?: string; sourceBlockId?: string } }).target : undefined;
+        expect(targetOf(hidePoster)).toMatchObject({ kind: "image", sourceBlockId: image!.id });
+        expect(targetOf(hideSign)).toMatchObject({ kind: "text", sourceBlockId: text!.id });
+
+        // And the scene the file produced prints and reads back row for row, as an applied one does.
+        const applied = compiled.scene!;
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: applied } };
+        const back = roundTrip(data, appliedDocument, applied);
+        expect(back.parseDiagnostics).toEqual([]);
+        expect(back.compiled.diagnostics).toEqual([]);
+        expect(back.compiled.scene!.rootBlockIds).toEqual(applied.rootBlockIds);
+        for (const [id, block] of Object.entries(applied.blocks)) {
+            expect(sameRowContent(back.compiled.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
 });
 
 describe("a project this tool cannot read", () => {

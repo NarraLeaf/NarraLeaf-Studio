@@ -23,7 +23,8 @@ import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { getSurfaceDisplayLabel, getSurfaceRenameNoun } from "@/lib/ui-editor/surfaceDisplayLabel";
-import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
+import { isEntrySurface, resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
 import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/freezeGuard";
@@ -61,6 +62,7 @@ import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPalette
 import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 import { interfaceDocumentFreezeScope } from "./uiLiveSession";
+import { openBlueprintWallTab } from "../blueprint-wall/openBlueprintWallTab";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -139,6 +141,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
     const openBlueprintTarget = useOpenBlueprintTarget();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
+    const [entrySurfaceId, setEntrySurfaceId] = useState<string | null>(null);
     const [kind, setKind] = useState<UISurfaceKind>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -192,6 +195,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         const refresh = () => {
             const doc = documentService.getDocument();
             setSurfaces([...doc.surfaces]);
+            setEntrySurfaceId(resolveEntrySurfaceId(doc) ?? null);
         };
 
         refresh();
@@ -357,8 +361,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !uiService) {
             return;
         }
-        const label = getSurfaceDisplayLabel(surface, t);
         const document = documentService.getDocument();
+        const label = getSurfaceDisplayLabel(surface, document, t);
         const root = document.elements[surface.rootElementId];
         const hasChildren = Boolean(root && root.childrenIds.length > 0);
         const confirmed = await uiService.showConfirm(
@@ -384,7 +388,10 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !inputDialog || !uiService) {
             return;
         }
-        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceRenameNoun(surface));
+        const name = await inputDialog.showRenameDialog(
+            surface.name,
+            getSurfaceRenameNoun(surface, documentService.getDocument()),
+        );
         // `frozenRef`, not `freeze`: the freeze may have landed while the author was typing.
         if (!name || frozenRef.current) {
             return;
@@ -444,7 +451,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         (event: MouseEvent<HTMLDivElement | HTMLButtonElement>, surface: UISurface) => {
             event.preventDefault();
             event.stopPropagation();
-            const label = getSurfaceDisplayLabel(surface, t);
+            const uiDocument = documentService?.getDocument() ?? null;
+            const label = getSurfaceDisplayLabel(surface, uiDocument, t);
+            const isEntry = isEntrySurface(uiDocument, surface.id);
             const items: ContextMenuDef = [
                 {
                     id: "open-surface",
@@ -470,17 +479,27 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 });
             }
-            // The main page is left out of both: a project has exactly one, so it can be neither
-            // duplicated nor imported, and a copy of it would paste as nothing.
-            if (surface.id !== MAIN_APP_SURFACE_ID) {
-                items.push(
-                    {
-                        id: "copy-surface",
-                        label: t("uiEditor.panel.copySurface", { label }),
-                        onClick: () => {
-                            handleCopySurface(surface);
-                        },
+            items.push({
+                id: "copy-surface",
+                label: t("uiEditor.panel.copySurface", { label }),
+                onClick: () => {
+                    handleCopySurface(surface);
+                },
+            });
+            if (surface.kind === "appSurface" && !isEntry) {
+                items.push({
+                    id: "set-entry-surface",
+                    label: t("uiEditor.panel.setEntryPage"),
+                    ...freeze.menuRow(),
+                    onClick: () => {
+                        documentService?.setEntrySurface(surface.id);
                     },
+                });
+            }
+            // The entry page is the one thing on this list that cannot be deleted: the game has to
+            // start somewhere. Making another page the entry is what frees it.
+            if (!isEntry) {
+                items.push(
                     {
                         id: "surface-separator",
                         separator: true,
@@ -502,7 +521,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             ));
             showMenu(event);
         },
-        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, documentService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -644,7 +663,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             title: t(ownerLabelKey("globalMain")),
             subtitle: t("uiEditor.panel.globalSubtitle"),
             typeLabel: t("uiEditor.panel.blueprintType"),
-            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,
+            // Fills the box the list gives it, which is sized like the surface previews beside it.
+            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-full" />,
             canOpen: Boolean(globalBlueprintId),
             onClick: () => handleOpenGlobalBlueprint(),
             onOpenInWindow: () => handleOpenGlobalBlueprint({ inOwnWindow: true }),
@@ -659,6 +679,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             <SurfaceFilters
                 kind={kind}
                 onKindChange={setKind}
+                onOpenBlueprintOverview={context ? () => openBlueprintWallTab(context) : undefined}
             />
             <SurfaceActions
                 onCreate={handleCreateSurface}
@@ -672,6 +693,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
+                entrySurfaceId={entrySurfaceId}
                 globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
                 getSurfaceContentRevision={getSurfaceContentRevision}

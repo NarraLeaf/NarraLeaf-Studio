@@ -28,6 +28,12 @@ export type IconButtonSegGroupProps = {
     exclusivePrimaryId?: string;
     /** Tighter padding for dense inspector rows (icon-only toolbars). */
     density?: IconButtonSegGroupDensity;
+    /**
+     * `equal` (the default) divides the width evenly. `content` sizes each segment from its words
+     * first, so worded segments of different lengths share one line where equal thirds would wrap
+     * the longest; they still shrink, and wrap, when the row is narrower than all of them.
+     */
+    segmentWidth?: "equal" | "content";
 };
 
 export type { IconButtonSegGroupDensity };
@@ -59,6 +65,7 @@ export function IconButtonSegGroup({
     className = "",
     exclusivePrimaryId,
     density = "default",
+    segmentWidth = "equal",
 }: IconButtonSegGroupProps) {
     const resolvedMode = mode;
     /*
@@ -142,18 +149,19 @@ export function IconButtonSegGroup({
                          * sliced in half while the other four look fine. Shrinking is the better
                          * failure: it crowds all five equally and every one stays recognisable.
                          */
-                        className={`min-w-0 flex-1 ${paddingClass} transition ${isActive ? groupColors.active : groupColors.idle}`}
+                        className={`min-w-0 ${segmentWidth === "content" ? "flex-auto" : "flex-1"} ${paddingClass} transition ${isActive ? groupColors.active : groupColors.idle}`}
                         onClick={() => void handleOptionClick(option.id, option.disabled)}
                         disabled={disabled || option.disabled}
                         aria-pressed={isActive}
-                        data-tip={option.label} aria-label={option.label}
+                        data-tip={option.tip ?? option.label} aria-label={option.label}
                     >
                         <div
                             className={`flex items-center justify-center ${
-                                showLabels && option.label ? "gap-2" : ""
+                                showLabels && option.label && option.icon ? "gap-2" : ""
                             }`}
                         >
-                            <span className="text-base leading-none">{option.icon}</span>
+                            {/* A worded segment may go without an icon, when the words are all the room has. */}
+                            {option.icon ? <span className="text-base leading-none">{option.icon}</span> : null}
                             {showLabels && option.label ? (
                                 <span className="text-xs tracking-wide">{option.label}</span>
                             ) : null}

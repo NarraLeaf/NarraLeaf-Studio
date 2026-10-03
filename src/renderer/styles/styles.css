@@ -816,6 +816,9 @@ input[type="radio"]:focus {
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
+    /* While a context menu is open the title bar is not a drag region, so a press on it reaches the
+       page and closes the menu like a press anywhere else outside it. See `ContextMenu.tsx`. */
+    html[data-context-menu-open] .titlebar-drag { -webkit-app-region: no-drag; }
 
     .nl-selectable-text,
     .nl-selectable-text * {
@@ -852,9 +855,15 @@ input[type="radio"]:focus {
      *
      * Every `draggable` element in the app needs this class. Without it the attribute is silently
      * inert: no dragstart fires at all, so the source looks wired up and simply never drags.
+     *
+     * The element itself only, not its descendants. Chromium starts a drag from the nearest element
+     * under the pointer whose user-drag is `element`, and passes over any left at the global `none`,
+     * so a press anywhere inside still drags the element that carries the class. Opting the
+     * descendants in as well made each of them a drag source of its own: a press on the live page
+     * thumbnail inside an interface card dragged that page's root, drawn at its full design size,
+     * instead of the card.
      */
-    .nl-drag-source,
-    .nl-drag-source * {
+    .nl-drag-source {
         -webkit-user-drag: element;
     }
 

@@ -3,10 +3,7 @@ import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { EventEmitter } from "../ui/EventEmitter";
-import { CharacterService } from "./CharacterService";
-import { StoryService } from "../story/StoryService";
-import { UIDocumentService } from "../ui-editor/UIDocumentService";
-import { UIGraphService } from "../ui-editor/UIGraphService";
+import { flushPendingSaves } from "../autosave/flushPendingSaves";
 
 type DevModeServiceEvents = {
     statusChanged: DevModeStatus;
@@ -93,21 +90,27 @@ export class DevModeService extends Service<DevModeService> {
         }
     }
 
+    /**
+     * Put everything the author has done on disk, because the run is compiled from the disk.
+     *
+     * The same flush a window close runs, and for the same reason: it settles the editors that are
+     * still holding words first, then writes every store. A row open for editing keeps its line in
+     * the field and moves it into the story a moment after the typing stops, or when the field loses
+     * focus - and that blur is handled on a timer, which a quick press of a row's play control
+     * outruns. Flushing only the savers then wrote the story without the line the author had just
+     * changed, the run started on the old one, and the auto-save that followed a second later
+     * reloaded it with the new one. Writing only four of the stores had the same effect on a
+     * translation, a voice take or a variable edited just before pressing play.
+     *
+     * A store that cannot be written does not stop the run. Its failure is already on screen as a
+     * save notice and in the Storage console; refusing here as well would add an unexplained
+     * failure for a store the run may not even read.
+     */
     private async prepareProjectForPreview(): Promise<void> {
-        const services = this.getContext().services;
-        const uid = services.get<UIDocumentService>(Services.UIDocument);
-        const graph = services.get<UIGraphService>(Services.UIGraph);
-        const story = services.get<StoryService>(Services.Story);
-        const character = services.get<CharacterService>(Services.Character);
-
-        if (uid.isDirty()) {
-            await uid.save(uid.getDocument());
+        const result = await flushPendingSaves(this.getContext());
+        if (!result.flushed) {
+            console.warn("[DevMode] launching with stores that could not be saved:", result.failures.join(", "));
         }
-        if (graph.isDirty()) {
-            await graph.save(graph.getDocument());
-        }
-        await story.flushPendingChanges();
-        await character.flushPendingChanges();
     }
 
     public async stop(): Promise<DevModeStatus> {

@@ -2079,6 +2079,61 @@ describe("built-in blueprint nodes", () => {
                 blueprintLocals: {},
             })).rejects.toThrow(/needs a save in storage/);
         });
+
+        /**
+         * The warning the executor gives before a save node runs has to agree with what the node then
+         * does. A wired Slot is a save to act on, so there is nothing to warn about; neither pin is a
+         * node that refuses to run, and that is the one case the warning is for.
+         */
+        it("warns about a missing save exactly when the node then has none to act on", async () => {
+            registerCoreBlueprintNodes();
+            const runDelete = async (nodes: Record<string, unknown>, edges: unknown[]) => {
+                const deletedIds: string[] = [];
+                const missingPins: string[] = [];
+                let failure: unknown = null;
+                await executeGraph({
+                    graph: inheritGraph(nodes, edges),
+                    entry: { start: { nodeId: "del", port: "in" } },
+                    hostAdapter: createGameSaveHostAdapter({ deletedIds }),
+                    blueprintLocals: {},
+                    trace: {
+                        executionId: "delete",
+                        graphId: "inherit",
+                        emit: event => {
+                            if (event.type === "node.input_missing") {
+                                missingPins.push(event.pinLabel);
+                            }
+                        },
+                    },
+                }).catch((error: unknown) => {
+                    failure = error;
+                });
+                return { deletedIds, missingPins, failure };
+            };
+
+            const bySlot = await runDelete(
+                {
+                    slot: { id: "slot", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT, params: { id: "slot-01" } },
+                    del: { id: "del", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE, params: {} },
+                },
+                [{ from: { nodeId: "slot", port: "slot" }, to: { nodeId: "del", port: "slot" } }],
+            );
+            expect(bySlot).toEqual({ deletedIds: ["slot-01"], missingPins: [], failure: null });
+
+            const byId = await runDelete(
+                { del: { id: "del", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE, params: { id: "slot-02" } } },
+                [],
+            );
+            expect(byId).toEqual({ deletedIds: ["slot-02"], missingPins: [], failure: null });
+
+            const byNeither = await runDelete(
+                { del: { id: "del", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE, params: {} } },
+                [],
+            );
+            expect(byNeither.missingPins).toEqual(["Id"]);
+            expect(byNeither.deletedIds).toEqual([]);
+            expect(String(byNeither.failure)).toMatch(/no save to act on/);
+        });
     });
 
     it("executes dialog Game nodes through host APIs", async () => {

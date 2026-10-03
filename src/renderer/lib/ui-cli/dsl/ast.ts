@@ -91,6 +91,8 @@ export type UiDocumentStatement = {
     line: number;
     name: string;
     id?: string;
+    /** `entry=`: the page the game starts on, by id or by name. Absent leaves it as it is. */
+    entry?: string;
 };
 
 export type UiStatement =

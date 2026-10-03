@@ -48,6 +48,8 @@ import { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles, type PageHostInputs } from "./hostAdapterBundles";
 import { listenForGameKeys, type KeyboardOwner } from "./keyboardOwner";
+import type { EngineNvlKeys } from "./engineNvlKeys";
+import { StageCoveredContext } from "./stageConcealment";
 import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
     StageSlotSurfaceBody,
@@ -104,8 +106,9 @@ const document = {
     ],
     elements: {
         titleRoot: element("titleRoot", "nl.root", null, [], { layout: { x: 0, y: 0, width: 1280, height: 720 } }),
-        dialogueRoot: element("dialogueRoot", "nl.root", null, ["line"], { layout: { x: 0, y: 0, width: 1280, height: 720 } }),
+        dialogueRoot: element("dialogueRoot", "nl.root", null, ["line", "boxButton"], { layout: { x: 0, y: 0, width: 1280, height: 720 } }),
         line: element("line", "nl.text", "dialogueRoot", [], { props: { text: "A line." } }),
+        boxButton: element("boxButton", "nl.button", "dialogueRoot", [], { props: { label: "Log" } }),
         choiceRoot: element("choiceRoot", "nl.root", null, ["options"], { layout: { x: 0, y: 0, width: 1280, height: 720 } }),
         options: element("options", "nl.choice.list", "choiceRoot", ["option"], {
             layout: { x: 0, y: 0, width: 600, height: 300, visible: true },
@@ -163,6 +166,10 @@ const blueprints: readonly Blueprint[] = [
         advance: logs(onAdvance, "notifications: advance"),
         space: logs(onSpace, "notifications: key down"),
     }),
+    // A widget on the stage with a key head of its own: it hears the window, not the dispatch.
+    blueprintOn("bp-box-button", { kind: "widgetMain", surfaceId: DIALOGUE, elementId: "boxButton" }, {
+        escape: logs({ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN, params: { key: "Escape" } }, "dialogue button: Escape"),
+    }),
     blueprintOn("bp-title", { kind: "surfaceMain", surfaceId: TITLE }, {
         space: logs(onSpace, "title: key down"),
     }),
@@ -186,8 +193,11 @@ const blueprints: readonly Blueprint[] = [
 const running: Array<() => void> = [];
 let sessionCount = 0;
 
-/** What `GameApp` answers per press: the page when one is drawn over the stage, else the stage when the story is on screen. */
-type Screen = "title" | "story" | "page over the story";
+/**
+ * What `GameApp` answers per press: the page when one is drawn over the stage, else the stage when the
+ * story is on screen - with the engine's NVL page standing in for the dialogue box in an NVL passage.
+ */
+type Screen = "title" | "story" | "page over the story" | "engine NVL";
 
 function runningGame() {
     sessionCount += 1;
@@ -265,11 +275,14 @@ function runningGame() {
     const titleHost = hostAdapterBundleFor(title, titleSurface)!;
 
     let screen: Screen = "story";
+    /** Each time the engine's NVL page was read on. */
+    const nvlAdvances: string[] = [];
+    const engineNvl: EngineNvlKeys = { actionIds: new Set([ADVANCE]), advance: () => { nvlAdvances.push("advance"); } };
     const readKeyboardOwner = (): KeyboardOwner | null => {
         if (screen === "title" || screen === "page over the story") {
             return { surface: titleSurface, host: titleHost };
         }
-        return { stage: stageKeyboardSurfaces.list() };
+        return { stage: stageKeyboardSurfaces.list(), ...(screen === "engine NVL" ? { engineNvl } : {}) };
     };
     running.push(listenForGameKeys(window, {
         blueprintDocument,
@@ -303,6 +316,7 @@ function runningGame() {
     return {
         slotOptions,
         stageKeyboardSurfaces,
+        nvlAdvances,
         lines,
         errors,
         press,
@@ -320,14 +334,17 @@ function SlotDrawing(props: { options: GameUiSlotHostOptions; surfaceId: string;
     return <StageSlotSurfaceBody options={props.options} surface={surface} runtime={runtime} passive={props.passive} />;
 }
 
-/** The stage of the starter project mid-story: the dialogue box, and the notifications slot. */
-function Stage(props: { options: GameUiSlotHostOptions; menu?: boolean }) {
+/**
+ * The stage of the starter project mid-story: the dialogue box, and the notifications slot. `covered`
+ * is `GameApp`'s answer to whether a page or a modal layer is drawn over it.
+ */
+function Stage(props: { options: GameUiSlotHostOptions; menu?: boolean; covered?: boolean }) {
     return (
-        <>
+        <StageCoveredContext.Provider value={props.covered === true}>
             <SlotDrawing options={props.options} surfaceId={DIALOGUE} slotId="dialog" />
             {props.menu ? <SlotDrawing options={props.options} surfaceId={CHOICE} slotId="choice" /> : null}
             <SlotDrawing options={props.options} surfaceId={NOTIFICATIONS} slotId="notification" passive />
-        </>
+        </StageCoveredContext.Provider>
     );
 }
 
@@ -377,23 +394,51 @@ describe("the keys on the stage", () => {
         expect(heard.filter(line => line.startsWith("notifications:"))).toEqual([]);
     });
 
-    it("hands the keys to a page drawn over the story, and the story does not advance under it", async () => {
-        const { game } = await onStage();
+    it("hands the keys to a page drawn over the story, and nothing on the stage hears them under it", async () => {
+        const { game, view } = await onStage();
         game.showing("page over the story");
+        view.rerender(<Stage options={game.slotOptions} covered />);
 
         expect(await game.press(" ")).toEqual(["title: key down"]);
         expect(await game.press("Enter")).toEqual([]);
+        // The widget's own key head included: it listens on the window, and used to go on answering
+        // every key the page took - Escape closing the page and pressing a button under it at once.
+        expect(await game.press("Escape")).toEqual([]);
 
         game.showing("story");
+        view.rerender(<Stage options={game.slotOptions} />);
         expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
+        expect(await game.press("Escape")).toEqual(["dialogue button: Escape"]);
     });
 
-    it("advances once for a key held down: the system's repeats raise nothing, and the key head still hears them", async () => {
+    it("reads the engine's NVL page on with the keys that read the dialogue box on, once a press", async () => {
+        const game = runningGame();
+        game.showing("engine NVL");
+
+        await game.press(" ");
+        await game.press("Enter");
+        expect(game.nvlAdvances).toEqual(["advance", "advance"]);
+
+        // Not with a key Advance is not bound to, and not with the system's repeats of a held key.
+        await game.press("a");
+        await game.press(" ", { repeat: true });
+        expect(game.nvlAdvances).toEqual(["advance", "advance"]);
+
+        // Nor with a page over it: the page has the keys.
+        game.showing("page over the story");
+        await game.press(" ");
+        expect(game.nvlAdvances).toEqual(["advance", "advance"]);
+        expect(game.errors).toEqual([]);
+    });
+
+    it("answers a key held down once: the system's repeats reach neither the action nor the key head", async () => {
         const { game } = await onStage();
 
         expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
-        expect(await game.press(" ", { repeat: true })).toEqual(["dialogue: key down"]);
-        expect(await game.press(" ", { repeat: true })).toEqual(["dialogue: key down"]);
+        expect(await game.press(" ", { repeat: true })).toEqual([]);
+        expect(await game.press(" ", { repeat: true })).toEqual([]);
+        // Let go and press again: that is a second press.
+        expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
     });
 
     it("keeps a text field's keys", async () => {
@@ -454,5 +499,25 @@ describe("the keys on the stage", () => {
         // Held on an option, the repeats pick nothing more and advance nothing.
         expect(await game.press("Enter", { target: rowAt(1), repeat: true })).toEqual([]);
         expect(game.errors).toEqual([]);
+    });
+});
+
+describe("the pointer on the stage", () => {
+    it("goes off the Game UI while anything covers the story, and the Game UI stays on screen under a layer", async () => {
+        const { game, view } = await onStage(true);
+        const shell = (id: string) => view.container.querySelector<HTMLElement>(`[data-ui-surface-id='${id}']`)!;
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(false);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(false);
+
+        // A modal layer over the story: no page, so nothing is concealed, and nothing on the stage
+        // may take a press either - the layer has declared everything under it inert.
+        view.rerender(<Stage options={game.slotOptions} menu covered />);
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(true);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(true);
+        expect(shell(DIALOGUE).style.opacity).not.toBe("0");
+
+        view.rerender(<Stage options={game.slotOptions} menu />);
+        expect(shell(DIALOGUE).hasAttribute("inert")).toBe(false);
+        expect(shell(CHOICE).hasAttribute("inert")).toBe(false);
     });
 });

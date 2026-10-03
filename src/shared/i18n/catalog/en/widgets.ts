@@ -68,8 +68,8 @@ export const widgets = {
         disableItalic: "Disable italic",
     },
     localization: {
-        title: "Localization",
-        textKey: "Text key",
+        translationKey: "Translation key",
+        noSourceLanguage: "The project has no source language",
         none: "None",
         createKey: "Create new key…",
         createKeyTitle: "New localization key",

@@ -8,11 +8,12 @@
  * words in list rows that the rows' own data replaces - which teaches, on the first morning, that a
  * warning is something to scroll past.
  *
- * Two categories, run the way the lint panel runs them, because they are the two a context built
- * from the template's files can answer honestly: the story rules read the story, and the interface
- * rules read the interface and blueprint documents plus the language list. The rest read asset
- * bytes or the reference index a running Studio builds; `--lint` on a freshly created project is
- * the check for those.
+ * Three categories, run the way the lint panel runs them, because they are the three a context built
+ * from the template's files can answer honestly: the story rules read the story, the interface
+ * rules read the interface and blueprint documents plus the language list, and the localization
+ * rules read the translation files the template ships beside them - for the script's lines and for
+ * the interface's own words alike. The rest read asset bytes or the reference index a running Studio
+ * builds; `--lint` on a freshly created project is the check for those.
  *
  * A zero is what a sweep that checks nothing also produces, so the same context is run once more
  * with the game's title no longer asking for its translation, and has to report exactly that.
@@ -23,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { LocalizationDocument, LocalizationKeysDocument } from "@shared/types/localization";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { createTestLintContext, LINT_RULES, runLintRules } from "@/lib/lint";
 import type { LintContext } from "@/lib/lint/context";
@@ -41,7 +43,7 @@ const LANGUAGES = [
     { name: "Japanese", variant: "content.ja", sourceLocale: "ja" },
 ] as const;
 
-const CATEGORIES = new Set(["story", "ui"]);
+const CATEGORIES = new Set(["story", "ui", "localization"]);
 
 /** The file a project made in this language ends up with: the variant's copy when it has one. */
 function landed(variant: string | null, relative: string): string {
@@ -53,11 +55,31 @@ function readJson<T>(file: string): T {
     return JSON.parse(fs.readFileSync(file, "utf-8")) as T;
 }
 
+/** The translation files a project made in this language receives. */
+function translationFiles(variant: string | null): string[] {
+    const dir = path.dirname(landed(variant, "editor/localization/keys.json"));
+    return fs
+        .readdirSync(dir)
+        .filter(name => name.endsWith(".json") && name !== "keys.json")
+        .map(name => path.join(dir, name));
+}
+
 /** The languages the project registers: its own, and one per translation file it received. */
 function targetLocales(variant: string | null, sourceLocale: string): string[] {
-    const dir = path.dirname(landed(variant, "editor/localization/keys.json"));
-    const files = fs.readdirSync(dir).filter(name => name.endsWith(".json") && name !== "keys.json");
-    return [sourceLocale, ...files.map(name => name.slice(0, -".json".length))];
+    return [sourceLocale, ...translationFiles(variant).map(file => path.basename(file, ".json"))];
+}
+
+/** Each translation file, keyed by the language it is for. */
+function translationDocuments(variant: string | null): Map<string, LocalizationDocument> {
+    return new Map(
+        translationFiles(variant).map(file => [path.basename(file, ".json"), readJson<LocalizationDocument>(file)]),
+    );
+}
+
+/** The named keys - the menu's own words - mapped to the words they say in the source language. */
+function localizationKeys(variant: string | null): Map<string, string> {
+    const { keys } = readJson<LocalizationKeysDocument>(landed(variant, "editor/localization/keys.json"));
+    return new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]));
 }
 
 function contextFor(language: (typeof LANGUAGES)[number]): LintContext {
@@ -79,8 +101,9 @@ function contextFor(language: (typeof LANGUAGES)[number]): LintContext {
         localization: {
             sourceLocale: language.sourceLocale,
             targetLocales: targetLocales(language.variant, language.sourceLocale),
-            documents: new Map(),
+            documents: translationDocuments(language.variant),
         },
+        localizationKeys: localizationKeys(language.variant),
     });
 }
 
@@ -96,7 +119,7 @@ describe.each(LANGUAGES)("a project made from the starter template in $name", la
         expect(targetLocales(language.variant, language.sourceLocale).length).toBeGreaterThan(1);
     });
 
-    it("passes the story and interface checks with nothing to report", async () => {
+    it("passes the story, interface and localization checks with nothing to report", async () => {
         expect(await sweep(contextFor(language))).toEqual([]);
     });
 
@@ -110,5 +133,16 @@ describe.each(LANGUAGES)("a project made from the starter template in $name", la
         delete (title!.props as Record<string, unknown>).localizable;
         const findings = await sweep(context);
         expect(findings.filter(finding => finding.startsWith("ui/unlocalized-text"))).toHaveLength(1);
+    });
+
+    it("says so only because it can report: a menu word whose translation is gone is found", async () => {
+        const context = contextFor(language);
+        const [locale, document] = [...context.localization!.documents][0];
+        const unitId = Object.keys(document.units).find(id => id.startsWith("key:"));
+        expect(unitId).toBeDefined();
+        delete document.units[unitId!];
+        const findings = await sweep(context);
+        expect(findings.filter(finding => finding.startsWith("localization/missing"))).toHaveLength(1);
+        expect(locale).not.toBe(language.sourceLocale);
     });
 });

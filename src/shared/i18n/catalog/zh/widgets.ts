@@ -65,8 +65,8 @@ export const widgets = {
         disableItalic: "禁用斜体",
     },
     localization: {
-        title: "本地化",
-        textKey: "文本键",
+        translationKey: "翻译键",
+        noSourceLanguage: "项目未设置源语言",
         none: "无",
         createKey: "新建键…",
         createKeyTitle: "新建本地化键",

@@ -1,4 +1,5 @@
 import { ClipboardPaste, LayoutTemplate, Plus } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
@@ -21,6 +22,11 @@ type SurfaceActionsProps = {
     pasteLabel: string;
 };
 
+const CREATE_CLASS =
+    "flex h-10 items-center justify-center gap-2 rounded-md border border-edge-strong bg-surface-raised px-3 text-xs font-semibold text-fg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg";
+const SECONDARY_CLASS =
+    "flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg";
+
 export function SurfaceActions({
     onCreate,
     createLabel,
@@ -41,19 +47,21 @@ export function SurfaceActions({
                     type="button"
                     onClick={onCreate}
                     {...freeze.writes(createDisabled)}
-                    className="flex-1 flex h-10 items-center justify-center gap-2 rounded-md border border-edge-strong bg-surface-raised px-3 text-xs font-semibold text-fg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg"
+                    className={cn(CREATE_CLASS, "min-w-0 flex-1")}
                 >
-                    <Plus className="w-4 h-4" />
-                    <span>{createLabel}</span>
+                    <Plus className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{createLabel}</span>
                 </button>
                 <button
                     type="button"
                     onClick={onOpenTemplateStore}
+                    // An icon beside Create: the name is its tip and what a screen reader says.
                     {...freeze.writes(templateDisabled, templateLabel)}
                     aria-label={templateLabel}
-                    className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg"
+                    data-surface-template-store=""
+                    className={SECONDARY_CLASS}
                 >
-                    <LayoutTemplate className="w-4 h-4" />
+                    <LayoutTemplate className="w-4 h-4 shrink-0" />
                 </button>
                 {onPaste && (
                     <button
@@ -61,7 +69,7 @@ export function SurfaceActions({
                         onClick={onPaste}
                         {...freeze.writes(false, pasteLabel)}
                         aria-label={pasteLabel}
-                        className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg"
+                        className={SECONDARY_CLASS}
                     >
                         <ClipboardPaste className="w-4 h-4" />
                     </button>

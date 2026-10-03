@@ -66,6 +66,9 @@ export const dialogs = {
         // Capitalised to match the menu item that opens the dialog ("Rename Page"), and because
         // Game UI is the interface's own name for the thing rather than a common noun.
         page: "Page",
+        // The page the game starts on, named as such wherever that page is: its menu, its rename
+        // dialog.
+        entryPage: "Entry Page",
         gameUi: "Game UI",
         image: "Image",
         audio: "Audio",
@@ -123,6 +126,7 @@ export const dialogs = {
             supported: "Supported files",
             images: "Images",
             log: "Log",
+            zip: "Zip archive",
             text: "Text",
             json: "JSON",
             patch: "Patch",

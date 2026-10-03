@@ -629,6 +629,9 @@ export const workspace = {
             queued: {
                 other: "残り {count} 件",
             },
+            repeated: {
+                other: "計 {count} 回",
+            },
         },
         // 背景画像のダイアログ（設定またはコマンドパレットから開く）。
         background: {
@@ -1298,6 +1301,7 @@ export const workspace = {
                 localizationFind: "訳文を検索",
                 voiceFind: "音声を検索",
                 lintFind: "問題を検索",
+                blueprintOverviewFind: "ブループリント一覧を検索",
                 // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
                 // 停止する三つのコマンドが同じ割り当てを共有する。
                 run: {

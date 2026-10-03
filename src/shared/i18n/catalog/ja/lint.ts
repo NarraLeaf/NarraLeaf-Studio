@@ -382,13 +382,15 @@ export const lint = {
         },
         localizationMissing: {
             title: "翻訳の欠落",
-            description: "対象の言語に翻訳のない行",
+            description: "対象の言語に翻訳のない行またはインターフェースのテキスト",
             message: "{locale} の翻訳がない",
+            messageInterface: "{text} の {locale} の翻訳がない",
         },
         localizationStale: {
             title: "古い翻訳",
             description: "翻訳した後に原文が変わっている",
             message: "{locale} の翻訳が原文より古い",
+            messageInterface: "{text} の {locale} の翻訳が原文より古い",
         },
         localizationMarkup: {
             title: "訳文に文字装飾がない",

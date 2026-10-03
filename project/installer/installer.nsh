@@ -16,10 +16,12 @@
 ;   customPageAfterChangeDir - inserted immediately before MUI_PAGE_INSTFILES, so MUI defines
 ;                              written here are the ones that page picks up
 ;   customFinishPage         - replaces MUI_PAGE_FINISH outright
+;   customInstall            - the end of the install section
 ;
-; None of it runs for a silent install: NSIS skips pages entirely under /S, which is how
-; electron-updater applies an update. That is deliberate, and it is what keeps the update path clear
-; of all of this.
+; None of the pages run for a silent install: NSIS skips them entirely under /S. An update the app
+; starts is not silent, so that it can be seen, but passes through every page that would ask
+; something (--updated; see "the update"). The app's other way of applying an update - on its way
+; out, when the user quits with one downloaded - is silent, and starts nothing afterwards.
 ;
 ; Nothing here may be the reason an install cannot happen. The WebView2 runtime is not guaranteed on
 ; Windows 10, so the custom UI is gated on finding it, is only committed to once the view is
@@ -85,6 +87,20 @@ ManifestDPIAware true
 !macroend
 
 ; ------------------------------------------------------------------------------------------------
+; The end of the install section. An update the app started (--updated --force-run, not silent)
+; starts the app again from here, while the update window is still up - see "the update" further
+; down. A silent run is left to the template, which starts the app itself when asked to
+; (templates/nsis/installSection.nsh); a silent run without --force-run, which is the app applying
+; a downloaded update on its way out, starts nothing.
+!macro customInstall
+  ${If} ${isUpdated}
+  ${AndIf} ${isForceRun}
+  ${AndIfNot} ${Silent}
+    Call nlRelaunch
+  ${EndIf}
+!macroend
+
+; ------------------------------------------------------------------------------------------------
 ; Install mode.
 ;
 ; The stock flow asks "who should this be installed for" on a Win32 page of its own. Studio installs
@@ -93,6 +109,11 @@ ManifestDPIAware true
 ; draws (templates/nsis/multiUserUi.nsh), which is the supported way to skip it.
 ;
 ; /allusers and /currentuser are still honoured: the page's PRE checks them ahead of this.
+;
+; Skipping the page does not stop it resetting $INSTDIR. Its PRE runs setInstallModePerUser (or the
+; all-users twin, templates/nsis/multiUser.nsh), which recomputes the folder from the registry and
+; the default location - and the template places this page *after* customWelcomePage, so it runs
+; after the folder has been chosen. nlInstFilesPre puts the chosen folder back; see there.
 !macro customInstallMode
   ${If} $hasPerMachineInstallation == "1"
   ${AndIf} $hasPerUserInstallation == "0"
@@ -107,7 +128,6 @@ ManifestDPIAware true
 
 !macro customWelcomePage
 
-!include "StrContains.nsh"
 ; WordFunc only defines the macros that are asked for by name.
 !include "WordFunc.nsh"
 !insertmacro WordReplace
@@ -119,6 +139,8 @@ Var nlState     ; "" not started | "wait" creating | "ready" ours | "off" stock 
 Var nlTicks
 Var nlSize      ; human-readable install size, e.g. "1.1 GB"
 Var nlKiB       ; the same number unformatted, which is what the plugin measures the copy against
+Var nlLocked    ; "" not settled | "1" an existing install decides the folder | "0" the user does
+Var nlDir       ; the folder the user confirmed on whichever page asked; "" until one was left
 
 ; --- the window ---------------------------------------------------------------------------------
 
@@ -208,7 +230,12 @@ Function nlShell
   System::Call "user32::ReleaseDC(p 0, p r2) i"
   IntOp $nlWidth 620 * $3
   IntOp $nlWidth $nlWidth / 96
-  IntOp $nlHeight 372 * $3
+  ; An update has a title, a line and the bar to show (see "the update"), so its window is shorter.
+  ${If} ${isUpdated}
+    IntOp $nlHeight 184 * $3
+  ${Else}
+    IntOp $nlHeight 372 * $3
+  ${EndIf}
   IntOp $nlHeight $nlHeight / 96
 
   ; WS_CHILD (0x40000000) | WS_VISIBLE (0x10000000)
@@ -294,6 +321,10 @@ FunctionEnd
 ;
 ; Backslashes are doubled on the way into a JavaScript string literal: left alone, "C:\Users"
 ; arrives as "C:Users" and the document shows a path that does not exist.
+;
+; The last argument is the mode: "update" when the app started this installer to update itself
+; (--updated; see "the update" below), and the document then shows only that the app is being
+; updated and how far it has got.
 Function nlPushInit
   ${If} $LANGUAGE == 2052
     StrCpy $R1 "zh"
@@ -302,8 +333,13 @@ Function nlPushInit
   ${Else}
     StrCpy $R1 "en"
   ${EndIf}
+  ${If} ${isUpdated}
+    StrCpy $R2 "update"
+  ${Else}
+    StrCpy $R2 "install"
+  ${EndIf}
   ${WordReplace} "$INSTDIR" "\" "\\" "+" $R0
-  NlWebView::Eval `window.nlInit("$R1", "${PRODUCT_NAME} ${VERSION}", "${PRODUCT_NAME}", "$R0", "$nlSize")`
+  NlWebView::Eval `window.nlInit("$R1", "${PRODUCT_NAME} ${VERSION}", "${PRODUCT_NAME}", "$R0", "$nlSize", "$nlLocked", "$R2")`
 FunctionEnd
 
 Function nlPushDir
@@ -311,9 +347,107 @@ Function nlPushDir
   NlWebView::Eval `window.nlDir("$R0")`
 FunctionEnd
 
+; --- the folder ---------------------------------------------------------------------------------
+;
+; Whatever folder a page shows is the folder the files go to. Three things used to get in the way of
+; that, and each is handled here rather than patched up afterwards:
+;
+;   - the install-mode page resets $INSTDIR after the folder is chosen (see customInstallMode), so
+;     the choice is recorded as $nlDir when its page is left and put back by nlInstFilesPre;
+;   - a picked folder gets a folder of the product's name inside it, which used to happen at the last
+;     moment, after the page had shown the folder without it - now it happens as the folder is picked,
+;     so the page shows the result;
+;   - an upgrade goes where the existing install is, so the page shows that folder and offers no way
+;     to change it.
+
+; Gives a picked folder a folder of its own for the files to go in, unless it already is one.
+;
+; The uninstaller removes the install directory recursively (templates/nsis/uninstaller.nsh), so a
+; folder the user picked as a *parent* - D:\ or D:\Apps - must never become the install directory
+; itself. The test is the last component of the path being exactly the product's folder name (case
+; does not matter); the template's own test was a substring match, which a folder such as
+; "NarraLeaf Studio Projects" passes, and an uninstall would then have taken everything in it.
+Function nlWithAppFolder
+  Push $0
+  ; "D:\" comes back from the folder dialog with its separator; everything else without.
+  StrCpy $0 $INSTDIR 1 -1
+  ${If} $0 == "\"
+    StrCpy $INSTDIR $INSTDIR -1
+  ${EndIf}
+  ${GetFileName} "$INSTDIR" $0
+  ${If} $0 != "${APP_FILENAME}"
+    StrCpy $INSTDIR "$INSTDIR\${APP_FILENAME}"
+  ${EndIf}
+  Pop $0
+FunctionEnd
+
+; Whether this process can create the folder in $R0 and write to it: the nearest part of the path
+; that already exists has to accept a new file. "1" or "0" in $R1.
+;
+; Asked when a folder is picked rather than discovered when the copy fails. The installer runs
+; unelevated for a per-user install, so a folder such as C:\Program Files is refused by Windows, and
+; the first sign of it would otherwise be a write error halfway through the install. The probe is a
+; uniquely named empty file, deleted at once.
+Function nlCanWrite
+  Push $2
+  Push $3
+  StrCpy $R1 "0"
+  StrCpy $2 $R0
+  ${Do}
+    ${If} ${FileExists} "$2\*.*"
+      ${Break}
+    ${EndIf}
+    ${GetParent} "$2" $3
+    ${If} $3 == ""
+    ${OrIf} $3 == $2
+      Goto nlCanWriteDone
+    ${EndIf}
+    StrCpy $2 $3
+  ${Loop}
+  ClearErrors
+  GetTempFileName $3 "$2"
+  ${IfNot} ${Errors}
+  ${AndIf} $3 != ""
+    Delete $3
+    StrCpy $R1 "1"
+  ${EndIf}
+  nlCanWriteDone:
+  Pop $3
+  Pop $2
+FunctionEnd
+
+; Decides, once, whether the folder is the user's to choose.
+;
+; An existing install in the same scope - its InstallLocation recorded and its executable still
+; there - decides it: the template uninstalls the previous version from where it is and installs
+; into $INSTDIR, which initMultiUser has already set to that location. Moving an install on upgrade
+; would leave every pinned taskbar shortcut and any other copy of the old path pointing at a folder
+; that the uninstaller has just deleted, so the page shows the folder and does not offer to change
+; it. A registry entry whose folder is gone is not an install, and leaves the choice open.
+;
+; /D= still wins either way: initMultiUser applies it after the registry, and this only reads
+; $INSTDIR. Otherwise the folder shown is given its product folder now, so a /D= that names a parent
+; is shown the way it will be used.
+Function nlSettle
+  ${If} $nlLocked != ""
+    Return
+  ${EndIf}
+  StrCpy $nlLocked "0"
+  ReadRegStr $0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $0 != ""
+  ${AndIf} ${FileExists} "$0\${APP_EXECUTABLE_FILENAME}"
+    StrCpy $nlLocked "1"
+  ${Else}
+    Call nlWithAppFolder
+  ${EndIf}
+FunctionEnd
+
 ; --- the install page ---------------------------------------------------------------------------
 
 Function nlInstallPage
+  ; Ahead of the gate, so the stock wizard's pages see the same decision.
+  Call nlSettle
+
   ; The gate. No runtime, no custom UI, and the stock wizard runs the install instead.
   NlWebView::Runtime
   Pop $0
@@ -359,6 +493,11 @@ Function nlInstallTick
       Call nlFrame
       Call nlPushInit
       ShowWindow $HWNDPARENT ${SW_SHOW}
+      ; An update asks nothing, so this page is only passed through. Posted rather than sent, so the
+      ; page is left after this callback has returned rather than from inside it.
+      ${If} ${isUpdated}
+        System::Call "user32::PostMessageW(p $HWNDPARENT, i ${WM_COMMAND}, p 1, p 0)"
+      ${EndIf}
     ${EndIf}
     Return
   ${EndIf}
@@ -366,17 +505,32 @@ Function nlInstallTick
   NlWebView::Poll
   Pop $0
   ${If} $0 == "browse"
-    nsDialogs::SelectFolderDialog "${PRODUCT_NAME}" "$INSTDIR"
+  ${AndIf} $nlLocked != "1"
+    ; Opened on the folder the install would go *into*, which is where the user is choosing.
+    ${GetParent} "$INSTDIR" $2
+    nsDialogs::SelectFolderDialog "${PRODUCT_NAME}" "$2"
     Pop $1
     ${If} $1 != "error"
+      ; Tried on $INSTDIR, and taken back if the folder cannot be written to - the page goes on
+      ; showing the folder it showed before, with the reason under it.
+      StrCpy $2 $INSTDIR
       StrCpy $INSTDIR $1
-      Call nlPushDir
+      Call nlWithAppFolder
+      StrCpy $R0 $INSTDIR
+      Call nlCanWrite
+      ${If} $R1 == "1"
+        Call nlPushDir
+      ${Else}
+        StrCpy $INSTDIR $2
+        NlWebView::Eval `window.nlDirRefused()`
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 FunctionEnd
 
 Function nlInstallLeave
   ${NSD_KillTimer} nlInstallTick
+  StrCpy $nlDir $INSTDIR
 FunctionEnd
 
 Page custom nlInstallPage nlInstallLeave
@@ -391,14 +545,72 @@ Page custom nlInstallPage nlInstallLeave
 ; PRE - the same arrangement the finish page uses.
 Function nlStockPre
   ${If} $nlState == "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
+FunctionEnd
+
+; The fallback's folder page keeps the same three promises as the document (see "the folder" above).
+; On an upgrade the field and its Browse button are disabled and the line above them says why, in
+; the template's own words for the same situation - LangStrings it already carries in every
+; installer language. The control ids are NSIS's directory page (IDC_INTROTEXT 1006, IDC_BROWSE
+; 1001, IDC_DIR 1019).
+Function nlStockDirShow
+  ${If} $nlLocked != "1"
+    Return
+  ${EndIf}
+  FindWindow $0 "#32770" "" $HWNDPARENT
+  GetDlgItem $1 $0 1019
+  EnableWindow $1 0
+  GetDlgItem $1 $0 1001
+  EnableWindow $1 0
+  GetDlgItem $1 $0 1006
+  ${If} $installMode == "all"
+    SendMessage $1 ${WM_SETTEXT} 0 "STR:$(perMachineInstallExists) $(reinstallUpgrade)"
+  ${Else}
+    SendMessage $1 ${WM_SETTEXT} 0 "STR:$(perUserInstallExists) $(reinstallUpgrade)"
+  ${EndIf}
+FunctionEnd
+
+; A typed or browsed folder that gains its product folder here is written back into the field and
+; the page stays, so the folder the files go to is on screen before anything is installed - the
+; second press goes on. A folder that cannot be written to stops here too, with NSIS's own
+; translated write-error text; Retry stays on the page to choose another.
+Function nlStockDirLeave
+  ${If} $nlLocked != "1"
+    StrCpy $0 $INSTDIR
+    StrCpy $1 $0 1 -1
+    ${If} $1 == "\"
+      StrCpy $0 $0 -1
+    ${EndIf}
+    Call nlWithAppFolder
+
+    StrCpy $R0 $INSTDIR
+    Call nlCanWrite
+    ${If} $R1 != "1"
+      ; The text names the path in $0.
+      StrCpy $0 $INSTDIR
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(^FileError_NoIgnore)" IDRETRY +2
+      Quit
+      Abort
+    ${EndIf}
+
+    ${If} $INSTDIR != $0
+      FindWindow $1 "#32770" "" $HWNDPARENT
+      GetDlgItem $1 $1 1019
+      SendMessage $1 ${WM_SETTEXT} 0 "STR:$INSTDIR"
+      Abort
+    ${EndIf}
+  ${EndIf}
+  StrCpy $nlDir $INSTDIR
 FunctionEnd
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE nlStockPre
 !insertmacro MUI_PAGE_WELCOME
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE nlStockPre
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW nlStockDirShow
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE nlStockDirLeave
 !insertmacro MUI_PAGE_DIRECTORY
 
 !macroend
@@ -407,20 +619,37 @@ FunctionEnd
 ; The install itself.
 ;
 ; Inserted immediately before MUI_PAGE_INSTFILES, so the two MUI defines below are the ones that
-; page picks up. This is also where the directory has to be sanitised: the template does that in its
-; own instFilesPre, but only when allowToChangeInstallationDirectory is set, and it is not - the
-; folder is chosen in the document instead.
+; page picks up.
 !macro customPageAfterChangeDir
 
+; The last page callback before the section runs, and so the one place that can make the folder the
+; page showed the folder that is used: every page in between, the install-mode page above all, is
+; free to have reset $INSTDIR. The folder already has its product folder (nlWithAppFolder, applied as
+; it was chosen); nothing is appended here, because whatever is appended here is something no page
+; showed.
+;
+; Never reached by a silent install - NSIS runs no page callbacks under /S - which is what keeps
+; /S /D= on exactly the folder it names. An update passes through the pages, and $nlDir is then the
+; registered folder its page showed.
 Function nlInstFilesPre
-  ${StrContains} $0 "${APP_FILENAME}" $INSTDIR
-  ${If} $0 == ""
-    StrCpy $INSTDIR "$INSTDIR\${APP_FILENAME}"
+  ${If} $nlDir != ""
+    StrCpy $INSTDIR $nlDir
   ${EndIf}
 FunctionEnd
 
 Function nlInstFilesShow
+  ; Nothing is asked once the files are in place during an update, on either wizard, so neither
+  ; waits on this page.
+  ${If} ${isUpdated}
+    SetAutoClose true
+  ${EndIf}
+
   ${If} $nlState != "ready"
+    ; The stock page's header says "installing"; on an update it says what is happening instead, in
+    ; the template's own translated words.
+    ${If} ${isUpdated}
+      !insertmacro MUI_HEADER_TEXT "$(^NameDA)" "$(reinstallUpgrade)"
+    ${EndIf}
     Return
   ${EndIf}
   Call nlRaise
@@ -442,6 +671,108 @@ Function nlInstFilesShow
 
   ; Hand over to the finish page as soon as the section is done - there is no visible Next to press.
   SetAutoClose true
+FunctionEnd
+
+; --- the update ---------------------------------------------------------------------------------
+;
+; The app applies an update by starting this installer with --updated --force-run and quitting
+; (src/main/app/application/managers/updateManager.ts). The run is not silent, so the window stays
+; on screen from the moment the app closes until it is back: every page that would ask something
+; passes straight through on --updated (nlInstallTick, nlStockPre, nlStockFinishPre, nlFinishPage),
+; the document shows the update view, and the section ends by starting the app again and waiting
+; for its window (nlRelaunch, from customInstall below).
+;
+; What a silent run would have done is otherwise unchanged: the folder is the registered one
+; (initMultiUser, and nlSettle locks it), the template still waits for the old app to exit before
+; it touches a file (CHECK_APP_RUNNING, which on --updated waits and asks nothing), KeepShortcuts
+; still keeps a shortcut the user deleted deleted, and the same uninstall entry is rewritten. An
+; all-users install now raises the UAC prompt from the install-mode page, where the template asks
+; for it in every non-silent run, instead of from the section; the window shows the update view
+; again from the elevated instance.
+
+; The first visible top-level window that belongs to a process running $appExe, in $R5; 0 if none.
+; By image path rather than by process id because an elevated installer starts the app through the
+; shell (nlRelaunch), which leaves it no handle to the process it started.
+Function nlFindAppWindow
+  Push $R0
+  Push $R1
+  Push $R2
+  Push $R3
+  Push $R4
+  StrCpy $R5 0
+  StrCpy $R4 0
+  ${Do}
+    System::Call "user32::FindWindowExW(p 0, p R4, p 0, p 0) p .R4"
+    ${If} $R4 == 0
+      ${Break}
+    ${EndIf}
+    System::Call "user32::IsWindowVisible(p R4) i .R3"
+    ${If} $R3 != 0
+      StrCpy $R2 0
+      System::Call "user32::GetWindowThreadProcessId(p R4, *i .R2)"
+      ; PROCESS_QUERY_LIMITED_INFORMATION
+      System::Call "kernel32::OpenProcess(i 0x1000, i 0, i R2) p .R1"
+      ${If} $R1 != 0
+        StrCpy $R0 ""
+        System::Call "kernel32::QueryFullProcessImageNameW(p R1, i 0, w .R0, *i ${NSIS_MAX_STRLEN})"
+        System::Call "kernel32::CloseHandle(p R1)"
+        ${If} $R0 == $appExe
+          StrCpy $R5 $R4
+          ${Break}
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+  ${Loop}
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Pop $R0
+FunctionEnd
+
+; Starts the updated app with --updated and keeps the update window up until the app has a window
+; of its own, then hands that window the foreground.
+;
+; Windows gives the foreground only to a process the user is working with or one it started: the
+; app, which the user had just pressed a button in, started this installer, so the installer may
+; take the foreground and pass it on - AllowSetForegroundWindow for whoever ends up owning the new
+; window, and SetForegroundWindow on it once it exists, which a foreground process may do for any
+; window. Closing first and launching after would leave the new window behind whatever the user
+; had open. If the user has gone to another application in the meantime, Windows refuses both
+; calls, which is the right outcome: the app comes back without taking the keyboard from them.
+;
+; The process is started from this installer when it is not elevated - the per-user case - so it
+; inherits the right to the foreground directly. An installer UAC elevated for an all-users install
+; starts it through the shell as the signed-in user instead (the stock finish page's call), so the
+; app does not run as administrator.
+;
+; Bounded at a minute: an app that has not drawn a window by then is not waited for any longer, and
+; the installer closes as it would have.
+Function nlRelaunch
+  Push $R5
+  Push $R6
+  ; ASFW_ANY
+  System::Call "user32::AllowSetForegroundWindow(i -1)"
+  ${If} ${UAC_IsInnerInstance}
+    ${StdUtils.ExecShellAsUser} $R6 "$launchLink" "open" "--updated"
+  ${Else}
+    ExecShell "open" "$launchLink" "--updated"
+  ${EndIf}
+  StrCpy $R6 0
+  ${Do}
+    Call nlFindAppWindow
+    ${If} $R5 != 0
+      System::Call "user32::SetForegroundWindow(p R5)"
+      ${Break}
+    ${EndIf}
+    IntOp $R6 $R6 + 1
+    ${If} $R6 > 240
+      ${Break}
+    ${EndIf}
+    Sleep 250
+  ${Loop}
+  Pop $R6
+  Pop $R5
 FunctionEnd
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE nlInstFilesPre
@@ -470,12 +801,18 @@ Function nlStartApp
 FunctionEnd
 
 Function nlFinishPage
+  ; An update has already started the app again from the section (nlRelaunch), and leaving the last
+  ; page is what closes the installer.
   ${If} $nlState != "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
 
   NlWebView::Track "0" "" "" "0"
   NlWebView::Eval `window.nlProgress(1)`
+  ; "Installed in ..." names the folder the section actually wrote to, not the one the document was
+  ; last told about.
+  Call nlPushDir
   NlWebView::Eval `window.nlState("done")`
 
   nsDialogs::Create 1018
@@ -500,13 +837,41 @@ Function nlFinishTick
   ; The origin is checked here all the same. The page is a local file this installer wrote, so this
   ; is not defending against it - it is making sure a shell open can only ever be aimed at one host,
   ; whatever the document turns into later.
+  ;
+  ; Not StdUtils' ExecShellAsUser, which the launch above uses: it refuses anything that is not a
+  ; file on disk (GetFileAttributes, before any shell call) and returns "not_found" for every URL, so
+  ; with it this link did nothing at all. A plain shell open is the right call for an unelevated
+  ; installer, which is the per-user case. An elevated installer that UAC started from an unelevated
+  ; one asks that one to make the call, so the browser does not inherit the elevation. If the shell
+  ; cannot open the address, the document shows it so it can be copied.
   StrCpy $1 $0 5
   ${If} $1 == "open:"
     StrCpy $2 $0 "" 5
     StrCpy $3 $2 26
     ${If} $3 == "https://www.narraleaf.com/"
-      ${StdUtils.ExecShellAsUser} $4 "$2" "open" ""
+      StrCpy $R9 $2
+      StrCpy $R8 ""
+      ${If} ${UAC_IsInnerInstance}
+        !insertmacro UAC_AsUser_Call Function nlShellOpen ${UAC_SYNCREGISTERS}
+      ${Else}
+        Call nlShellOpen
+      ${EndIf}
+      ${If} $R8 != "ok"
+        NlWebView::Eval `window.nlOpenFailed("$2")`
+      ${EndIf}
     ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+; Opens the address in $R9 with the shell; "ok" or "error" in $R8. A function rather than inline so
+; UAC_AsUser_Call can run it in the unelevated process, which hands the registers back.
+Function nlShellOpen
+  ClearErrors
+  ExecShell "open" "$R9"
+  ${If} ${Errors}
+    StrCpy $R8 "error"
+  ${Else}
+    StrCpy $R8 "ok"
   ${EndIf}
 FunctionEnd
 
@@ -519,6 +884,7 @@ Page custom nlFinishPage nlFinishLeave
 
 Function nlStockFinishPre
   ${If} $nlState == "ready"
+  ${OrIf} ${isUpdated}
     Abort
   ${EndIf}
 FunctionEnd

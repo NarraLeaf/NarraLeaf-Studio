@@ -165,6 +165,7 @@ export async function loadRuntimePlugins(
     options: RuntimePluginLoaderOptions,
 ): Promise<RuntimePluginLoadResult[]> {
     exposeRuntimePluginModule();
+    reserveDeclaredSaveIds(descriptors, options.host);
     const results = await Promise.all(descriptors.map(descriptor => {
         const cacheKey = `${descriptor.plugin.id}@${descriptor.manifest.version}:${descriptor.entryUrl}`;
         let pending = loadCache.get(cacheKey);
@@ -178,6 +179,25 @@ export async function loadRuntimePlugins(
         applyRuntimeWidgetRenderers(options.elementRenderers);
     }
     return results;
+}
+
+/**
+ * Hand the host every save id the plugins' manifests keep for themselves.
+ *
+ * Read off the descriptors, before any entry runs, rather than recorded as each plugin sets up: the
+ * slot on disk is the plugin's whether or not its code loaded this time, and a plugin whose entry
+ * threw must not have its quick save turn up on the player's save screen as a slot nobody made.
+ */
+function reserveDeclaredSaveIds(descriptors: readonly RuntimePluginDescriptor[], host: RuntimePluginHost | undefined): void {
+    const reservations = host?.saveReservations;
+    if (!reservations) {
+        return;
+    }
+    for (const descriptor of descriptors) {
+        // `?? []` because a descriptor built from a pack is parsed JSON, and a pack written before
+        // this key existed has none.
+        reservations.reserve(descriptor.manifest.contributes.reservedSaveIds ?? []);
+    }
 }
 
 /**

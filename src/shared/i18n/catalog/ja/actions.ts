@@ -78,6 +78,12 @@ export const actions = {
             label: "このアプリについて",
             tooltip: "NarraLeaf Studio について",
         },
+        exportLogs: {
+            label: "ログを書き出す…",
+            tooltip: "Studio のすべてのログを ZIP アーカイブとして保存する",
+            done: "ログを {path} に保存した",
+            failed: "ログを書き出せない",
+        },
     },
     export: {
         chooseFolder: "書き出したプロジェクトパッケージを置くフォルダを選ぶ",

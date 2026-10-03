@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import {
     applyUIParts,
+    composeUIParts,
     diffUIParts,
     uiComponentDigest,
     uiPartsBefore,
@@ -116,6 +117,30 @@ describe("the interface document as a delta of records", () => {
         const applied = clone(before);
         applyUIParts(applied, parts!);
         expect(applied).toEqual(after);
+    });
+
+    // The one document-level field that is a pointer rather than a table. Null is a value of its own -
+    // the document naming no entry - so taking a change back has to be able to say it.
+    it("carries a moved entry page, and null for a document that names none", () => {
+        const before = document();
+        const after = clone(before);
+        after.entrySurfaceId = "s2";
+
+        const parts = diffUIParts(before, after)!;
+        expect(parts).toEqual({ entrySurfaceId: "s2" });
+        const kept = uiPartsBefore(before, parts);
+        expect(kept).toEqual({ entrySurfaceId: null });
+
+        const applied = clone(before);
+        applyUIParts(applied, parts);
+        expect(applied.entrySurfaceId).toBe("s2");
+        applyUIParts(applied, kept);
+        expect("entrySurfaceId" in applied).toBe(false);
+
+        expect(uiPartsTouched(uiOwningSurfaceIds(before), after, parts).shell).toBe(true);
+        expect(uiShellDigest(after)).not.toBe(uiShellDigest(before));
+        expect(composeUIParts(parts, kept)).toEqual({ entrySurfaceId: null });
+        expect(composeUIParts(kept, {})).toEqual({ entrySurfaceId: null });
     });
 
     it("spells a deletion as null, and putting the record back undoes it", () => {

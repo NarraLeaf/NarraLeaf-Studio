@@ -168,7 +168,7 @@ function parseDocument(line: SourceLine, tokens: string[]): UiStatement {
     const rest = tokens.slice(1);
     const name = rest.length > 0 && !rest[0].includes("=") ? readString(rest.shift() as string, line) : "";
     const flags = readFlags(rest, line);
-    return { kind: "document", line: line.number, name, id: flags.id };
+    return { kind: "document", line: line.number, name, id: flags.id, ...(flags.entry ? { entry: flags.entry } : {}) };
 }
 
 function parseSurface(line: SourceLine, tokens: string[], body: SourceLine[]): UiSurfaceStatement {

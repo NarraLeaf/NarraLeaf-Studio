@@ -29,6 +29,13 @@ export type LocalizationKeyFieldConfig = {
     getKey: (element: UIElement) => string;
     /** Persist the chosen or newly created key onto the element (undefined clears it). */
     setKey: (data: UIInspectorData, value: string | undefined) => void;
+    /**
+     * Offer "None" as the first option. On by default; off where choosing no key is a different
+     * control's job (the text widget's source choice).
+     */
+    allowNone?: boolean;
+    /** What the "new key" form's source text starts as. Empty when absent. */
+    getInitialSourceText?: (element: UIElement) => string;
 };
 
 function resolveService(): LocalizationService | null {
@@ -76,7 +83,7 @@ export function createLocalizationKeyField(config: LocalizationKeyFieldConfig) {
                     label: t("widgets.localization.createKey"),
                     icon: <Plus className="h-3.5 w-3.5" />,
                 },
-                ...listLocalizationKeyOptions(),
+                ...listLocalizationKeyOptions().filter(option => config.allowNone !== false || option.value !== ""),
             ];
         }, [t, registryTick]);
 
@@ -104,8 +111,9 @@ export function createLocalizationKeyField(config: LocalizationKeyFieldConfig) {
         }, [dialogOpen]);
 
         const openDialog = () => {
+            const current = data.documentService.getDocument().elements[data.element.id] ?? data.element;
             setKeyName("");
-            setSourceText("");
+            setSourceText(config.getInitialSourceText?.(current) ?? "");
             setError(null);
             setDialogOpen(true);
         };
@@ -161,6 +169,7 @@ export function createLocalizationKeyField(config: LocalizationKeyFieldConfig) {
                     fullWidth
                     options={options}
                     value={currentKey}
+                    placeholder={t("widgets.localization.none")}
                     onChange={handleSelect}
                     disabled={disabled}
                     readOnly={readOnly}

@@ -52,6 +52,12 @@ my-plugin/
   "version": "1.0.0",
   "publisher": "Acme",
   "description": "Workspace tools for NarraLeaf Studio.",
+  "localized": {
+    "zh": {
+      "name": "面板工具",
+      "description": "NarraLeaf Studio 的工作区工具"
+    }
+  },
   "entries": {
     "studio": "main.js",
     "runtime": "runtime.js"
@@ -80,11 +86,12 @@ Manifest 字段：
 | `version` | `string` | `x.y.z` 格式，可带 prerelease/build 后缀。 |
 | `publisher` | `string` | 可选。 |
 | `description` | `string` | 可选。 |
+| `localized` | `Record<string, { name?: string; description?: string }>` | 可选。`name` 与 `description` 的各语言写法，见下面的 [插件名称与说明的翻译](#插件名称与说明的翻译)。 |
 | `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
 | `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
 | `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
 
-`contributes` 的九个键：
+`contributes` 的键：
 
 | 键 | 类型 | 说明 |
 |---|---|---|
@@ -92,6 +99,7 @@ Manifest 字段：
 | `widgets` | `string[]` | widget type，同上。 |
 | `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
 | `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
+| `reservedSaveIds` | `string[]` | 插件留作自用的存档 id（如快速存档槽，必须以插件 ID 为前缀）。游戏的 `List Saves` 不列出它们，就像不列出自动存档一样；插件自己的 `app.game.saves.listIds` 仍是原始列表、照样看得到，`Load Save` / `Delete Save` / `Get Save` 系列按 id 也照常可用。**不派生安装权限**：它只能影响插件自己命名空间里的 id。 |
 | `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
 | `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，十三选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`。`menu` 是出货游戏的菜单栏（只在有菜单栏的宿主上存在，见 [runtime-api.md](./runtime-api.md#gamemenu)）；`diagnostics` 读引擎缓存，`process.memory` 读游戏各进程占用的内存，两者是分开授权的（见 [runtime-api.md](./runtime-api.md#gameprocess)）。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
 | `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的子进程。声明它本身就是权限请求，无需再声明能力。字段与两种 kind 的通道差异见下面的 [sidecars](#sidecars随游戏发布的子进程) 一节。 |
@@ -147,6 +155,30 @@ plugin.install.approve
 ```
 
 文件系统权限的 `path` 是真实路径字符串。授权按 `pluginId@version` 保存；插件版本号改变后需要用户重新授权。
+
+### 插件名称与说明的翻译
+
+`name` 与 `description` 写一种语言（通常是英文）。要让插件列表、插件详情、项目依赖列表（插件面板与「项目 ▸ 应用」）、
+打开项目时的插件不可用提示、控件插入面板、构建对话框的插件列表与插件设置和 Dev Mode 的问题报告跟随 Studio 的界面语言显示，
+在 `localized` 里按语言代码给出对应写法：
+
+```json
+"localized": {
+  "zh": { "name": "面板工具", "description": "NarraLeaf Studio 的工作区工具" },
+  "ja": { "name": "パネルツール" }
+}
+```
+
+- 键是 Studio 界面语言的代码，**按原样精确匹配**：内建的是 `en`、`zh`、`ja`，语言包插件可以加入别的代码。
+  不做地区回退，写成 `zh-CN` 的条目在中文界面下不会显示；语言包加入的代码（例如 `zh-x-neko`）也不回退到 `zh`，
+  与插件消息包（`createTranslator`）和蓝图节点 `translations` 的查找方式一致。
+- 两个字段各自回退：只写 `name` 时，说明仍显示 `description` 的原文。当前语言没有条目时显示原文。
+- 每个条目至少给出 `name` 或 `description` 之一，两者都没有的条目会被判为清单错误（通常是键名拼错，例如 `title`）。
+  键不是语言代码、值不是字符串，同样会被拒绝。
+- 原文字段仍是插件的身份：命令行的 `--build-plugin` 等参数、项目文件记录的依赖名、构建日志和发布的游戏都只认 `name`，不读 `localized`。
+- 插件商店里尚未安装的插件仍显示注册表给出的名称与说明。
+
+内建的 Gallery、Menu Bar、Quick Save 三个插件的 `manifest.json` 都带有 `zh` 与 `ja` 条目，可作参照。
 
 ## sidecars（随游戏发布的子进程）
 
@@ -533,6 +565,46 @@ execute: async ctx => {
 ⚠ **`isPure: true` 的节点做不到这件事。** pure 节点没有 exec 引脚，宓主的执行器永远走不到它，
 `execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
 **产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
+
+### 节点文字的翻译
+
+节点卡片上的标题、分类、引脚标签、检查器标签和选项文字，都是写在定义里的英文原文。要让它们跟随
+Studio 的界面语言，在定义上加 `translations`：按语言代码分表，每张表把**定义里出现的英文原文**映射到该语言的写法。
+
+```ts
+const NODE_TRANSLATIONS = {
+  zh: {
+    "Use Item": "使用物品",
+    "Inventory": "物品栏",
+    "Item Id": "物品 Id",
+  },
+  ja: {
+    "Use Item": "アイテムを使う",
+    "Inventory": "持ち物",
+    "Item Id": "アイテム Id",
+  },
+};
+
+{
+  type: `${PLUGIN_ID}.use-item`,
+  displayName: "Use Item",
+  category: "Inventory",
+  translations: NODE_TRANSLATIONS,
+  // ...
+}
+```
+
+- 键必须与定义里的英文**逐字一致**。对不上的条目不报错，界面上继续显示英文。
+- Studio 自己已经翻译的词（`In`、`Next`、`Count`、`Name` 等）一律沿用 Studio 的译法，插件表里的同名条目不生效。
+- 同一个英文原文在同一种语言下只有一种译法。两个插件为同一个词写了不同译法时，以后注册的为准。
+- 当前语言没有对应的表时显示英文。
+- 该表只在 Studio 编辑器里生效（节点卡片、添加节点菜单、蓝图检查结果）；runtime 入口不读取它。
+- 插件面板自己的文字仍然用 `app.services.i18n.createTranslator`。面板里要提到节点上的词（节点名、选项）时，
+  按翻译器的 `locale` 从同一张表取，写法就与卡片一致。
+- 添加节点菜单和卡片标题悬停时显示的节点说明只有内建节点有，插件节点不显示说明。
+
+内建 Gallery 插件的 `GALLERY_NODE_TRANSLATIONS` 是参照实现（面板与编辑器经 `galleryNodeWord` 读同一张表），
+旁边的 `i18n.test.ts` 演示了怎样逐个检查节点用到的每一个词。
 
 ### 控件属性的值绑定（Blueprint Value 图）
 

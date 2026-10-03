@@ -7,7 +7,6 @@ import {
     type NetworkAllowlist,
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
     BuildPreflightFinding,
     GameBuildPlatform,
@@ -383,10 +382,8 @@ export class BuildService extends Service<BuildService> {
         // the draft has served its purpose and must not shadow it next time.
         this.clearDraft();
         this.updateState({ status: "preparing", progress: null, startedAt, platforms });
-        const result = await getInterface().gameBuild.start(this.projectPath(), {
-            kind: "surface",
-            surfaceId: MAIN_APP_SURFACE_ID,
-        }, request);
+        // The project's entry page, which the compile reads from the document it builds from.
+        const result = await getInterface().gameBuild.start(this.projectPath(), { kind: "surface" }, request);
         if (result.success) {
             this.updateState(result.data.state);
         } else {
@@ -696,10 +693,7 @@ export class BuildService extends Service<BuildService> {
             return refusal;
         }
         this.updateState({ status: "preparing", progress: null, startedAt, platforms });
-        const result = await getInterface().gameBuild.exportPatch(this.projectPath(), {
-            kind: "surface",
-            surfaceId: MAIN_APP_SURFACE_ID,
-        }, request);
+        const result = await getInterface().gameBuild.exportPatch(this.projectPath(), { kind: "surface" }, request);
         if (result.success) {
             this.updateState(result.data.state);
         } else {

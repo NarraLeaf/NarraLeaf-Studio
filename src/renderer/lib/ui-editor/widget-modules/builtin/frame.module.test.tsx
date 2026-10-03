@@ -73,7 +73,7 @@ describe("FrameWidgetModule floating toolbar", () => {
         expect(item).toMatchObject({
             kind: "button",
             id: "frame.open-target-page",
-            tooltip: "Open Settings",
+            tooltip: "Open page Settings",
         });
 
         item.onClick();

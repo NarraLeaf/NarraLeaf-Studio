@@ -51,6 +51,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
@@ -67,7 +68,6 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
-    BLUEPRINT_NODE_TYPE_MATH_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
     BLUEPRINT_NODE_TYPE_MATH_MODULO,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
@@ -686,7 +686,7 @@ describe("the starter template's EXTRA screen", () => {
             const home = after(step, advance.id, "next");
             expect(home.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
             const same = feeding(step, home.id, "condition");
-            expect(same.type).toBe(BLUEPRINT_NODE_TYPE_MATH_EQUAL);
+            expect(same.type).toBe(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL);
             const compared = [feeding(step, same.id, "a"), feeding(step, same.id, "b")];
             expect(compared.some(node => names(node, "shown")) && compared.some(node => names(node, "first"))).toBe(true);
             expect(writes(step, ranAfter(step, home.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
