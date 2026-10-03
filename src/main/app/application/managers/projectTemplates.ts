@@ -1,7 +1,13 @@
 import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
-import { pickTemplateContentLocale, type ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
+import {
+    pickTemplateContentLocale,
+    type ProjectTemplateAssetContent,
+    type ProjectTemplateDescriptor,
+    type ProjectTemplateInterfaceContent,
+} from "@shared/types/projectTemplate";
 import { isStageSizeUsable, stageSizesEqual, type StageSize } from "@shared/types/stageSize";
+import { isValidAssetStorageId, splitAssetStorageId } from "@shared/utils/assetStorageId";
 import {
     PROJECT_TEMPLATE_CONTENT_DIR,
     projectTemplateContentDirForLocale,
@@ -369,4 +375,144 @@ async function readScaffoldedLocales(projectPath: string): Promise<string[]> {
         .map(entry => entry.name.slice(0, -".json".length))
         .filter(code => SAFE_LOCALE_CODE.test(code))
         .sort();
+}
+
+/** The interface document, its blueprints and the palette, relative to a content tree. */
+const TEMPLATE_UI_DOCUMENT = ["editor", "ui", "uidoc.json"] as const;
+const TEMPLATE_UI_GRAPHS = ["editor", "ui", "uigraphs.json"] as const;
+const TEMPLATE_BRAND = ["editor", "brand.json"] as const;
+/** The asset records, one file per asset type, and the directory the files are sharded under. */
+const TEMPLATE_ASSETS_DIR = "assets";
+const TEMPLATE_ASSET_RECORDS = /^assets\.metadata\.([a-z]+)\.json$/;
+const TEMPLATE_ASSET_CONTENT = ["assets", "content"] as const;
+
+/** More files than any one interface names; a request past it is not one a page makes. */
+const MAX_TEMPLATE_ASSETS_PER_READ = 256;
+
+/**
+ * The content trees a template is read from, in the order a file is looked for: the variant written
+ * in `locale` when the template has one, then the base tree.
+ *
+ * The same layering a scaffold produces - the variant copied over the base - expressed as a lookup
+ * order rather than a copy, so what is read here is what a project made from the template in that
+ * language would hold.
+ */
+async function resolveTemplateContentTrees(
+    templatesDir: string,
+    templateId: string,
+    locale: string | undefined,
+): Promise<{ trees: string[]; contentLocale?: string }> {
+    if (!SAFE_TEMPLATE_ID.test(templateId)) {
+        throw new Error(`Unsafe project template id: ${templateId}`);
+    }
+    const templateDir = path.resolve(templatesDir, templateId);
+    const baseDir = path.join(templateDir, PROJECT_TEMPLATE_CONTENT_DIR);
+    if (!baseDir.startsWith(path.resolve(templatesDir) + path.sep)) {
+        throw new Error(`Project template escapes the templates directory: ${templateId}`);
+    }
+    const baseStat = await fs.stat(baseDir).catch(() => null);
+    if (!baseStat?.isDirectory()) {
+        throw new Error(`Project template has no content: ${templateId}`);
+    }
+    const declared = asContentLocales((await readManifestRecord(templateDir))?.contentLocales);
+    const code = locale ? pickTemplateContentLocale(locale, Object.keys(declared)) : null;
+    if (code) {
+        const variantDir = path.join(templateDir, projectTemplateContentDirForLocale(code));
+        const variantStat = await fs.stat(variantDir).catch(() => null);
+        if (variantStat?.isDirectory()) {
+            return { trees: [variantDir, baseDir], contentLocale: code };
+        }
+    }
+    return { trees: [baseDir] };
+}
+
+/** The first tree holding `relative`, as a path, or null when none does. */
+async function findInTrees(trees: readonly string[], relative: readonly string[]): Promise<string | null> {
+    for (const tree of trees) {
+        const candidate = path.join(tree, ...relative);
+        const stat = await fs.stat(candidate).catch(() => null);
+        if (stat?.isFile()) {
+            return candidate;
+        }
+    }
+    return null;
+}
+
+async function readJsonInTrees(trees: readonly string[], relative: readonly string[]): Promise<unknown> {
+    const file = await findInTrees(trees, relative);
+    if (!file) {
+        return null;
+    }
+    return JSON.parse(await fs.readFile(file, "utf-8"));
+}
+
+/**
+ * The documents a page is brought out of a bundled template with, as the template ships them.
+ *
+ * Read rather than copied: a page taken from a template into a project that already exists has to
+ * be re-identified and joined to that project's own story, palette and asset library, which only the
+ * workspace can do. So this hands over the template's interface document, its blueprints, its
+ * palette and its asset records untouched, in the language `locale` picks the same way a scaffold
+ * picks it, and the workspace does the rest. Nothing here reads what the documents say.
+ */
+export async function readProjectTemplateInterface(
+    templatesDir: string,
+    templateId: string,
+    locale?: string,
+): Promise<ProjectTemplateInterfaceContent> {
+    const { trees, contentLocale } = await resolveTemplateContentTrees(templatesDir, templateId, locale);
+    const uiDocument = await readJsonInTrees(trees, TEMPLATE_UI_DOCUMENT);
+    if (!uiDocument) {
+        throw new Error(`Project template has no interface: ${templateId}`);
+    }
+    const assetRecords: Record<string, unknown> = {};
+    // Base first and the variant over it, so a variant's own record for a type wins.
+    for (const tree of [...trees].reverse()) {
+        const entries = await fs.readdir(path.join(tree, TEMPLATE_ASSETS_DIR)).catch(() => [] as string[]);
+        for (const name of entries) {
+            const match = TEMPLATE_ASSET_RECORDS.exec(name);
+            if (match) {
+                assetRecords[match[1]] = JSON.parse(await fs.readFile(path.join(tree, TEMPLATE_ASSETS_DIR, name), "utf-8"));
+            }
+        }
+    }
+    return {
+        ...(contentLocale ? { contentLocale } : {}),
+        uiDocument,
+        uiGraphs: await readJsonInTrees(trees, TEMPLATE_UI_GRAPHS),
+        brand: await readJsonInTrees(trees, TEMPLATE_BRAND),
+        assetRecords,
+    };
+}
+
+/**
+ * The bytes of the template's own asset files, by asset id.
+ *
+ * An id is located the way a project locates it - split into the content shards - and only an id
+ * of the shape the shards are made from is looked up at all, so no value from the renderer becomes
+ * a path segment. An id the template does not ship is left out of the answer rather than failing
+ * the rest.
+ */
+export async function readProjectTemplateAssets(
+    templatesDir: string,
+    templateId: string,
+    locale: string | undefined,
+    assetIds: readonly string[],
+): Promise<ProjectTemplateAssetContent[]> {
+    if (assetIds.length > MAX_TEMPLATE_ASSETS_PER_READ) {
+        throw new Error(`Too many template assets requested at once: ${assetIds.length}`);
+    }
+    const { trees } = await resolveTemplateContentTrees(templatesDir, templateId, locale);
+    const read: ProjectTemplateAssetContent[] = [];
+    for (const assetId of new Set(assetIds)) {
+        if (!isValidAssetStorageId(assetId)) {
+            continue;
+        }
+        const file = await findInTrees(trees, [...TEMPLATE_ASSET_CONTENT, ...splitAssetStorageId(assetId)]);
+        if (!file) {
+            continue;
+        }
+        read.push({ assetId, dataBase64: (await fs.readFile(file)).toString("base64") });
+    }
+    return read;
 }

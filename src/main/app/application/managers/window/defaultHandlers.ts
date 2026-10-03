@@ -162,6 +162,8 @@ import {
 } from "./handlers/uiTemplateAction";
 import {
     ProjectTemplateListHandler,
+    ProjectTemplateReadAssetsHandler,
+    ProjectTemplateReadInterfaceHandler,
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
 import { AssetExportToFileHandler, AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
@@ -413,6 +415,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new UITemplateFetchThemePreviewsHandler(),
         new ProjectTemplateListHandler(),
         new ProjectTemplateScaffoldHandler(),
+        new ProjectTemplateReadInterfaceHandler(),
+        new ProjectTemplateReadAssetsHandler(),
         new AssetFetchRemoteHandler(),
         new AssetExportToFolderHandler(),
         new AssetExportToFileHandler(),

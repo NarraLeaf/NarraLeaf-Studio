@@ -176,8 +176,11 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
  * unlocalized here, and a prop it listed by mistake would be reported while nothing can translate
  * it. `optInProp` is the implicit unit (`ui:<elementId>.<prop>`); a text input has no such flag on
  * its props at all, so its placeholder is bound by a named key or not at all.
+ *
+ * Exported for the page a template hands a project (`starterTitlePage`), which rebinds a keyed
+ * widget to its own unit and has to know the same three sites to do it.
  */
-const LOCALIZABLE_TEXT_SITES: Readonly<
+export const LOCALIZABLE_TEXT_SITES: Readonly<
     Record<string, { readonly textProp: string; readonly keyProp: string; readonly optInProp?: string }>
 > = {
     "nl.text": { textProp: "text", keyProp: "localizationKey", optInProp: "localizable" },
