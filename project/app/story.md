@@ -112,7 +112,9 @@ Narra: You're late.  ⟦51d4f8dc⟧
 - **plain text** - narration, which is any line that is none of the others.
 - **`// text`** - a note.
 - **`- text`** - a choice option, under a `/menu` row.
-- **`? expression`** or **`? else`** - a branch of the `/if` above it.
+- **`? expression`** or **`? else`** - a branch of the `/if` above it. The first
+  is the `/if`'s own condition and every later one an else-if, so the order of the
+  lines is what says which; `? else` comes last.
 - **`» label`** - a row this format cannot spell. See below.
 - **`.`** - a row that holds nothing. A blank *line* is spacing and means no row.
 
@@ -241,7 +243,8 @@ no filename after it names the file after the scene.
 `check` runs two layers. The file layer answers whether every line reads as
 something, against the catalogue that exists and the names this project has -
 unknown command with the near misses, a param the command does not declare, a
-value the slot refuses, a missing required param, a branch outside a condition.
+value the slot refuses, a missing required param, a branch outside a condition or
+below its `? else`.
 The document layer runs the project linter's story rules, the same ones Studio's
 lint panel runs: a jump to a scene that is gone, a duplicate label, a dead end, an
 empty choice, a stage object shown but never created.

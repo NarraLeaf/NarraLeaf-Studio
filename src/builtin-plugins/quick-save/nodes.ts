@@ -41,7 +41,43 @@ function requireSaveWriting(game: NodeGame): NonNullable<NodeGame["saves"]> {
     return saves;
 }
 
+/**
+ * The nodes' words in other languages, keyed by the English text the declarations below use.
+ * Studio draws a node's title, category and pin labels through it (see
+ * `BlueprintNodeDeclaration.translations`).
+ *
+ * Words Studio's own catalogue already translates - Game, In, Next - read the host's way whatever
+ * is written here, so they are left out. The titles follow the plugin's own name in each language
+ * (快速存档, クイックセーブ), and the boolean pin follows the host's `Has Auto Save` pin. The test
+ * beside this file holds the table to exactly the words the nodes use.
+ */
+const zhNodeWords = {
+    "Quick Save": "快速存档",
+    "Quick Read": "快速读档",
+    "Has Quick Save": "是否有快速存档",
+    "Has Save": "有存档",
+};
+
+const jaNodeWords: Record<keyof typeof zhNodeWords, string> = {
+    "Quick Save": "クイックセーブ",
+    "Quick Read": "クイックロード",
+    "Has Quick Save": "クイックセーブがある",
+    "Has Save": "セーブあり",
+};
+
+export const QUICK_SAVE_NODE_TRANSLATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    zh: zhNodeWords,
+    ja: jaNodeWords,
+};
+
 export function createQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
+    return declareQuickSaveBlueprintNodes().map(def => ({
+        ...def,
+        translations: QUICK_SAVE_NODE_TRANSLATIONS,
+    }));
+}
+
+function declareQuickSaveBlueprintNodes(): PluginBlueprintNodeDef[] {
     return [
         {
             type: `${PLUGIN_ID}.save`,

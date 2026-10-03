@@ -1,3 +1,4 @@
+import { FsRejectErrorCode } from "@shared/types/os";
 import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import { RendererError, throwException } from "@shared/utils/error";
 import {
@@ -120,11 +121,16 @@ async function prepareForOpenMerge(projectPath: string): Promise<void> {
 /**
  * Claim the project for this Studio, and refuse to start if another one holds it.
  *
- * **First, before the folder is even read as a project.** Every service in the workspace loads a
- * whole document into memory and writes it back whole, so two Studios on one project is the later
- * save erasing the earlier one with nothing on screen to say so. The window that loses this is the
- * one that must not read-modify-write anything - no normalised document, no checkpoint, no
- * auto-save - and refusing here is what keeps all of them from ever running.
+ * **Before any document is read.** Every service in the workspace loads a whole document into
+ * memory and writes it back whole, so two Studios on one project is the later save erasing the
+ * earlier one with nothing on screen to say so. The window that loses this is the one that must not
+ * read-modify-write anything - no normalised document, no checkpoint, no auto-save - and refusing
+ * here is what keeps all of them from ever running.
+ *
+ * **After the folder is known to be a project**, and only then: a claim writes `.nlstudio/` into the
+ * folder, and a folder that is not a project - or a path with nothing there any more - is not
+ * Studio's to write in. Telling the two apart takes a listing of the folder, which reads no document
+ * and writes nothing, so it can safely come first.
  *
  * A claim that cannot be made at all - the window answered nothing, the call failed - lets the
  * project open. This gate exists to stop a *second* editor, and a project nobody can open because
@@ -138,30 +144,37 @@ async function claimProjectSession(projectPath: string): Promise<void> {
     throw new ProjectLockedError(projectPath, result.data.holder);
 }
 
-export async function ensureWorkspaceProjectCanStart(projectPath: string): Promise<void> {
-    await claimProjectSession(projectPath);
-
-    const entries = throwException(await BaseFileSystemService.list(projectPath));
-    const dirEntries = entries.map<DirEntry>((entry) => ({
+/**
+ * The folder's entries, or null when there is no folder there: the path is gone, or names a file.
+ *
+ * Both of those read as "not a project", as an empty folder does. Any other failure - a folder this
+ * user may not read, a disk that failed - is not an answer about the folder, and is thrown as it
+ * always was.
+ */
+async function listProjectFolder(projectPath: string): Promise<DirEntry[] | null> {
+    const listed = await BaseFileSystemService.list(projectPath);
+    if (!listed.ok && (listed.error.code === FsRejectErrorCode.NOT_FOUND || listed.error.code === FsRejectErrorCode.NOT_A_DIR)) {
+        return null;
+    }
+    return throwException(listed).map<DirEntry>((entry) => ({
         name: entry.name,
         ext: entry.ext,
         type: entry.type,
     }));
+}
 
-    if (findNlprojConfigFileName(dirEntries)) {
-        // After the folder is known to be a project and before any service reads a document.
-        await prepareForOpenMerge(projectPath);
-        return;
+export async function ensureWorkspaceProjectCanStart(projectPath: string): Promise<void> {
+    const dirEntries = await listProjectFolder(projectPath);
+    const issue = getWorkspaceProjectPreflightIssue(dirEntries ?? []);
+    if (issue) {
+        throw new WorkspaceStartupError(
+            issue.kind,
+            projectPath,
+            "Selected folder is not a NarraLeaf project.",
+        );
     }
 
-    const issue = getWorkspaceProjectPreflightIssue(dirEntries);
-    if (!issue) {
-        return;
-    }
-
-    throw new WorkspaceStartupError(
-        issue.kind,
-        projectPath,
-        "Selected folder is not a NarraLeaf project.",
-    );
+    await claimProjectSession(projectPath);
+    // After the claim and before any service reads a document.
+    await prepareForOpenMerge(projectPath);
 }

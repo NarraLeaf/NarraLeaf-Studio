@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FsRejectErrorCode } from "@shared/types/os";
 import { DirEntry } from "@shared/utils/nlproj";
 import {
     ensureWorkspaceProjectCanStart,
@@ -81,15 +82,57 @@ describe("the session claim", () => {
         expect(failure.kind).toBe(WorkspaceStartupErrorKind.ProjectLocked);
     });
 
-    it("claims the project before anything reads it", async () => {
+    it("claims the project before any document is read", async () => {
         // The order is the guarantee: a refused window must not have read a document, let alone
-        // written one back. Nothing may run between the two but the claim.
+        // written one back. The listing that tells a project from any other folder reads no
+        // document, and it is the only thing allowed before the claim.
         bridge.acquireSessionLock.mockResolvedValue({ success: true, data: { ok: false, holder: HOLDER } });
 
         await ensureWorkspaceProjectCanStart(PROJECT).catch(() => undefined);
 
-        expect(filesystem.list).not.toHaveBeenCalled();
+        expect(filesystem.list).toHaveBeenCalledOnce();
+        expect(filesystem.list.mock.invocationCallOrder[0]).toBeLessThan(
+            bridge.acquireSessionLock.mock.invocationCallOrder[0]!,
+        );
         expect(bridge.getAvailability).not.toHaveBeenCalled();
+    });
+
+    it("never claims a folder that is not a project", async () => {
+        // A claim writes `.nlstudio/` into the folder. Opening somebody's folder by mistake must
+        // leave it exactly as it was, and say it is not a project.
+        filesystem.list.mockResolvedValue({ ok: true, data: [file("notes", ".txt")] });
+
+        const failure = await ensureWorkspaceProjectCanStart(PROJECT).catch((error: Error) => error);
+
+        expect(failure).toMatchObject({ kind: WorkspaceStartupErrorKind.MissingProjectConfig, projectPath: PROJECT });
+        expect(bridge.acquireSessionLock).not.toHaveBeenCalled();
+    });
+
+    it.each([FsRejectErrorCode.NOT_FOUND, FsRejectErrorCode.NOT_A_DIR])(
+        "says a path with no folder there (%s) is not a project, and claims nothing",
+        async code => {
+            // A recent entry whose folder has gone. The claim used to create the folder, which is
+            // the only reason this ever reached "not a project" rather than a read failure.
+            filesystem.list.mockResolvedValue({ ok: false, error: { code, message: "gone" } });
+
+            const failure = await ensureWorkspaceProjectCanStart(PROJECT).catch((error: Error) => error);
+
+            expect(failure).toMatchObject({ kind: WorkspaceStartupErrorKind.MissingProjectConfig });
+            expect(bridge.acquireSessionLock).not.toHaveBeenCalled();
+        },
+    );
+
+    it("does not call a folder it could not read a non-project", async () => {
+        filesystem.list.mockResolvedValue({
+            ok: false,
+            error: { code: FsRejectErrorCode.PERMISSION_DENIED, message: "denied" },
+        });
+
+        const failure = await ensureWorkspaceProjectCanStart(PROJECT).catch((error: Error) => error);
+
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).not.toMatchObject({ kind: WorkspaceStartupErrorKind.MissingProjectConfig });
+        expect(bridge.acquireSessionLock).not.toHaveBeenCalled();
     });
 
     it("opens the project when the claim could not be made at all", async () => {

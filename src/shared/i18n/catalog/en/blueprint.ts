@@ -13,7 +13,7 @@ export const blueprint = {
     tab: {
         title: "Blueprint",
         invalid: "Blueprint tab is invalid.",
-        notFound: "Blueprint not found: {id}",
+        notFound: "Blueprint not found in this project",
     },
     /** Breakpoints, set from a node's context menu and hit by the Dev Mode debugger. */
     breakpoint: {

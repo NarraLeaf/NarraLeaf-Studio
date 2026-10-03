@@ -1,11 +1,13 @@
 import { unpatchedFs as fsSync, unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import { createHash } from "crypto";
+import type { Dirent } from "fs";
 import os from "os";
 import path from "path";
 
 import { FsRejectErrorCode } from "@shared/types/os";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "@shared/types/projectSession";
 import { Fs } from "@shared/utils/fs";
+import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 import {
@@ -187,6 +189,10 @@ export class ProjectSessionLockManager {
      * Returning `{ok: true}` means every later write to this project in this process is the only
      * one anybody is making. Returning a holder means a workspace opened on this project must not
      * read-modify-write anything, which is what the error screen it lands on is for.
+     *
+     * Only a project folder is claimed. A folder with no project config in it, or a path with
+     * nothing there, answers `{ok: true}` having written nothing and recorded nothing: its window
+     * stops at "not a project" before any service runs, and the folder is not Studio's to write in.
      */
     public acquire(projectPath: string): Promise<ProjectSessionLockOutcome> {
         const key = keyFor(projectPath);
@@ -371,8 +377,10 @@ export class ProjectSessionLockManager {
      * this is a takeover like any other.
      */
     private async reclaim(held: HeldLock): Promise<void> {
-        // The directory goes too when somebody clears `.nlstudio/` out whole.
-        await fs.mkdir(path.dirname(held.lockPath), { recursive: true });
+        // The directory goes too when somebody clears `.nlstudio/` out whole. The project folder
+        // itself is never made again: one that has been moved or deleted while open is gone, and a
+        // heartbeat that recreated it would leave a folder holding nothing but this lock.
+        await createSessionDirectory(held.lockPath);
         const created = await Fs.createFileExclusive(held.lockPath, serializeProjectSessionLockRecord(held.record));
         if (!created.ok) {
             throw new Error(created.error.message);
@@ -404,8 +412,16 @@ export class ProjectSessionLockManager {
         const lockPath = path.join(resolved, PROJECT_SESSION_LOCK_RELATIVE_PATH);
         const lastClaimPath = path.join(resolved, PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH);
 
+        if (!await holdsProjectConfig(resolved)) {
+            // A folder that is not a project, or a path with nothing there - one picked by mistake,
+            // or a recent entry whose folder has since gone. No workspace will run on it (its window
+            // stops at "not a project"), so there is nothing for a lock to protect, and a claim
+            // would write `.nlstudio/` into somebody's folder, or create a folder that was deleted.
+            return { ok: true };
+        }
+
         try {
-            await fs.mkdir(path.dirname(lockPath), { recursive: true });
+            await createSessionDirectory(lockPath);
         } catch (error) {
             // A project directory that cannot hold a lock file cannot be edited either, but that is
             // a diagnosis for whatever reads a document next: refusing to open here would turn a
@@ -719,6 +735,41 @@ async function canonicalDirectoryDigest(resolved: string): Promise<string> {
         // Keep the resolved spelling; see above.
     }
     return digestProjectDirectory(canonical);
+}
+
+/**
+ * Whether `directory` is a project: a folder with a project config in it.
+ *
+ * Read from a listing alone, which writes nothing. A path that cannot be listed - not there, not a
+ * folder, not readable - is not a project to claim, which is the answer an empty folder gets too.
+ */
+async function holdsProjectConfig(directory: string): Promise<boolean> {
+    let entries: Dirent[];
+    try {
+        entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+        return false;
+    }
+    return findProjectConfigFileName(entries.map(entry => ({
+        name: path.parse(entry.name).name,
+        ext: path.extname(entry.name) || null,
+        type: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
+    }))) !== null;
+}
+
+/**
+ * Make the `.nlstudio/` folder a lock file goes in, inside a project folder that has to exist
+ * already. Never recursive: the project folder is the author's, and a claim does not bring one into
+ * being. A project folder that is not there fails with `ENOENT`.
+ */
+async function createSessionDirectory(lockPath: string): Promise<void> {
+    try {
+        await fs.mkdir(path.dirname(lockPath));
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") {
+            throw error;
+        }
+    }
 }
 
 /** The identity key: the same normalization every other per-project map in Studio is keyed by. */
