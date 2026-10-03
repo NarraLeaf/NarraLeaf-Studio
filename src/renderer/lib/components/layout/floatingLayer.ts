@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
-import { useHostDocument } from "./hostWindow";
+import { useHostWindow } from "./hostWindow";
 import { useDismissWhenHidden } from "./hostVisibility";
 
 /**
@@ -119,6 +119,21 @@ function focusables(container: ParentNode, selector: string): HTMLElement[] {
         !element.matches(":disabled") && element.getAttribute("aria-disabled") !== "true" && isShown(element));
 }
 
+/**
+ * Tags a layer's items for the one focus style they share (`[data-floating-item]` in `styles.css`).
+ *
+ * Moving focus along a list is only half of keyboard navigation; the author also has to see where
+ * it is. Most of these rows are buttons, and the stylesheet strips every button's focus outline -
+ * with good reason elsewhere - so each menu would otherwise need a focus style of its own, and none
+ * had one. Tagging them here gives every list walked through this module the same highlight.
+ */
+function markItems(items: HTMLElement[]): HTMLElement[] {
+    for (const item of items) {
+        if (!item.hasAttribute("data-floating-item")) item.setAttribute("data-floating-item", "");
+    }
+    return items;
+}
+
 function topLayerOf(doc: Document): Layer | undefined {
     for (let index = layers.length - 1; index >= 0; index -= 1) {
         if (layers[index].doc === doc) return layers[index];
@@ -210,7 +225,7 @@ function handleListKey(event: KeyboardEvent, top: Layer): void {
     const target = event.target as HTMLElement | null;
     if (!target || !panel.contains(target)) return;
 
-    const items = focusables(panel, selector);
+    const items = markItems(focusables(panel, selector));
     const index = items.findIndex(item => item === target || item.contains(target));
     const onItem = index >= 0 && (items[index] === target || !target.matches(TEXT_FIELD_SELECTOR));
 
@@ -370,12 +385,12 @@ function release(doc: Document): void {
 
 /** Pick the element a newly opened layer should focus; see `FloatingLayerOptions.initialFocus`. */
 function initialTarget(panel: HTMLElement, scope: FloatingFocusScope, itemSelector: string | undefined): HTMLElement {
+    const items = itemSelector ? markItems(focusables(panel, itemSelector)) : [];
     const explicit = panel.querySelector<HTMLElement>("[data-autofocus]");
     if (explicit) return explicit;
     const field = focusables(panel, TEXT_FIELD_SELECTOR)[0];
     if (field) return field;
     if (scope === "dismiss") {
-        const items = itemSelector ? focusables(panel, itemSelector) : [];
         const current = items.find(item => item.matches(
             "[aria-selected=\"true\"], [aria-current=\"true\"], [aria-checked=\"true\"], [data-selected=\"true\"]"));
         if (current) return current;
@@ -402,7 +417,10 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
         restoreFocus = true,
         dismissWhenHidden = true,
     } = options;
-    const doc = useHostDocument();
+    // Through the window rather than `useHostDocument`: under a server render (some component tests
+    // run in a node environment) there is no window, and the hook must render without one. Effects
+    // never run there, so nothing below needs the document.
+    const doc = useHostWindow()?.document as Document | undefined;
     const latest = useRef(options);
     latest.current = options;
 

@@ -25,6 +25,7 @@ import type { PaletteCommand } from "./commandPaletteModel";
 import type { SearchGroup, SearchHit } from "@/lib/workspace/services/search/searchIndexModel";
 import { jumpToSearchTarget } from "../../modules/search/searchJump";
 import { renderHighlightedText, SEARCH_GROUP_TITLE_KEYS } from "../../modules/search/SearchPanel";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 
 /** VSCode-style mode prefix: a leading `>` means "commands"; anything else is a project search. */
 const COMMAND_PREFIX = ">";
@@ -109,6 +110,9 @@ export function CommandPalette() {
     openRef.current = open;
     const queryRef = useRef(query);
     queryRef.current = query;
+    // `close` is declared further down, beside the list it closes; the keybinding, the window blur
+    // and the floating layer reach it through this.
+    const closeRef = useRef<() => void>(() => setOpen(false));
 
     // Neither toggle lists itself as a command: the palette is its own entry point.
     useKeybinding({
@@ -118,7 +122,7 @@ export function CommandPalette() {
             // Re-pressing the shortcut for the mode you are already in closes the palette;
             // pressing the *other* shortcut switches modes in place.
             if (openRef.current && queryRef.current.startsWith(COMMAND_PREFIX)) {
-                setOpen(false);
+                closeRef.current();
                 return;
             }
             openWith(COMMAND_PREFIX);
@@ -175,7 +179,7 @@ export function CommandPalette() {
         // leaving the palette, so composing sessions are exempt.
         const handleBlur = () => {
             if (!isComposingText()) {
-                setOpen(false);
+                closeRef.current();
             }
         };
         window.addEventListener("blur", handleBlur);
@@ -188,6 +192,22 @@ export function CommandPalette() {
     // …unless the box is switched off in settings, in which case the card carries the input.
     const boxPresent = useSyncExternalStore(subscribeCommandPaletteBoxPresence, isCommandPaletteBoxPresent);
     const ownInputRef = useRef<HTMLInputElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
+    const doc = useHostDocument();
+    // A floating layer, so that closing gives focus back to the editor the palette was opened from
+    // rather than dropping it to the page. Where the input is decides the rest. In the title-bar box
+    // the input sits outside the card, and the box answers its own keys (Escape included) and closes
+    // the session when it loses focus, so the layer only remembers where focus came from. In the
+    // card's own input the palette is a trapped layer like Quick Open: focus goes into the field, Tab
+    // stays there, and Escape is the layer's. The rows are walked by the arrows in the input, not by
+    // focus, so the layer is given no item selector.
+    useFloatingLayer({
+        open,
+        onClose: () => closeRef.current(),
+        panelRef: cardRef,
+        scope: boxPresent ? "none" : "trap",
+        initialFocus: boxPresent ? false : ownInputRef,
+    });
     useEffect(() => {
         if (!open || boxPresent) {
             return;
@@ -379,23 +399,34 @@ export function CommandPalette() {
         setSelectedIndex(index => clampIndex(index, rowCount));
     }, [rowCount]);
 
-    const close = useCallback(() => setOpen(false), []);
+    const close = useCallback(() => {
+        // The title-bar box hears that the session is over only after this palette has re-rendered,
+        // so when the layer closes its input still holds focus, and focus that is somewhere is not
+        // given back. Letting go of it first is what sends focus back to the editor. Its blur closes
+        // the session too, which is this same call again with nothing left to release.
+        const active = doc.activeElement;
+        if (active instanceof HTMLElement && active.closest("[data-titlebar-search-box]")) {
+            active.blur();
+        }
+        setOpen(false);
+    }, [doc]);
+    closeRef.current = close;
 
     const commit = useCallback(
         (index: number) => {
             const model = rowModels[index];
             if (!model) {
-                setOpen(false);
+                close();
                 return;
             }
             if (model.keepOpen) {
                 model.run();
                 return;
             }
-            setOpen(false);
+            close();
             model.run();
         },
-        [rowModels],
+        [rowModels, close],
     );
 
     // Keyboard forwarded from the title-bar input. Home/End are deliberately NOT intercepted —
@@ -475,6 +506,7 @@ export function CommandPalette() {
                 placementClassName={anchorLeft === null ? "items-start justify-center pt-1" : "items-start pt-1"}
                 widthClassName={PALETTE_CARD_WIDTH_CLASS}
                 cardStyle={anchorLeft === null ? undefined : { marginLeft: anchorLeft }}
+                panelRef={cardRef}
                 rows={rows}
                 selectedIndex={selectedIndex}
                 onCommit={commit}

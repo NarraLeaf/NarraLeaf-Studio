@@ -33,6 +33,10 @@ const ICON_GHOST_TRIGGER_BASE =
 
 /**
  * Square trigger that opens a positioned ContextMenu (used in compact inspector rows).
+ *
+ * The menu does its own dismissing - Escape, a press outside it, focus moving on - so all this
+ * adds is the toggle. Focus stays on the trigger while the menu is open, which is where the menu's
+ * arrow keys are read from.
  */
 export function InlineMenuTriggerButton({
     menu,
@@ -48,6 +52,16 @@ export function InlineMenuTriggerButton({
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const buttonRef = useRef<HTMLElement | null>(null);
+    /**
+     * Whether the menu was open when the press on the trigger began. The menu closes itself on any
+     * press outside it, the trigger included, and it does so before the trigger's click arrives - so
+     * by then the trigger would read "closed" and open the menu straight back up. Noted on
+     * `pointerdown`, which runs ahead of the menu's `mousedown`, and forgotten on a key, so a press
+     * that never became a click cannot swallow the next keyboard activation.
+     */
+    const openAtPressRef = useRef(false);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const openMenu = useCallback(() => {
         if (!buttonRef.current) return;
@@ -60,39 +74,38 @@ export function InlineMenuTriggerButton({
         setVisible(false);
     }, []);
 
+    // On the element rather than through React props: the trigger is either a `<button>` or an
+    // `InspectOnlyButton`, which passes on no pointer handlers.
     useEffect(() => {
-        if (!visible) return;
-        const handleClickOutside = (event: MouseEvent) => {
-            const target = event.target as Node | null;
-            if (
-                target &&
-                (buttonRef.current?.contains(target) ||
-                    (target as HTMLElement).closest?.('[data-context-menu="true"]'))
-            ) {
-                return;
-            }
-            closeMenu();
+        const element = buttonRef.current;
+        if (!element) return;
+        const notePress = () => {
+            openAtPressRef.current = visibleRef.current;
         };
-        document.addEventListener("mousedown", handleClickOutside, true);
-        return () => document.removeEventListener("mousedown", handleClickOutside, true);
-    }, [visible, closeMenu]);
-
-    useEffect(() => {
-        if (!visible) return;
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closeMenu();
-            }
+        const forgetPress = () => {
+            openAtPressRef.current = false;
         };
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [visible, closeMenu]);
+        element.addEventListener("pointerdown", notePress);
+        element.addEventListener("keydown", forgetPress);
+        return () => {
+            element.removeEventListener("pointerdown", notePress);
+            element.removeEventListener("keydown", forgetPress);
+        };
+    }, [inspectOnly]);
 
     const triggerClass =
         buttonStyle === "iconGhost"
             ? `${ICON_GHOST_TRIGGER_BASE} ${className}`.trim()
             : `${controlButtonClass()} ${className}`.trim();
-    const toggle = visible ? closeMenu : openMenu;
+    const toggle = useCallback(() => {
+        const pressedWhileOpen = openAtPressRef.current;
+        openAtPressRef.current = false;
+        if (visible) {
+            closeMenu();
+        } else if (!pressedWhileOpen) {
+            openMenu();
+        }
+    }, [closeMenu, openMenu, visible]);
     const triggerContent = icon ?? <MoreHorizontal className="w-4 h-4" />;
 
     return (

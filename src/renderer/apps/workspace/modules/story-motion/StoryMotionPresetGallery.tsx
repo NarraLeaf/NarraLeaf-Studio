@@ -95,6 +95,9 @@ function PresetCard(props: {
     return (
         <button
             type="button"
+            // A row of the picker's keyboard walk (see `MotionSelector`): the arrows step through the
+            // cards in reading order, and focusing one plays it, the way hovering does.
+            data-motion-option=""
             disabled={props.disabled}
             // The card's text runs name + repeat + summary through adjacent spans, which concatenate
             // into "Quake60.24s / Position" as an accessible name. The preset's name is what this

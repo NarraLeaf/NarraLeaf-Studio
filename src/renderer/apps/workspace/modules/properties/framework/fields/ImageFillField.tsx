@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { Select } from "@/lib/components/elements/Select";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -98,6 +99,9 @@ export function ImageFillField<TData extends UIInspectorData>({
     const previewRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [panelPosition, setPanelPosition] = useState<PanelPosition>({ top: 0, left: 0 });
+    // The window this field is drawn in - the renderer's own, or a detached editor's. The panel is
+    // portalled into it, measured against it, and dismissed by presses in it.
+    const hostWindow = useHostWindow();
 
     const applyValue = useCallback(
         async (next: ImageFill) => {
@@ -236,13 +240,50 @@ export function ImageFillField<TData extends UIInspectorData>({
         }
     }, [isOpen]);
 
+    // Focus moves onto the panel when it opens, Escape closes it - only it: the mode menu and the
+    // image picker opened from it close first, and the inspector it was portalled out of never hears
+    // the key - and closing gives focus back to the field.
+    //
+    // Escape only, rather than a popover that closes when focus leaves it: in crop mode the crop is
+    // dragged on the canvas while this panel stays open beside it, so focus going to the canvas is
+    // part of using the panel, not leaving it.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: () => setIsOpen(false),
+        panelRef,
+        ownerRefs: [triggerRef],
+        scope: "none",
+    });
+
+    // A press anywhere but the panel and the field puts the panel away - except in crop mode, for the
+    // reason above, and while the image picker opened from it is up, which is drawn outside it.
+    const keepOpenOnOutsidePressRef = useRef(false);
+    keepOpenOnOutsidePressRef.current = normalizedFill.mode === "crop" || selectorOpen;
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+        const doc = hostWindow.document;
+        const onPointerDown = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (keepOpenOnOutsidePressRef.current
+                || panelRef.current?.contains(target)
+                || triggerRef.current?.contains(target)) {
+                return;
+            }
+            setIsOpen(false);
+        };
+        doc.addEventListener("mousedown", onPointerDown, true);
+        return () => doc.removeEventListener("mousedown", onPointerDown, true);
+    }, [hostWindow, isOpen]);
+
     const handlePanelPosition = useCallback(() => {
         if (!triggerRef.current) {
             return;
         }
         const rect = triggerRef.current.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const viewportWidth = hostWindow.innerWidth;
+        const viewportHeight = hostWindow.innerHeight;
         const panelHeight = panelRef.current?.offsetHeight ?? 360;
 
         const left = Math.min(
@@ -264,7 +305,7 @@ export function ImageFillField<TData extends UIInspectorData>({
         }
 
         setPanelPosition({ top, left });
-    }, []);
+    }, [hostWindow]);
 
     useLayoutEffect(() => {
         if (!isOpen) {
@@ -272,13 +313,13 @@ export function ImageFillField<TData extends UIInspectorData>({
         }
         handlePanelPosition();
         const reposition = () => handlePanelPosition();
-        window.addEventListener("resize", reposition);
-        window.addEventListener("scroll", reposition, { passive: true });
+        hostWindow.addEventListener("resize", reposition);
+        hostWindow.addEventListener("scroll", reposition, { passive: true });
         return () => {
-            window.removeEventListener("resize", reposition);
-            window.removeEventListener("scroll", reposition);
+            hostWindow.removeEventListener("resize", reposition);
+            hostWindow.removeEventListener("scroll", reposition);
         };
-    }, [handlePanelPosition, isOpen]);
+    }, [handlePanelPosition, hostWindow, isOpen]);
 
     const panelModeLabel = useMemo(
         () =>
@@ -383,7 +424,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                           </div>
                       </div>
                   </div>,
-                  document.body,
+                  hostWindow.document.body,
               )
             : null;
 

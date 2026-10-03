@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { FLOATING_OWN_KEYS_ATTRIBUTE, useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import type { StoryBlock } from "@shared/types/story";
 import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import { useCommandTranslation } from "@/lib/i18n";
@@ -14,6 +14,7 @@ import type { StoryCommandLineControl, StoryCommandLineEdit, StoryCommandLineRef
 import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
 import { useStoryRefLink } from "./storyRefNavigation";
 import { isJumpModifierEvent } from "./useJumpModifier";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 /**
  * A value inside a committed command line, clickable.
@@ -30,6 +31,9 @@ import { isJumpModifierEvent } from "./useJumpModifier";
  * The write goes through `onApply`, the row's ordinary payload-update path, so an inline edit is one
  * undo step exactly like an inspector edit.
  */
+
+/** The rows of a word list, for the floating layer's keyboard walk. */
+const OPTION_SELECTOR = "[data-value-option]";
 
 const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotted decoration-fg-subtle/60 underline-offset-2 transition-colors hover:bg-fill";
 
@@ -50,6 +54,7 @@ export function StoryLineValueToken(props: {
 }) {
     const { edit } = props;
     const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+    const tokenRef = useRef<HTMLButtonElement | null>(null);
     const link = useStoryRefLink(props.target);
 
     const open = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -66,6 +71,12 @@ export function StoryLineValueToken(props: {
             props.onApply(edit.apply(edit.value === "true" ? "false" : "true"));
             return;
         }
+        // The token toggles its popover: it is the popover's owner, so the press that closes it is
+        // not also the outside press that would close it a moment before the token reopened it.
+        if (anchor) {
+            setAnchor(null);
+            return;
+        }
         const rect = event.currentTarget.getBoundingClientRect();
         setAnchor({ left: rect.left, bottom: rect.bottom });
     };
@@ -73,7 +84,9 @@ export function StoryLineValueToken(props: {
     return (
         <>
             <button
+                ref={tokenRef}
                 type="button"
+                aria-expanded={anchor !== null}
                 // The dotted quick-edit underline turns solid and takes the accent while the modifier
                 // is held, so a word that is both says which of the two a click is about to mean.
                 className={cn(TOKEN_CLASS, link?.armed && REF_TOKEN_ARMED_CLASS)}
@@ -83,7 +96,7 @@ export function StoryLineValueToken(props: {
                 {props.children}
             </button>
             {anchor ? (
-                <ValuePopover edit={edit} anchor={anchor} onApply={props.onApply} onClose={() => setAnchor(null)} />
+                <ValuePopover edit={edit} anchor={anchor} ownerRef={tokenRef} onApply={props.onApply} onClose={() => setAnchor(null)} />
             ) : null}
         </>
     );
@@ -92,42 +105,55 @@ export function StoryLineValueToken(props: {
 function ValuePopover(props: {
     edit: StoryCommandLineEdit;
     anchor: { left: number; bottom: number };
+    /** The token that opened it: inside for light dismiss, and where the focus goes back to. */
+    ownerRef: RefObject<HTMLElement | null>;
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
-    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
-    // moved to unless it is told (`useDismissWhenHidden`).
-    useDismissWhenHidden(props.onClose);
     // Subscribed to, not called for the words below, which resolve through the imperative
     // `localizedEnumValue` - a snapshot with no way to tell React it went stale. The one string this
     // file names itself (the curve option) goes through the same translator, since it is offered
     // beside those words rather than beneath them.
     const { t: ct } = useCommandTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const doc = useHostDocument();
     const { edit } = props;
     const control = edit.control;
-
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
+    /**
+     * The colour picker a colour value opens. It is portalled to the body on its own, so it is named
+     * as part of this popover: a press or the focus landing in it is not leaving.
+     */
+    const colorPickerPanelRef = useMemo(() => ({
+        get current(): HTMLElement | null {
+            return doc.querySelector<HTMLElement>("[data-color-picker-panel]");
+        },
+    }), [doc]);
+    // Opens on the number field, or on the value that is set in a word list, whose rows the arrows
+    // then walk. Escape closes this alone - not the scene editor's own Escape behind it - and focus
+    // goes back to the token.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: [props.ownerRef, colorPickerPanelRef],
+        itemSelector: control.kind === "enum" || control.kind === "choice" ? OPTION_SELECTOR : undefined,
+    });
 
     useEffect(() => {
         const onDown = (event: MouseEvent) => {
-            if (panelRef.current?.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (
+                panelRef.current?.contains(target)
+                || props.ownerRef.current?.contains(target)
+                || colorPickerPanelRef.current?.contains(target)
+            ) {
                 return;
             }
             props.onClose();
         };
-        document.addEventListener("mousedown", onDown, true);
-        return () => document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [colorPickerPanelRef, doc, props]);
 
     const apply = (next: string) => props.onApply(edit.apply(next));
     const pick = (next: string) => {
@@ -140,18 +166,20 @@ function ValuePopover(props: {
     // those would be the things that had to shrink.
     const curve = control.kind === "enum" && control.curve && isStoryBezierEasing(edit.value);
     const width = curve ? "w-64" : control.kind === "number" ? "w-56" : "w-48";
+    const view = doc.defaultView ?? window;
 
     return createPortal(
         <div
             ref={panelRef}
             className={`fixed z-[70] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl ${width}`}
             style={{
-                top: Math.max(8, Math.min(props.anchor.bottom + 6, window.innerHeight - 220)),
+                top: Math.max(8, Math.min(props.anchor.bottom + 6, view.innerHeight - 220)),
                 // Held clear of the right edge by its own width plus the margin, since that width
                 // is no longer one number.
-                left: Math.max(8, Math.min(props.anchor.left, window.innerWidth - (curve ? 268 : 236))),
+                left: Math.max(8, Math.min(props.anchor.left, view.innerWidth - (curve ? 268 : 236))),
             }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             {control.kind === "number" ? <NumberControl control={control} value={edit.value} onCommit={apply} onPick={pick} /> : null}
             {control.kind === "enum" ? (
@@ -162,7 +190,12 @@ function ValuePopover(props: {
                       * the popover stays open through the drag, which is the gesture itself.
                       */}
                     {control.curve && isStoryBezierEasing(edit.value) ? (
-                        <EasingCurveEditor easing={edit.value} onChange={apply} />
+                        // The curve answers its own keys: the arrows nudge a handle and Escape in its
+                        // value field drops what was typed there. An Escape it leaves alone still
+                        // reaches the layer, and closes the popover.
+                        <div {...{ [FLOATING_OWN_KEYS_ATTRIBUTE]: "" }}>
+                            <EasingCurveEditor easing={edit.value} onChange={apply} />
+                        </div>
                     ) : null}
                     <div className="max-h-56 overflow-y-auto">
                         {control.options.map(option => (
@@ -208,7 +241,7 @@ function ValuePopover(props: {
                 </div>
             ) : null}
         </div>,
-        document.body,
+        doc.body,
     );
 }
 
@@ -258,6 +291,10 @@ function OptionRow(props: { label: string; selected: boolean; onClick: () => voi
     return (
         <button
             type="button"
+            data-value-option=""
+            data-selected={props.selected ? "true" : undefined}
+            // Opens on the value that is set, ahead of the curve's own text field above the list.
+            data-autofocus={props.selected ? "" : undefined}
             className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                 props.selected ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
             }`}

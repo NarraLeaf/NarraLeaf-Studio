@@ -11,10 +11,13 @@ import type {
 } from "@shared/types/story";
 import { DISPLAYABLE_BUILTIN_META, resolveDisplayableTargetRef } from "@shared/types/story";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets, type SceneDisplayableRef } from "../../story-motion/storyMotionPreviewTarget";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
+/** The rows of a target or layer list, for the floating layer's keyboard walk. */
+export const STAGE_OPTION_SELECTOR = "[role=\"option\"]";
 
 const KIND_ICON: Record<StoryDisplayableTargetKind, LucideIcon> = {
     character: UserRound,
@@ -62,8 +65,21 @@ export function DisplayableTargetField(props: {
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
+    // The list is a floating layer. It opens on its search field when it has one and on the current
+    // target otherwise, the arrows walk the rows, and Escape closes the list alone: the inspector this
+    // field sits in reads Escape as "leave the inspector", and an unanswered Escape here used to do
+    // exactly that. Picking or closing puts the focus back on the field's button.
+    useFloatingLayer({
+        open,
+        onClose: () => setOpen(false),
+        panelRef: menuRef,
+        ownerRefs: [triggerRef],
+        itemSelector: STAGE_OPTION_SELECTOR,
+    });
 
     const options = useMemo(
         () => listSceneDisplayableTargets(props.document, props.sceneId, props.blockId),
@@ -145,7 +161,9 @@ export function DisplayableTargetField(props: {
         <div ref={rootRef} className="relative">
             <label className={FIELD_LABEL_CLASS}>{props.label ?? t("story.targetField.label")}</label>
             <button
+                ref={triggerRef}
                 type="button"
+                aria-expanded={open}
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
@@ -171,6 +189,7 @@ export function DisplayableTargetField(props: {
             </button>
             {open ? (
                 <div
+                    ref={menuRef}
                     className={[
                         "absolute left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
@@ -180,7 +199,6 @@ export function DisplayableTargetField(props: {
                         <div className="flex items-center gap-2 border-b border-edge px-2.5 py-1.5">
                             <Search className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                             <input
-                                autoFocus
                                 value={query}
                                 onChange={event => setQuery(event.target.value)}
                                 placeholder={t("story.targetField.search")}

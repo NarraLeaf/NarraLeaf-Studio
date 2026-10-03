@@ -60,6 +60,8 @@ interface QuickSwitchOverlayProps {
      * whose center is not the window's center). Pair with a placement that omits justify-center.
      */
     cardStyle?: React.CSSProperties;
+    /** The card, for an owner that makes it a floating layer (`useFloatingLayer`). */
+    panelRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -81,6 +83,7 @@ export function QuickSwitchOverlay({
     placementClassName = "items-start justify-center pt-[12vh]",
     widthClassName = "w-[min(560px,calc(100vw-32px))]",
     cardStyle,
+    panelRef,
 }: QuickSwitchOverlayProps) {
     const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
@@ -98,6 +101,7 @@ export function QuickSwitchOverlay({
             className={`nl-window-content-layer ${zClassName} flex ${placementClassName} pointer-events-none`}
         >
             <div
+                ref={panelRef}
                 className={`flex ${widthClassName} max-h-[min(480px,70vh)] flex-col overflow-hidden rounded-md border border-edge bg-surface-raised/95 shadow-2xl backdrop-blur-sm pointer-events-auto`}
                 style={cardStyle}
             >
@@ -160,6 +164,10 @@ export function QuickSwitchOverlay({
                                     data-quick-list-key={row.key}
                                     // Keep DOM focus where it is (search input / prior focus) so the
                                     // list stays keyboard-drivable while the mouse hovers or clicks.
+                                    // Out of the Tab order for the same reason: the arrows in the
+                                    // search field are what walk the rows, and a row holding focus
+                                    // would take the keys away from the field.
+                                    tabIndex={-1}
                                     onMouseDown={(event) => event.preventDefault()}
                                     onMouseEnter={onHoverIndex ? () => onHoverIndex(index) : undefined}
                                     onClick={() => onCommit(index)}

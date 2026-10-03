@@ -9,6 +9,7 @@ import { clampIndex, rankFuzzyList, wrapIndex } from "./fuzzyListModel";
 import { collectQuickOpenEntries, QUICK_OPEN_KIND_LABEL_KEYS, type QuickOpenEntry } from "./quickOpenModel";
 import { isComposingText, isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { PALETTE_CARD_WIDTH_CLASS, usePaletteAnchorLeft } from "./paletteAnchor";
+import { useFloatingLayer } from "@/lib/components/layout";
 
 const MAX_ROWS = 50;
 
@@ -27,7 +28,20 @@ export function QuickOpenPicker() {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [entries, setEntries] = useState<QuickOpenEntry[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
     const anchorLeft = usePaletteAnchorLeft(open);
+    // The picker dims the window and owns the keyboard while it is up, so it is a trapped layer:
+    // focus goes into its search field when it opens, Tab stays there rather than wandering onto the
+    // page behind the dim, Escape closes it, and closing - by Escape or by opening something - gives
+    // focus back to the editor that had it. The rows are walked by the arrows in the field (below),
+    // not by focus, so the layer is given no item selector.
+    useFloatingLayer({
+        open,
+        onClose: () => setOpen(false),
+        panelRef: cardRef,
+        scope: "trap",
+        initialFocus: inputRef,
+    });
 
     useKeybinding({
         id: "workspace-quick-open",
@@ -60,8 +74,6 @@ export function QuickOpenPicker() {
         if (open) {
             setQuery("");
             setSelectedIndex(0);
-            const frame = requestAnimationFrame(() => inputRef.current?.focus());
-            return () => cancelAnimationFrame(frame);
         }
     }, [open]);
 
@@ -124,15 +136,12 @@ export function QuickOpenPicker() {
                     handled();
                     commit(selectedIndex);
                     break;
-                case "Escape":
-                    handled();
-                    close();
-                    break;
                 default:
+                    // Escape is the floating layer's, which hears it before this field does.
                     break;
             }
         },
-        [ranked.length, selectedIndex, commit, close],
+        [ranked.length, selectedIndex, commit],
     );
 
     if (!open) {
@@ -173,6 +182,7 @@ export function QuickOpenPicker() {
                 placementClassName={anchorLeft === null ? "items-start justify-center pt-1" : "items-start pt-1"}
                 widthClassName={PALETTE_CARD_WIDTH_CLASS}
                 cardStyle={anchorLeft === null ? undefined : { marginLeft: anchorLeft }}
+                panelRef={cardRef}
                 rows={rows}
                 selectedIndex={selectedIndex}
                 onCommit={commit}

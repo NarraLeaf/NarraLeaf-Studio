@@ -8,7 +8,8 @@ import type {
 import { DEFAULT_LAYER_OPTIONS, resolveStoryLayerRef } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
-import { useAutoMenuPlacement } from "./DisplayableTargetField";
+import { STAGE_OPTION_SELECTOR, useAutoMenuPlacement } from "./DisplayableTargetField";
+import { useFloatingLayer } from "@/lib/components/layout";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
@@ -35,7 +36,19 @@ export function StoryLayerField(props: {
 }) {
     const { t } = useTranslation();
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
+    // A floating layer, like the target field's list beside it: it opens on the current layer, the
+    // arrows walk the rows (the "new layer" row included), Escape closes the list and not the
+    // inspector around it, and focus goes back to the field's button.
+    useFloatingLayer({
+        open,
+        onClose: () => setOpen(false),
+        panelRef: menuRef,
+        ownerRefs: [triggerRef],
+        itemSelector: STAGE_OPTION_SELECTOR,
+    });
 
     const customLayers = useMemo<LayerOption[]>(
         () =>
@@ -88,7 +101,9 @@ export function StoryLayerField(props: {
         <div ref={rootRef} className="relative">
             <label className={FIELD_LABEL_CLASS}>{props.label ?? t("story.layerField.label")}</label>
             <button
+                ref={triggerRef}
                 type="button"
+                aria-expanded={open}
                 className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                 onClick={() => setOpen(current => !current)}
             >
@@ -108,6 +123,7 @@ export function StoryLayerField(props: {
             </button>
             {open ? (
                 <div
+                    ref={menuRef}
                     className={[
                         "absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl",
                         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
@@ -140,6 +156,8 @@ export function StoryLayerField(props: {
                         <div className="my-1 border-t border-edge-subtle" />
                         <button
                             type="button"
+                            role="option"
+                            aria-selected={false}
                             className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-primary transition-colors hover:bg-primary/10"
                             onClick={createLayer}
                         >

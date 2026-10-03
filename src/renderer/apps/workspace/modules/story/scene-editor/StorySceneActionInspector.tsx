@@ -74,6 +74,7 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { FieldLabel, Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -608,8 +609,15 @@ export function ActionInspector(props: {
         // The body of the properties panel: no floating-card chrome, and no close button either — the
         // rail follows the selection now, so there is nothing here to dismiss. Escape still reaches the
         // controller (the row keeps its selection, the editor leaves inspector mode).
+        //
+        // Not when the Escape was somebody else's: an input method cancelling a conversion in one of
+        // the fields, or a control that already answered it. A picker opened from a field is a
+        // floating layer and takes its own Escape before this ever sees it.
         <div
             onKeyDown={event => {
+                if (event.defaultPrevented || isImeKeyEvent(event)) {
+                    return;
+                }
                 if (event.key === "Escape") {
                     event.stopPropagation();
                     props.onClose();

@@ -8,6 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
 import { SETTING_CONTROL_WIDTH_PX } from "./settingControlWidth";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 
 /**
  * Download-source chooser for a `SettingValueType.Source` row: the sources Studio knows the address
@@ -31,6 +32,8 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 const PANEL_MIN_WIDTH_PX = SETTING_CONTROL_WIDTH_PX;
 const PANEL_GAP_PX = 4;
 const VIEWPORT_MARGIN_PX = 8;
+/** The offered rows, for the keyboard walk the floating layer gives the menu. */
+const SOURCE_OPTION_SELECTOR = "[data-source-option]";
 
 interface SettingSourcePickerProps {
     value: string;
@@ -67,6 +70,10 @@ export function SettingSourcePicker({
     /** Read by the close path, which must not depend on a state update landing first. */
     const draftRef = useRef("");
     draftRef.current = draft;
+    /** Set by every key pressed while the menu is open; see the floating layer below. */
+    const escapePressedRef = useRef(false);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
 
     const selectedPreset = matchedSourcePreset(value, presets);
     const presetLabel = useCallback(
@@ -129,6 +136,44 @@ export function SettingSourcePicker({
         setOpen(true);
     }, [close, disabled, open, selectedPreset, value]);
 
+    // Escape and focus leaving the menu both reach the layer's `onClose`, and they mean opposite
+    // things for a typed address: Escape is the way out without it, while Tab is the same gesture as
+    // the blur that keeps what was typed in every other field of this window. The key is noted on
+    // the window's capture phase - the one listener that runs ahead of the layer's own - and nothing
+    // is stopped there.
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+        const note = (event: KeyboardEvent) => {
+            escapePressedRef.current = event.key === "Escape" && !isImeKeyEvent(event);
+        };
+        hostWindow.addEventListener("keydown", note, true);
+        return () => {
+            hostWindow.removeEventListener("keydown", note, true);
+            escapePressedRef.current = false;
+        };
+    }, [hostWindow, open]);
+
+    // Focus starts in the address field, the arrows walk the offered rows (ArrowUp from the field
+    // reaches the last of them, ArrowDown the first), Enter on a row picks it, and closing hands
+    // focus back to the trigger.
+    useFloatingLayer({
+        open,
+        onClose: () => {
+            if (escapePressedRef.current) {
+                escapePressedRef.current = false;
+                abandon();
+            } else {
+                close();
+            }
+        },
+        panelRef,
+        ownerRefs: [triggerRef],
+        initialFocus: inputRef,
+        itemSelector: SOURCE_OPTION_SELECTOR,
+    });
+
     // Dismiss on a click anywhere that is neither the trigger nor the panel. Capture phase, like
     // every other menu in Studio, so a click on a control underneath does not act before we close.
     useEffect(() => {
@@ -142,9 +187,9 @@ export function SettingSourcePicker({
             }
             close();
         };
-        document.addEventListener("mousedown", onPointerDown, true);
-        return () => document.removeEventListener("mousedown", onPointerDown, true);
-    }, [close, open]);
+        hostDocument.addEventListener("mousedown", onPointerDown, true);
+        return () => hostDocument.removeEventListener("mousedown", onPointerDown, true);
+    }, [close, hostDocument, open]);
 
     // Fixed-position portal rather than an absolute child: this row lives in a scrolling pane inside
     // a window that hides its overflow, so a panel anchored in the flow is clipped. It takes the
@@ -162,13 +207,13 @@ export function SettingSourcePicker({
             }
             const width = Math.min(
                 Math.max(trigger.width, PANEL_MIN_WIDTH_PX),
-                Math.max(PANEL_MIN_WIDTH_PX, window.innerWidth - VIEWPORT_MARGIN_PX * 2),
+                Math.max(PANEL_MIN_WIDTH_PX, hostWindow.innerWidth - VIEWPORT_MARGIN_PX * 2),
             );
             const left = Math.min(
                 Math.max(VIEWPORT_MARGIN_PX, trigger.right - width),
-                Math.max(VIEWPORT_MARGIN_PX, window.innerWidth - width - VIEWPORT_MARGIN_PX),
+                Math.max(VIEWPORT_MARGIN_PX, hostWindow.innerWidth - width - VIEWPORT_MARGIN_PX),
             );
-            const spaceBelow = window.innerHeight - trigger.bottom - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
+            const spaceBelow = hostWindow.innerHeight - trigger.bottom - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
             const spaceAbove = trigger.top - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
             const openAbove = spaceBelow < spaceAbove && spaceBelow < 160;
             setPanelStyle({
@@ -177,25 +222,19 @@ export function SettingSourcePicker({
                 left,
                 maxHeight: Math.max(120, openAbove ? spaceAbove : spaceBelow),
                 ...(openAbove
-                    ? { bottom: Math.max(VIEWPORT_MARGIN_PX, window.innerHeight - trigger.top + PANEL_GAP_PX) }
+                    ? { bottom: Math.max(VIEWPORT_MARGIN_PX, hostWindow.innerHeight - trigger.top + PANEL_GAP_PX) }
                     : { top: trigger.bottom + PANEL_GAP_PX }),
                 zIndex: 100,
             });
         };
         place();
-        window.addEventListener("resize", place);
-        window.addEventListener("scroll", place, true);
+        hostWindow.addEventListener("resize", place);
+        hostWindow.addEventListener("scroll", place, true);
         return () => {
-            window.removeEventListener("resize", place);
-            window.removeEventListener("scroll", place, true);
+            hostWindow.removeEventListener("resize", place);
+            hostWindow.removeEventListener("scroll", place, true);
         };
-    }, [open]);
-
-    useEffect(() => {
-        if (open) {
-            inputRef.current?.focus();
-        }
-    }, [open]);
+    }, [hostWindow, open]);
 
     const triggerLabel = selectedPreset !== null ? presetLabel(selectedPreset) : value;
 
@@ -213,12 +252,16 @@ export function SettingSourcePicker({
                             key={preset || "official"}
                             role="option"
                             aria-selected={selected}
+                            tabIndex={-1}
+                            data-source-option=""
                             // Mouse-down rather than click: the field owns focus, and a click would
                             // take it away first - closing the panel before the row is chosen.
                             onMouseDown={event => {
                                 event.preventDefault();
                                 choosePreset(preset);
                             }}
+                            // Reached only from the keyboard: Enter on a focused row is a click.
+                            onClick={() => choosePreset(preset)}
                             className="flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill-subtle"
                         >
                             <span className="min-w-0 flex-1 truncate text-sm text-fg">{presetLabel(preset)}</span>
@@ -247,12 +290,14 @@ export function SettingSourcePicker({
                             close();
                             return;
                         }
-                        if (event.key === "Escape") {
-                            // Stopped here rather than left to bubble: the draft is this popover's
-                            // state, and Escape dropping it is what the key means while it is open.
-                            event.preventDefault();
-                            event.stopPropagation();
-                            abandon();
+                        // The field is the menu's last row, so up from it is the row above.
+                        if (event.key === "ArrowUp" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+                            const rows = panelRef.current?.querySelectorAll<HTMLElement>(SOURCE_OPTION_SELECTOR);
+                            const last = rows?.[rows.length - 1];
+                            if (last) {
+                                event.preventDefault();
+                                last.focus();
+                            }
                         }
                     }}
                     placeholder={t("settings.source.customPlaceholder")}
@@ -288,7 +333,7 @@ export function SettingSourcePicker({
                     className={cn("h-4 w-4 shrink-0 text-fg-muted transition-transform duration-150", open && "rotate-180")}
                 />
             </Button>
-            {panel && createPortal(panel, document.body)}
+            {panel && createPortal(panel, hostDocument.body)}
         </div>
     );
 }

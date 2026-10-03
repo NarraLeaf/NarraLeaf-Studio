@@ -5,10 +5,11 @@ import { Minus, Plus } from "lucide-react";
 import { Input } from "@/lib/components/elements/Input";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useTranslation } from "@/lib/i18n";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { TooltipGroup } from "@/lib/tooltip";
 import type { StoryTextEmphasis } from "@shared/types/story";
 import type { TypeTarget } from "./RichTextInput";
+import { keepStoryKeysInPopover } from "./PausePopover";
 import {
     STORY_FONT_SIZE_STEP_MAX,
     STORY_FONT_SIZE_STEP_MIN,
@@ -80,9 +81,18 @@ export function TypePopover(props: {
     omitSpeed?: boolean;
     onClose: () => void;
 }) {
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // A popover on the style strip, whose trigger is its owner: it opens with the focus on its first
+    // control, Escape takes it down alone (the caller puts the caret back in the line, leaving the
+    // row in edit mode), and Tab out of it lands on the strip's next control.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: props.anchorRef ? [props.anchorRef] : undefined,
+    });
     const [emphasis, setEmphasis] = useState(props.target.emphasis);
     const [step, setStepValue] = useState(props.target.fontSizeStep ?? 0);
     const [cps, setCps] = useState(props.target.cps === undefined ? "" : String(props.target.cps));
@@ -92,20 +102,6 @@ export function TypePopover(props: {
     };
 
     useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
-                return;
-            }
-            // One rung per press: this takes the panel down and leaves the row in edit mode, which
-            // the row's own Escape would not.
-            event.stopPropagation();
-            props.onClose();
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
-    useEffect(() => {
         const onDown = (event: MouseEvent) => {
             const target = event.target as Node;
             if (panelRef.current?.contains(target) || props.anchorRef?.current?.contains(target)) {
@@ -113,9 +109,9 @@ export function TypePopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const setStep = (next: number) => {
         const clamped = Math.min(STORY_FONT_SIZE_STEP_MAX, Math.max(STORY_FONT_SIZE_STEP_MIN, next));
@@ -133,8 +129,9 @@ export function TypePopover(props: {
         }
     };
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - (props.omitSpeed ? 160 : 220));
-    const left = Math.min(props.anchor.left, window.innerWidth - 236);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - (props.omitSpeed ? 160 : 220));
+    const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(
         <div
@@ -142,6 +139,7 @@ export function TypePopover(props: {
             className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             <div className="text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.emphasis")}</div>
             <TooltipGroup className="mt-1 flex items-center gap-1">
@@ -233,6 +231,6 @@ export function TypePopover(props: {
                 </>
             )}
         </div>,
-        document.body,
+        doc.body,
     );
 }
