@@ -76,4 +76,15 @@ describe("what a broken file is told", () => {
         const found = check("? true");
         expect(found.some(message => /branch only sits under an \/if row/.test(message))).toBe(true);
     });
+
+    it("refuses a branch written below the else of its /if", () => {
+        // The game checks every condition before it falls back to the else, while the editor and the
+        // preview read the rows top to bottom - so a branch below `? else` would run where the scene
+        // shows it never can. A second `? else` is the same mistake.
+        const found = check("/if\n  ? true\n  ? else\n  ? false");
+        expect(found.some(message => /^compile\.branch_after_else:/.test(message))).toBe(true);
+        const twice = check("/if\n  ? true\n  ? else\n  ? else");
+        expect(twice.some(message => /^compile\.branch_after_else:/.test(message))).toBe(true);
+        expect(check("/if\n  ? true\n  ? false\n  ? else").some(message => /branch_after_else/.test(message))).toBe(false);
+    });
 });

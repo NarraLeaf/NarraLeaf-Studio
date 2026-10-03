@@ -180,8 +180,9 @@ function compilePass(
         usedIds.add(block.id);
 
         const parent = parentFor(line, openAt, diagnostics);
+        // `openAt` holds a parent as it was placed; the children it has gathered since are in `blocks`.
         const placed: StoryBlock = {
-            ...block,
+            ...withBranchKindOfPlace(block, parent ? blocks[parent.id] : null, blocks),
             parentId: parent?.id ?? null,
             childrenIds: [],
             ...(line.disabled ? { disabled: true } : {}),
@@ -198,7 +199,7 @@ function compilePass(
         openAt[line.depth] = canAcceptChildren(placed) ? placed : null;
     }
 
-    diagnostics.push(...checkStructure(blocks, input.ast));
+    diagnostics.push(...checkStructure(blocks, lines, lineRowIds));
 
     const base = input.existing;
     const scene: StoryScene | null = base
@@ -353,9 +354,9 @@ function buildBranch(line: StoryFileLine, ctx: LineContext): LineResult {
             diagnostics: [errorAt("compile.bad_condition", condition.message, line.lineNumber)],
         };
     }
-    // The branch keeps whichever of `if` / `elseIf` it already was, because the two differ only in
-    // where they sit and the order of the lines already says that. A new branch is an `if`; the
-    // structure check below is what reports a second one.
+    // `if` and `elseIf` differ only in where the branch sits, so a whole file's compile gives each
+    // branch the kind of its place (`withBranchKindOfPlace`). One line read on its own - the printer's
+    // echo check - has no place, and keeps the kind its row already had so that it reads back as it.
     const branch = ctx.previous?.kind === "control" && ctx.previous.payload.control === "conditionBranch"
         ? ctx.previous.payload.branch
         : "if";
@@ -605,24 +606,59 @@ function parentFor(
     return null;
 }
 
+function isConditionBranch(block: StoryBlock | undefined): block is Extract<StoryBlock, { kind: "control" }> {
+    return block?.kind === "control" && block.payload.control === "conditionBranch";
+}
+
 /**
- * The three placements the tree itself decides, which no single line can check.
+ * A conditional branch as the kind its place makes it: `if` when it is the first branch under its
+ * `/if` row, `elseIf` when a branch is already above it.
  *
- * A branch outside a condition, an option outside a menu, and a condition with no branch: each is a
- * shape the editor can only produce deliberately, and each compiles to something that does not run.
+ * The format has one spelling for both - `? expression` - because the two differ only in position,
+ * and that is the row editor's rule too: `/if` lands the first branch as the `if`, and "+ else if"
+ * adds every later one as an `elseIf`. So the kind is read off the order of the lines, for a new
+ * line and an anchored one alike - a condition written above the stored first branch becomes the
+ * `if`, and the branch it displaced follows as an `elseIf`, rather than the scene holding two rows
+ * that each open the chain. `? else` is left alone; where it may sit is `checkStructure`'s concern.
+ *
+ * Returned unchanged, not copied, when the kind is already right, so an unedited row stays the same
+ * bytes.
+ */
+function withBranchKindOfPlace(
+    block: StoryBlock,
+    parent: StoryBlock | null,
+    blocks: Record<StoryBlockId, StoryBlock>,
+): StoryBlock {
+    if (block.kind !== "control" || block.payload.control !== "conditionBranch" || block.payload.branch === "else") {
+        return block;
+    }
+    if (!parent || parent.kind !== "control" || parent.payload.control !== "condition") {
+        return block;
+    }
+    const branch = parent.childrenIds.some(id => isConditionBranch(blocks[id])) ? "elseIf" : "if";
+    return block.payload.branch === branch ? block : { ...block, payload: { ...block.payload, branch } };
+}
+
+/**
+ * The four placements the tree itself decides, which no single line can check.
+ *
+ * A branch outside a condition, an option outside a menu, a condition with no branch, and a branch
+ * below its condition's `else`: each is a shape the editor can only produce deliberately, and each
+ * compiles to something that does not run as written. The last one runs, but not in the order it
+ * reads - the game tries every condition before it falls back to the `else`, while the preview and
+ * the editor read the rows top to bottom - so it is refused rather than left to mean two things.
  */
 function checkStructure(
     blocks: Record<StoryBlockId, StoryBlock>,
-    ast: StoryFileAst,
+    lines: readonly StoryFileLine[],
+    lineRowIds: readonly (StoryBlockId | null)[],
 ): StoryFileDiagnostic[] {
     const diagnostics: StoryFileDiagnostic[] = [];
+    // Every row a line built, new ones included, so a finding names the line that wrote the row.
     const lineOf = new Map<StoryBlockId, number>();
-    for (const line of ast.lines) {
-        if (line.anchorId) {
-            const block = Object.values(blocks).find(candidate => candidate.id.startsWith(line.anchorId as string));
-            if (block) {
-                lineOf.set(block.id, line.lineNumber);
-            }
+    for (const [index, rowId] of lineRowIds.entries()) {
+        if (rowId) {
+            lineOf.set(rowId, lines[index].lineNumber);
         }
     }
 
@@ -649,6 +685,21 @@ function checkStructure(
             diagnostics.push(
                 errorAt("compile.condition_without_branch", "An /if row with no \"?\" branch under it runs nothing.", line),
             );
+        }
+        if (block.kind === "control" && block.payload.control === "condition") {
+            const branches = block.childrenIds.map(id => blocks[id]).filter(isConditionBranch);
+            const elseAt = branches.findIndex(branch =>
+                branch.payload.control === "conditionBranch" && branch.payload.branch === "else");
+            for (const late of elseAt < 0 ? [] : branches.slice(elseAt + 1)) {
+                diagnostics.push(
+                    errorAt(
+                        "compile.branch_after_else",
+                        `"? ${BRANCH_ELSE}" is the last branch of its /if. Move this branch above it, or delete one of `
+                            + `the two if both are "? ${BRANCH_ELSE}".`,
+                        lineOf.get(late.id),
+                    ),
+                );
+            }
         }
     }
     return diagnostics;

@@ -401,6 +401,104 @@ describe("a row that names a row the same file adds", () => {
     });
 });
 
+/**
+ * Compiles `lines` as the whole body of `scene`, through both passes, with ids minted in order.
+ * The scene is the one the file says it describes - `existing` - so an anchored line keeps its row.
+ */
+function compileBody(data: ProjectData, document: StoryDocument, scene: StoryScene, lines: readonly string[]) {
+    const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+    const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
+    let next = 0;
+    return compileStoryFile({
+        ast: parseStoryFile(source).ast,
+        existing: scene,
+        document,
+        contextFor: stage => buildContext(data, document, stage ?? scene),
+        prose: lookups.prose,
+        conditions: lookups.conditions,
+        mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+    });
+}
+
+/** The `if` / `elseIf` / `else` of each branch under the condition row `conditionId`, in order. */
+function branchKinds(scene: StoryScene, conditionId: string): string[] {
+    return scene.blocks[conditionId].childrenIds.map(id => {
+        const branch = scene.blocks[id];
+        return branch.kind === "control" && branch.payload.control === "conditionBranch" ? branch.payload.branch : branch.kind;
+    });
+}
+
+/**
+ * Which of `if`, `elseIf` and `else` a `?` line is.
+ *
+ * The format has one spelling for all three - `? expression`, or `? else` - because the row editor
+ * has no others either: `/if` lands the first branch, "+ else if" adds the next one above any `else`,
+ * and "+ else" closes the chain. So the kind is the line's place under its `/if`, and a second
+ * condition is an else-if. It was built as a second `if`, which the editor heads with 如果 a second
+ * time and the scene flow draws as the start of another condition, while `check` said nothing.
+ */
+describe("the branches of one /if", () => {
+    it("builds every condition after the first as an else-if, and the chain reads back unchanged", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const compiled = compileBody(data, document, scene, [
+            "/if",
+            "  ? Honest",
+            "    Narra: One.",
+            "  ? !Honest",
+            "    Narra: Two.",
+            "  ? Location == \"nowhere\"",
+            "    Narra: Three.",
+            "  ? else",
+            "    Narra: Four.",
+        ]);
+
+        expect(compiled.diagnostics).toEqual([]);
+        const applied = compiled.scene!;
+        const [condition] = applied.rootBlockIds;
+        expect(branchKinds(applied, condition)).toEqual(["if", "elseIf", "elseIf", "else"]);
+
+        // `show` then `apply` on the scene that landed changes nothing, the else-ifs included.
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: applied } };
+        const back = roundTrip(data, appliedDocument, applied);
+        expect(back.printed.text).not.toContain(OPAQUE_PREFIX);
+        expect(back.compiled.diagnostics).toEqual([]);
+        for (const [id, block] of Object.entries(applied.blocks)) {
+            expect(JSON.stringify(back.compiled.scene!.blocks[id]), `row ${id}`).toBe(JSON.stringify(block));
+        }
+    });
+
+    it("gives a branch the kind of the place it is moved to", () => {
+        // A new condition written above the stored first branch heads the chain, and the branch it
+        // displaced follows it as an else-if - rather than two rows each claiming to be the `if`.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = (Object.values(document.scenes) as StoryScene[]).find(entry => entry.name === "Last light");
+        expect(scene).toBeDefined();
+        const { printed } = roundTrip(data, document, scene!);
+        const lines = printed.text.split("\n");
+        const firstBranch = lines.findIndex(line => line.startsWith("  ? Honest"));
+        expect(firstBranch).toBeGreaterThan(0);
+        lines.splice(firstBranch, 0, "  ? !Honest", "    Narra: Written above it.");
+        const body = lines.slice(lines.findIndex(line => line === "") + 1);
+
+        const compiled = compileBody(data, document, scene!, body);
+        expect(compiled.diagnostics).toEqual([]);
+        const condition = compiled.scene!.rootBlockIds.find(id => {
+            const block = compiled.scene!.blocks[id];
+            return block.kind === "control" && block.payload.control === "condition";
+        })!;
+        expect(branchKinds(compiled.scene!, condition)).toEqual(["if", "elseIf", "else"]);
+        // The stored branch is the same row, now second.
+        expect(compiled.scene!.blocks[condition].childrenIds[1]).toBe(scene!.blocks[condition].childrenIds[0]);
+    });
+});
+
 describe("a project this tool cannot read", () => {
     it("resolves no names rather than guessing at them", () => {
         // An empty project is a real state - `story command` answers with no `--project` at all - and

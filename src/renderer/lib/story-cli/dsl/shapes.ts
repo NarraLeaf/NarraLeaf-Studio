@@ -240,7 +240,8 @@ from what it starts with, and nothing else.
   The rain had stopped.       narration - any line that is none of the others.
   // check this line          a note. Never compiled, never shown to a player.
   - I was waiting for you.    a choice option. Only under a /menu row.
-  ? gold > 10                 a branch of the /if above it. "? else" is the else branch.
+  ? gold > 10                 a branch of the /if above it: the first is its if, every later one an
+                              else-if. "? else" is the else branch, and comes last.
   » Story Motion: sway        a row this format cannot spell. Kept verbatim from #data below,
                               and NEVER read back from the label - edit it in Studio instead.
   .                           a blank row. A blank LINE is spacing and means no row at all.
