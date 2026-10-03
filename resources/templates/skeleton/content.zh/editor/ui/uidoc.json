@@ -50952,7 +50952,7 @@
         "y": 440,
         "width": 1200,
         "height": 200,
-        "visible": false,
+        "visible": true,
         "opacity": 1
       },
       "props": {
@@ -52158,7 +52158,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-03T04:03:51.870Z"
+    "updatedAt": "2026-10-03T04:55:15.676Z"
   },
   "structs": {
     "extra.galleryEntry": {
