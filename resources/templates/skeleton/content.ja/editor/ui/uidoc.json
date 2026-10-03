@@ -11438,47 +11438,191 @@
     },
     "d0dc011f-1c2d-4817-a673-178a4fdf7f70": {
       "id": "d0dc011f-1c2d-4817-a673-178a4fdf7f70",
-      "type": "nl.button",
+      "type": "nl.text",
       "name": "設定",
       "parentId": "39146e02-45af-4afc-9168-b83796f2fccc",
       "childrenIds": [],
       "layout": {
-        "x": 40,
+        "x": 36,
         "y": 368,
-        "width": 230,
+        "width": 234,
         "height": 58,
         "visible": true,
         "opacity": 1
       },
       "props": {
-        "label": "設定",
+        "text": "設定",
         "fontSize": 26,
         "color": "nlbrand:text.primary",
         "fontWeight": "600",
+        "fontStyle": "normal",
         "textAlign": "left",
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
+        "fontAssetId": null,
         "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.config",
-        "clickSound": {
-          "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
         },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 26
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "600"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.primary"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.2
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "nav.config"
       }
     },
     "698c5179-f91a-4c4a-9802-15bdf43fff72": {
@@ -28462,47 +28606,191 @@
     },
     "b0687a7f-227d-4886-9d25-1c533e3f1f40": {
       "id": "b0687a7f-227d-4886-9d25-1c533e3f1f40",
-      "type": "nl.button",
+      "type": "nl.text",
       "name": "ロード",
       "parentId": "006f4d5e-88ea-4752-864a-dab4423f9421",
       "childrenIds": [],
       "layout": {
-        "x": 40,
+        "x": 36,
         "y": 294,
-        "width": 230,
+        "width": 234,
         "height": 58,
         "visible": true,
         "opacity": 1
       },
       "props": {
-        "label": "ロード",
+        "text": "ロード",
         "fontSize": 26,
         "color": "nlbrand:text.primary",
         "fontWeight": "600",
+        "fontStyle": "normal",
         "textAlign": "left",
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
+        "fontAssetId": null,
         "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.load",
-        "clickSound": {
-          "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
         },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 26
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "600"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.primary"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.2
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "nav.load"
       }
     },
     "2bd4d5de-6e58-4438-92f1-13db78304813": {
@@ -38897,47 +39185,191 @@
     },
     "9875bca5-90e4-4581-a494-e7d986d6e033": {
       "id": "9875bca5-90e4-4581-a494-e7d986d6e033",
-      "type": "nl.button",
+      "type": "nl.text",
       "name": "セーブ",
       "parentId": "684fb728-dab4-4c68-8844-b3d39c9b8cf8",
       "childrenIds": [],
       "layout": {
-        "x": 40,
+        "x": 36,
         "y": 220,
-        "width": 230,
+        "width": 234,
         "height": 58,
         "visible": true,
         "opacity": 1
       },
       "props": {
-        "label": "セーブ",
+        "text": "セーブ",
         "fontSize": 26,
         "color": "nlbrand:text.primary",
         "fontWeight": "600",
+        "fontStyle": "normal",
         "textAlign": "left",
         "textVerticalAlign": "center",
         "lineHeight": 1.2,
+        "fontAssetId": null,
         "textWrapMode": "nowrap",
-        "backgroundColor": "transparent",
-        "fillType": "color",
-        "fillOpacity": 1,
-        "fillVisible": false,
-        "backgroundFit": "cover",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderColor": "nlbrand:container.border",
-        "borderStyle": "none",
-        "paddingX": 0,
-        "paddingY": 8,
-        "clipContent": true,
-        "cursor": "pointer",
-        "localizationKey": "nav.save",
-        "clickSound": {
-          "assetId": "e54ece05-7e8c-4196-85b2-57a356b8e442"
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
         },
-        "hoverSound": {
-          "assetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23"
-        }
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 26
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "600"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.primary"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.2
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "nav.save"
       }
     },
     "32a5585a-6502-4c13-b150-1293d171ee0b": {
@@ -52158,7 +52590,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-03T04:55:15.676Z"
+    "updatedAt": "2026-10-03T19:40:40.319Z"
   },
   "structs": {
     "extra.galleryEntry": {
