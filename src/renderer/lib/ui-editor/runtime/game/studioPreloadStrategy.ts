@@ -304,6 +304,11 @@ export function createStudioPreloadScheduler(options?: {
     /**
      * Where in the scene's rows the play head is, or the top when it cannot be placed.
      *
+     * A row that asks for no media - a line of dialogue, a pause - is placed where the next row that
+     * does would be ({@link SceneWarmOrder.placeOf}). Reading it as the top of the scene put every
+     * clip the story had already played back into the plan, and so back on the stage, hidden: a clip
+     * a play had cleared away came back for a later `/resume` to run unseen and heard.
+     *
      * A row-precise launch, an async branch and a plugin's injected action all produce actions this
      * cannot place, and the honest answer for all of them is the same: plan from the top of the
      * scene, which warms more than needed rather than less.
@@ -317,7 +322,10 @@ export function createStudioPreloadScheduler(options?: {
             return 0;
         }
         const index = order.blockOrder.indexOf(blockId);
-        return index < 0 ? 0 : index;
+        if (index >= 0) {
+            return index;
+        }
+        return order.placeOf?.[blockId] ?? 0;
     }
 
     function buildPlan(sceneId: string, order: SceneWarmOrder, from: number, gates: boolean): PreloadPlan {

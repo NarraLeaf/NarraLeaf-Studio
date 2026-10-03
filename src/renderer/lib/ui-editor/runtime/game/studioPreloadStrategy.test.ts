@@ -555,4 +555,46 @@ describe("a clip a play row defines", () => {
         expect(planFor("waits").video).toEqual([waits]);
         expect(planFor("moves-on").video).toEqual([movesOn]);
     });
+
+    /**
+     * A line after the play is placed after it, not at the top of the scene. Read as the top, the plan
+     * put the clip the play had already run and cleared away back on the stage, hidden, where a later
+     * `/resume` ran it unseen and heard. A second play of the clip further down still asks for it.
+     */
+    it("leaves a clip the story has played out of the plan for the rows after it, until a play of it lies ahead", async () => {
+        const document: StoryDocument = {
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            id: "story-1",
+            name: "Story",
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene"] }],
+            scenes: {
+                scene: sceneOf("scene", [
+                    line("before"),
+                    videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival", waitForEnd: false }),
+                    line("after"),
+                    videoRow("again", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
+                    line("last"),
+                ]),
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            collectWarmOrder: true,
+        });
+        const scheduler = createStudioPreloadScheduler();
+        scheduler.useCompiled(compiled);
+        const clip = compiled.sceneElements?.["scene"]?.videos.get("festival");
+        const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)!.staticId;
+        const planAt = (blockId: string) => scheduler.plan({
+            kind: "advance", actionId: actionOf(blockId), scene: compiled.scenes["scene"] as never, story: null,
+        }) as PreloadPlan;
+
+        expect(planAt("before").video).toEqual([clip]);
+        // Between the two plays the second one still lies ahead.
+        expect(planAt("after").video).toEqual([clip]);
+        // After the last play of it, nothing asks for the clip any more.
+        expect(planAt("last").video).toEqual([]);
+    });
 });

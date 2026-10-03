@@ -1047,8 +1047,20 @@ export type SceneWarmOrder = {
      * switch to, and they stay with those rows.
      */
     onEntry: string[];
-    /** Block ids in compile order - which is row order within a scene, and a tree walk across branches. */
+    /**
+     * The blocks that asked for media, in compile order - which is row order within a scene, and a
+     * tree walk across branches.
+     */
     blockOrder: string[];
+    /**
+     * Where every compiled row falls in {@link blockOrder}: the index the next row that asks for
+     * media takes - the row's own index when it is one of them.
+     *
+     * What lets a plan place the play head on a row that asks for nothing, which is most rows - every
+     * line of dialogue. Without it such a row could only be read as the top of the scene, and the plan
+     * then put back on the stage a clip the story had already played and taken away.
+     */
+    placeOf?: Record<string, number>;
     /** Media each block resolved, keyed by block id. Deduplicated within the block. */
     byBlock: Record<string, StoryWarmResource[]>;
     /**
@@ -1416,6 +1428,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
                 firstFrame: scenesBuild.initialBackgroundUrls?.[scene.id] ?? null,
                 onEntry: [],
                 blockOrder: [],
+                placeOf: {},
                 byBlock: {},
                 rows: {},
             }} : {}),
@@ -2854,6 +2867,11 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
     if (!block) {
         diagnostic(ctx, "warning", undefined, say("story.compile.flow.missingRow"));
         return [];
+    }
+    // Before the row compiles, so a row that asks for media is placed at its own entry.
+    const placeOf = ctx.warmOrder?.placeOf;
+    if (placeOf && !(blockId in placeOf)) {
+        placeOf[blockId] = ctx.warmOrder!.blockOrder.length;
     }
 
     // A disabled row (schema v7) is compiled out — with its whole subtree, since returning here never
@@ -5245,6 +5263,9 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     return getLayer(ctx, name, zIndex);
 }
 
+/** The url each clip was built from - the engine keeps its own copy out of reach. */
+const videoUrls = new WeakMap<Video, string>();
+
 /**
  * Builds the clip a `/play` row defines, and hands back the one already built when an earlier play
  * defined the name. That second case is how a clip is played again - the row names the same file -
@@ -5256,6 +5277,13 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
     const name = normalizeObjectName(objectName);
     const existing = ctx.videos.get(name);
     if (existing) {
+        // Played again: this row asks for the clip as well, so a plan placed after the first play
+        // still buffers it ahead of this one.
+        const url = videoUrls.get(existing);
+        if (url) {
+            recordWarmedAsset(ctx, blockId, "video", url, assetId ?? "");
+            recordWarmedVideoElement(ctx, blockId, url, existing);
+        }
         return existing;
     }
     if (!assetId) {
@@ -5267,6 +5295,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
+    videoUrls.set(video, url);
     setStableElementId(ctx.elementIdBindings, video, sceneElementStaticId(ctx, "video", name));
     ctx.videos.set(name, video);
     // The warm order recorded the url a moment ago, when the asset resolved. Only here is there an
