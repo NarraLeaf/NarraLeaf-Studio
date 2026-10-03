@@ -2838,7 +2838,10 @@ function useActionCommandMenuState(
 
     /**
      * Picking a category is a pointer gesture only, and it does not move the highlight itself — the
-     * effect above does, because the new category is a new `stops` and the old key is not in it.
+     * effect above does, by the rule a typed filter follows: the highlight stays where it was when the
+     * new `stops` still hold that row (going back to 全部 usually does - it lists every command once,
+     * under its own subject) and moves to the first row when they do not. The menu scrolls whichever
+     * row that is into view.
      */
     const chooseCategory = (next: MenuCategory) => {
         setCategory(next);
@@ -3008,18 +3011,40 @@ function ActionCommandMenu(props: {
     const scopeCategory = getCommandCategory("character");
     const ScopeIcon = scopeCategory.icon;
 
+    /**
+     * What the list holds, as one value: it changes when a filter is typed or a category chosen, and
+     * not merely because a parent rendered.
+     */
+    const listContents = useMemo(() => props.stops.map(stop => stop.key).join("\n"), [props.stops]);
+
+    // The highlighted row is the one Enter takes, so it has to be a row the author can see - after an
+    // arrow moves it, and after the list changes under it. A typed filter or a new category keeps the
+    // highlight on the row it was on whenever the new list still holds it, which can leave that row
+    // anywhere in the new list - back under 全部, a sound command chosen from 声音 sits dozens of
+    // rows down. So the list is brought to the highlight on either change, not only when it moves.
+    // The first row is shown from the very top, so the section header and the padding above it stay
+    // in view rather than being scrolled just past.
+    const firstKey = props.stops[0]?.key ?? null;
     useEffect(() => {
         if (!props.activeKey) {
             return;
         }
         window.requestAnimationFrame(() => {
-            const activeItem = listRef.current?.querySelector(`[data-action-command-key="${props.activeKey}"]`);
-            activeItem?.scrollIntoView({ block: "nearest" });
+            const list = listRef.current;
+            if (!list) {
+                return;
+            }
+            if (props.activeKey === firstKey) {
+                list.scrollTop = 0;
+                return;
+            }
+            list.querySelector(`[data-action-command-key="${props.activeKey}"]`)?.scrollIntoView({ block: "nearest" });
         });
-    }, [props.activeKey]);
+    }, [firstKey, listContents, props.activeKey]);
 
     // A new category is a new list, so it starts at its top rather than wherever the last one was
-    // scrolled to — the highlight moves to the first row, and it has to be the row you can see.
+    // scrolled to - header and all, when the highlight moved to the first row. Runs before the frame
+    // the effect above waits for, so a highlight further down is then scrolled into view from here.
     useEffect(() => {
         if (listRef.current) {
             listRef.current.scrollTop = 0;
