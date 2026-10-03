@@ -1213,7 +1213,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Escape is bound to the Dismiss action (Input actions panel), and this page answers it. Over a running game, Clear Page closes every page above the story and the player is back in it. From the title page there is no game, so Clear Page does nothing and Go back returns to the title. The Back button on the left runs the same two nodes.",
+                      "text": "Escape is bound to the Dismiss action (Input actions panel), and this page answers it. Over a running game, Clear Page closes every page above the story and the player is back in it. Outside a game Clear Page does nothing, and Go back returns to the page this one was opened from. The Back button on the left runs the same two nodes.",
                       "width": 828,
                       "height": 160
                     },
@@ -24370,6 +24370,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T21:17:40.079Z"
+    "updatedAt": "2026-10-03T22:25:59.682Z"
   }
 }
