@@ -362,7 +362,7 @@ describe("hostBuildableFormats", () => {
         // permission bits, and a disk image needs macOS itself.
         expect(hostBuildableFormats("windows", "macos")).toEqual(["zip"]);
         expect(hostBuildableFormats("linux", "macos")).toEqual(["zip"]);
-        expect(hostBuildableFormats("windows", "linux")).toEqual(["zip"]);
+        expect(hostBuildableFormats("windows", "linux")).toEqual(["zip", "appimage"]);
         expect(hostCanBuildFormat("windows", "macos", "dmg")).toBe(false);
         expect(hostCanBuildFormat("windows", "linux", "dir")).toBe(false);
         expect(hostCanBuildFormat("windows", "macos", "zip")).toBe(true);

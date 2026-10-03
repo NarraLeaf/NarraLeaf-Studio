@@ -60,7 +60,7 @@ describe("initialDialogState", () => {
     });
 
     it("keeps the remembered formats this host can make and drops the rest", () => {
-        // A Windows host makes macOS and Linux archives, but no disk image and no unpacked folder.
+        // A Windows host makes macOS zips and Linux zips and AppImages, but no disk image and no unpacked folder.
         const stored: BuildConfiguration = {
             platforms: ["macos", "linux"],
             formats: { macos: ["zip", "dmg"], linux: ["zip", "dir"] },

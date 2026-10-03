@@ -1058,10 +1058,11 @@ export function hostPackagesWithoutPlatformTools(host: GameBuildPlatform, target
  *
  * Everything is offered on a target's own platform, and for the web and mobile targets everywhere
  * (they are plain file copying and pure-TS repacks of prebuilt shells). Where Studio packages
- * without the platform's tools (`hostPackagesWithoutPlatformTools`) it writes archives only: an
- * unpacked folder would land on a file system that loses the links and permission bits the package
- * needs, and a disk image (`dmg`) needs macOS's own tools. The switch is exhaustive so the next
- * platform addition must state its answer explicitly.
+ * without the platform's tools (`hostPackagesWithoutPlatformTools`) it writes the package files it
+ * can write from memory - a zip, and for Linux an AppImage - and not an unpacked folder, which would
+ * land on a file system that loses the links and permission bits the package needs, nor a disk image
+ * (`dmg`), which needs macOS's own tools. The switch is exhaustive so the next platform addition
+ * must state its answer explicitly.
  */
 export function hostBuildableFormats(host: GameBuildPlatform, target: GameBuildPlatform): GameBuildFormat[] {
     const offered = GAME_BUILD_FORMATS_BY_PLATFORM[target];
@@ -1070,8 +1071,9 @@ export function hostBuildableFormats(host: GameBuildPlatform, target: GameBuildP
     }
     switch (target) {
         case "macos":
-        case "linux":
             return offered.filter(format => format === "zip");
+        case "linux":
+            return offered.filter(format => format === "zip" || format === "appimage");
         case "windows":
         case "web":
         case "android":

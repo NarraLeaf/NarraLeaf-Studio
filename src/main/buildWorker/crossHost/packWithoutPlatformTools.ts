@@ -13,9 +13,14 @@ import { writeZip, type ZipWriteEntry } from "../mobile/zipWriter";
 import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "../protocol";
 import { FileZipOutput, readZipAsTree, writeTreeAsZip } from "./archive";
 import { fetchElectronRelease } from "./electronRelease";
-import { asarHeaderHash, assembleMacApp, type MacApp } from "./macApp";
+import { LINUX_PROGRAM_SUFFIX } from "../linuxLauncher";
+import { writeAppImage } from "../linuxPackage/appImage";
+import { APPIMAGE_TOOLSET_VERSION, ensureAppImageToolset, readAppImageToolset } from "../linuxPackage/appImageToolset";
+import type { SquashfsEntry } from "../linuxPackage/squashfs";
+import { DIRECTORY_MODE, unixModeForContent as linuxModeForContent } from "../linuxPackage/unixModes";
+import { asarHeaderHash, assembleMacApp, macBuildVersion as builderBuildVersion, sanitizeFileName, type MacApp } from "./macApp";
 import { mergeUniversalBundle } from "./universal";
-import { unixModeForContent } from "./unixModes";
+import { macModeForContent } from "./unixModes";
 
 /**
  * Packaging a desktop target on a host whose tools cannot: macOS anywhere but a Mac, Linux on
@@ -79,26 +84,105 @@ async function packLinuxApp(input: {
     staging: string;
 }): Promise<string[]> {
     const { config, target, log, staging } = input;
-    log("info", `laying out the linux app with electron-builder, then writing its archive with the permission bits a Windows folder cannot keep`);
+    log("info", `laying out the linux app with electron-builder, then writing its packages with the permission bits a Windows folder cannot keep`);
     await input.runBuilder({ ...config, outputDir: staging }, { ...target, formats: ["dir"] });
     const appRoot = await findUnpackedApp(staging, entry => entry.endsWith("-unpacked"));
-    const version = await appVersion(config.appDir as string);
+    const metadata = await appMetadata(config.appDir as string);
     const artifacts: string[] = [];
     for (const format of target.formats) {
-        if (format !== "zip") {
+        if (format !== "zip" && format !== "appimage") {
             throw new Error(`Linux ${format} cannot be built on this machine.`);
         }
         const file = path.join(config.outputDir, desktopArtifactFileName({
             artifactBaseName: config.artifactBaseName,
-            version,
+            version: metadata.version,
             platform: "linux",
             arch: target.arch,
             format,
         }));
-        await writeFolderAsZip(appRoot, file);
+        if (format === "zip") {
+            await writeFolderAsZip(appRoot, file);
+        } else {
+            await writeLinuxAppImage({ config, target, log, appRoot, metadata, file });
+        }
         artifacts.push(file);
     }
     return artifacts;
+}
+
+/**
+ * An AppImage of the laid-out Linux app, written the way electron-builder writes one with its static
+ * runtime (`toolsets.appimage: "1.0.3"`, which Linux and macOS hosts use too): the same stage layout
+ * and launcher, Studio's SquashFS writer in place of `mksquashfs`. See linuxPackage/appImage.ts.
+ */
+async function writeLinuxAppImage(input: {
+    config: GameBuildWorkerConfig;
+    target: GameBuildWorkerTarget;
+    log: PackLogger;
+    appRoot: string;
+    metadata: { version: string; description: string | null; desktopName: string | null };
+    file: string;
+}): Promise<void> {
+    const { config, target, log, appRoot, metadata, file } = input;
+    if (target.arch !== "x64" && target.arch !== "arm64") {
+        throw new Error(`A Linux AppImage cannot be built for ${target.arch}.`);
+    }
+    if (!target.iconPath) {
+        throw new Error("A Linux AppImage needs the app's icon, and this build has none.");
+    }
+    const archive = await ensureAppImageToolset({
+        cacheRoot: config.hostCacheRoot ?? path.dirname(appRoot),
+        ...(config.electronBuilderBinariesMirror ? { mirror: config.electronBuilderBinariesMirror } : {}),
+        ...(config.downloadRewrites ? { rewrites: config.downloadRewrites } : {}),
+        log,
+    });
+    const toolset = await readAppImageToolset(archive, target.arch);
+    const { directories, files } = await walkFolder(appRoot);
+    const app: SquashfsEntry[] = [
+        ...directories.map(directory => ({ kind: "directory" as const, path: directory, mode: DIRECTORY_MODE })),
+    ];
+    for (const entry of files) {
+        app.push({
+            kind: "file",
+            path: entry.relative,
+            mode: linuxModeForContent(await readHead(entry.absolute)),
+            content: () => fs.createReadStream(entry.absolute) as AsyncIterable<Uint8Array>,
+        });
+    }
+    const icon = await fsPromises.readFile(target.iconPath);
+    log("info", `writing the AppImage with Studio's SquashFS writer (static runtime ${APPIMAGE_TOOLSET_VERSION})`);
+    await writeAppImage(file, {
+        app,
+        toolset,
+        executableName: linuxExecutableName(files.map(entry => entry.relative)),
+        productName: config.productName,
+        productFilename: sanitizeFileName(config.productName),
+        version: builderBuildVersion(metadata.version),
+        ...(metadata.description ? { description: metadata.description } : {}),
+        ...(metadata.desktopName ? { desktopName: metadata.desktopName } : {}),
+        icons: [{ size: pngWidth(icon), png: icon }],
+    });
+}
+
+/**
+ * The Linux app's executable: the launcher electron-builder's afterPack step put in front of the
+ * Electron binary (`<name>` beside `<name>.bin`), which is what the AppImage's AppRun starts.
+ */
+function linuxExecutableName(rootFiles: readonly string[]): string {
+    const names = new Set(rootFiles.filter(name => !name.includes("/")));
+    const launcher = [...names].find(name => names.has(`${name}${LINUX_PROGRAM_SUFFIX}`));
+    if (!launcher) {
+        throw new Error("The laid-out Linux app has no launcher beside its Electron binary.");
+    }
+    return launcher;
+}
+
+/** A PNG's width, from its IHDR chunk. */
+function pngWidth(png: Buffer): number {
+    if (png.length < 24 || png.readUInt32BE(12) !== 0x49484452) {
+        throw new Error("The Linux app icon is not a PNG.");
+    }
+    return png.readUInt32BE(16);
 }
 
 async function packMacApp(input: {
@@ -218,10 +302,17 @@ async function findUnpackedApp(dir: string, matches: (name: string) => boolean):
     return path.join(dir, candidates[0].name);
 }
 
-async function appMetadata(appDir: string): Promise<{ version: string; author: string | null }> {
+async function appMetadata(appDir: string): Promise<{
+    version: string;
+    author: string | null;
+    description: string | null;
+    desktopName: string | null;
+}> {
     const pkg = JSON.parse(await fsPromises.readFile(path.join(appDir, "package.json"), "utf8")) as {
         version?: string;
         author?: string | { name?: string };
+        description?: string;
+        desktopName?: string;
     };
     if (!pkg.version) {
         throw new Error("The compiled game's package.json has no version.");
@@ -230,11 +321,7 @@ async function appMetadata(appDir: string): Promise<{ version: string; author: s
     const author = typeof pkg.author === "string"
         ? pkg.author.replace(/\s*<[^>]*>/, "").replace(/\s*\([^)]*\)/, "").trim() || null
         : pkg.author?.name ?? null;
-    return { version: pkg.version, author };
-}
-
-async function appVersion(appDir: string): Promise<string> {
-    return (await appMetadata(appDir)).version;
+    return { version: pkg.version, author, description: pkg.description ?? null, desktopName: pkg.desktopName ?? null };
 }
 
 type FolderFile = { relative: string; absolute: string; size: number };
@@ -296,12 +383,12 @@ async function readResources(resourcesDir: string): Promise<Map<string, BundleEn
         const key = `app.asar.unpacked/${file.relative}`;
         if (file.size < DISK_FILE_THRESHOLD) {
             const data = await fsPromises.readFile(file.absolute);
-            resources.set(key, { kind: "file", mode: unixModeForContent(data), data });
+            resources.set(key, { kind: "file", mode: macModeForContent(data), data });
         } else {
             const { sha1, sha256 } = await hashFile(file.absolute);
             resources.set(key, {
                 kind: "diskFile",
-                mode: unixModeForContent(await readHead(file.absolute)),
+                mode: macModeForContent(await readHead(file.absolute)),
                 path: file.absolute,
                 size: file.size,
                 sha1,
@@ -327,7 +414,7 @@ async function writeFolderAsZip(root: string, file: string): Promise<void> {
     const { directories, files } = await walkFolder(root);
     const modes = new Map<string, number>();
     for (const entry of files) {
-        modes.set(entry.relative, unixModeForContent(await readHead(entry.absolute)));
+        modes.set(entry.relative, linuxModeForContent(await readHead(entry.absolute)));
     }
     const entries: ZipWriteEntry[] = [
         ...directories.map(directory => ({ name: `${directory}/`, source: null, unixMode: 0o755 })),

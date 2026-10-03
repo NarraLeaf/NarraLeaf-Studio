@@ -264,13 +264,14 @@ Every host builds every desktop platform, but not every format of it:
 
 | Host | Windows | macOS | Linux |
 |---|---|---|---|
-| Windows | `zip`, `nsis`, `dir` | `zip` | `zip` |
+| Windows | `zip`, `nsis`, `dir` | `zip` | `zip`, `appimage` |
 | macOS | `zip`, `nsis`, `dir` | `zip`, `dmg`, `dir` | `zip`, `appimage`, `dir` |
 | Linux | `zip`, `nsis`, `dir` | `zip` | `zip`, `appimage`, `dir` |
 
 Off its own platform a macOS or Linux package is assembled by Studio and written straight into its
-archive, because a Windows folder cannot hold the symbolic links a macOS app is made of or the
-permission bits a Linux executable needs; an unpacked folder or a disk image would lose them. A macOS
+package file, because a Windows folder cannot hold the symbolic links a macOS app is made of or the
+permission bits a Linux executable needs; an unpacked folder would lose them, and a disk image needs
+macOS itself. A macOS
 app built that way is signed ad hoc, as an unsigned build made on a Mac is, and cannot carry a
 certificate signature: signing a macOS app with a certificate still requires a Mac. `--build-format`
 refuses a format the host cannot produce before opening the project, with the same sentence the
