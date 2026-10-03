@@ -123,6 +123,7 @@ import {
 import { silenceRuntimeConsole } from "./runtimeConsole";
 import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
+import { installWindowTag, readWindowTag } from "@shared/utils/windowTag";
 
 /**
  * When this process was created, as the operating system recorded it - the zero of the game's
@@ -271,6 +272,11 @@ const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
  * nothing to finish. A driven one does, and whether it is on top says nothing about the game.
  */
 const testDriven = shellMode !== "production" && process.env.NARRALEAF_TEST_DRIVEN === "1";
+
+// The label of whatever session launched this game, in front of its title. Read in every mode: a
+// packaged game started for an acceptance run needs it as much as a preview does, and a player's
+// environment does not carry the variable. See `windowTag.ts`.
+installWindowTag(app, readWindowTag(process.env));
 
 // Preview keeps saves next to the compiled app; a shipped game names its
 // per-user directory explicitly (see resolvePlayerDataDir).
