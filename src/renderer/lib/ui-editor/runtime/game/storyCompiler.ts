@@ -4382,7 +4382,8 @@ async function compileVideoAction(
         // The one-row cutscene: reveal, then run to the end. Two statements because the engine's
         // `play` never shows anything - a clip played without a reveal is heard and not seen, which
         // is what a `play` addressing a clip a hidden `/video` row declared still does. The reveal
-        // waits for the clip to be playable before it lands, so the frame it uncovers is a real one.
+        // resolves once the clip can play, so `play` starts on a loaded clip; an element that is
+        // still loading draws nothing, and the stage shows through it until the first frame.
         return [recordStatement(ctx, video.show(), block), recordStatement(ctx, video.play(), block)];
     }
     if (payload.operation === "create") {
