@@ -31,19 +31,22 @@ and the `content.<locale>/` overlays only).
 
 ## 3. Layout a reader can follow
 
-- Execution runs left to right along one row per band; a band is one chain.
-- A data node sits below and just before the input it feeds, so its wire runs forwards and up. One
-  Element node per consumer, directly under it, rather than one Element fanned out across the graph.
-- A chain fed by an execution node's output (a head's value, a Memo's result) starts to the right of
-  that node. No wire runs backwards.
-- An If keeps its true branch on its own row, to the right; the false branch drops to a band of its
-  own that starts under the If, so its wire runs straight down beside the first branch.
+- Every layer is laid out by `node project/app/blueprint.js format`, which runs the same layout as
+  the canvas toolbar's Format graph button, and is applied as it comes out. Cards are not placed by
+  hand: if a formatted layer is still hard to read, change the graph, not the positions.
+- What that gives: execution runs left to right along one row; an If's true branch continues the
+  row and its false branch starts a row of its own below everything the true branch led to; a data
+  node sits just before and below the input it feeds, a card's feeders stacked in the order of its
+  inputs; a note goes above the part of the graph it was written over; a frame is re-fitted around
+  the cards it held.
+- `format` reports what is left on each layer: wire crossings, wires drawn under a card that is
+  neither of their ends, and backwards wires. The graph is the cause of every one of them, so bring
+  each layer to the lowest count a restructure can reach. The usual causes: one Element node fanned
+  out to several consumers (give each consumer its own Element node), a value computed early and read
+  far away (read it again where it is used), and several execution nodes that each produce one input
+  of a later node.
 - No two cards overlap, and a frame either holds a card entirely or not at all. This is measured
-  from the cards the editor actually draws (their DOM rectangles), not from stored positions: an
-  Element card is about 211 units tall and a Set Element Variant card about 230.
-- Spacing is constant: 90 between execution cards, 60 between a data card and what it feeds, 40
-  between rows, 90 between bands, frames padded 56 at the top and 32 elsewhere.
-- The graph starts at the origin, note first.
+  from the cards the editor actually draws (their DOM rectangles), not from stored positions.
 
 ## 4. The current way to write each thing
 
@@ -105,7 +108,7 @@ title and from inside a game.
 
 ## 8. Tools
 
-- Edit with `node project/app/blueprint.js show` → edit the `.bp` → `check` → `apply --write`, and
+- Edit with `node project/app/blueprint.js show` → edit the `.bp` → `format` → `check` → `apply --write`, and
   `node project/app/ui.js` for elements and components. Never edit `uidoc.json` or `uigraphs.json` by
   hand. Keep each blueprint's id and its first layer's id, so references and history follow.
 - Before and after any change: `blueprint.js check` and `ui.js check` on `content/`, `content.zh/`
