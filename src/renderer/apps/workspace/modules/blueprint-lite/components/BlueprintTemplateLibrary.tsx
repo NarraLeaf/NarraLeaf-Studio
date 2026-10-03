@@ -199,13 +199,20 @@ function TemplateCard(props: {
     const { t, locale } = useTranslation();
     const text = blueprintTemplateText(props.template, locale);
     const Icon = props.template.icon;
+    // The card answers hover as one piece, Add included: the state belongs to the template the
+    // pointer is over, not to whichever of its two controls happens to be under it.
     return (
-        <div className="flex h-full flex-col overflow-hidden rounded-md border border-edge bg-surface-raised">
+        <div
+            className={cn(
+                "group flex h-full flex-col overflow-hidden rounded-md border border-edge bg-surface-raised",
+                "transition-colors duration-150 hover:border-edge-strong hover:bg-fill-subtle has-[:focus-visible]:border-edge-strong",
+            )}
+        >
             <button
                 type="button"
                 onClick={props.onOpen}
                 data-tip={t("blueprint.templateLibrary.openDetail")}
-                className="group flex min-w-0 flex-1 flex-col items-start gap-1.5 p-3 text-left transition-colors duration-150 hover:bg-fill-subtle focus-visible:bg-fill-subtle"
+                className="flex min-w-0 flex-1 flex-col items-start gap-1.5 p-3 text-left"
             >
                 <span className="flex items-center gap-2">
                     <span className="text-fg-muted transition-colors duration-150 group-hover:text-primary">
