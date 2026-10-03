@@ -56,6 +56,9 @@ and the `content.<locale>/` overlays only).
   reads as words, needs no literal node, and works for every widget type.
 - Highlight with **Set Element Variant** (Selected / Default), each with its own Element node.
 - Branch with **If** (True / False). If Else only when there is an else-if.
+- A page the player never comes back to - the Splash page - hands over with **Replace Page**, not
+  Go Page. Go Page would leave it at the bottom of the page stack, where every Title button's
+  `Go Page (None)` lands.
 - **Memo** only where one value feeds two inputs (an output feeds one input; Memo, literals, Element
   nodes and Fn head params are the exceptions), and the note says so.
 - No palette-hidden node types: compare `node project/app/blueprint.js nodes --all` with the plain
