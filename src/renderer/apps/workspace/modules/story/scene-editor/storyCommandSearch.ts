@@ -1,4 +1,4 @@
-import { listCommandDefs } from "./commands/registry";
+import { getCommandDef, listCommandDefs } from "./commands/registry";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
@@ -90,6 +90,38 @@ export function searchActionCommands(commands: readonly PaletteActionCommand[], 
     return commands
         .map((command, index) => ({ command, index, score: scoreCommand(command, query) }))
         .filter((entry): entry is { command: PaletteActionCommand; index: number; score: number } => entry.score !== null)
+        .sort((left, right) => right.score - left.score || left.index - right.index)
+        .map(entry => entry.command);
+}
+
+/** The lowest {@link scoreCommand} tier a plugin action's command word may match at: a label prefix. */
+const COMMAND_WORD_MIN_SCORE = 75;
+
+/**
+ * The plugin actions a typed command word names, most relevant first.
+ *
+ * A plugin action takes its params from the text typed after its command - `createBlock` receives it
+ * as `initialText` - but the menu only offers commands while the caret is on the command word, so a
+ * line like `/rock rpsResult` reached Enter with nothing picked and was committed as an unknown
+ * built-in command. The commit path asks this instead, with the word the line starts with.
+ *
+ * Two limits keep it from reaching past that. The word must match at a precise tier (a keyword, or
+ * the start of the label or id), not by the loose subsequence fallback, so a typo cannot land on a
+ * plugin by accident. And a word that is a built-in command's own spelling answers nothing here: a
+ * built-in line that failed to commit stays the built-in's invalid row, never a plugin's action.
+ */
+export function findPluginActionsByCommandWord(
+    pluginCommands: readonly PaletteActionCommand[],
+    rawWord: string,
+): PaletteActionCommand[] {
+    const word = rawWord.trim().toLowerCase();
+    if (!word || getCommandDef(word)) {
+        return [];
+    }
+    return pluginCommands
+        .map((command, index) => ({ command, index, score: scoreCommand(command, word) }))
+        .filter((entry): entry is { command: PaletteActionCommand; index: number; score: number } =>
+            entry.score !== null && entry.score >= COMMAND_WORD_MIN_SCORE)
         .sort((left, right) => right.score - left.score || left.index - right.index)
         .map(entry => entry.command);
 }

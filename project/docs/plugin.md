@@ -398,7 +398,7 @@ type PluginApp = {
 
 插件 API 是一份白名单：`app.services` 只包含 `storage`、`assets`、`ui`、`widgets`、`blueprintNodes`、`story` 这些经过筛选的接口，不暴露 workspace service registry（旧版的 `app.services.get<T>(service)` 与 `app.services.workspace` 已移除）。信任模型：已安装并启用的插件被信任执行项目作用域内的 UI 与数据操作；任何越界能力（工作区之外的文件系统、bash、权限授予）都必须经由 `app.privileged`，由主进程按插件身份逐次校验。插件通过白名单 API 完成的注册（panel、action、keybinding、widget、动态选项源、story action）由宿主自动记录，插件卸载时会被强制回收，即使插件自身的 cleanup 遗漏了它们。
 
-`app.services.story.actions.register(...)` 向场景编辑器的 Action Creator palette（Plugin 分类）与插入行的 `/` chooser 注册动作；动作创建的是**标准故事块**，文档不因此依赖插件。需要游戏侧逻辑的动作应生成 Blueprint 块并在其中使用插件蓝图节点。
+`app.services.story.actions.register(...)` 向场景编辑器的 Action Creator palette（Plugin 分类）与插入行的 `/` chooser 注册动作。动作可以创建标准故事块（文档不因此依赖插件），也可以创建插件自己的 `{action:"plugin"}` 行：这种行由 runtime entry 用同一个 id 在 `app.game.storyActions` 注册的 `run` 执行，故事等它结束再继续（见 [runtime-api.md](./runtime-api.md#gamestoryactions)）。注册里可选的 `describe(params)` 决定这一行在场景编辑器里显示的文字。
 
 蓝图节点注册强制两条规则：type 以插件 ID 为前缀，且已在 manifest `contributes.blueprintNodes` 中声明。
 
@@ -420,7 +420,7 @@ type PluginApp = {
 | widget 模块 | ✅ 编辑面（module + inspector 等） | ✅ 游戏渲染器（`game.widgets`，须声明于 `contributes.widgets`） |
 | 蓝图节点 | 元数据 + palette + 编辑器预览 execute | 游戏 execute（`game.blueprintNodes`，须声明于 `contributes.blueprintNodes`） |
 | 动态 select 选项源 | ✅ | — |
-| story action | ✅ palette + slash chooser 动作（创建标准故事块） | —（故事级逻辑经 Blueprint 块 + 插件蓝图节点执行） |
+| story action | ✅ palette + slash chooser 动作（创建标准故事块，或插件自己的 `{action:"plugin"}` 行） | ✅ `game.storyActions`：执行插件自己的行，故事等它结束 |
 | assets / storage（项目级 JSON） | ✅ | ✅ `game.data`（随包发布的只读副本）+ `game.store`（须声明 `runtimeCapabilities: ["store"]`） |
 | React host externals | react / react-dom / react-dom-client / jsx | react / react-dom / jsx（无 react-dom/client） |
 | privileged（fs/bash/permissions） | ✅ | 永不提供 |
