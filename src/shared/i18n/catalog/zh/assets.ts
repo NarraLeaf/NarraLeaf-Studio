@@ -124,6 +124,7 @@ export const assets = {
         list: "列表视图",
         icons: "图标视图",
         overview: "总览",
+        details: "详细信息视图",
     },
     filter: {
         label: "筛选",
@@ -141,6 +142,15 @@ export const assets = {
     },
     list: {
         emptyFiltered: "没有符合当前筛选的资产",
+    },
+    browser: {
+        results: {
+            other: "{count} 个结果",
+        },
+        selected: {
+            other: "已选 {count} 项",
+        },
+        location: "位置",
     },
     iconView: {
         updating: "正在更新…",

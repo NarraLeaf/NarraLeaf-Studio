@@ -289,7 +289,9 @@ export const help = {
                 + "\n"
                 + "- Drop a folder onto the panel to import every supported file in it.\n"
                 + "- Replacing an asset's file keeps every reference to it.\n"
-                + "- Deleting an asset that is still in use lists its usages first.",
+                + "- Deleting an asset that is still in use lists its usages first.\n"
+                + "- In the bottom panel, the tree on the left opens a folder, and Import and New Group add to the "
+                + "folder named above its contents. Double-click a folder to open it.",
         },
         assetSources: {
             title: "Where an asset's file comes from",

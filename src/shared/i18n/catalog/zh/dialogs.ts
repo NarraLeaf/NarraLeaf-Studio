@@ -24,6 +24,7 @@ export const dialogs = {
     createGroup: {
         title: "创建分组",
         prompt: "输入 {type} 分组的名称",
+        promptIn: "输入「{parent}」中分组的名称",
         placeholder: "输入分组名称…",
         empty: "分组名称不能为空",
     },
