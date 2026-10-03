@@ -230,8 +230,23 @@
               "name": "Close the log",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Escape and scrolling the mouse wheel down are bound to the Close the log action (Input actions panel), and this page answers it. Clear Page closes every page above the story, this one included, so the player is back in it; with no game running, Go back after it returns to the page beneath. The Back button on the left runs the same two nodes.",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "closeLog"
@@ -239,18 +254,18 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "clr": {
-                    "id": "clr",
+                  "clear": {
+                    "id": "clear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   },
@@ -261,7 +276,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 660,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   }
@@ -269,17 +284,17 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "clr",
+                      "nodeId": "clear",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "clr",
+                      "nodeId": "clear",
                       "port": "next"
                     },
                     "to": {
@@ -361,11 +376,11 @@
           "events": {
             "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e": {
               "id": "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e",
-              "name": "Layer 1",
+              "name": "Open the Save page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -375,8 +390,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e"
@@ -392,11 +407,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -432,11 +447,11 @@
           "events": {
             "6b95dad6-5d52-41b7-9d40-aada0158ec0b": {
               "id": "6b95dad6-5d52-41b7-9d40-aada0158ec0b",
-              "name": "Layer 1",
+              "name": "Open the Load page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -446,8 +461,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402"
@@ -463,11 +478,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -503,11 +518,11 @@
           "events": {
             "dd342855-db21-4496-8cc7-05bbbfb2a81e": {
               "id": "dd342855-db21-4496-8cc7-05bbbfb2a81e",
-              "name": "Layer 1",
+              "name": "Open the Config page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -517,8 +532,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182"
@@ -534,11 +549,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -595,39 +610,54 @@
           "events": {
             "b9f2fb12-c31f-4555-8945-a148e7375c9f": {
               "id": "b9f2fb12-c31f-4555-8945-a148e7375c9f",
-              "name": "Layer 1",
+              "name": "Go back to where the page was opened from",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the log\"): Clear Page returns to the story, and with no game running Go back returns to the page beneath.",
+                      "width": 760,
+                      "height": 110
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -450
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "nClear": {
-                    "id": "nClear",
+                  "clear": {
+                    "id": "clear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -450
+                      }
+                    }
+                  },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.page.back",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 580,
+                        "y": -450
                       }
                     }
                   }
@@ -635,21 +665,21 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "nClear",
+                      "nodeId": "clear",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "nClear",
+                      "nodeId": "clear",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "back",
                       "port": "in"
                     }
                   }
@@ -722,117 +752,228 @@
         },
         "graphs": {
           "eventIds": [
-            "8b66c10b-a56a-4df5-a452-c4b960463ac2"
+            "8b66c10b-a56a-4df5-a452-c4b960463ac2",
+            "log-entries-go-back"
           ],
           "events": {
             "8b66c10b-a56a-4df5-a452-c4b960463ac2": {
               "id": "8b66c10b-a56a-4df5-a452-c4b960463ac2",
-              "name": "Layer 1",
+              "name": "List the story so far",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs when the page opens. Get History gives every line shown so far, Set List Content makes an Entry row for each, and Scroll To Bottom brings the newest into view. Inside a row, Speaker, Line and Avatar each show one field of that row, so this blueprint does not touch them.",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "opened": {
+                    "id": "opened",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "read": {
+                    "id": "read",
                     "type": "blueprint.game.history.get",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "fill": {
+                    "id": "fill",
                     "type": "blueprint.list.setItems",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 580,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "scroll": {
+                    "id": "scroll",
                     "type": "blueprint.list.scrollToBottom",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 870,
-                        "y": 0
+                        "y": -430
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "opened",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "read",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "read",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "read",
+                      "port": "entries"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "fill",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "scroll",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "log-entries-go-back": {
+              "id": "log-entries-go-back",
+              "name": "Go back to the pressed line",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs when the player presses a row. Going back undoes everything after that line, so Show Confirm asks first; its question and its two answers are localization keys, looked up by the three Get Text nodes on the execution wire. On the first answer, Restore From History takes the story back to the pressed line (Get Item Field reads the row's id) and Go back closes this page over it. The second answer leaves the log as it was.",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "n5": {
-                    "id": "n5",
+                  "frame.ask": {
+                    "id": "frame.ask",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Ask first",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1446,
+                      "height": 354
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 290,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "frame.restore": {
+                    "id": "frame.restore",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Go back to that line",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 886,
+                      "height": 350
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1796,
+                        "y": -371
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 270
+                        "y": -323
                       }
                     }
                   },
-                  "n6": {
-                    "id": "n6",
-                    "type": "blueprint.list.getItemField",
+                  "no": {
+                    "id": "no",
+                    "type": "blueprint.localization.getText",
                     "params": {
-                      "field": "id"
+                      "key": "confirm.cancel"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
-                        "y": 530
+                        "x": 318,
+                        "y": -382
                       }
                     }
                   },
-                  "n7": {
-                    "id": "n7",
-                    "type": "blueprint.string.toString",
-                    "params": {},
+                  "yes": {
+                    "id": "yes",
+                    "type": "blueprint.localization.getText",
+                    "params": {
+                      "key": "confirm.historyBackAnswer"
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 1740,
-                        "y": 588
+                        "x": 688,
+                        "y": -382
                       }
                     }
                   },
-                  "n8": {
-                    "id": "n8",
-                    "type": "blueprint.game.history.restore",
-                    "params": {},
+                  "question": {
+                    "id": "question",
+                    "type": "blueprint.localization.getText",
+                    "params": {
+                      "key": "confirm.historyBack"
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 2000,
-                        "y": 270
+                        "x": 1058,
+                        "y": -382
                       }
                     }
                   },
-                  "n9": {
-                    "id": "n9",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 2290,
-                        "y": 270
-                      }
-                    }
-                  },
-                  "nAsk": {
-                    "id": "nAsk",
+                  "ask": {
+                    "id": "ask",
                     "type": "blueprint.layer.confirm",
                     "params": {
                       "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
@@ -846,47 +987,43 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
-                        "y": 211
+                        "x": 1428,
+                        "y": -382
                       }
                     }
                   },
-                  "i18n.nAsk.message": {
-                    "id": "i18n.nAsk.message",
-                    "type": "blueprint.localization.getText",
+                  "row": {
+                    "id": "row",
+                    "type": "blueprint.list.getItemField",
                     "params": {
-                      "key": "confirm.historyBack"
+                      "field": "id"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 211
+                        "x": 1824,
+                        "y": -185
                       }
                     }
                   },
-                  "i18n.nAsk.button_1_label": {
-                    "id": "i18n.nAsk.button_1_label",
-                    "type": "blueprint.localization.getText",
-                    "params": {
-                      "key": "confirm.historyBackAnswer"
-                    },
+                  "restore": {
+                    "id": "restore",
+                    "type": "blueprint.game.history.restore",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 660,
-                        "y": 211
+                        "x": 2164,
+                        "y": -323
                       }
                     }
                   },
-                  "i18n.nAsk.button_2_label": {
-                    "id": "i18n.nAsk.button_2_label",
-                    "type": "blueprint.localization.getText",
-                    "params": {
-                      "key": "confirm.cancel"
-                    },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.page.back",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1030,
-                        "y": 211
+                        "x": 2454,
+                        "y": -323
                       }
                     }
                   }
@@ -894,151 +1031,101 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "no",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "no",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "yes",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
-                      "port": "entries"
-                    },
-                    "to": {
-                      "nodeId": "n3",
-                      "port": "items"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n3",
+                      "nodeId": "yes",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "question",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n6",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "n7",
-                      "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n7",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "n8",
-                      "port": "id"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n8",
+                      "nodeId": "question",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n9",
+                      "nodeId": "ask",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n5",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "i18n.nAsk.message",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nAsk",
-                      "port": "button_1_pressed"
-                    },
-                    "to": {
-                      "nodeId": "n8",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "i18n.nAsk.message",
+                      "nodeId": "question",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "message"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_1_label",
+                      "nodeId": "yes",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "button_1_label"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_2_label",
+                      "nodeId": "no",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "button_2_label"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.message",
-                      "port": "next"
+                      "nodeId": "ask",
+                      "port": "button_1_pressed"
                     },
                     "to": {
-                      "nodeId": "i18n.nAsk.button_1_label",
+                      "nodeId": "restore",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_1_label",
-                      "port": "next"
+                      "nodeId": "row",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "i18n.nAsk.button_2_label",
-                      "port": "in"
+                      "nodeId": "restore",
+                      "port": "id"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_2_label",
+                      "nodeId": "restore",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "back",
                       "port": "in"
                     }
                   }
@@ -7934,28 +8021,43 @@
           "events": {
             "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20": {
               "id": "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20",
-              "name": "Layer 1",
+              "name": "Choose the pressed option",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Item Click runs when the player presses an option, with its Index (0 for the first). Select Choice takes that option of the choice the story is showing, and the story carries on down its branch. Each option draws its words from its own row: Option text shows the row's text.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "choose": {
+                    "id": "choose",
                     "type": "blueprint.game.choose",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -7963,21 +8065,21 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "choose",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "index"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "choose",
                       "port": "index"
                     }
                   }
@@ -8059,8 +8161,23 @@
               "name": "Advance or restore the dialogue",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs on the Advance action (a click, Space or Enter; Input actions panel), which this page answers while the story is on screen. With the dialogue box shown, Next moves the story on one line. With the box hidden (Hide on the quick menu, or a long press), the same press only brings the box back, so no line goes by unseen. An NVL passage reads on with the keys of the actions whose graph here reaches Next, so keep Next in a graph like this one, not in a script layer.",
+                      "width": 1000,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "advance"
@@ -8068,7 +8185,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": -40
+                        "y": -400
                       }
                     }
                   },
@@ -8079,7 +8196,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 340,
-                        "y": 109
+                        "y": -251
                       }
                     }
                   },
@@ -8090,7 +8207,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 600,
-                        "y": 19
+                        "y": -341
                       }
                     }
                   },
@@ -8101,7 +8218,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 19
+                        "y": -341
                       }
                     }
                   },
@@ -8112,12 +8229,22 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 136
+                        "y": -224
                       }
                     }
                   }
                 },
                 "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "branch",
+                      "port": "in"
+                    }
+                  },
                   {
                     "from": {
                       "nodeId": "shown",
@@ -8126,16 +8253,6 @@
                     "to": {
                       "nodeId": "branch",
                       "port": "condition"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "head",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "branch",
-                      "port": "in"
                     }
                   },
                   {
@@ -8169,8 +8286,23 @@
               "name": "Open the log",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs on the Backlog action (scrolling the mouse wheel up; Input actions panel) while the story is on screen. Go Page opens the Log page over the story, as the quick menu's Log button does.",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "backlog"
@@ -8178,12 +8310,12 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "go": {
-                    "id": "go",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18"
@@ -8191,7 +8323,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -8199,11 +8331,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "go",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -8218,8 +8350,23 @@
               "name": "Hide the dialogue",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs on the Hide action (a long press) while the story is on screen. Hide Dialog takes the dialogue box away so the whole picture can be seen; the next Advance brings it back (layer \"Advance or restore the dialogue\"). The quick menu's Hide button does the same with Toggle Dialog Display.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "hide"
@@ -8227,7 +8374,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   },
@@ -8238,7 +8385,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   }
@@ -8246,7 +8393,7 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
@@ -8452,72 +8599,72 @@
           "events": {
             "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3": {
               "id": "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3",
-              "name": "Layer 1",
+              "name": "Show whether Auto is on",
               "graph": {
                 "nodes": {
-                  "init.get": {
-                    "id": "init.get",
-                    "type": "blueprint.game.getAutoForward",
-                    "params": {},
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs each time the quick menu appears. Auto Forward is saved with the player's settings, so a player who left it on sees Auto lit (Selected variant), and otherwise dim (Default). Pressing Auto changes the setting and the highlight in that button's own blueprint.",
+                      "width": 1000,
+                      "height": 130
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 340,
-                        "y": 321
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "init.head": {
-                    "id": "init.head",
+                  "opened": {
+                    "id": "opened",
                     "type": "blueprint.event.head.surfaceInit",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 80,
-                        "y": 231
+                        "x": 0,
+                        "y": -299
                       }
                     }
                   },
-                  "init.if": {
-                    "id": "init.if",
-                    "type": "blueprint.flow.ifElse",
+                  "read": {
+                    "id": "read",
+                    "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 600,
-                        "y": 231
+                        "x": 260,
+                        "y": -209
                       }
                     }
                   },
-                  "init.on.ref": {
-                    "id": "init.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
-                      "elementType": "nl.button"
-                    },
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 894,
-                        "y": 321
+                        "x": 520,
+                        "y": -299
                       }
                     }
                   },
-                  "init.on.set": {
-                    "id": "init.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1164,
-                        "y": 100
+                        "x": 1080,
+                        "y": -430
                       }
                     }
                   },
-                  "init.off.ref": {
-                    "id": "init.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -8526,21 +8673,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 624,
-                        "y": 794
+                        "x": 810,
+                        "y": -209
                       }
                     }
                   },
-                  "init.off.set": {
-                    "id": "init.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 894,
-                        "y": 572
+                        "x": 810,
+                        "y": 42
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 540,
+                        "y": 264
                       }
                     }
                   }
@@ -8548,61 +8710,61 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "init.head",
+                      "nodeId": "opened",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "init.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.get",
+                      "nodeId": "read",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "init.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "init.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "init.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "init.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "init.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -8659,105 +8821,139 @@
           "events": {
             "68339d15-c353-44a9-9d50-993702b978d6": {
               "id": "68339d15-c353-44a9-9d50-993702b978d6",
-              "name": "Layer 1",
+              "name": "Turn Auto on or off",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Sets Auto Forward to the opposite of what it is, then reads it back: this button is lit (Selected variant) when Auto is now on and dim (Default) when it is off. When the menu appears, the quick menu's own blueprint shows the saved setting the same way. Skip is the same graph with the skipping nodes; a component param cannot choose which node runs, and the two buttons show different words, so they are two copies.",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "frame.change": {
+                    "id": "frame.change",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Change the setting",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 810,
+                      "height": 291
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -299
+                      }
+                    }
+                  },
+                  "frame.show": {
+                    "id": "frame.show",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Show the setting on the button",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1076,
+                      "height": 981
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1130,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 131
+                        "y": -251
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "now": {
+                    "id": "now",
                     "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 0,
-                        "y": 292
+                        "x": 288,
+                        "y": -113
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "flip": {
+                    "id": "flip",
                     "type": "blueprint.boolean.not",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 260,
-                        "y": 292
+                        "x": 548,
+                        "y": -113
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "change": {
+                    "id": "change",
                     "type": "blueprint.game.setAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 554,
-                        "y": 131
+                        "x": 842,
+                        "y": -251
                       }
                     }
                   },
-                  "auto.state": {
-                    "id": "auto.state",
+                  "after": {
+                    "id": "after",
                     "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 814,
-                        "y": 221
+                        "x": 1158,
+                        "y": -113
                       }
                     }
                   },
-                  "auto.if": {
-                    "id": "auto.if",
-                    "type": "blueprint.flow.ifElse",
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1074,
-                        "y": 131
+                        "x": 1418,
+                        "y": -251
                       }
                     }
                   },
-                  "auto.on.ref": {
-                    "id": "auto.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
-                      "elementType": "nl.button"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1368,
-                        "y": 221
-                      }
-                    }
-                  },
-                  "auto.on.set": {
-                    "id": "auto.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1638,
-                        "y": 0
+                        "x": 1978,
+                        "y": -382
                       }
                     }
                   },
-                  "auto.off.ref": {
-                    "id": "auto.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -8766,21 +8962,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1098,
-                        "y": 694
+                        "x": 1708,
+                        "y": -161
                       }
                     }
                   },
-                  "auto.off.set": {
-                    "id": "auto.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1368,
-                        "y": 472
+                        "x": 1708,
+                        "y": 90
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1438,
+                        "y": 312
                       }
                     }
                   }
@@ -8788,91 +8999,91 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "now",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "autoForward"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "auto.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.state",
+                      "nodeId": "after",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "auto.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "auto.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "auto.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "auto.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "auto.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -8908,105 +9119,139 @@
           "events": {
             "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2": {
               "id": "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2",
-              "name": "Layer 1",
+              "name": "Turn skipping on or off",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Sets Skipping to the opposite of what it is, then reads it back: this button is lit (Selected variant) while the game skips and dim (Default) when it does not. Skipping reads quickly through line after line; with Skip set to Read only on the Config page it stops at a line the player has not read. Auto is the same graph with the Auto Forward nodes; a component param cannot choose which node runs, and the two buttons show different words, so they are two copies.",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "frame.change": {
+                    "id": "frame.change",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Change the setting",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 810,
+                      "height": 291
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -299
+                      }
+                    }
+                  },
+                  "frame.show": {
+                    "id": "frame.show",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Show the setting on the button",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1076,
+                      "height": 981
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1130,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 131
+                        "y": -251
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "now": {
+                    "id": "now",
                     "type": "blueprint.game.getSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 0,
-                        "y": 292
+                        "x": 288,
+                        "y": -113
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "flip": {
+                    "id": "flip",
                     "type": "blueprint.boolean.not",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 260,
-                        "y": 292
+                        "x": 548,
+                        "y": -113
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "change": {
+                    "id": "change",
                     "type": "blueprint.game.setSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 554,
-                        "y": 131
+                        "x": 842,
+                        "y": -251
                       }
                     }
                   },
-                  "skip.state": {
-                    "id": "skip.state",
+                  "after": {
+                    "id": "after",
                     "type": "blueprint.game.getSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 814,
-                        "y": 221
+                        "x": 1158,
+                        "y": -113
                       }
                     }
                   },
-                  "skip.if": {
-                    "id": "skip.if",
-                    "type": "blueprint.flow.ifElse",
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1074,
-                        "y": 131
+                        "x": 1418,
+                        "y": -251
                       }
                     }
                   },
-                  "skip.on.ref": {
-                    "id": "skip.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
-                      "elementType": "nl.button"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1368,
-                        "y": 221
-                      }
-                    }
-                  },
-                  "skip.on.set": {
-                    "id": "skip.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1638,
-                        "y": 0
+                        "x": 1978,
+                        "y": -382
                       }
                     }
                   },
-                  "skip.off.ref": {
-                    "id": "skip.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -9015,21 +9260,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1098,
-                        "y": 694
+                        "x": 1708,
+                        "y": -161
                       }
                     }
                   },
-                  "skip.off.set": {
-                    "id": "skip.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1368,
-                        "y": 472
+                        "x": 1708,
+                        "y": 90
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1438,
+                        "y": 312
                       }
                     }
                   }
@@ -9037,91 +9297,91 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "now",
                       "port": "skipping"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "skipping"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "skip.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.state",
+                      "nodeId": "after",
                       "port": "skipping"
                     },
                     "to": {
-                      "nodeId": "skip.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "skip.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "skip.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "skip.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "skip.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -9157,22 +9417,37 @@
           "events": {
             "6078ea6a-fb8d-4436-843c-3e143f627bc4": {
               "id": "6078ea6a-fb8d-4436-843c-3e143f627bc4",
-              "name": "Layer 1",
+              "name": "Open the Log page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Opens its page over the story. The quick menu's Log, Save, Load and Config buttons each open one page; a component param could name the page, but the four buttons show different words, which instances of one component cannot, so they are four copies.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18"
@@ -9180,7 +9455,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9188,11 +9463,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9228,22 +9503,37 @@
           "events": {
             "0d4d70ac-b137-4a0a-b976-f3be71efeb48": {
               "id": "0d4d70ac-b137-4a0a-b976-f3be71efeb48",
-              "name": "Layer 1",
+              "name": "Open the Save page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Opens its page over the story. The quick menu's Log, Save, Load and Config buttons each open one page; a component param could name the page, but the four buttons show different words, which instances of one component cannot, so they are four copies.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e"
@@ -9251,7 +9541,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9259,11 +9549,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9299,22 +9589,37 @@
           "events": {
             "9d30f1bf-f6a0-4126-8766-647f0928afcb": {
               "id": "9d30f1bf-f6a0-4126-8766-647f0928afcb",
-              "name": "Layer 1",
+              "name": "Open the Load page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Opens its page over the story. The quick menu's Log, Save, Load and Config buttons each open one page; a component param could name the page, but the four buttons show different words, which instances of one component cannot, so they are four copies.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402"
@@ -9322,7 +9627,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9330,11 +9635,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9370,22 +9675,37 @@
           "events": {
             "dbe6e460-24ec-4344-93a9-01047ef77c7d": {
               "id": "dbe6e460-24ec-4344-93a9-01047ef77c7d",
-              "name": "Layer 1",
+              "name": "Open the Config page",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Opens its page over the story. The quick menu's Log, Save, Load and Config buttons each open one page; a component param could name the page, but the four buttons show different words, which instances of one component cannot, so they are four copies.",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182"
@@ -9393,7 +9713,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9401,11 +9721,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -10917,50 +11237,87 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Layer 1",
+              "name": "Show the speaker's name",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
-                    "type": "blueprint.data.returnValue",
-                    "params": {},
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "The Nametag text is bound to this blueprint (Blueprint Value): what Return Value hands back is what the text shows. It runs when the dialogue box appears (Init) and each time it shows a new line (On Flush). Get Nametag gives the name of the character who is speaking, and nothing on a narration line.",
+                      "width": 760,
+                      "height": 130
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 550,
-                        "y": 0
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "appearName": {
+                    "id": "appearName",
+                    "type": "blueprint.game.getNametag",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -339
+                      }
+                    }
+                  },
+                  "appearReturn": {
+                    "id": "appearReturn",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
                     "type": "blueprint.event.head.flush",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 258
+                        "y": -172
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "lineName": {
+                    "id": "lineName",
                     "type": "blueprint.game.getNametag",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 91
+                        "x": 260,
+                        "y": -81
+                      }
+                    }
+                  },
+                  "lineReturn": {
+                    "id": "lineReturn",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -172
                       }
                     }
                   }
@@ -10968,31 +11325,41 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "appearReturn",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "n1",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n4",
+                      "nodeId": "appearName",
                       "port": "nametag"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "appearReturn",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineReturn",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineName",
+                      "port": "nametag"
+                    },
+                    "to": {
+                      "nodeId": "lineReturn",
                       "port": "value"
                     }
                   }
@@ -11137,33 +11504,48 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Layer 1",
+              "name": "Show the question",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "The Message text is bound to this blueprint (Blueprint Value). Show Confirm opens this page with the question in its page props, under message: Get Page Props reads them when the page appears, Get JSON Field takes message out, and Return Value hands it to the text.",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "props": {
+                    "id": "props",
                     "type": "blueprint.page.getProps",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 117
+                        "y": -313
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "question": {
+                    "id": "question",
                     "type": "blueprint.data.jsonGet",
                     "params": {
                       "__inlineLiteralPins": [
@@ -11174,18 +11556,18 @@
                     "meta": {
                       "editorLayout": {
                         "x": 260,
-                        "y": 117
+                        "y": -313
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "give": {
+                    "id": "give",
                     "type": "blueprint.data.returnValue",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -11193,31 +11575,31 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "give",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "props",
                       "port": "props"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "question",
                       "port": "json"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "question",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "give",
                       "port": "value"
                     }
                   }
@@ -11256,79 +11638,64 @@
           "events": {
             "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a": {
               "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a",
-              "name": "Layer 1",
+              "name": "Answer with the pressed button",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs when the player presses one of the buttons. Close This Layer closes this page and hands the button's index, read from its row (0 for the first), back to the Show Confirm that opened it, which then runs that button's Pressed output. The first button is the answer that acts, so it plays the confirm sound; a later one backs out and plays the back sound (both are functions of the Global blueprint).",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
-                    "type": "blueprint.layer.closeSelf",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1470,
-                        "y": 59
-                      }
-                    }
-                  },
-                  "sfx.zero": {
-                    "id": "sfx.zero",
-                    "type": "blueprint.data.integerLiteral",
+                  "later": {
+                    "id": "later",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {
-                      "value": 0
+                      "__inlineLiteralPins": [
+                        "b"
+                      ],
+                      "b": 0
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 198
+                        "x": 260,
+                        "y": -281
                       }
                     }
                   },
-                  "nMemoIndex": {
-                    "id": "nMemoIndex",
-                    "type": "blueprint.data.memo",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": 59
-                      }
-                    }
-                  },
-                  "sfx.notFirst": {
-                    "id": "sfx.notFirst",
-                    "type": "blueprint.compare.greaterThan",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 550,
-                        "y": 235
-                      }
-                    }
-                  },
-                  "sfx.branch": {
-                    "id": "sfx.branch",
+                  "branch": {
+                    "id": "branch",
                     "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 810,
-                        "y": 59
+                        "x": 532,
+                        "y": -371
                       }
                     }
                   },
-                  "sfx.back": {
-                    "id": "sfx.back",
+                  "backCue": {
+                    "id": "backCue",
                     "type": "blueprint.fn.call",
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
@@ -11340,13 +11707,13 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1100,
-                        "y": 0
+                        "x": 822,
+                        "y": -430
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
+                  "confirmCue": {
+                    "id": "confirmCue",
                     "type": "blueprint.fn.call",
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
@@ -11358,8 +11725,32 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1100,
-                        "y": 176
+                        "x": 822,
+                        "y": -254
+                      }
+                    }
+                  },
+                  "answer": {
+                    "id": "answer",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "index"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1192,
+                        "y": -108
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.layer.closeSelf",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1532,
+                        "y": -371
                       }
                     }
                   }
@@ -11367,112 +11758,82 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "nMemoIndex",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "result"
+                      "nodeId": "pressed",
+                      "port": "index"
                     },
                     "to": {
-                      "nodeId": "n2",
-                      "port": "result"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "sfx.notFirst",
+                      "nodeId": "later",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.zero",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "sfx.notFirst",
-                      "port": "b"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.notFirst",
+                      "nodeId": "later",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "true"
                     },
                     "to": {
-                      "nodeId": "sfx.back",
+                      "nodeId": "backCue",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "false"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "confirmCue",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.back",
+                      "nodeId": "backCue",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "close",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "confirmCue",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "close",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n1",
-                      "port": "index"
-                    },
-                    "to": {
-                      "nodeId": "nMemoIndex",
+                      "nodeId": "answer",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "next"
                     },
                     "to": {
-                      "nodeId": "sfx.branch",
-                      "port": "in"
+                      "nodeId": "close",
+                      "port": "result"
                     }
                   }
                 ],
@@ -11611,50 +11972,87 @@
           "events": {
             "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f": {
               "id": "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "Show the speaker's avatar",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Init runs when the dialogue box appears, and On Flush each time it shows a new line; each sets this image to the avatar of the character who is speaking (Characters panel). A narration line has no speaker, so the image is left empty.",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "appearAvatar": {
+                    "id": "appearAvatar",
+                    "type": "blueprint.game.getSpeakerAvatar",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -339
+                      }
+                    }
+                  },
+                  "appearSet": {
+                    "id": "appearSet",
+                    "type": "blueprint.image.setImageAsset",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
                     "type": "blueprint.event.head.flush",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 258
+                        "y": -172
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "lineAvatar": {
+                    "id": "lineAvatar",
                     "type": "blueprint.game.getSpeakerAvatar",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 91
+                        "x": 260,
+                        "y": -81
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "lineSet": {
+                    "id": "lineSet",
                     "type": "blueprint.image.setImageAsset",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 550,
-                        "y": 0
+                        "x": 520,
+                        "y": -172
                       }
                     }
                   }
@@ -11662,31 +12060,41 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "appearSet",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "n4",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n3",
+                      "nodeId": "appearAvatar",
                       "port": "avatar"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "appearSet",
+                      "port": "asset"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineAvatar",
+                      "port": "avatar"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
                       "port": "asset"
                     }
                   }
@@ -12577,28 +12985,43 @@
           "events": {
             "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f": {
               "id": "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "Hide or show the dialogue box",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Toggle Dialog Display hides the dialogue box when it is shown and shows it when it is hidden. While it is hidden, the Advance press that would read on brings it back instead (the Dialogue page's blueprint).",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "toggle": {
+                    "id": "toggle",
                     "type": "blueprint.game.toggleDialogDisplay",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -12606,11 +13029,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "toggle",
                       "port": "in"
                     }
                   }
@@ -24942,6 +25365,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T19:40:42.779Z"
+    "updatedAt": "2026-10-03T20:00:11.334Z"
   }
 }

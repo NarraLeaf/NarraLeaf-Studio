@@ -19,6 +19,7 @@ import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 import { onInputActionPanelFocus } from "./inputActionPanelFocus";
 import { answeredActionIdsForSelection, scrollRowIntoListView } from "../panel/selectionHighlights";
 import { useSelectionHighlight } from "../panel/useSelectionHighlight";
+import { useRailSectionOpen } from "../panel/useRailSectionOpen";
 
 /** How long the section, or the one action asked for, stays marked after a request to show it. */
 const FOCUS_FLASH_MS = 1600;
@@ -51,16 +52,16 @@ function countAnsweringSurfaces(documentService: UIDocumentService | null): Reco
  * "advance" defined one section down the same rail.
  *
  * The actions live here and only here: an interface says whether it answers one, not what it is.
- * That makes this the place an author starts from rather than one they visit, so it opens with the
- * rail rather than waiting to be found - it was the one section here that did not, and it sat under
- * a component library long enough to push it off the bottom of the window.
+ * Folded on a project that has never opened it, like the library above it (see
+ * `useRailSectionOpen`): the interface list is what the rail is for. Somebody who needs an action
+ * from elsewhere - the inspector's Input section - opens it through `requestInputActionPanelFocus`.
  */
 export function InputActionLibraryPanel({ documentService, uiService }: InputActionLibraryPanelProps) {
     const { t, tn } = useTranslation();
     // Browsable while frozen, as the component library is: reading the vocabulary costs nothing,
     // and only creating, renaming, rebinding and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const [open, setOpen] = useState(true);
+    const [open, setOpen] = useRailSectionOpen("inputActions");
     const [highlighted, setHighlighted] = useState(false);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);

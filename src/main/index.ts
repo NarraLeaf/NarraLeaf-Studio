@@ -10,6 +10,7 @@ import {
     installCommandLineRunEnd,
     readCommandLineRunIdentity,
 } from '@/app/application/commandLineRunEnd';
+import { installWindowTag, readWindowTag } from '@shared/utils/windowTag';
 
 // Before anything that can fail. A `--build`, `--test` or `--lint` launch has nobody at the screen,
 // and from here on every failure that would otherwise put something in front of a person - the
@@ -21,6 +22,9 @@ const commandLineRun = installCommandLineRunEnd(process.argv, createProcessRunEn
 // a few statements later, which is exactly the log a person goes looking in.
 const bootLogger = new Logger('MainProcess');
 commandLineRun?.useLog(line => bootLogger.info(`[CommandLine] ${line}`));
+// Before any window exists: every one of them, dialogs and popups included, carries the session's
+// label when the launch asked for one. See `windowTag.ts`.
+installWindowTag(electronApp, readWindowTag(process.env));
 
 /**
  * Build the app, or hand a failure to build it to the command-line run.

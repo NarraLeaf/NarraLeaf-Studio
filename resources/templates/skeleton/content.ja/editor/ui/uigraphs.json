@@ -230,8 +230,23 @@
               "name": "ログを閉じる",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Esc キーとマウスホイールを下に回す操作は「ログを閉じる」入力アクションに割り当てられており（「入力アクション」パネル）、このページがそれに応える。「ページをすべて閉じる」はこのページを含めストーリーの上にあるページをすべて閉じ、プレイヤーはストーリーに戻る。ゲームが動いていないときは、続く「前のページに戻る」が下のページに戻る。左の「戻る」ボタンも同じ二つのノードを使う。",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "closeLog"
@@ -239,18 +254,18 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "clr": {
-                    "id": "clr",
+                  "clear": {
+                    "id": "clear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   },
@@ -261,7 +276,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 660,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   }
@@ -269,17 +284,17 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "clr",
+                      "nodeId": "clear",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "clr",
+                      "nodeId": "clear",
                       "port": "next"
                     },
                     "to": {
@@ -361,11 +376,11 @@
           "events": {
             "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e": {
               "id": "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e",
-              "name": "レイヤー 1",
+              "name": "「セーブ」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -375,8 +390,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e"
@@ -392,11 +407,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -432,11 +447,11 @@
           "events": {
             "6b95dad6-5d52-41b7-9d40-aada0158ec0b": {
               "id": "6b95dad6-5d52-41b7-9d40-aada0158ec0b",
-              "name": "レイヤー 1",
+              "name": "「ロード」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -446,8 +461,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402"
@@ -463,11 +478,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -503,11 +518,11 @@
           "events": {
             "dd342855-db21-4496-8cc7-05bbbfb2a81e": {
               "id": "dd342855-db21-4496-8cc7-05bbbfb2a81e",
-              "name": "レイヤー 1",
+              "name": "「設定」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
@@ -517,8 +532,8 @@
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182"
@@ -534,11 +549,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -595,39 +610,54 @@
           "events": {
             "b9f2fb12-c31f-4555-8945-a148e7375c9f": {
               "id": "b9f2fb12-c31f-4555-8945-a148e7375c9f",
-              "name": "レイヤー 1",
+              "name": "このページを開く前の場所に戻る",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "このページで Esc キーを押したときと同じ動作（ページのブループリントの「ログを閉じる」レイヤー）。「ページをすべて閉じる」でストーリーに戻り、ゲームが動いていないときは「前のページに戻る」で下のページに戻る。",
+                      "width": 760,
+                      "height": 110
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -450
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "nClear": {
-                    "id": "nClear",
+                  "clear": {
+                    "id": "clear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -450
+                      }
+                    }
+                  },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.page.back",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 580,
+                        "y": -450
                       }
                     }
                   }
@@ -635,21 +665,21 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "nClear",
+                      "nodeId": "clear",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "nClear",
+                      "nodeId": "clear",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "back",
                       "port": "in"
                     }
                   }
@@ -722,117 +752,228 @@
         },
         "graphs": {
           "eventIds": [
-            "8b66c10b-a56a-4df5-a452-c4b960463ac2"
+            "8b66c10b-a56a-4df5-a452-c4b960463ac2",
+            "log-entries-go-back"
           ],
           "events": {
             "8b66c10b-a56a-4df5-a452-c4b960463ac2": {
               "id": "8b66c10b-a56a-4df5-a452-c4b960463ac2",
-              "name": "レイヤー 1",
+              "name": "これまでのストーリーを並べる",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ページを開いたときに動く。「履歴を取得」がこれまでに表示したすべての行を返し、「リストの中身を設定」が行ごとに「項目」を作り、「末尾までスクロール」が最新の行を表示する。各項目の「話者」「セリフ」「アバター」はそれぞれその行のフィールドを一つ表示するので、このブループリントでは扱わない。",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "opened": {
+                    "id": "opened",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "read": {
+                    "id": "read",
                     "type": "blueprint.game.history.get",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "fill": {
+                    "id": "fill",
                     "type": "blueprint.list.setItems",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 580,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "scroll": {
+                    "id": "scroll",
                     "type": "blueprint.list.scrollToBottom",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 870,
-                        "y": 0
+                        "y": -430
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "opened",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "read",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "read",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "read",
+                      "port": "entries"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "fill",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "scroll",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "log-entries-go-back": {
+              "id": "log-entries-go-back",
+              "name": "押された行に戻る",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "プレイヤーが行を押すと動く。その行に戻るとそれ以降がすべて取り消されるため、先に「確認を求める」で尋ねる。質問と二つの答えはローカライズキーで、実行線上の三つの「テキストを取得」が引く。一つ目の答えでは「履歴から復元」がストーリーを押された行まで戻し（「項目の値を取得」が行の id を読む）、「前のページに戻る」がこのページを閉じる。二つ目の答えではログはそのまま。",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "n5": {
-                    "id": "n5",
+                  "frame.ask": {
+                    "id": "frame.ask",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "先に尋ねる",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1446,
+                      "height": 354
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 290,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "frame.restore": {
+                    "id": "frame.restore",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "その行に戻る",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 886,
+                      "height": 350
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1796,
+                        "y": -371
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 270
+                        "y": -323
                       }
                     }
                   },
-                  "n6": {
-                    "id": "n6",
-                    "type": "blueprint.list.getItemField",
+                  "no": {
+                    "id": "no",
+                    "type": "blueprint.localization.getText",
                     "params": {
-                      "field": "id"
+                      "key": "confirm.cancel"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
-                        "y": 530
+                        "x": 318,
+                        "y": -382
                       }
                     }
                   },
-                  "n7": {
-                    "id": "n7",
-                    "type": "blueprint.string.toString",
-                    "params": {},
+                  "yes": {
+                    "id": "yes",
+                    "type": "blueprint.localization.getText",
+                    "params": {
+                      "key": "confirm.historyBackAnswer"
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 1740,
-                        "y": 588
+                        "x": 688,
+                        "y": -382
                       }
                     }
                   },
-                  "n8": {
-                    "id": "n8",
-                    "type": "blueprint.game.history.restore",
-                    "params": {},
+                  "question": {
+                    "id": "question",
+                    "type": "blueprint.localization.getText",
+                    "params": {
+                      "key": "confirm.historyBack"
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 2000,
-                        "y": 270
+                        "x": 1058,
+                        "y": -382
                       }
                     }
                   },
-                  "n9": {
-                    "id": "n9",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 2290,
-                        "y": 270
-                      }
-                    }
-                  },
-                  "nAsk": {
-                    "id": "nAsk",
+                  "ask": {
+                    "id": "ask",
                     "type": "blueprint.layer.confirm",
                     "params": {
                       "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
@@ -846,47 +987,43 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
-                        "y": 211
+                        "x": 1428,
+                        "y": -382
                       }
                     }
                   },
-                  "i18n.nAsk.message": {
-                    "id": "i18n.nAsk.message",
-                    "type": "blueprint.localization.getText",
+                  "row": {
+                    "id": "row",
+                    "type": "blueprint.list.getItemField",
                     "params": {
-                      "key": "confirm.historyBack"
+                      "field": "id"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 211
+                        "x": 1824,
+                        "y": -185
                       }
                     }
                   },
-                  "i18n.nAsk.button_1_label": {
-                    "id": "i18n.nAsk.button_1_label",
-                    "type": "blueprint.localization.getText",
-                    "params": {
-                      "key": "confirm.historyBackAnswer"
-                    },
+                  "restore": {
+                    "id": "restore",
+                    "type": "blueprint.game.history.restore",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 660,
-                        "y": 211
+                        "x": 2164,
+                        "y": -323
                       }
                     }
                   },
-                  "i18n.nAsk.button_2_label": {
-                    "id": "i18n.nAsk.button_2_label",
-                    "type": "blueprint.localization.getText",
-                    "params": {
-                      "key": "confirm.cancel"
-                    },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.page.back",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1030,
-                        "y": 211
+                        "x": 2454,
+                        "y": -323
                       }
                     }
                   }
@@ -894,151 +1031,101 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "no",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "no",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "yes",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
-                      "port": "entries"
-                    },
-                    "to": {
-                      "nodeId": "n3",
-                      "port": "items"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n3",
+                      "nodeId": "yes",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "question",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n6",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "n7",
-                      "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n7",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "n8",
-                      "port": "id"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n8",
+                      "nodeId": "question",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n9",
+                      "nodeId": "ask",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n5",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "i18n.nAsk.message",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nAsk",
-                      "port": "button_1_pressed"
-                    },
-                    "to": {
-                      "nodeId": "n8",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "i18n.nAsk.message",
+                      "nodeId": "question",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "message"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_1_label",
+                      "nodeId": "yes",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "button_1_label"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_2_label",
+                      "nodeId": "no",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "ask",
                       "port": "button_2_label"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.message",
-                      "port": "next"
+                      "nodeId": "ask",
+                      "port": "button_1_pressed"
                     },
                     "to": {
-                      "nodeId": "i18n.nAsk.button_1_label",
+                      "nodeId": "restore",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_1_label",
-                      "port": "next"
+                      "nodeId": "row",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "i18n.nAsk.button_2_label",
-                      "port": "in"
+                      "nodeId": "restore",
+                      "port": "id"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "i18n.nAsk.button_2_label",
+                      "nodeId": "restore",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "nAsk",
+                      "nodeId": "back",
                       "port": "in"
                     }
                   }
@@ -7934,28 +8021,43 @@
           "events": {
             "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20": {
               "id": "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20",
-              "name": "レイヤー 1",
+              "name": "押された選択肢を選ぶ",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "プレイヤーが選択肢を押すと「項目のクリック」が動き、「位置」にその番号（最初が 0）が入る。「選択肢を選ぶ」はストーリーが表示している選択肢のうちその項目を選び、ストーリーはその分岐へ進む。各選択肢の文字はその行から取る。「選択肢テキスト」が行のテキストを表示する。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "choose": {
+                    "id": "choose",
                     "type": "blueprint.game.choose",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -7963,21 +8065,21 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "choose",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "index"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "choose",
                       "port": "index"
                     }
                   }
@@ -8059,8 +8161,23 @@
               "name": "会話を送る・会話を再表示",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「送る」アクション（クリック、Space、Enter。「入力アクション」パネルを参照）で動き、ストーリーの表示中はこのページがこのアクションに応える。ダイアログが表示されているときは「次へ」でストーリーを一行進める。ダイアログが隠れているとき（クイックメニューの「非表示」または長押し）は、同じ操作でダイアログを再表示するだけなので、見ないまま過ぎる行はない。NVL の場面は、ここで「次へ」に届くアクションのキーで読み進めるため、「次へ」はスクリプトレイヤーではなく、このようなグラフに置く。",
+                      "width": 1000,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "advance"
@@ -8068,7 +8185,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": -40
+                        "y": -400
                       }
                     }
                   },
@@ -8079,7 +8196,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 340,
-                        "y": 109
+                        "y": -251
                       }
                     }
                   },
@@ -8090,7 +8207,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 600,
-                        "y": 19
+                        "y": -341
                       }
                     }
                   },
@@ -8101,7 +8218,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 19
+                        "y": -341
                       }
                     }
                   },
@@ -8112,12 +8229,22 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 136
+                        "y": -224
                       }
                     }
                   }
                 },
                 "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "branch",
+                      "port": "in"
+                    }
+                  },
                   {
                     "from": {
                       "nodeId": "shown",
@@ -8126,16 +8253,6 @@
                     "to": {
                       "nodeId": "branch",
                       "port": "condition"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "head",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "branch",
-                      "port": "in"
                     }
                   },
                   {
@@ -8169,8 +8286,23 @@
               "name": "ログを開く",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの表示中に「バックログ」アクション（マウスホイールを上に回す。「入力アクション」パネルを参照）で動く。「ページへ移動」はストーリーの上に「ログ」ページを開く。クイックメニューの「ログ」ボタンと同じ。",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "backlog"
@@ -8178,12 +8310,12 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "go": {
-                    "id": "go",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18"
@@ -8191,7 +8323,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -8199,11 +8331,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "go",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -8218,8 +8350,23 @@
               "name": "会話を隠す",
               "graph": {
                 "nodes": {
-                  "head": {
-                    "id": "head",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの表示中に「非表示」アクション（長押し）で動く。「ダイアログを隠す」はダイアログを隠し、画面全体を見せる。次の「送る」で再び表示される（「会話を送る・会話を再表示」レイヤー）。クイックメニューの「非表示」ボタンは「ダイアログの表示を切り替え」で同じことをする。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.action",
                     "params": {
                       "actionId": "hide"
@@ -8227,7 +8374,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   },
@@ -8238,7 +8385,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 370,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   }
@@ -8246,7 +8393,7 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "head",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
@@ -8452,72 +8599,72 @@
           "events": {
             "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3": {
               "id": "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3",
-              "name": "レイヤー 1",
+              "name": "「オート」がオンかを表示",
               "graph": {
                 "nodes": {
-                  "init.get": {
-                    "id": "init.get",
-                    "type": "blueprint.game.getAutoForward",
-                    "params": {},
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "クイックメニューが現れるたびに動く。自動送りはプレイヤーの設定と一緒に保存されるため、オンのままにしていたプレイヤーには「オート」が点灯して（「選択中」バリアント）見え、そうでなければ消灯して（「デフォルト」）見える。「オート」を押すと、そのボタン自身のブループリントが設定とハイライトを切り替える。",
+                      "width": 1000,
+                      "height": 130
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 340,
-                        "y": 321
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "init.head": {
-                    "id": "init.head",
+                  "opened": {
+                    "id": "opened",
                     "type": "blueprint.event.head.surfaceInit",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 80,
-                        "y": 231
+                        "x": 0,
+                        "y": -299
                       }
                     }
                   },
-                  "init.if": {
-                    "id": "init.if",
-                    "type": "blueprint.flow.ifElse",
+                  "read": {
+                    "id": "read",
+                    "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 600,
-                        "y": 231
+                        "x": 260,
+                        "y": -209
                       }
                     }
                   },
-                  "init.on.ref": {
-                    "id": "init.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
-                      "elementType": "nl.button"
-                    },
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 894,
-                        "y": 321
+                        "x": 520,
+                        "y": -299
                       }
                     }
                   },
-                  "init.on.set": {
-                    "id": "init.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1164,
-                        "y": 100
+                        "x": 1080,
+                        "y": -430
                       }
                     }
                   },
-                  "init.off.ref": {
-                    "id": "init.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -8526,21 +8673,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 624,
-                        "y": 794
+                        "x": 810,
+                        "y": -209
                       }
                     }
                   },
-                  "init.off.set": {
-                    "id": "init.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 894,
-                        "y": 572
+                        "x": 810,
+                        "y": 42
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 540,
+                        "y": 264
                       }
                     }
                   }
@@ -8548,61 +8710,61 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "init.head",
+                      "nodeId": "opened",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "init.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.get",
+                      "nodeId": "read",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "init.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "init.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "init.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "init.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "init.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "init.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -8659,105 +8821,139 @@
           "events": {
             "68339d15-c353-44a9-9d50-993702b978d6": {
               "id": "68339d15-c353-44a9-9d50-993702b978d6",
-              "name": "レイヤー 1",
+              "name": "「オート」をオン・オフ",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "自動送りを今と逆の値にしてから、もう一度読む。オンになっていればこのボタンを点灯させ（「選択中」バリアント）、オフなら消灯させる（「デフォルト」）。メニューが現れたときは、クイックメニュー自身のブループリントが保存済みの設定を同じ方法で表示する。「スキップ」は連続スキップのノードを使う同じ形のグラフ。コンポーネントのパラメータでは動かすノードを選べず、二つのボタンは表示する文字も違うため、二つのコピーにしている。",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "frame.change": {
+                    "id": "frame.change",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "設定を変える",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 810,
+                      "height": 291
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -299
+                      }
+                    }
+                  },
+                  "frame.show": {
+                    "id": "frame.show",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "設定をボタンに表示",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1076,
+                      "height": 981
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1130,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 131
+                        "y": -251
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "now": {
+                    "id": "now",
                     "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 0,
-                        "y": 292
+                        "x": 288,
+                        "y": -113
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "flip": {
+                    "id": "flip",
                     "type": "blueprint.boolean.not",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 260,
-                        "y": 292
+                        "x": 548,
+                        "y": -113
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "change": {
+                    "id": "change",
                     "type": "blueprint.game.setAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 554,
-                        "y": 131
+                        "x": 842,
+                        "y": -251
                       }
                     }
                   },
-                  "auto.state": {
-                    "id": "auto.state",
+                  "after": {
+                    "id": "after",
                     "type": "blueprint.game.getAutoForward",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 814,
-                        "y": 221
+                        "x": 1158,
+                        "y": -113
                       }
                     }
                   },
-                  "auto.if": {
-                    "id": "auto.if",
-                    "type": "blueprint.flow.ifElse",
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1074,
-                        "y": 131
+                        "x": 1418,
+                        "y": -251
                       }
                     }
                   },
-                  "auto.on.ref": {
-                    "id": "auto.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
-                      "elementType": "nl.button"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1368,
-                        "y": 221
-                      }
-                    }
-                  },
-                  "auto.on.set": {
-                    "id": "auto.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1638,
-                        "y": 0
+                        "x": 1978,
+                        "y": -382
                       }
                     }
                   },
-                  "auto.off.ref": {
-                    "id": "auto.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -8766,21 +8962,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1098,
-                        "y": 694
+                        "x": 1708,
+                        "y": -161
                       }
                     }
                   },
-                  "auto.off.set": {
-                    "id": "auto.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1368,
-                        "y": 472
+                        "x": 1708,
+                        "y": 90
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "e7e527a6-1b58-4c8d-b2ba-822c7042a615",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1438,
+                        "y": 312
                       }
                     }
                   }
@@ -8788,91 +8999,91 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "now",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "autoForward"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "auto.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.state",
+                      "nodeId": "after",
                       "port": "autoForward"
                     },
                     "to": {
-                      "nodeId": "auto.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "auto.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "auto.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "auto.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "auto.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "auto.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -8908,105 +9119,139 @@
           "events": {
             "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2": {
               "id": "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2",
-              "name": "レイヤー 1",
+              "name": "連続スキップをオン・オフ",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "連続スキップを今と逆の値にしてから、もう一度読む。スキップ中はこのボタンを点灯させ（「選択中」バリアント）、そうでなければ消灯させる（「デフォルト」）。連続スキップは行を次々に読み飛ばし、「設定」ページの「スキップ」が「既読のみ」なら、プレイヤーがまだ読んでいない行で止まる。「オート」は自動送りのノードを使う同じ形のグラフ。コンポーネントのパラメータでは動かすノードを選べず、二つのボタンは表示する文字も違うため、二つのコピーにしている。",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "frame.change": {
+                    "id": "frame.change",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "設定を変える",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 810,
+                      "height": 291
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -299
+                      }
+                    }
+                  },
+                  "frame.show": {
+                    "id": "frame.show",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "設定をボタンに表示",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1076,
+                      "height": 981
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1130,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 131
+                        "y": -251
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "now": {
+                    "id": "now",
                     "type": "blueprint.game.getSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 0,
-                        "y": 292
+                        "x": 288,
+                        "y": -113
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "flip": {
+                    "id": "flip",
                     "type": "blueprint.boolean.not",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 260,
-                        "y": 292
+                        "x": 548,
+                        "y": -113
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "change": {
+                    "id": "change",
                     "type": "blueprint.game.setSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 554,
-                        "y": 131
+                        "x": 842,
+                        "y": -251
                       }
                     }
                   },
-                  "skip.state": {
-                    "id": "skip.state",
+                  "after": {
+                    "id": "after",
                     "type": "blueprint.game.getSkipping",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 814,
-                        "y": 221
+                        "x": 1158,
+                        "y": -113
                       }
                     }
                   },
-                  "skip.if": {
-                    "id": "skip.if",
-                    "type": "blueprint.flow.ifElse",
+                  "branch": {
+                    "id": "branch",
+                    "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1074,
-                        "y": 131
+                        "x": 1418,
+                        "y": -251
                       }
                     }
                   },
-                  "skip.on.ref": {
-                    "id": "skip.on.ref",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
-                      "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
-                      "elementType": "nl.button"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1368,
-                        "y": 221
-                      }
-                    }
-                  },
-                  "skip.on.set": {
-                    "id": "skip.on.set",
+                  "light": {
+                    "id": "light",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "selected"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1638,
-                        "y": 0
+                        "x": 1978,
+                        "y": -382
                       }
                     }
                   },
-                  "skip.off.ref": {
-                    "id": "skip.off.ref",
+                  "lightEl": {
+                    "id": "lightEl",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
@@ -9015,21 +9260,36 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1098,
-                        "y": 694
+                        "x": 1708,
+                        "y": -161
                       }
                     }
                   },
-                  "skip.off.set": {
-                    "id": "skip.off.set",
+                  "dim": {
+                    "id": "dim",
                     "type": "blueprint.element.displayable.setVariant",
                     "params": {
                       "variantId": "default"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1368,
-                        "y": 472
+                        "x": 1708,
+                        "y": 90
+                      }
+                    }
+                  },
+                  "dimEl": {
+                    "id": "dimEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                      "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1438,
+                        "y": 312
                       }
                     }
                   }
@@ -9037,91 +9297,91 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "now",
                       "port": "skipping"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "flip",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "skipping"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n4",
+                      "nodeId": "change",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "skip.if",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.state",
+                      "nodeId": "after",
                       "port": "skipping"
                     },
                     "to": {
-                      "nodeId": "skip.if",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.if",
-                      "port": "then"
+                      "nodeId": "branch",
+                      "port": "true"
                     },
                     "to": {
-                      "nodeId": "skip.on.set",
+                      "nodeId": "light",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.on.ref",
+                      "nodeId": "lightEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "skip.on.set",
+                      "nodeId": "light",
                       "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.if",
-                      "port": "else"
+                      "nodeId": "branch",
+                      "port": "false"
                     },
                     "to": {
-                      "nodeId": "skip.off.set",
+                      "nodeId": "dim",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "skip.off.ref",
+                      "nodeId": "dimEl",
                       "port": "element"
                     },
                     "to": {
-                      "nodeId": "skip.off.set",
+                      "nodeId": "dim",
                       "port": "element"
                     }
                   }
@@ -9157,22 +9417,37 @@
           "events": {
             "6078ea6a-fb8d-4436-843c-3e143f627bc4": {
               "id": "6078ea6a-fb8d-4436-843c-3e143f627bc4",
-              "name": "レイヤー 1",
+              "name": "「ログ」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの上に対応するページを開く。クイックメニューの「ログ」「セーブ」「ロード」「設定」ボタンはそれぞれ一つのページを開く。ページはコンポーネントのパラメータで指定できるが、四つのボタンは表示する文字が違い、同じコンポーネントのインスタンスではそれができないため、四つのコピーにしている。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18"
@@ -9180,7 +9455,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9188,11 +9463,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9228,22 +9503,37 @@
           "events": {
             "0d4d70ac-b137-4a0a-b976-f3be71efeb48": {
               "id": "0d4d70ac-b137-4a0a-b976-f3be71efeb48",
-              "name": "レイヤー 1",
+              "name": "「セーブ」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの上に対応するページを開く。クイックメニューの「ログ」「セーブ」「ロード」「設定」ボタンはそれぞれ一つのページを開く。ページはコンポーネントのパラメータで指定できるが、四つのボタンは表示する文字が違い、同じコンポーネントのインスタンスではそれができないため、四つのコピーにしている。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e"
@@ -9251,7 +9541,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9259,11 +9549,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9299,22 +9589,37 @@
           "events": {
             "9d30f1bf-f6a0-4126-8766-647f0928afcb": {
               "id": "9d30f1bf-f6a0-4126-8766-647f0928afcb",
-              "name": "レイヤー 1",
+              "name": "「ロード」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの上に対応するページを開く。クイックメニューの「ログ」「セーブ」「ロード」「設定」ボタンはそれぞれ一つのページを開く。ページはコンポーネントのパラメータで指定できるが、四つのボタンは表示する文字が違い、同じコンポーネントのインスタンスではそれができないため、四つのコピーにしている。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402"
@@ -9322,7 +9627,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9330,11 +9635,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -9370,22 +9675,37 @@
           "events": {
             "dbe6e460-24ec-4344-93a9-01047ef77c7d": {
               "id": "dbe6e460-24ec-4344-93a9-01047ef77c7d",
-              "name": "レイヤー 1",
+              "name": "「設定」ページを開く",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ストーリーの上に対応するページを開く。クイックメニューの「ログ」「セーブ」「ロード」「設定」ボタンはそれぞれ一つのページを開く。ページはコンポーネントのパラメータで指定できるが、四つのボタンは表示する文字が違い、同じコンポーネントのインスタンスではそれができないため、四つのコピーにしている。",
+                      "width": 640,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -341
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "open": {
+                    "id": "open",
                     "type": "blueprint.page.go",
                     "params": {
                       "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182"
@@ -9393,7 +9713,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -400
                       }
                     }
                   }
@@ -9401,11 +9721,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "open",
                       "port": "in"
                     }
                   }
@@ -10917,50 +11237,87 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "レイヤー 1",
+              "name": "話者の名前を表示",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
-                    "type": "blueprint.data.returnValue",
-                    "params": {},
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「ネームタグ」のテキストはこのブループリントに結び付いている（ブループリント値）。「値を返す」が返したものがテキストに表示される。ダイアログが現れたとき（「初期化」）と、新しい行を表示するたび（「反映のとき」）に動く。「ネームタグを取得」は話している登場人物の名前を返し、ナレーションでは何も返さない。",
+                      "width": 760,
+                      "height": 130
+                    },
                     "meta": {
                       "editorLayout": {
-                        "x": 550,
-                        "y": 0
+                        "x": 0,
+                        "y": -600
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "appearName": {
+                    "id": "appearName",
+                    "type": "blueprint.game.getNametag",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -339
+                      }
+                    }
+                  },
+                  "appearReturn": {
+                    "id": "appearReturn",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
                     "type": "blueprint.event.head.flush",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 258
+                        "y": -172
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "lineName": {
+                    "id": "lineName",
                     "type": "blueprint.game.getNametag",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 91
+                        "x": 260,
+                        "y": -81
+                      }
+                    }
+                  },
+                  "lineReturn": {
+                    "id": "lineReturn",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -172
                       }
                     }
                   }
@@ -10968,31 +11325,41 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "appearReturn",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "n1",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n4",
+                      "nodeId": "appearName",
                       "port": "nametag"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "appearReturn",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineReturn",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineName",
+                      "port": "nametag"
+                    },
+                    "to": {
+                      "nodeId": "lineReturn",
                       "port": "value"
                     }
                   }
@@ -11137,33 +11504,48 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "レイヤー 1",
+              "name": "質問を表示",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「メッセージ」のテキストはこのブループリントに結び付いている（ブループリント値）。「確認を求める」は質問をページのプロパティの message に入れてこのページを開く。ページが現れると「ページのプロパティを取得」がそれを読み、「JSON のフィールドを取得」が message を取り出し、「値を返す」がテキストに渡す。",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "props": {
+                    "id": "props",
                     "type": "blueprint.page.getProps",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 117
+                        "y": -313
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "question": {
+                    "id": "question",
                     "type": "blueprint.data.jsonGet",
                     "params": {
                       "__inlineLiteralPins": [
@@ -11174,18 +11556,18 @@
                     "meta": {
                       "editorLayout": {
                         "x": 260,
-                        "y": 117
+                        "y": -313
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "give": {
+                    "id": "give",
                     "type": "blueprint.data.returnValue",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -11193,31 +11575,31 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "give",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
+                      "nodeId": "props",
                       "port": "props"
                     },
                     "to": {
-                      "nodeId": "n3",
+                      "nodeId": "question",
                       "port": "json"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n3",
+                      "nodeId": "question",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "give",
                       "port": "value"
                     }
                   }
@@ -11256,79 +11638,64 @@
           "events": {
             "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a": {
               "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a",
-              "name": "レイヤー 1",
+              "name": "押されたボタンで答える",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "プレイヤーがボタンのどれかを押すと動く。「このレイヤーを閉じる」はこのページを閉じ、行から読んだボタンの番号（最初が 0）を、このページを開いた「確認を求める」に返す。「確認を求める」はそのボタンの「押された」出力を動かす。最初のボタンは実行する答えなので決定音を、後のボタンは取りやめなので戻る音を鳴らす（どちらも「グローバル」ブループリントの関数）。",
+                      "width": 1000,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.itemClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 59
+                        "y": -371
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
-                    "type": "blueprint.layer.closeSelf",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1470,
-                        "y": 59
-                      }
-                    }
-                  },
-                  "sfx.zero": {
-                    "id": "sfx.zero",
-                    "type": "blueprint.data.integerLiteral",
+                  "later": {
+                    "id": "later",
+                    "type": "blueprint.compare.greaterThan",
                     "params": {
-                      "value": 0
+                      "__inlineLiteralPins": [
+                        "b"
+                      ],
+                      "b": 0
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 198
+                        "x": 260,
+                        "y": -281
                       }
                     }
                   },
-                  "nMemoIndex": {
-                    "id": "nMemoIndex",
-                    "type": "blueprint.data.memo",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": 59
-                      }
-                    }
-                  },
-                  "sfx.notFirst": {
-                    "id": "sfx.notFirst",
-                    "type": "blueprint.compare.greaterThan",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 550,
-                        "y": 235
-                      }
-                    }
-                  },
-                  "sfx.branch": {
-                    "id": "sfx.branch",
+                  "branch": {
+                    "id": "branch",
                     "type": "if",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 810,
-                        "y": 59
+                        "x": 532,
+                        "y": -371
                       }
                     }
                   },
-                  "sfx.back": {
-                    "id": "sfx.back",
+                  "backCue": {
+                    "id": "backCue",
                     "type": "blueprint.fn.call",
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
@@ -11340,13 +11707,13 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1100,
-                        "y": 0
+                        "x": 822,
+                        "y": -430
                       }
                     }
                   },
-                  "sfx.click": {
-                    "id": "sfx.click",
+                  "confirmCue": {
+                    "id": "confirmCue",
                     "type": "blueprint.fn.call",
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
@@ -11358,8 +11725,32 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1100,
-                        "y": 176
+                        "x": 822,
+                        "y": -254
+                      }
+                    }
+                  },
+                  "answer": {
+                    "id": "answer",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "index"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1192,
+                        "y": -108
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.layer.closeSelf",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1532,
+                        "y": -371
                       }
                     }
                   }
@@ -11367,112 +11758,82 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "nMemoIndex",
+                      "nodeId": "branch",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "result"
+                      "nodeId": "pressed",
+                      "port": "index"
                     },
                     "to": {
-                      "nodeId": "n2",
-                      "port": "result"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "sfx.notFirst",
+                      "nodeId": "later",
                       "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.zero",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "sfx.notFirst",
-                      "port": "b"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "sfx.notFirst",
+                      "nodeId": "later",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "true"
                     },
                     "to": {
-                      "nodeId": "sfx.back",
+                      "nodeId": "backCue",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.branch",
+                      "nodeId": "branch",
                       "port": "false"
                     },
                     "to": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "confirmCue",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.back",
+                      "nodeId": "backCue",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "close",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "sfx.click",
+                      "nodeId": "confirmCue",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "close",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n1",
-                      "port": "index"
-                    },
-                    "to": {
-                      "nodeId": "nMemoIndex",
+                      "nodeId": "answer",
                       "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nMemoIndex",
-                      "port": "next"
                     },
                     "to": {
-                      "nodeId": "sfx.branch",
-                      "port": "in"
+                      "nodeId": "close",
+                      "port": "result"
                     }
                   }
                 ],
@@ -11611,50 +11972,87 @@
           "events": {
             "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f": {
               "id": "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f",
-              "name": "レイヤー 1",
+              "name": "話者のアバターを表示",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "ダイアログが現れたときに「初期化」が、新しい行を表示するたびに「反映のとき」が動き、どちらもこの画像を話している登場人物のアバター（「キャラクター」パネル）にする。ナレーションには話者がいないため、画像は空になる。",
+                      "width": 760,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "appear": {
+                    "id": "appear",
                     "type": "blueprint.event.head.init",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "appearAvatar": {
+                    "id": "appearAvatar",
+                    "type": "blueprint.game.getSpeakerAvatar",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 260,
+                        "y": -339
+                      }
+                    }
+                  },
+                  "appearSet": {
+                    "id": "appearSet",
+                    "type": "blueprint.image.setImageAsset",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 520,
+                        "y": -430
+                      }
+                    }
+                  },
+                  "line": {
+                    "id": "line",
                     "type": "blueprint.event.head.flush",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 258
+                        "y": -172
                       }
                     }
                   },
-                  "n3": {
-                    "id": "n3",
+                  "lineAvatar": {
+                    "id": "lineAvatar",
                     "type": "blueprint.game.getSpeakerAvatar",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 290,
-                        "y": 91
+                        "x": 260,
+                        "y": -81
                       }
                     }
                   },
-                  "n4": {
-                    "id": "n4",
+                  "lineSet": {
+                    "id": "lineSet",
                     "type": "blueprint.image.setImageAsset",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 550,
-                        "y": 0
+                        "x": 520,
+                        "y": -172
                       }
                     }
                   }
@@ -11662,31 +12060,41 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "appear",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "appearSet",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "n2",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "n4",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n3",
+                      "nodeId": "appearAvatar",
                       "port": "avatar"
                     },
                     "to": {
-                      "nodeId": "n4",
+                      "nodeId": "appearSet",
+                      "port": "asset"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "line",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lineAvatar",
+                      "port": "avatar"
+                    },
+                    "to": {
+                      "nodeId": "lineSet",
                       "port": "asset"
                     }
                   }
@@ -12577,28 +12985,43 @@
           "events": {
             "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f": {
               "id": "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f",
-              "name": "レイヤー 1",
+              "name": "ダイアログを隠す・表示する",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "「ダイアログの表示を切り替え」は、ダイアログが表示されていれば隠し、隠れていれば表示する。隠れている間は、読み進めるはずの「送る」操作が代わりにダイアログを再表示する（「会話」ページのブループリントを参照）。",
+                      "width": 640,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   },
-                  "n2": {
-                    "id": "n2",
+                  "toggle": {
+                    "id": "toggle",
                     "type": "blueprint.game.toggleDialogDisplay",
                     "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 0
+                        "y": -430
                       }
                     }
                   }
@@ -12606,11 +13029,11 @@
                 "edges": [
                   {
                     "from": {
-                      "nodeId": "n1",
+                      "nodeId": "pressed",
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n2",
+                      "nodeId": "toggle",
                       "port": "in"
                     }
                   }
@@ -24942,6 +25365,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T19:40:42.779Z"
+    "updatedAt": "2026-10-03T20:00:11.334Z"
   }
 }

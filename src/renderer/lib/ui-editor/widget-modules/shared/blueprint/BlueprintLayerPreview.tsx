@@ -170,9 +170,15 @@ export function BlueprintLayerPreview({
     model,
     heightClassName,
     variant = "mini",
+    showGraphName = true,
 }: {
     model: BlueprintLayerPreviewModel | null;
     heightClassName?: string;
+    /**
+     * Whether the layer's name is written in the corner. It is drawn over the graph, so a thumbnail
+     * too small to keep them apart - one whose card already names what it is - leaves it out.
+     */
+    showGraphName?: boolean;
     /**
      * "mini" (default): abstract role-colored boxes — compact entry cards. "detailed": each box shows
      * the real node title + data-pin labels, sized larger so the graph is actually readable.
@@ -246,7 +252,7 @@ export function BlueprintLayerPreview({
                     )}
                 </div>
             ) : null}
-            {model?.graphName ? (
+            {showGraphName && model?.graphName ? (
                 <div className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate text-2xs text-fg-subtle">
                     {model.graphName}
                 </div>
