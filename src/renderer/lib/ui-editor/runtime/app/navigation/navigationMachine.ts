@@ -66,6 +66,7 @@ export type NavigationEvent =
     | { type: "ENTER_COMPLETE"; entryKey: string }
     | { type: "ALL_EXITED" }
     | { type: "COLLAPSE_TO_ACTIVE" }
+    | { type: "FORGET_ENTRY"; entryKey: string }
     | { type: "HIDE_ALL_FOR_GAME" };
 
 /** Wait parameters the controller uses to settle an open()/close() promise. */
@@ -197,6 +198,24 @@ export function reduceNavigation(state: NavigationState, event: NavigationEvent)
                 state: {
                     ...state,
                     navStack: [active],
+                },
+            };
+        }
+        case "FORGET_ENTRY": {
+            // `Replace Page`, once its own transition has settled: the page it replaced leaves the
+            // stack, so nothing below the new page leads back to it. Never the page on top - that is
+            // the one on screen - and nothing at all when the entry is already gone, because a Back
+            // or a Quit Game got there first. `visibleEntries` is left to the transition that just
+            // settled, which has already taken the replaced page off the screen; cutting it here
+            // could only cut short an exit that is still playing.
+            const index = state.navStack.findIndex(entry => entry.key === event.entryKey);
+            if (index < 0 || index === state.navStack.length - 1) {
+                return { state };
+            }
+            return {
+                state: {
+                    ...state,
+                    navStack: state.navStack.filter(entry => entry.key !== event.entryKey),
                 },
             };
         }

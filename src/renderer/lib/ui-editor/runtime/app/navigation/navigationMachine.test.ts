@@ -254,6 +254,48 @@ describe("navigationMachine", () => {
         expect(reduceNavigation(state, { type: "COLLAPSE_TO_ACTIVE" }).state).toBe(state);
     });
 
+    it("FORGET_ENTRY takes the replaced page out from under the page that replaced it", () => {
+        const splash = makeEntry("splash");
+        const title = makeEntry("title");
+        const { state: opened } = reduceNavigation(resetTo(splash), {
+            type: "OPEN",
+            fromSurface: makeSurface("splash"),
+            targetSurface: makeSurface("title"),
+            currentHiddenForGame: false,
+            reducedMotion: false,
+            createNextEntry: () => title,
+        });
+        const { state: replaced } = reduceNavigation(opened, { type: "FORGET_ENTRY", entryKey: splash.key });
+        // The page that took its place is now the root, which is where Go Page (None) lands.
+        expect(replaced.navStack).toEqual([title]);
+        expect(replaced.visibleEntries).toEqual(opened.visibleEntries);
+    });
+
+    it("FORGET_ENTRY drops only the page it names, wherever it sits", () => {
+        const title = makeEntry("title");
+        const config = makeEntry("config");
+        const load = makeEntry("load");
+        let state = resetTo(title);
+        for (const [from, entry] of [["title", config], ["config", load]] as const) {
+            state = reduceNavigation(state, {
+                type: "OPEN",
+                fromSurface: makeSurface(from),
+                targetSurface: makeSurface(entry.surfaceId),
+                currentHiddenForGame: false,
+                reducedMotion: false,
+                createNextEntry: () => entry,
+            }).state;
+        }
+        expect(reduceNavigation(state, { type: "FORGET_ENTRY", entryKey: config.key }).state.navStack).toEqual([title, load]);
+    });
+
+    it("FORGET_ENTRY never takes the page on top, and ignores an entry already gone", () => {
+        const title = makeEntry("title");
+        const state = resetTo(title);
+        expect(reduceNavigation(state, { type: "FORGET_ENTRY", entryKey: title.key }).state).toBe(state);
+        expect(reduceNavigation(state, { type: "FORGET_ENTRY", entryKey: "gone:1" }).state).toBe(state);
+    });
+
     it("reduced motion collapses transitions to zero duration", () => {
         const home = makeEntry("home");
         const next = makeEntry("settings");

@@ -907,6 +907,8 @@ declare module "@narraleaf/script" {
     type BlueprintHostApiRuntime = {
     	navigation: {
     		openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
+    		/** \`openSurface\`, after which the page that was on top is no longer in the stack. */
+    		replaceSurface: (surfaceId: string, props?: unknown) => Promise<void>;
     		getPageProps: () => Record<string, unknown>;
     		pageBack: () => Promise<void>;
     		clearPages: () => Promise<void>;
