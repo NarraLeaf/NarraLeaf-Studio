@@ -201,6 +201,8 @@ export type BuildPreflightSeverity = "error" | "warning";
 export type BuildPreflightCode =
     | "no-targets"
     | "unbuildable-platform"
+    /** A format this host cannot produce for a platform it otherwise builds (`hostBuildableFormats`). */
+    | "unbuildable-format"
     | "version-invalid"
     | "version-missing"
     | "identifier-missing"
@@ -902,6 +904,23 @@ function unpackedDirName(platform: GameBuildDesktopPlatform, arch: GameBuildArch
     return `${BUILDER_OS_TOKEN[platform]}${archSuffix}${platform === "macos" ? "" : "-unpacked"}`;
 }
 
+/**
+ * The file a desktop archive or installer format is written as, exactly as electron-builder names
+ * it. Studio's own packager for targets the host's tools cannot produce (see
+ * `hostPackagesWithoutPlatformTools`) writes under the same names, so a build reads the same
+ * whichever machine made it.
+ */
+export function desktopArtifactFileName(input: {
+    artifactBaseName: string;
+    version: string;
+    platform: GameBuildDesktopPlatform;
+    arch: GameBuildArch;
+    format: Exclude<GameBuildFormat, "dir">;
+}): string {
+    const extToken = BUILDER_EXT_TOKEN[input.format];
+    return `${input.artifactBaseName}-${input.version}-${BUILDER_OS_TOKEN[input.platform]}-${artifactArchToken(input.arch, extToken)}.${extToken}`;
+}
+
 export type PredictedGameBuildArtifact = {
     /** Name as it will appear directly under the output directory. */
     name: string;
@@ -978,9 +997,8 @@ export function predictGameBuildArtifacts(input: {
                 });
                 continue;
             }
-            const extToken = BUILDER_EXT_TOKEN[format];
             predicted.push({
-                name: `${artifactBaseName}-${version}-${BUILDER_OS_TOKEN[platform]}-${artifactArchToken(arch, extToken)}.${extToken}`,
+                name: desktopArtifactFileName({ artifactBaseName, version, platform, arch, format }),
                 kind: "file",
                 platform,
                 format,
@@ -1007,26 +1025,79 @@ export function platformFromSystem(system: string): GameBuildDesktopPlatform {
 }
 
 /**
- * Whether `host` can package for `target`. macOS targets need Apple tooling
- * (mac host only); Linux packaging (AppImage) needs a Unix host; Windows
- * targets build from any host. Mirrors electron-builder's cross-build support
- * for unsigned artifacts. The web target is plain file copying/zipping and the
- * mobile targets are pure-TS repacks of prebuilt shell templates - both build
- * everywhere, by design rather than by fall-through: the switch is exhaustive
- * so the next platform addition must state its answer explicitly.
+ * Whether a desktop target is packaged by Studio itself on this host rather than by
+ * electron-builder.
+ *
+ * electron-builder refuses macOS targets anywhere but a Mac, and a Windows folder cannot hold what
+ * a macOS or Linux package is made of: the symbolic links a macOS bundle's frameworks are joined
+ * by, and the unix permission bits that make a Linux executable runnable. So off its own platform
+ * Studio assembles those packages straight from Electron's release archive into the archive it
+ * ships, never through the host's file system, and signs a macOS bundle ad hoc itself (see
+ * src/main/buildWorker/crossHost/). A Linux host has both links and permission bits, so only macOS
+ * needs this there.
  */
-export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
+export function hostPackagesWithoutPlatformTools(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
     switch (target) {
+        case "macos":
+            return host !== "macos";
+        case "linux":
+            return host === "windows";
+        case "windows":
         case "web":
         case "android":
         case "ios":
-        case "windows":
-            return true;
-        case "macos":
-            return host === "macos";
-        case "linux":
-            return host !== "windows";
+            return false;
     }
+}
+
+/**
+ * The formats `host` can produce for `target`, in the platform's offered order.
+ *
+ * Everything is offered on a target's own platform, and for the web and mobile targets everywhere
+ * (they are plain file copying and pure-TS repacks of prebuilt shells). Where Studio packages
+ * without the platform's tools (`hostPackagesWithoutPlatformTools`) it writes archives only: an
+ * unpacked folder would land on a file system that loses the links and permission bits the package
+ * needs, and a disk image (`dmg`) needs macOS's own tools. The switch is exhaustive so the next
+ * platform addition must state its answer explicitly.
+ */
+export function hostBuildableFormats(host: GameBuildPlatform, target: GameBuildPlatform): GameBuildFormat[] {
+    const offered = GAME_BUILD_FORMATS_BY_PLATFORM[target];
+    if (!hostPackagesWithoutPlatformTools(host, target)) {
+        return offered;
+    }
+    switch (target) {
+        case "macos":
+        case "linux":
+            return offered.filter(format => format === "zip");
+        case "windows":
+        case "web":
+        case "android":
+        case "ios":
+            return offered;
+    }
+}
+
+/**
+ * What a refusal of an unbuildable format says about this host, for the command line and the
+ * pipeline (the dialog shows the same limits on its format chips). Read off `hostBuildableFormats`
+ * so the sentence cannot fall behind the rule.
+ */
+export function hostBuildLimitsSentence(host: GameBuildPlatform): string {
+    const names: Record<GameBuildDesktopPlatform, string> = { windows: "Windows", macos: "macOS", linux: "Linux" };
+    const limited = (["windows", "macos", "linux"] as const)
+        .filter(target => hostPackagesWithoutPlatformTools(host, target))
+        .map(target => `${names[target]} builds offer ${hostBuildableFormats(host, target).join(" or ")} only`);
+    return limited.length > 0 ? `On this machine, ${limited.join("; ")}.` : "";
+}
+
+/** Whether `host` can produce `format` for `target`. See `hostBuildableFormats`. */
+export function hostCanBuildFormat(host: GameBuildPlatform, target: GameBuildPlatform, format: GameBuildFormat): boolean {
+    return hostBuildableFormats(host, target).includes(format);
+}
+
+/** Whether `host` can produce at least one format for `target`. See `hostBuildableFormats`. */
+export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
+    return hostBuildableFormats(host, target).length > 0;
 }
 
 /**

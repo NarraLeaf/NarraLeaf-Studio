@@ -11,6 +11,10 @@ import {
     gameBuildArtifactBaseName,
     gameBuildArtifactNamePattern,
     hostCanBuildTarget,
+    hostBuildableFormats,
+    hostCanBuildFormat,
+    hostPackagesWithoutPlatformTools,
+    desktopArtifactFileName,
     iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -333,15 +337,56 @@ describe("hostCanBuildTarget", () => {
         }
     });
 
-    it("keeps the desktop cross-build rules", () => {
-        expect(hostCanBuildTarget("macos", "macos")).toBe(true);
-        expect(hostCanBuildTarget("windows", "macos")).toBe(false);
-        expect(hostCanBuildTarget("linux", "macos")).toBe(false);
-        expect(hostCanBuildTarget("windows", "linux")).toBe(false);
-        expect(hostCanBuildTarget("macos", "linux")).toBe(true);
+    it("builds every desktop platform from every desktop host", () => {
         for (const host of hosts) {
-            expect(hostCanBuildTarget(host, "windows")).toBe(true);
+            for (const target of ["windows", "macos", "linux"] as const) {
+                expect(hostCanBuildTarget(host, target)).toBe(true);
+            }
         }
+    });
+});
+
+describe("hostBuildableFormats", () => {
+    it("offers everything on a target's own platform and wherever electron-builder can package it", () => {
+        expect(hostBuildableFormats("macos", "macos")).toEqual(["zip", "dmg", "dir"]);
+        expect(hostBuildableFormats("macos", "linux")).toEqual(["zip", "appimage", "dir"]);
+        expect(hostBuildableFormats("linux", "linux")).toEqual(["zip", "appimage", "dir"]);
+        for (const host of ["windows", "macos", "linux"] as const) {
+            expect(hostBuildableFormats(host, "windows")).toEqual(["zip", "nsis", "dir"]);
+            expect(hostBuildableFormats(host, "web")).toEqual(["zip", "dir"]);
+        }
+    });
+
+    it("offers archives only where Studio packages without the platform's tools", () => {
+        // A folder on the host's file system would lose the bundle's links or the executable's
+        // permission bits, and a disk image needs macOS itself.
+        expect(hostBuildableFormats("windows", "macos")).toEqual(["zip"]);
+        expect(hostBuildableFormats("linux", "macos")).toEqual(["zip"]);
+        expect(hostBuildableFormats("windows", "linux")).toEqual(["zip"]);
+        expect(hostCanBuildFormat("windows", "macos", "dmg")).toBe(false);
+        expect(hostCanBuildFormat("windows", "linux", "dir")).toBe(false);
+        expect(hostCanBuildFormat("windows", "macos", "zip")).toBe(true);
+    });
+
+    it("says which targets Studio packages itself", () => {
+        expect(hostPackagesWithoutPlatformTools("windows", "macos")).toBe(true);
+        expect(hostPackagesWithoutPlatformTools("linux", "macos")).toBe(true);
+        expect(hostPackagesWithoutPlatformTools("windows", "linux")).toBe(true);
+        expect(hostPackagesWithoutPlatformTools("macos", "macos")).toBe(false);
+        expect(hostPackagesWithoutPlatformTools("macos", "linux")).toBe(false);
+        expect(hostPackagesWithoutPlatformTools("linux", "linux")).toBe(false);
+        expect(hostPackagesWithoutPlatformTools("macos", "windows")).toBe(false);
+    });
+});
+
+describe("desktopArtifactFileName", () => {
+    it("names archives the way electron-builder does", () => {
+        expect(desktopArtifactFileName({ artifactBaseName: "Game", version: "1.2.0", platform: "macos", arch: "arm64", format: "zip" }))
+            .toBe("Game-1.2.0-mac-arm64.zip");
+        expect(desktopArtifactFileName({ artifactBaseName: "Game", version: "1.2.0", platform: "linux", arch: "x64", format: "zip" }))
+            .toBe("Game-1.2.0-linux-x64.zip");
+        expect(desktopArtifactFileName({ artifactBaseName: "Game", version: "1.2.0", platform: "linux", arch: "x64", format: "appimage" }))
+            .toBe("Game-1.2.0-linux-x86_64.AppImage");
     });
 });
 

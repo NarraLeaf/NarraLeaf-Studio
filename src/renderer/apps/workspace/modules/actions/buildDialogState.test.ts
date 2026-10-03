@@ -59,6 +59,20 @@ describe("initialDialogState", () => {
         expect(targets.some(t => t.platform === "windows")).toBe(true);
     });
 
+    it("keeps the remembered formats this host can make and drops the rest", () => {
+        // A Windows host makes macOS and Linux archives, but no disk image and no unpacked folder.
+        const stored: BuildConfiguration = {
+            platforms: ["macos", "linux"],
+            formats: { macos: ["zip", "dmg"], linux: ["zip", "dir"] },
+            archs: {},
+            outputDir: "",
+            openWhenDone: true,
+        };
+        const state = initialDialogState(stored, "windows", "x64");
+        expect([...state.formats.macos]).toEqual(["zip"]);
+        expect([...state.formats.linux]).toEqual(["zip"]);
+    });
+
     it("defaults the host platform's arch to the host arch", () => {
         const state = initialDialogState(null, "macos", "arm64");
         expect(state.archs.macos).toBe("arm64");
@@ -112,6 +126,13 @@ describe("togglePlatform / toggleFormat", () => {
     it("switching a platform on selects its default formats", () => {
         const state = togglePlatform(initialDialogState(null, "macos", "arm64"), "windows", true);
         expect([...state.formats.windows].sort()).toEqual(["nsis", "zip"]);
+    });
+
+    it("switching a platform on selects only what this host can make", () => {
+        const state = togglePlatform(initialDialogState(null, "windows", "x64"), "macos", true, "windows");
+        expect([...state.formats.macos]).toEqual(["zip"]);
+        const onMac = togglePlatform(initialDialogState(null, "macos", "arm64"), "macos", true, "macos");
+        expect([...onMac.formats.macos].sort()).toEqual(["dmg", "zip"]);
     });
 
     it("switching a platform off clears it entirely", () => {

@@ -16,6 +16,7 @@ import {
     deriveGameAppId,
     GAME_BUILD_ARCHS_BY_PLATFORM,
     gameBuildArtifactBaseName,
+    hostCanBuildFormat,
     hostCanBuildTarget,
     platformFromSystem,
     predictGameBuildArtifacts,
@@ -677,6 +678,11 @@ function localizePlatformDetail(
             ? value.split(",").map(part => name(part.trim())).join(", ")
             : name(value);
     }
+    if (detail?.format) {
+        const key = `build.format.${detail.format as GameBuildFormat}` as const;
+        const translated = t(key);
+        localized.format = translated === key ? detail.format : translated;
+    }
     return localized;
 }
 
@@ -900,7 +906,7 @@ function TargetsSection({
                                 <Switch
                                     checked={enabled}
                                     disabled={!canBuild}
-                                    onCheckedChange={value => onChange(togglePlatform(state, platform, value))}
+                                    onCheckedChange={value => onChange(togglePlatform(state, platform, value, info.hostPlatform))}
                                     size="sm"
                                 />
                                 <span
@@ -931,12 +937,16 @@ function TargetsSection({
                         {enabled && canBuild && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                                 {OFFERED_FORMATS[platform].map(format => (
-                                    <FormatPill
-                                        key={format}
-                                        format={format}
-                                        active={state.formats[platform].has(format)}
-                                        onClick={() => onChange(toggleFormat(state, platform, format))}
-                                    />
+                                    hostCanBuildFormat(info.hostPlatform, platform, format)
+                                        ? (
+                                            <FormatPill
+                                                key={format}
+                                                format={format}
+                                                active={state.formats[platform].has(format)}
+                                                onClick={() => onChange(toggleFormat(state, platform, format))}
+                                            />
+                                        )
+                                        : <UnavailableFormatPill key={format} format={format} platform={platform} />
                                 ))}
                             </div>
                         )}
@@ -973,6 +983,23 @@ function FormatPill({
             {active && <Check className="h-3 w-3" />}
             {t(`build.format.${format}`)}
         </button>
+    );
+}
+
+/**
+ * A format this machine cannot produce for a platform it otherwise builds - a macOS disk image
+ * anywhere but a Mac, for instance. Shown rather than left out, so what the platform offers stays
+ * visible, with the reason in a tooltip on a plain element: a disabled button receives no hover.
+ */
+function UnavailableFormatPill({ format, platform }: { format: GameBuildFormat; platform: GameBuildPlatform }) {
+    const { t } = useTranslation();
+    return (
+        <span
+            className="inline-flex cursor-not-allowed items-center rounded-md bg-fill-subtle px-2 py-1 text-xs text-fg-muted opacity-50"
+            data-tip={t(`build.formatUnavailable.${platform}`)}
+        >
+            {t(`build.format.${format}`)}
+        </span>
     );
 }
 
