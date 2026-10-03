@@ -59,10 +59,8 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             zh: { title: "全屏快捷键", description: "按 F11 进入或退出全屏" },
             ja: { title: "全画面キー", description: "F11 で全画面を切り替える" },
         },
-        // On Key Up, because a held key repeats On Key Down: held F11 would flick fullscreen on and
-        // off at the keyboard's repeat rate.
         graph: () => lines(
-            "    key: blueprint.event.head.keyUp key=f11 @0,0",
+            "    key: blueprint.event.head.keyDown key=f11 @0,0",
             "    toggle: blueprint.app.setFullscreen mode=toggle @260,0",
             "    key -> toggle",
         ),
@@ -78,9 +76,8 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             zh: { title: "截图快捷键", description: "按 S 保存截图" },
             ja: { title: "スクリーンショットキー", description: "S でスクリーンショットを保存する" },
         },
-        // On Key Up for the same reason as the fullscreen key: one press, one screenshot.
         graph: () => lines(
-            "    key: blueprint.event.head.keyUp key=S @0,0",
+            "    key: blueprint.event.head.keyDown key=S @0,0",
             "    shot: blueprint.app.saveScreenshot @260,0",
             "    key -> shot",
         ),
@@ -97,10 +94,9 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         },
         // The game's own blueprint hears keys on every page, the title screen included, where a
         // preference set now would be waiting in the next game the player starts: Is In Game keeps
-        // the key to a running one. On Key Up, because a held key repeats On Key Down and would
-        // switch auto forward on and off at the keyboard's repeat rate.
+        // the key to a running one.
         graph: () => lines(
-            "    key: blueprint.event.head.keyUp key=A @0,0",
+            "    key: blueprint.event.head.keyDown key=A @0,0",
             "    playing: blueprint.game.isInGame @0,160",
             "    gate: if @260,0",
             "    current: blueprint.game.getAutoForward @260,160",
@@ -123,9 +119,9 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             zh: { title: "隐藏对话框快捷键", description: "游戏进行中按 H 隐藏或显示对话框" },
             ja: { title: "ダイアログ非表示キー", description: "ゲーム中に H でダイアログの表示を切り替える" },
         },
-        // Kept to a running game and answered on key up, for the reasons the auto forward key gives.
+        // Kept to a running game, for the reason the auto forward key gives.
         graph: () => lines(
-            "    key: blueprint.event.head.keyUp key=H @0,0",
+            "    key: blueprint.event.head.keyDown key=H @0,0",
             "    playing: blueprint.game.isInGame @0,160",
             "    gate: if @260,0",
             "    toggle: blueprint.game.toggleDialogDisplay @520,0",

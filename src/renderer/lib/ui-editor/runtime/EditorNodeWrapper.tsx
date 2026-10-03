@@ -446,7 +446,9 @@ export function EditorNodeWrapper({
         // for a text field would otherwise also reach every other widget's keyDown on the surface.
         // The field's own Submit/Value Changed events are dispatched by its renderer, not here.
         const onKeyDown = (event: KeyboardEvent) => {
-            if (isTextEntryTarget(event.target)) {
+            // A held key's repeats are not presses: `On Key Down` answers the key going down, once,
+            // as the game's own keys do (`keyboardOwner`).
+            if (isTextEntryTarget(event.target) || event.repeat) {
                 return;
             }
             const eventControl = getOrCreateDomEventPropagationControl(event);
