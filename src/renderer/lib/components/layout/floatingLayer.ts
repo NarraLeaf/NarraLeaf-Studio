@@ -81,6 +81,9 @@ interface Layer {
     closeWithoutRestore: () => void;
 }
 
+/** How many frames an opening layer keeps trying to take focus; see the retry in the hook. */
+const FOCUS_RETRY_FRAMES = 20;
+
 /** Every open layer in every window, oldest first. A window only ever consults its own. */
 const layers: Layer[] = [];
 
@@ -203,7 +206,12 @@ function handleTab(event: KeyboardEvent, top: Layer): void {
     // it there - usually nothing, and focus would fall out of the window. It goes where it would
     // have gone had the popover been drawn after its trigger: to the trigger's neighbour.
     const order = tabbablesIn(panel);
-    const leaving = order.length === 0
+    // A list is one stop, walked with the arrows: Tab from any of its items leaves, rather than
+    // stepping through forty options one by one on the way out.
+    const selector = top.itemSelector();
+    const onItem = !!selector && !active.matches(TEXT_FIELD_SELECTOR) && !!active.closest(selector);
+    const leaving = onItem
+        || order.length === 0
         || (event.shiftKey ? active === order[0] || active === panel : active === order[order.length - 1]);
     if (!leaving) return;
     const trigger = top.returnTarget();
@@ -318,8 +326,20 @@ function onCaptureKeyDown(event: KeyboardEvent): void {
     const doc = (event.currentTarget as Document);
     const top = topLayerOf(doc);
     if (!top || event.defaultPrevented || isImeKeyEvent(event)) return;
-    const holder = layerHolding(doc, event.target as Node | null);
-    if (!holder || ownsKeys(event.target)) return;
+    const target = event.target as Node | null;
+    const holder = layerHolding(doc, target);
+    if (ownsKeys(event.target)) return;
+    if (!holder) {
+        // Focus on the top layer's own trigger - left there by a click, or by a layer that leaves
+        // focus where it is - is still the layer's: Escape closes it there too, before the panel the
+        // trigger sits in (an inspector, a dialog) takes the key for itself.
+        if (event.key === "Escape" && !!target && top.owners().some(owner => owner.contains(target))) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (top.closeOnEscape()) top.close();
+        }
+        return;
+    }
 
     if (event.key === "Escape") {
         // The topmost layer even when the key was pressed in one below it: an autocomplete hanging
@@ -514,13 +534,22 @@ export function useFloatingLayer(options: FloatingLayerOptions): void {
         };
         if (wantsFocus && !moveFocusIn()) {
             // A panel placed in a second pass is `visibility: hidden` for the first one, and a hidden
-            // element refuses focus. Try again once it has been placed.
+            // element refuses focus. Nor is the panel turning visible the end of it: a control inside
+            // that transitions its properties inherits the change through that transition, and can
+            // stay hidden - and unfocusable - for some frames after its panel shows. Measured on the
+            // story inspector's channel picker the first time it opened after a load. So keep trying
+            // for a short while, and give up as soon as the author has put focus somewhere else.
             const view = doc.defaultView ?? window;
-            raf = view.requestAnimationFrame(() => {
-                if (!moveFocusIn()) {
-                    raf = view.requestAnimationFrame(() => void moveFocusIn());
-                }
-            });
+            const focusedAtOpen = doc.activeElement;
+            let attempts = 0;
+            const retry = () => {
+                const active = doc.activeElement;
+                const panel = layer.panel();
+                const moved = active !== focusedAtOpen && active !== doc.body && !(panel && active && panel.contains(active));
+                if (moved || moveFocusIn() || ++attempts >= FOCUS_RETRY_FRAMES) return;
+                raf = view.requestAnimationFrame(retry);
+            };
+            raf = view.requestAnimationFrame(retry);
         } else if (!wantsFocus) {
             panelAtOpen = layer.panel();
         }

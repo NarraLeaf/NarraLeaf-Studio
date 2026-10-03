@@ -236,3 +236,31 @@ describe("a dialog", () => {
         expect(view.queryByTestId("panel")).not.toBeNull();
     });
 });
+
+describe("a list in a popover", () => {
+    it("is one Tab stop: Tab from any item leaves the popover", () => {
+        const view = render(<Popover />);
+        openFromTrigger(view);
+        expect(document.activeElement).toBe(view.getByTestId("b"));
+        press("Tab");
+        expect(view.queryByTestId("panel")).toBeNull();
+        expect(document.activeElement).toBe(view.getByTestId("after"));
+    });
+});
+
+describe("a popover whose focus stayed on its trigger", () => {
+    it("still takes Escape ahead of the panel the trigger sits in", () => {
+        const inspector = vi.fn();
+        const view = render(
+            <div onKeyDown={event => event.key === "Escape" && inspector()}>
+                <Popover />
+            </div>,
+        );
+        openFromTrigger(view);
+        const trigger = view.getByTestId("trigger");
+        trigger.focus();
+        fireEvent.keyDown(trigger, { key: "Escape" });
+        expect(view.queryByTestId("panel")).toBeNull();
+        expect(inspector).not.toHaveBeenCalled();
+    });
+});
