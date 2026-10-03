@@ -43,6 +43,8 @@ vi.mock("@/apps/workspace/context", () => ({
 
 vi.mock("@/lib/components/layout", () => ({
     useDismissWhenHidden: () => undefined,
+    useFloatingLayer: () => undefined,
+    useHostDocument: () => document,
 }));
 
 vi.mock("@/apps/workspace/modules/dictionary/openDictionaryPanel", () => ({

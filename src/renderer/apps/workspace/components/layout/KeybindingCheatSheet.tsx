@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useKeybinding } from "../../hooks";
@@ -13,6 +13,7 @@ import {
 import { KEYBINDING_CATALOG } from "@/lib/workspace/services/ui/keybindingCatalog";
 import { isMacPlatform } from "@/lib/app/platform";
 import { getInterface } from "@/lib/app/bridge";
+import { useFloatingLayer } from "@/lib/components/layout";
 
 /**
  * Reveal the keyboard-shortcut table, which lives in the Settings window under Shortcuts. Main
@@ -87,20 +88,16 @@ export function KeybindingCheatSheet() {
         return uiService.keybindings.onOverridesChanged(() => setRevision(value => value + 1));
     }, [open, context]);
 
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                setOpen(false);
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown, true);
-        return () => document.removeEventListener("keydown", handleKeyDown, true);
-    }, [open]);
+    // The sheet dims the window and sits over it, so it is a trapped layer: focus moves onto it when
+    // it opens, Tab cannot walk out to the page behind it, Escape closes it, and closing gives focus
+    // back to whatever had it.
+    const panelRef = useRef<HTMLDivElement>(null);
+    useFloatingLayer({
+        open,
+        onClose: () => setOpen(false),
+        panelRef,
+        scope: "trap",
+    });
 
     // The full static catalog grouped by category, plus described live registrations without a
     // catalog entry ("Other") — the sheet shows everything, whether or not its editor is open.
@@ -157,7 +154,12 @@ export function KeybindingCheatSheet() {
                 className="absolute inset-0 bg-black/30 animate-fade-in"
                 onMouseDown={() => setOpen(false)}
             />
-            <div className="relative flex max-h-full w-[min(760px,calc(100vw-48px))] flex-col overflow-hidden rounded-md border border-edge bg-surface-raised shadow-2xl">
+            <div
+                ref={panelRef}
+                role="dialog"
+                aria-label={t("workspace.shell.keybindings.cheatSheetTitle")}
+                className="relative flex max-h-full w-[min(760px,calc(100vw-48px))] flex-col overflow-hidden rounded-md border border-edge bg-surface-raised shadow-2xl"
+            >
                 <div className="flex shrink-0 items-center gap-3 border-b border-edge px-4 py-3">
                     <span className="flex-1 text-sm font-medium text-fg">
                         {t("workspace.shell.keybindings.cheatSheetTitle")}

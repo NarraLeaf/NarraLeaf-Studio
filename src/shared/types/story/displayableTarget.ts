@@ -174,6 +174,45 @@ export function revealCreates(payload: StoryActionPayload): boolean {
     return false;
 }
 
+type VideoActionPayload = Extract<StoryActionPayload, { action: "video" }>;
+
+/**
+ * The fade a clip leaves with when a row asks it to leave and does not say how long: the 250 ms
+ * fade-out every other hide row - a picture's, a text's, a character's exit - is seeded with.
+ */
+export const DEFAULT_VIDEO_LEAVE_FADE_MS = 250;
+
+/**
+ * Whether a `play` row takes its clip off the stage once the clip has played to the end.
+ *
+ * The row's own `hideOnEnd` when it states one. Otherwise the form decides: the one-row cutscene
+ * ({@link revealCreates}) clears itself away, and a `play` that runs a clip an earlier row put on stage
+ * leaves it as that row left it.
+ */
+export function videoPlayHidesOnEnd(payload: VideoActionPayload): boolean {
+    return payload.operation === "play" && (payload.hideOnEnd ?? revealCreates(payload));
+}
+
+/**
+ * How long the clip fades out for on this row, in milliseconds, or `null` when the row does not take
+ * it off the stage. `0` is a cut.
+ *
+ * A `hide` cuts unless it states a fade, which is what every `hide` written before fades existed did.
+ * A hiding `play` fades over {@link DEFAULT_VIDEO_LEAVE_FADE_MS} unless it states otherwise.
+ */
+export function videoLeaveFadeMs(payload: VideoActionPayload): number | null {
+    const stated = typeof payload.durationMs === "number" && Number.isFinite(payload.durationMs)
+        ? Math.max(0, payload.durationMs)
+        : undefined;
+    if (payload.operation === "hide") {
+        return stated ?? 0;
+    }
+    if (videoPlayHidesOnEnd(payload)) {
+        return stated ?? DEFAULT_VIDEO_LEAVE_FADE_MS;
+    }
+    return null;
+}
+
 /**
  * The identity of the displayable a block **declares**, or null when the block only addresses one
  * that already exists. The strict half of {@link displayableSourceIdentity}: same naming rules, but

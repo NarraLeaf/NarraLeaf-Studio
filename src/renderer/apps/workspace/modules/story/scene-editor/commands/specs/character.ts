@@ -1,5 +1,5 @@
 import { Eye, EyeOff, MessageSquare, PersonStanding, Shirt, SlidersHorizontal, Smile, Tag } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import { DEFAULT_VIDEO_LEAVE_FADE_MS, type StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommandValue } from "../../storyCommandValues";
 import {
@@ -20,8 +20,8 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { actionableTargetRef, deriveShownObjectName, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
-import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
+import { actionableTargetRef, clipLeaveDurationMs, deriveShownObjectName, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
+import { CLIP_CONCEAL_WORDS, supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
  * The generic verbs and the character commands: `/show`, `/hide`, `/char`, `/motion`, `/skin`,
@@ -100,12 +100,19 @@ function validateTransitionForTarget(
         }
         return [];
     }
-    // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them
-    // at all - there is no legal word to name, and reporting against a table they do not use would be
-    // reporting the wrong thing. A clip named out of the library is the same clip, so it reads the
-    // same way; a picture is a Displayable whichever slot found it.
+    // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them.
+    // A clip leaving has its own two words - it fades or it cuts - and anything else on a `/hide` of
+    // one is reported against those. A clip coming in, and an overlay either way, have no word list to
+    // report against. A clip named out of the library is the same clip, so it reads the same way; a
+    // picture is a Displayable whichever slot found it.
     const kind = target.type === "asset" ? target.assetType : target.objectKind;
-    if (kind !== "video" && kind !== "vfx" && transformEffectFor(context, word) === undefined) {
+    if (kind === "video") {
+        if (direction === "hide" && !CLIP_CONCEAL_WORDS.includes(word as (typeof CLIP_CONCEAL_WORDS)[number])) {
+            return [{ code: "unsupportedOption", span, value: word, allowed: CLIP_CONCEAL_WORDS }];
+        }
+        return [];
+    }
+    if (kind !== "vfx" && transformEffectFor(context, word) === undefined) {
         return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
     }
     return [];
@@ -297,7 +304,19 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         };
     }
     if (block.payload.action === "video") {
-        return { ...block, payload: { ...block.payload, objectName: target.name, target: actionableTargetRef(target) } };
+        // A clip leaves the way a picture does, `out=` and `d=`, with the two words it can honour. A
+        // hide has always been a cut, so `out=fade` with no `d=` writes the default fade down rather
+        // than leaving the field empty to mean it.
+        const durationMs = direction === "hide" ? clipLeaveDurationMs(args.out, args.d, DEFAULT_VIDEO_LEAVE_FADE_MS) : undefined;
+        return {
+            ...block,
+            payload: {
+                ...block.payload,
+                objectName: target.name,
+                target: actionableTargetRef(target),
+                ...(durationMs === undefined ? {} : { durationMs }),
+            },
+        };
     }
     if (block.payload.action === "displayable") {
         const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);

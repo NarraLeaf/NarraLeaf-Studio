@@ -289,7 +289,7 @@ describe("the picker's parameters", () => {
 
         select("Walk to an ending");
         fireEvent.click(endingTrigger());
-        fireEvent.click(screen.getByRole("button", { name: "True end" }));
+        fireEvent.click(screen.getByRole("option", { name: "True end" }));
         fireEvent.click(screen.getByRole("switch", { name: "Skip read text" }));
         start();
 

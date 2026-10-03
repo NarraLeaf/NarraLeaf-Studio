@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Filter, ChevronDown, X, Tag, FileImage, Shapes, Link2, Scale } from "lucide-react";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import type { Translator } from "@shared/i18n";
 
 /** The one thing this factory needs from `useTranslation`: a key in, a string out. */
@@ -34,12 +35,44 @@ export interface FilterSystemProps {
     className?: string;
 }
 
+/** The options of the open panel, which the arrow keys walk. */
+const FILTER_OPTION_SELECTOR = "[data-filter-option]";
+
 /**
  * Extensible filter system component
  */
 export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilterOpen, className = "" }: FilterSystemProps) {
     const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
+    const toggleRef = useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const doc = useHostDocument();
+    // A popover: focus moves onto the first option when it opens, the arrows walk the options, Escape
+    // closes it - and only it, not the asset picker it may be drawn inside - Tab out of it closes it,
+    // and closing gives focus back to the toggle.
+    useFloatingLayer({
+        open: isExpanded,
+        onClose: () => setIsExpanded(false),
+        panelRef,
+        ownerRefs: [toggleRef],
+        itemSelector: FILTER_OPTION_SELECTOR,
+    });
+    // A press anywhere but the panel and its toggle puts it away. Heard in capture: the asset picker
+    // stops its own presses from bubbling, and the panel can be drawn inside it.
+    useEffect(() => {
+        if (!isExpanded) {
+            return;
+        }
+        const onPointerDown = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (panelRef.current?.contains(target) || toggleRef.current?.contains(target)) {
+                return;
+            }
+            setIsExpanded(false);
+        };
+        doc.addEventListener("mousedown", onPointerDown, true);
+        return () => doc.removeEventListener("mousedown", onPointerDown, true);
+    }, [doc, isExpanded]);
 
     const hasActiveFilters = activeFilters.length > 0;
 
@@ -80,6 +113,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
         <div className={`relative ${className}`}>
             {/* Filter Toggle Button */}
             <button
+                ref={toggleRef}
                 onClick={() => {
                     const newExpanded = !isExpanded;
                     setIsExpanded(newExpanded);
@@ -128,7 +162,7 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                 the panel they filter. A floor width lets the chips sit side by side; a group with
                 nothing to offer (no tags in this project) is not printed at all. */}
             {isExpanded && (
-                <div className="absolute top-full left-0 right-0 mt-2 min-w-64 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
+                <div ref={panelRef} className="absolute top-full left-0 right-0 mt-2 min-w-64 bg-surface-overlay border border-edge-strong rounded-lg shadow-xl z-10">
                     <div className="p-3 space-y-3">
                         {filters.filter(filter => filter.options.length > 0).map(filter => (
                             <div key={filter.id} className="space-y-2">
@@ -142,6 +176,8 @@ export function FilterSystem({ filters, activeFilters, onFiltersChange, onFilter
                                         return (
                                             <button
                                                 key={option.id}
+                                                data-filter-option=""
+                                                aria-pressed={isActive}
                                                 onClick={() => handleFilterToggle(filter.id, option.id)}
                                                 className={`
                                                     px-2 py-1 text-xs rounded-md transition-colors

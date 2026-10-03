@@ -105,6 +105,7 @@ import {
     storyPersistentDefs,
     storyTransitionKindOf,
     storyVariableRefKey,
+    videoLeaveFadeMs,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
@@ -4382,6 +4383,14 @@ async function compileLayerAction(
     return statements;
 }
 
+/**
+ * The engine's fade options for a clip leaving over `durationMs`, or none for a cut - the call the
+ * engine has always made instant.
+ */
+function videoFadeOptions(durationMs: number): { duration: number } | undefined {
+    return durationMs > 0 ? { duration: durationMs } : undefined;
+}
+
 async function compileVideoAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
@@ -4401,13 +4410,28 @@ async function compileVideoAction(
     if (!video) {
         return [];
     }
-    if (payload.operation === "play" && revealCreates(payload)) {
-        // The one-row cutscene: reveal, then run to the end. Two statements because the engine's
-        // `play` never shows anything - a clip played without a reveal is heard and not seen, which
-        // is what a `play` addressing a clip a hidden `/video` row declared still does. The reveal
-        // resolves once the clip can play, so `play` starts on a loaded clip; an element that is
-        // still loading draws nothing, and the stage shows through it until the first frame.
-        return [recordStatement(ctx, video.show(), block), recordStatement(ctx, video.play(), block)];
+    if (payload.operation === "play") {
+        // Up to three statements, because the engine's `play` only runs the clip.
+        //
+        // The one-row cutscene reveals first: a clip played without a reveal is heard and not seen,
+        // which is what a `play` addressing a clip a hidden `/video` row declared still does. The
+        // reveal resolves once the clip can play, so `play` starts on a loaded clip; an element that
+        // is still loading draws nothing, and the stage shows through it until the first frame.
+        //
+        // A row that clears its clip away hides it after: `play` waits for the end, so the hide runs
+        // the moment the clip finishes and fades out the frame it ended on. Without it that frame
+        // stays above every scene - the stage draws videos over the scene group and a jump does not
+        // remove them, while the next scene has no name for the clip to hide it by.
+        const statements: NlrStatement[] = [];
+        if (revealCreates(payload)) {
+            statements.push(video.show());
+        }
+        statements.push(video.play());
+        const leaveFadeMs = videoLeaveFadeMs(payload);
+        if (leaveFadeMs !== null) {
+            statements.push(video.hide(videoFadeOptions(leaveFadeMs)));
+        }
+        return statements.map(statement => recordStatement(ctx, statement, block));
     }
     if (payload.operation === "create") {
         // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
@@ -4419,10 +4443,7 @@ async function compileVideoAction(
         return [recordStatement(ctx, video.show(), block)];
     }
     if (payload.operation === "hide") {
-        return [recordStatement(ctx, video.hide(), block)];
-    }
-    if (payload.operation === "play") {
-        return [recordStatement(ctx, video.play(), block)];
+        return [recordStatement(ctx, video.hide(videoFadeOptions(videoLeaveFadeMs(payload) ?? 0)), block)];
     }
     if (payload.operation === "pause") {
         return [recordStatement(ctx, video.pause(), block)];

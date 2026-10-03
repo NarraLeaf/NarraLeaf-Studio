@@ -6,6 +6,7 @@ import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { useTranslation } from "@/lib/i18n";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import {
     clampContainerStackSpacingPx,
     CONTAINER_STACK_SPACING_ABS_MAX_PX,
@@ -49,6 +50,8 @@ export function ContainerStackPaddingEditor({
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
 
     useEffect(() => {
         setSidesOpen(false);
@@ -102,6 +105,16 @@ export function ContainerStackPaddingEditor({
 
     const closeSides = useCallback(() => setSidesOpen(false), []);
 
+    // Focus goes into the popover, Escape closes it without reaching the inspector it was opened
+    // from (portal events bubble through the React tree), Tab out of it closes it, and closing hands
+    // focus back to the chevron.
+    useFloatingLayer({
+        open: sidesOpen,
+        onClose: closeSides,
+        panelRef,
+        ownerRefs: [anchorRef],
+    });
+
     const toggleSides = useCallback(() => {
         setSidesOpen(o => !o);
     }, []);
@@ -119,17 +132,17 @@ export function ContainerStackPaddingEditor({
             const rect = anchor.getBoundingClientRect();
             const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 140;
             const viewportPadding = 8;
-            const width = Math.min(Math.max(rect.width, 260), window.innerWidth - viewportPadding * 2);
+            const width = Math.min(Math.max(rect.width, 260), hostWindow.innerWidth - viewportPadding * 2);
             let left = rect.left;
             let top = rect.bottom + 6;
 
-            if (left + width > window.innerWidth - viewportPadding) {
-                left = window.innerWidth - width - viewportPadding;
+            if (left + width > hostWindow.innerWidth - viewportPadding) {
+                left = hostWindow.innerWidth - width - viewportPadding;
             }
             if (left < viewportPadding) {
                 left = viewportPadding;
             }
-            if (top + panelHeight > window.innerHeight - viewportPadding) {
+            if (top + panelHeight > hostWindow.innerHeight - viewportPadding) {
                 top = rect.top - panelHeight - 6;
             }
             if (top < viewportPadding) {
@@ -140,13 +153,13 @@ export function ContainerStackPaddingEditor({
         };
 
         updatePosition();
-        window.addEventListener("resize", updatePosition);
-        window.addEventListener("scroll", updatePosition, true);
+        hostWindow.addEventListener("resize", updatePosition);
+        hostWindow.addEventListener("scroll", updatePosition, true);
         return () => {
-            window.removeEventListener("resize", updatePosition);
-            window.removeEventListener("scroll", updatePosition, true);
+            hostWindow.removeEventListener("resize", updatePosition);
+            hostWindow.removeEventListener("scroll", updatePosition, true);
         };
-    }, [sidesOpen]);
+    }, [hostWindow, sidesOpen]);
 
     useEffect(() => {
         if (!sidesOpen) {
@@ -164,23 +177,15 @@ export function ContainerStackPaddingEditor({
             closeSides();
         };
 
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closeSides();
-            }
-        };
-
-        const t = window.setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown, true);
+        const t = hostWindow.setTimeout(() => {
+            hostDocument.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
-        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            window.clearTimeout(t);
-            document.removeEventListener("mousedown", handlePointerDown, true);
-            document.removeEventListener("keydown", handleKeyDown);
+            hostWindow.clearTimeout(t);
+            hostDocument.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [closeSides, sidesOpen]);
+    }, [closeSides, hostDocument, hostWindow, sidesOpen]);
 
     const sideKeys = [
         { key: "stackPaddingTop" as const, label: t("widgets.sides.top") },
@@ -238,7 +243,7 @@ export function ContainerStackPaddingEditor({
                           </div>
                       </fieldset>
                   </div>,
-                  document.body
+                  hostDocument.body
               )
             : null;
 

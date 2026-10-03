@@ -21,6 +21,7 @@ import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useFreezeUnavailableReason } from "./freezeGuard";
 import { useShortcutLabels, type ShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useTranslation } from "@/lib/i18n";
+import { useFloatingLayer } from "@/lib/components/layout";
 
 interface ActionDropdownProps {
     group: ActionGroup;
@@ -137,6 +138,18 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
     });
     const revealMnemonic = useMnemonicReveal();
     const shortcuts = useShortcutLabels();
+    // The open menu is a floating layer for what the bar does not do: focus goes back to the
+    // trigger when the menu closes rather than dropping to the page, and Tab out of the menu
+    // closes it. Escape and the arrows never reach the layer - the bar answers them on the window's
+    // capture phase, ahead of it - so it is given no item selector, and the rows keep their own walk.
+    // The menu places focus itself (below), on its root, which is where the bar's keys expect it.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: () => setIsOpen(false),
+        panelRef: rootMenuRef,
+        ownerRefs: [dropdownRef],
+        initialFocus: false,
+    });
 
     useEffect(() => {
         if (!isOpen) {

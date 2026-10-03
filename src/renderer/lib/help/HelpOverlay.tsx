@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { HelpContent } from "./HelpContent";
 import { getHelpTopic, helpTitleKey, type HelpTopic, type HelpTopicId } from "./helpTopics";
 import { currentTopic, popTopic, previousTopic, pushTopic, startTrail, type HelpTrail } from "./helpTrail";
@@ -12,7 +13,10 @@ import { registerHelpOpener, startHelpPointerTracking, type HelpRequest } from "
  * The help popover: one per window, mounted once, invisible until something asks for a topic.
  *
  * Transient by design (docs/help-system.md §5). It is anchored to the surface it describes, it
- * closes on Escape or on a click anywhere else, and it reserves no space. There is no pinned mode
+ * closes on Escape or on a click anywhere else, and it reserves no space. A popover rather than a
+ * dialog for the same reason: it takes focus when it opens, so it is read and walked from the
+ * keyboard, but Tab out of it - like a click elsewhere - puts it away instead of being held inside,
+ * and it gives focus back to whatever asked for it. There is no pinned mode
  * and no dock: reading the whole topic set is what the browser is for, and this offers the way
  * there rather than growing into it.
  */
@@ -43,6 +47,8 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
     const [session, setSession] = useState<HelpSession | null>(null);
     const [style, setStyle] = useState<React.CSSProperties | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
 
     const previousId = session ? previousTopic(session.trail) : undefined;
     const topic: HelpTopic | undefined = getHelpTopic(session ? currentTopic(session.trail) : undefined);
@@ -64,29 +70,33 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
         setSession(current => (current ? { ...current, trail: popTopic(current.trail) } : current));
     }, []);
 
-    // Escape closes and Alt+Left steps back, both at capture so an editor that listens for the same
-    // keys does not take them first. Alt+Left is only claimed when there is somewhere to go, so it
-    // still reaches whatever else wants it when this is the first topic of a visit.
+    // Focus moves onto the panel itself when it opens - not onto its first button, which is "back"
+    // or "close" - so the topic is announced and Tab walks its links from the top. Escape closes it,
+    // and closing by Escape or by either button gives focus back to where `F1` or the `?` was pressed.
+    useFloatingLayer({
+        open: session !== null,
+        onClose: close,
+        panelRef,
+        initialFocus: panelRef,
+    });
+
+    // Alt+Left steps back, at capture so an editor that listens for the same keys does not take them
+    // first. Only claimed when there is somewhere to go, so it still reaches whatever else wants it
+    // when this is the first topic of a visit.
     useEffect(() => {
         if (!session) {
             return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                close();
-                return;
-            }
             if (event.key === "ArrowLeft" && event.altKey && previousTopic(session.trail)) {
                 event.preventDefault();
                 event.stopPropagation();
                 back();
             }
         };
-        document.addEventListener("keydown", onKeyDown, true);
-        return () => document.removeEventListener("keydown", onKeyDown, true);
-    }, [session, close, back]);
+        hostDocument.addEventListener("keydown", onKeyDown, true);
+        return () => hostDocument.removeEventListener("keydown", onKeyDown, true);
+    }, [session, back, hostDocument]);
 
     // Any pointer press outside the panel dismisses. `mousedown` rather than `click` so the press
     // that starts an edit elsewhere is not also spent on closing this.
@@ -99,9 +109,9 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                 close();
             }
         };
-        document.addEventListener("mousedown", onMouseDown, true);
-        return () => document.removeEventListener("mousedown", onMouseDown, true);
-    }, [session, close]);
+        hostDocument.addEventListener("mousedown", onMouseDown, true);
+        return () => hostDocument.removeEventListener("mousedown", onMouseDown, true);
+    }, [session, close, hostDocument]);
 
     /**
      * Beside the anchor if it fits, below it otherwise, centred when there is no anchor. Measured
@@ -121,40 +131,40 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
             if (!anchor) {
                 setStyle({
                     position: "fixed",
-                    left: Math.max(MARGIN_PX, (window.innerWidth - WIDTH_PX) / 2),
-                    top: Math.max(MARGIN_PX, (window.innerHeight - height) / 2),
+                    left: Math.max(MARGIN_PX, (hostWindow.innerWidth - WIDTH_PX) / 2),
+                    top: Math.max(MARGIN_PX, (hostWindow.innerHeight - height) / 2),
                     width: WIDTH_PX,
                 });
                 return;
             }
 
-            const roomRight = window.innerWidth - anchor.right - GAP_PX - MARGIN_PX;
+            const roomRight = hostWindow.innerWidth - anchor.right - GAP_PX - MARGIN_PX;
             const roomLeft = anchor.left - GAP_PX - MARGIN_PX;
             const left = roomRight >= WIDTH_PX
                 ? anchor.right + GAP_PX
                 : roomLeft >= WIDTH_PX
                     ? anchor.left - GAP_PX - WIDTH_PX
-                    : Math.max(MARGIN_PX, Math.min(anchor.left, window.innerWidth - MARGIN_PX - WIDTH_PX));
+                    : Math.max(MARGIN_PX, Math.min(anchor.left, hostWindow.innerWidth - MARGIN_PX - WIDTH_PX));
 
             const top = Math.max(
                 MARGIN_PX,
-                Math.min(anchor.top, window.innerHeight - MARGIN_PX - height),
+                Math.min(anchor.top, hostWindow.innerHeight - MARGIN_PX - height),
             );
 
             setStyle({ position: "fixed", left, top, width: WIDTH_PX });
         };
 
         place();
-        const raf = requestAnimationFrame(place);
-        window.addEventListener("resize", place);
+        const raf = hostWindow.requestAnimationFrame(place);
+        hostWindow.addEventListener("resize", place);
         return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", place);
+            hostWindow.cancelAnimationFrame(raf);
+            hostWindow.removeEventListener("resize", place);
         };
         // Re-measured on every step of the trail, not just when the popover opens: topics differ in
         // height, and near the bottom of the window a taller one has to be clamped upward or it
         // would run off the edge.
-    }, [session]);
+    }, [hostWindow, session]);
 
     const openRelated = useCallback((id: HelpTopicId) => {
         setSession(current =>
@@ -163,6 +173,21 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                 : { trail: startTrail(id), anchor: null },
         );
     }, []);
+
+    // Stepping to another topic - a "See also" link, or back - redraws the panel's content, and the
+    // link or button that was pressed may not survive it. Focus that fell to the body with it goes
+    // back onto the panel, where Tab and Escape still mean this popover.
+    const topicId = topic?.id;
+    useLayoutEffect(() => {
+        const panel = panelRef.current;
+        if (!panel || !topicId) {
+            return;
+        }
+        const active = hostDocument.activeElement;
+        if (!active || active === hostDocument.body || !active.isConnected) {
+            panel.focus({ preventScroll: true });
+        }
+    }, [hostDocument, topicId]);
 
     if (!session || !topic) {
         return null;
@@ -230,6 +255,6 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                 </div>
             )}
         </div>,
-        document.body,
+        hostDocument.body,
     );
 }

@@ -11,7 +11,8 @@ function Dialog(props: { active: boolean; onClose: () => void; children?: React.
     return <div>{props.children}</div>;
 }
 
-function pressEscape(target: EventTarget = document) {
+// A key pressed with nothing focused is dispatched at the body, never at the document itself.
+function pressEscape(target: EventTarget = document.body) {
     target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 }
 

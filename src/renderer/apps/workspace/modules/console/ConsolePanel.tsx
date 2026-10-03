@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
 import { Button } from "@/lib/components/elements";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import {
@@ -107,6 +108,18 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
     const [progressByChannel, setProgressByChannel] = useState<Record<ConsoleChannelId, ConsoleProgress | null>>({});
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const filterMenuRef = useRef<HTMLDivElement | null>(null);
+    const filterMenuPanelRef = useRef<HTMLDivElement | null>(null);
+    const hostWindow = useHostWindow();
+    // The level filter is a popover: focus moves onto the first level when it opens, the arrows walk
+    // the levels, Escape closes it and not the panel it sits in, Tab out of it closes it, and closing
+    // gives focus back to the filter button.
+    useFloatingLayer({
+        open: filterMenuOpen,
+        onClose: () => setFilterMenuOpen(false),
+        panelRef: filterMenuPanelRef,
+        ownerRefs: [filterMenuRef],
+        itemSelector: "input[type=\"checkbox\"]",
+    });
     const panelStateLoadedRef = useRef(false);
 
     useEffect(() => {
@@ -223,9 +236,9 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             }
             setFilterMenuOpen(false);
         };
-        window.addEventListener("pointerdown", handlePointerDown);
-        return () => window.removeEventListener("pointerdown", handlePointerDown);
-    }, [filterMenuOpen]);
+        hostWindow.addEventListener("pointerdown", handlePointerDown);
+        return () => hostWindow.removeEventListener("pointerdown", handlePointerDown);
+    }, [filterMenuOpen, hostWindow]);
 
     const toggleLevel = (level: ConsoleLogLevel) => {
         setVisibleLevels(prev => {
@@ -340,6 +353,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                         </button>
                         {filterMenuOpen ? (
                             <div
+                                ref={filterMenuPanelRef}
                                 role="menu"
                                 className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                             >

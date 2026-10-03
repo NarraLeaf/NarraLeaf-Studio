@@ -76,7 +76,7 @@ describe("RubyPopover", () => {
     it("writes nothing after Escape - that exit has already decided the outcome", () => {
         const { view, onCommit, onClose } = renderPopover();
         fireEvent.change(field(), { target: { value: "かんじ" } });
-        fireEvent.keyDown(window, { key: "Escape" });
+        fireEvent.keyDown(field(), { key: "Escape" });
         expect(onClose).toHaveBeenCalledTimes(1);
         view.unmount();
         expect(onCommit).not.toHaveBeenCalled();
@@ -88,6 +88,22 @@ describe("RubyPopover", () => {
         expect(onRemove).toHaveBeenCalledTimes(1);
         view.unmount();
         expect(onCommit).not.toHaveBeenCalled();
+    });
+
+    it("leaves an Escape pressed while an input method is composing to the input method", () => {
+        const { onClose } = renderPopover();
+        fireEvent.keyDown(field(), { key: "Escape", isComposing: true });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("carries the draft out when Tab leaves the field", () => {
+        const { view, onCommit, onClose } = renderPopover();
+        fireEvent.change(field(), { target: { value: "かんじ" } });
+        fireEvent.keyDown(field(), { key: "Tab" });
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId("trigger")).toBe(document.activeElement);
+        view.unmount();
+        expect(onCommit).toHaveBeenCalledWith("かんじ");
     });
 
     it("offers Remove only when there is a reading to remove", () => {

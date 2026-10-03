@@ -586,6 +586,7 @@ export const story = {
         mirrorState: "开 / 关",
         waitFor: "秒数或 click",
         waitForEnd: "等待播放结束",
+        hideOnEnd: "播放结束后隐藏",
         fade: "淡入淡出秒数",
         loop: "循环",
         returnable: "返回",
