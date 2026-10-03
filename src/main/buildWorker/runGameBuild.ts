@@ -2,7 +2,9 @@ import path from "path";
 import { build, Platform, Arch, type Configuration } from "electron-builder";
 import { perTargetFileSets } from "./perTargetPayload";
 import {
+    currentGameBuildPlatform,
     gameBuildArtifactNamePattern,
+    hostPackagesWithoutPlatformTools,
     type GameBuildArch,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
@@ -20,6 +22,7 @@ import {
     withNotarizationEnv,
     withSigntoolPath,
 } from "./desktopSigning";
+import { packWithoutPlatformTools } from "./crossHost/packWithoutPlatformTools";
 import { signArtifactsWithGpg } from "./gpgSign";
 import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
@@ -243,26 +246,49 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
     // use; unset when the host has no Windows SDK, in which case it downloads
     // its own bundle. The Apple variables are likewise @electron/notarize's only
     // interface - see withNotarizationEnv.
+    const host = currentGameBuildPlatform();
+    // electron-builder for one target, also run by Studio's own packager for the parts it can still
+    // do on this host (see packWithoutPlatformTools).
+    const runBuilder = async (runConfig: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Promise<string[]> => {
+        if (target.platform === "windows") {
+            // Cached after the first call; a payload laid out as a Windows app needs it as much as an
+            // installer does (rcedit lives in the same bundle).
+            await ensureWinCodeSignCache(log, runConfig.electronBuilderBinariesMirror);
+        }
+        const produced = await build({
+            // Exactly one arch per target: a multi-arch NSIS request would be
+            // folded into a single installer whose name drops the ${arch} macro,
+            // which the dialog's artifact preview could not have predicted.
+            targets: BUILDER_PLATFORMS[target.platform].createTarget(
+                target.formats.map(format => BUILDER_TARGET_NAMES[format]),
+                BUILDER_ARCHS[target.arch],
+            ),
+            projectDir: appDir,
+            config: builderConfiguration(runConfig, target, log),
+        });
+        return produced.map(artifact => path.resolve(artifact));
+    };
     await withNotarizationEnv(notarizationForTargets(config.targets), () =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
-                const platform = BUILDER_PLATFORMS[target.platform];
-                const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
+                if (hostPackagesWithoutPlatformTools(host, target.platform)) {
+                    artifacts.push(...await packWithoutPlatformTools({
+                        config,
+                        target,
+                        runBuilder: async (runConfig, runTarget) => {
+                            await runBuilder(runConfig, runTarget);
+                        },
+                        log,
+                    }));
+                    continue;
+                }
                 if (target.signing) {
                     log("info", isMacSigning(target.signing)
                         ? describeMacSigning(target.signing)
                         : describeWindowsSigning(target.signing));
                 }
-                const produced = await build({
-                    // Exactly one arch per target: a multi-arch NSIS request would be
-                    // folded into a single installer whose name drops the ${arch} macro,
-                    // which the dialog's artifact preview could not have predicted.
-                    targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
-                    projectDir: appDir,
-                    config: builderConfiguration(config, target, log),
-                });
-                artifacts.push(...produced.map(artifact => path.resolve(artifact)));
+                artifacts.push(...await runBuilder(config, target));
             }
         }));
     return artifacts;

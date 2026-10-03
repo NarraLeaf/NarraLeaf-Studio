@@ -92,6 +92,22 @@ describe("writeZip round trip", () => {
         expect(directory.unixMode & 0o777).toBe(0o755);
     });
 
+    it("writes a symbolic link as its target, stored, with S_IFLNK in the mode", async () => {
+        const buffer = await writeToBuffer([
+            {
+                name: "Game.app/Contents/Frameworks/Electron Framework.framework/Versions/Current",
+                source: { kind: "buffer", data: Buffer.from("A") },
+                symlink: true,
+            },
+        ], APK_OPTIONS);
+
+        const [link] = parseZipIndex(buffer).entries;
+        expect(link.method).toBe(ZIP_METHOD_STORE);
+        expect(link.unixMode).toBe(0o120755);
+        expect(link.isDirectory).toBe(false);
+        expect(inflateEntry(buffer, link.name).toString("utf8")).toBe("A");
+    });
+
     it("produces byte-identical output for identical input", async () => {
         const entries = (): ZipWriteEntry[] => [
             { name: "a.txt", source: { kind: "buffer", data: text } },

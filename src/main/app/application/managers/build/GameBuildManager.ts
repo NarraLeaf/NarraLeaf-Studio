@@ -22,6 +22,7 @@ import {
     hostBuildLimitsSentence,
     hostCanBuildFormat,
     hostCanBuildTarget,
+    hostPackagesWithoutPlatformTools,
     iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -2299,6 +2300,9 @@ export class GameBuildManager {
                     hostPlatform,
                 )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
+                    : {}),
+                ...(hostPackagesWithoutPlatformTools(hostPlatform, target.platform)
+                    ? { hostElectronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
                 ...await this.resolveDesktopTargetSigning(session, target.platform, signing),

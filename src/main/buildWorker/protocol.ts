@@ -218,6 +218,13 @@ export type GameBuildWorkerTarget = {
      */
     electronDist?: string;
     /**
+     * The host's own Electron installation, for a target this host packages without the target
+     * platform's tools (`hostPackagesWithoutPlatformTools`). Studio's packager has electron-builder
+     * lay the game's payload out as an app for the host, which needs no download, and takes the
+     * payload from there; see crossHost/packWithoutPlatformTools.ts. Unset for every other target.
+     */
+    hostElectronDist?: string;
+    /**
      * Absolute path of the app icon for this platform, already in the format
      * that platform's packager wants - `.ico` for Windows, `.icns` for macOS, a
      * PNG for Linux. Unset falls back to the default Electron icon.
