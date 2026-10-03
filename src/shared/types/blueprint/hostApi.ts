@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 39 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 40 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -179,6 +179,20 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
     navigation: {
         openSurface: {
             capabilityId: "navigation.openSurface",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { surfaceId: "", props: {} },
+            output: null,
+        },
+        /**
+         * Open a page in place of the one on top of the stack: the same transition as `openSurface`,
+         * after which the page it replaced is gone from the stack, so going back - or emptying the
+         * stack down to its root - never lands on it. While a game holds the screen there is no page
+         * on top to replace, and this opens over the game exactly as `openSurface` does.
+         */
+        replaceSurface: {
+            capabilityId: "navigation.replaceSurface",
             purity: "effectful",
             callableFromBinding: false,
             async: true,

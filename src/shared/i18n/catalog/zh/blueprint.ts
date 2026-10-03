@@ -1236,6 +1236,7 @@ export const blueprint = {
         getVisible: "获取可见性",
         getWrapMode: "获取换行模式",
         goPage: "前往页面",
+        replacePage: "替换页面",
         goBack: "返回上一页",
         showLayer: "叠加页面",
         hideLayer: "移除叠加页面",
@@ -1504,6 +1505,7 @@ export const blueprint = {
         appBoot: "每次启动游戏时运行一次，在第一个界面显示之后，界面不等它执行完。此时「游戏就绪时」已经运行过。开发模式中每次重新加载后会再次运行",
         gameReady: "游戏准备就绪时运行，早于任何故事开始，也早于第一个界面显示；界面会等它执行完。先于「应用启动」运行，开始或读取游戏时可能再次运行",
         goBack: "关闭当前页面，回到它下面的页面；已在最底层的页面上时不执行任何操作",
+        replacePage: "打开页面以代替当前页面，并关闭当前页面；「返回上一页」与页面为「无」的「前往页面」都不会回到该页面",
     },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",

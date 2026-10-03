@@ -212,6 +212,12 @@
     },
     "slot.empty": {
       "sourceText": "无存档"
+    },
+    "splash.disclaimer": {
+      "sourceText": "本作品纯属虚构。\n与现实中的人物、团体、地点及事件无关。"
+    },
+    "splash.wordmark": {
+      "sourceText": "你的工作室"
     }
   },
   "schemaVersion": 1

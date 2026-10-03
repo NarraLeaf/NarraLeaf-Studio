@@ -1286,6 +1286,7 @@ export const blueprint = {
         getVisible: "Get Visible",
         getWrapMode: "Get Wrap Mode",
         goPage: "Go Page",
+        replacePage: "Replace Page",
         goBack: "Go back",
         showLayer: "Show Layer",
         hideLayer: "Hide Layer",
@@ -1559,6 +1560,7 @@ export const blueprint = {
         appBoot: "Runs once each time the game starts, after the first screen is showing, and does not hold that screen back. On Game Ready has already run by then. In Dev Mode it runs again after every reload.",
         gameReady: "Runs when the game is ready, before any story starts and before the first screen shows; the screen waits for it to finish. Runs before App Boot, and can run again when a game is started or loaded.",
         goBack: "Closes the current page and returns to the page beneath it. On the bottom page it does nothing.",
+        replacePage: "Opens a page in place of the current page, and closes the current page. Go back and Go Page set to None do not return to it.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

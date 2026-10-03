@@ -492,6 +492,16 @@
       "status": "translated",
       "target": "データなし"
     },
+    "key:splash.disclaimer": {
+      "sourceHash": "fnv1a:18d1e6f7",
+      "status": "translated",
+      "target": "この作品はフィクションです。\n実在の人物・団体・事件などとは一切関係ありません。"
+    },
+    "key:splash.wordmark": {
+      "sourceHash": "fnv1a:f5a9696c",
+      "status": "translated",
+      "target": "あなたのスタジオ"
+    },
     "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
       "sourceHash": "fnv1a:2a32664b",
       "status": "translated",

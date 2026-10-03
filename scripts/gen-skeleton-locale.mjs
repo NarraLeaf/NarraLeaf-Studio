@@ -130,6 +130,7 @@ const NODE_PARAM_SLOTS = [
     ["blueprint.localization.getText", "key", VERBATIM],
     ["blueprint.log", "value", TEXT],
     ["blueprint.page.go", "surfaceId", VERBATIM],
+    ["blueprint.page.replace", "surfaceId", VERBATIM],
     ["blueprint.persistent.get", "persistentVariableId", VERBATIM],
     ["blueprint.sound.play", "audioTrackId", VERBATIM],
     ["blueprint.sound.play", "soundAssetId", VERBATIM],
