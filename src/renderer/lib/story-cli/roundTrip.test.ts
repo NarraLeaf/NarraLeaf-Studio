@@ -594,6 +594,30 @@ describe("a clip the file declares, then pauses or stops", () => {
         });
     }
 
+    it("lands the rows the editor lands for an overlay the file starts", () => {
+        // An overlay outlives its scene, so its name is read off every scene of the story rather than
+        // off the one open - and the editor's story holds the scene as it is being written. The file's
+        // second reading has to see the same, or `/pause petals` is taken for a sound.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lines = ["/vfx rain name=petals", "/pause petals", "/resume petals"];
+
+        const compiled = compileBody(data, document, scene, lines);
+        expect(compiled.diagnostics).toEqual([]);
+        const rows = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        const typed = typedInOrder(data, document, scene, lines, rows.map(row => row.id));
+        for (const [index, row] of rows.entries()) {
+            expect(sameRowContent(row, typed[index]), lines[index]).toBe(true);
+        }
+        for (const [index, operation] of ["pause", "resume"].entries()) {
+            const row = rows[1 + index];
+            expect(row.kind === "action" && row.payload, lines[1 + index]).toMatchObject({ action: "vfx", operation });
+        }
+    });
+
     it("still takes a name no row declares for a sound", () => {
         // The fallback the first reading leans on is right where nothing answers the name at all: the
         // sound may be started in another scene. Leaving the first reading's guesses out of what the
