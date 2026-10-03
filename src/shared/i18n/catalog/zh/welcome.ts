@@ -23,6 +23,10 @@ export const welcome = {
             label: "帮助",
             description: "Studio 各个部分的行为",
         },
+        titlePage: {
+            label: "新建标题页",
+            description: "带有可用的「开始」「继续」按钮",
+        },
     },
     reopenHint: {
         menu: "在「帮助 → 打开欢迎页」中重新打开本页",
