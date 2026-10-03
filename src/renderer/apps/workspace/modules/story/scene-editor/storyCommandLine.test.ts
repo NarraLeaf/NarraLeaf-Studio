@@ -192,6 +192,32 @@ describe("projectStoryCommandLine", () => {
         });
     });
 
+    it("says how a clip leaves only where the row says something its form does not", () => {
+        const lines: [typed: string, printed: string][] = [
+            // The cutscene's default - clear away with the default fade - is the bare line.
+            ["/play intro", "/play intro name=intro"],
+            ["/play intro out=fade", "/play intro name=intro"],
+            ["/play intro hide=false", "/play intro name=intro hide=false"],
+            ["/play intro out=none", "/play intro name=intro out=none"],
+            ["/play intro d=1.5", "/play intro name=intro out=fade d=1.5s"],
+            // A clip on stage stays unless the row asks; saying how it leaves is the asking.
+            ["/play clip", "/play clip"],
+            ["/play clip hide", "/play clip hide=true"],
+            ["/play clip out=fade", "/play clip hide=true"],
+            ["/play clip out=fade d=0.5", "/play clip out=fade d=0.5s"],
+            ["/play clip out=none", "/play clip out=none"],
+            // `/hide` cuts unless it says otherwise, so a fade on it is always written out.
+            ["/hide clip", "/hide clip"],
+            ["/hide clip out=fade", "/hide clip out=fade d=0.25s"],
+            ["/hide clip out=none", "/hide clip out=none"],
+        ];
+        for (const [typed, printed] of lines) {
+            expect(project(typed), typed).toBe(printed);
+            // And the printed line is the same row again.
+            expect(comparable(build(printed)), printed).toEqual(comparable(build(typed)));
+        }
+    });
+
     it("keeps the loop flag on the row, because it is what the row IS", () => {
         // A `loop` row does not hold the scene up, and the only thing that says so on the line is
         // the word - so it prints next to the subject rather than being inferred from the payload.

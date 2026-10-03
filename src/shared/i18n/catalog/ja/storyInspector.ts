@@ -496,6 +496,8 @@ export const storyInspector = {
         videoName: "動画の名前",
         videoAsset: "動画アセット",
         seekTime: "この位置へ",
+        hideOnEnd: "再生の終了後に隠す",
+        leave: "退場",
     },
 
     nvl: {

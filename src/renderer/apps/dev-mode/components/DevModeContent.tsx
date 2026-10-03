@@ -25,6 +25,8 @@ import type {
 import { getInterface } from "@/lib/app/bridge";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
+import { useFloatingLayer } from "@/lib/components/layout";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
@@ -127,6 +129,9 @@ const FAST_FORWARD_BINDING = "mod+arrowright";
  * Reaching it through a menu every time is the part that makes the loop expensive.
  */
 const LOCATE_STORY_ROW_BINDING = "mod+shift+l";
+
+/** The debug button's menu rows, for the keyboard walk its floating layer gives it. */
+const DEVTOOLS_MENU_ITEM_SELECTOR = '[role="menuitem"]';
 
 /** Nothing acknowledged yet. One frozen instance so a reset is not a new object every time. */
 const NO_ACKNOWLEDGED_KEYS: ReadonlySet<string> = new Set();
@@ -423,24 +428,35 @@ function DevModeDebugOverlay(props: {
         return () => document.removeEventListener("pointerdown", onPointerDown, true);
     }, [devtoolsMenuOpen]);
 
+    // The debug button's menu: focus goes to its first live item, the arrows walk it, Escape closes
+    // it and nothing else, and closing it hands focus back to the button.
+    useFloatingLayer({
+        open: devtoolsMenuOpen,
+        onClose: () => setDevtoolsMenuOpen(false),
+        panelRef: devtoolsMenuRef,
+        ownerRefs: [devtoolsFabRef],
+        itemSelector: DEVTOOLS_MENU_ITEM_SELECTOR,
+    });
+
+    // Escape closes the open drawer. Heard last, on the window's bubble phase, and only for a key
+    // nothing else has answered: an Escape that closed one of the drawer's own menus or dropdowns
+    // (each a floating layer, which stops the key) or reverted a field in it (which prevents it) is
+    // spent there and must not take the whole drawer with it. Nothing is stopped here either, so the
+    // game, which listens to this window's keys too, still hears every Escape it would have.
     useEffect(() => {
+        if (activePanel === "none") {
+            return;
+        }
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key !== "Escape") {
+            if (e.key !== "Escape" || e.defaultPrevented || isImeKeyEvent(e)) {
                 return;
             }
-            if (devtoolsMenuOpen) {
-                setDevtoolsMenuOpen(false);
-                e.preventDefault();
-                return;
-            }
-            if (activePanel !== "none") {
-                setActivePanel(() => "none");
-                e.preventDefault();
-            }
+            setActivePanel(() => "none");
+            e.preventDefault();
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [devtoolsMenuOpen, activePanel]);
+    }, [activePanel, setActivePanel]);
 
     /**
      * Drag a floating panel by its title bar.

@@ -514,6 +514,8 @@ export const storyInspector = {
         videoName: "Video name",
         videoAsset: "Video asset",
         seekTime: "Seek to",
+        hideOnEnd: "Hide when finished",
+        leave: "Exit",
     },
 
     nvl: {

@@ -46,6 +46,7 @@ import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { MenuShortcut } from "../../components/ui/MenuShortcut";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { WorkspaceMenuAction, WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -86,6 +87,11 @@ const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
  */
 const PREVIEW_AS_SHIPPED_SETTINGS_KEY = "ui.previewAsShippedByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
+/**
+ * Every row of the open run menu: the mode radios, the edition and DLC pickers and what they
+ * expand to, and the reset flyout's own rows, which are drawn inside the menu beside their row.
+ */
+const RUN_MENU_ROW_SELECTOR = "[role=\"menuitem\"], [role=\"menuitemradio\"], [role=\"menuitemcheckbox\"]";
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
  * stops. Spelled out rather than derived so `keybindingCatalog.test.ts` - which reads source text,
@@ -170,6 +176,18 @@ export function RunControl() {
         setOpen: setMenuOpen,
         toggle: toggleMenu,
     } = useTitleBarMenu("narraleaf-studio:run");
+    const menuPanelRef = useRef<HTMLDivElement | null>(null);
+    // Opening moves focus onto the selected mode, the up and down arrows walk every row - the
+    // expanded variant and DLC lists and the reset flyout included, since they are drawn inside the
+    // panel - Tab out closes the menu, and closing gives focus back to the chevron. Escape is the
+    // bar's, which closes the menu ahead of this layer hearing the key.
+    useFloatingLayer({
+        open: menuOpen,
+        onClose: () => setMenuOpen(false),
+        panelRef: menuPanelRef,
+        ownerRefs: [menuRef],
+        itemSelector: RUN_MENU_ROW_SELECTOR,
+    });
     const shortcuts = useShortcutLabels();
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
@@ -1021,6 +1039,7 @@ export function RunControl() {
                         onClick={() => setMenuOpen(false)}
                     />
                     <div
+                        ref={menuPanelRef}
                         role="menu"
                         aria-label={t("actions.run.menu")}
                         className="absolute left-0 top-full z-20 mt-1 min-w-52 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"

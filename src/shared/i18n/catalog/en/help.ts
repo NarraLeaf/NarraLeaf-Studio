@@ -800,7 +800,8 @@ export const help = {
             body:
                 "A build produces the files delivered to players. Choose the target platforms and formats.\n"
                 + "\n"
-                + "- Web, Android and iOS build on any machine. macOS builds only on a Mac.\n"
+                + "- Every platform builds on Windows and on a Mac. On Windows, macOS builds only as a zip, and "
+                + "Linux as a zip or an AppImage.\n"
                 + "- An unsigned build runs, but the first launch shows a security prompt on Windows and macOS.\n"
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",

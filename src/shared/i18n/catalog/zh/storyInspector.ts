@@ -449,6 +449,8 @@ export const storyInspector = {
         videoName: "视频名称",
         videoAsset: "视频资产",
         seekTime: "跳到",
+        hideOnEnd: "播放结束后隐藏",
+        leave: "退场",
     },
     nvl: {
         hint: "子行在 NVL 模式下运行；下方的变换在 NVL 图层进入时播放",

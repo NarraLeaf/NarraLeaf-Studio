@@ -9,17 +9,27 @@
  * way `blueprint` does and for the same reason: a flag nobody declared is a typo, and a typo that is
  * silently ignored reports the wrong problem.
  *
- * This tool owns `editor/ui/uidoc.json` and reads `uigraphs.json` without ever writing it. Attaching
- * a graph to a widget is `blueprint apply`'s job, and the seam between the two is the element id: a
- * `.ui` file names its own ids, so the blueprint that hangs off an element can be written before or
- * after the element itself.
+ * This tool owns `editor/ui/uidoc.json` and reads `uigraphs.json`. Attaching a graph to a widget is
+ * `blueprint apply`'s job, and the seam between the two is the element id: a `.ui` file names its own
+ * ids, so the blueprint that hangs off an element can be written before or after the element itself.
+ * The one write into `uigraphs.json` is `remove`'s: a component definition's own blueprints have no
+ * owner once the definition is gone, so they go in the same step instead of being left for Studio to
+ * collect the next time it opens the project.
  *
  * Comments in English per project convention.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SCRATCH_DIR_NAME } from "../blueprint-cli/project";
+import {
+    assertWritableSchema as assertWritableBlueprintSchema,
+    ProjectIoError as BlueprintProjectIoError,
+    readUiGraphs,
+    SCRATCH_DIR_NAME,
+    UI_GRAPHS_RELATIVE_PATH,
+    writeUiGraphs,
+} from "../blueprint-cli/project";
+import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import {
     describeWidget,
     formatStructs,
@@ -51,6 +61,13 @@ import {
     type BlueprintIndex,
 } from "./project";
 import { CliPluginError, loadCliPlugin } from "./plugins";
+import {
+    describeComponentRemoval,
+    planComponentRemoval,
+    removeComponentDefinition,
+    REMOVE_REFUSED_CODE,
+    type ProjectTextFile,
+} from "./remove";
 import { didYouMean } from "./text";
 import { findUsages, formatPropValues, formatUsages, readSkeletonDocument, repoRoot } from "./usage";
 
@@ -76,6 +93,9 @@ const USAGE = `ui - query the widget catalogue, read an interface, write one as 
   check [file.ui]             Check a text file, or the whole project when given no file.
   apply <file.ui>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
+  remove                      Take a component definition out of a project, with its elements and its
+                              blueprints. Needs --project. --component <name|id>. Refused, naming
+                              what uses it, while anything does. Writes nothing without --write.
 
 Common flags
   --project <dir>             Project directory (the one holding editor/ui/uidoc.json).
@@ -131,6 +151,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     check: { flags: { project: "string" }, run: commandCheck },
     apply: { flags: { project: "string", write: "boolean" }, run: commandApply },
+    remove: { flags: { project: "string", component: "string", write: "boolean" }, run: commandRemove },
 };
 
 export function runCli(argv: readonly string[], io: CliIo): number {
@@ -153,7 +174,12 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         loadPlugins(args, io);
         return spec.run(args, io);
     } catch (error) {
-        if (error instanceof ProjectIoError || error instanceof UsageError || error instanceof CliPluginError) {
+        if (
+            error instanceof ProjectIoError
+            || error instanceof BlueprintProjectIoError
+            || error instanceof UsageError
+            || error instanceof CliPluginError
+        ) {
             io.err(error.message);
             return 2;
         }
@@ -443,6 +469,117 @@ function commandApply(args: Args, io: CliIo): number {
         );
     }
     return 0;
+}
+
+function commandRemove(args: Args, io: CliIo): number {
+    const wanted = stringFlag(args, "component");
+    if (!wanted) {
+        throw new UsageError("Which component? `ui remove --component <name|id> --project <dir>`.");
+    }
+    const projectDir = requireProject(args);
+    const documentFile = readUiDocument(projectDir);
+    // A removal names one definition exactly or not at all: `show` takes the first of two components
+    // with the same name, which is the right answer to "print it" and the wrong one to "delete it".
+    const matched = (documentFile.document.components ?? [])
+        .filter(component => component.id === wanted || component.name === wanted);
+    if (matched.length !== 1) {
+        io.err(
+            matched.length === 0
+                ? `No component definition has the id or the whole name "${wanted}". Run \`ui surfaces --project <dir>\`.`
+                : `${matched.length} component definitions are called "${wanted}": `
+                      + `${matched.map(component => component.id).join(", ")}. Name one by its id.`,
+        );
+        return 2;
+    }
+    const graphs = fs.existsSync(path.join(projectDir, UI_GRAPHS_RELATIVE_PATH)) ? readUiGraphs(projectDir) : null;
+    const plan = planComponentRemoval({
+        document: documentFile.document,
+        blueprints: graphs?.blueprintDocument ?? null,
+        component: matched[0],
+        files: readProjectTexts(projectDir),
+    });
+    if (plan.refusals.length > 0) {
+        io.err(plan.refusals.map(reason => `error  ${REMOVE_REFUSED_CODE}  ${reason}`).join("\n"));
+        io.err("Nothing was written.");
+        return 1;
+    }
+    const what = describeComponentRemoval(plan);
+    if (args.flags.write !== true) {
+        io.out(`Would remove ${what}. Pass --write to do it.`);
+        return 0;
+    }
+    // Both documents are checked before either is written, so a refusal never leaves one written.
+    assertWritableSchema(documentFile);
+    if (graphs) {
+        assertWritableBlueprintSchema(graphs);
+    }
+    removeComponentDefinition(documentFile.document, graphs?.blueprintDocument ?? null, plan);
+    // The blueprints first: a definition left behind without its blueprints is one Studio gives fresh
+    // empty ones to, while blueprints left behind without their definition are orphans nothing reads.
+    if (graphs) {
+        writeUiGraphs(graphs);
+    }
+    writeUiDocument(documentFile);
+    io.out(
+        `Removed ${what}.\n`
+            + "Close the project in Studio before doing this: nothing reloads the files on their own, and a running "
+            + "Studio writes its own copy over yours on the next save.",
+    );
+    return 0;
+}
+
+/** Directories under `editor/` that hold what Studio derives, not what an author wrote. */
+const DERIVED_EDITOR_DIRS: ReadonlySet<string> = new Set(["cache"]);
+
+/** What a project file is read as when looking for an id in it; anything else is skipped. */
+const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
+    ".json", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".md", ".txt", ".toml", ".yaml", ".yml",
+]);
+
+/**
+ * The project's other authored files, as text: everything under `editor/` but the two interface
+ * documents and Studio's caches, and the author's scripts but not their generated declarations or
+ * installed packages. These are what `remove` searches for a component's ids, so anything that names
+ * the definition - a script reading one of its elements, a story or service table that kept an id -
+ * stops the removal rather than being left pointing at nothing.
+ */
+function readProjectTexts(projectDir: string): ProjectTextFile[] {
+    const out: ProjectTextFile[] = [];
+    const skip = new Set([
+        path.join(projectDir, "editor", "ui", "uidoc.json"),
+        path.join(projectDir, UI_GRAPHS_RELATIVE_PATH),
+    ]);
+    const walk = (dir: string, skipDirs: ReadonlySet<string>): void => {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (!skipDirs.has(entry.name)) {
+                    walk(full, new Set());
+                }
+                continue;
+            }
+            if (!entry.isFile() || skip.has(full) || !TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+                continue;
+            }
+            try {
+                out.push({
+                    path: path.relative(projectDir, full).split(path.sep).join("/"),
+                    text: fs.readFileSync(full, "utf8"),
+                });
+            } catch {
+                // An unreadable file cannot name anything this tool could act on.
+            }
+        }
+    };
+    walk(path.join(projectDir, "editor"), DERIVED_EDITOR_DIRS);
+    walk(path.join(projectDir, SCRIPTS_DIR), new Set([SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR]));
+    return out;
 }
 
 // ---------------------------------------------------------------------------

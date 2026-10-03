@@ -15,6 +15,10 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { PropertyFieldBindingMeta } from "./bindingMeta";
 import { usePropertyBindingState, type FieldStateScope } from "./usePropertyBindingState";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+
+/** The existing fields the picker lists, which the arrow keys walk. */
+const BINDING_CANDIDATE_SELECTOR = "[data-binding-candidate]";
 
 type Props<TData> = {
     field: FieldDefinition<TData> & { binding: PropertyFieldBindingMeta };
@@ -47,6 +51,20 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
     const [newFieldName, setNewFieldName] = useState("");
     const [newFieldScope, setNewFieldScope] = useState<FieldStateScope>("surface");
     const wrapRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const pickerRef = useRef<HTMLDivElement>(null);
+    const doc = useHostDocument();
+    // A popover: focus goes into the search field when it opens, ArrowDown from there walks the
+    // existing fields, Escape closes it and not the inspector it sits in, Tab out of it closes it,
+    // and closing gives focus back to the "bind to field" button - or, once a pick has bound the
+    // property and that button is gone, to the first of the buttons that replaced it.
+    useFloatingLayer({
+        open: pickerOpen,
+        onClose: () => setPickerOpen(false),
+        panelRef: pickerRef,
+        ownerRefs: [triggerRef, wrapRef],
+        itemSelector: BINDING_CANDIDATE_SELECTOR,
+    });
 
     useEffect(() => {
         if (!pickerOpen) {
@@ -58,9 +76,9 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                 setPickerOpen(false);
             }
         };
-        document.addEventListener("mousedown", onDoc, true);
-        return () => document.removeEventListener("mousedown", onDoc, true);
-    }, [pickerOpen]);
+        doc.addEventListener("mousedown", onDoc, true);
+        return () => doc.removeEventListener("mousedown", onDoc, true);
+    }, [doc, pickerOpen]);
 
     useEffect(() => {
         if (pickerOpen) {
@@ -152,6 +170,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                 {bp.status === "literal" ? (
                     <>
                         <button
+                            ref={triggerRef}
                             type="button"
                             disabled={!bp.canBind}
                             className="rounded-md border border-binding/40 bg-binding/10 px-2 py-1 text-2xs text-binding hover:bg-binding/20 disabled:cursor-not-allowed disabled:opacity-40"
@@ -165,7 +184,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                             {t("properties.binding.bindToField")}
                         </button>
                         {pickerOpen ? (
-                            <div className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-edge bg-surface-overlay p-3 shadow-xl">
+                            <div ref={pickerRef} className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-edge bg-surface-overlay p-3 shadow-xl">
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <span className="text-2xs font-medium text-fg">{t("properties.binding.bindProperty")}</span>
                                     <button
@@ -195,6 +214,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                             <button
                                                 key={c.id}
                                                 type="button"
+                                                data-binding-candidate=""
                                                 className="flex w-full flex-col items-start gap-0.5 px-2 py-1.5 text-left hover:bg-fill-subtle"
                                                 onClick={() => pickExisting(c.id)}
                                             >

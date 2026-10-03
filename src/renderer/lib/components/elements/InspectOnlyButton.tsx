@@ -11,6 +11,8 @@ export interface InspectOnlyButtonProps {
     style?: CSSProperties;
     "aria-label"?: string;
     "aria-expanded"?: boolean;
+    /** Defaults to `button`; a row of a list says `option`. */
+    role?: string;
     ref?: Ref<HTMLSpanElement>;
 }
 

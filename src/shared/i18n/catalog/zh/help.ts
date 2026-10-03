@@ -665,7 +665,7 @@ export const help = {
             body:
                 "构建产出交付给玩家的文件；选择目标平台和格式后开始构建\n"
                 + "\n"
-                + "- Web、Android 和 iOS 平台在任何设备上都可以构建，macOS 平台只能在 Mac 上构建\n"
+                + "- 所有平台在 Windows 和 Mac 上都可以构建。在 Windows 上，macOS 只能构建为 zip，Linux 可构建为 zip 或 AppImage\n"
                 + "- 未签名的构建可以运行，但首次打开时 Windows 和 macOS 会显示安全提示\n"
                 + "- 图标取自项目的图标页；某个平台的图标未生成时，该平台使用 NarraLeaf 的图标",
         },

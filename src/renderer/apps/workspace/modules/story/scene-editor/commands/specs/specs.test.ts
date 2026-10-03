@@ -352,6 +352,34 @@ describe("generic verbs", () => {
     it("refuses name= on a /play whose clip is already on stage", () => {
         expect(issuesOf("/play clip name=cutscene")).toEqual(["unsupportedParam"]);
     });
+
+    it("/play says whether the clip leaves at the end, and how", () => {
+        const payloadOf = (source: string) => build(source).payload as { hideOnEnd?: boolean; durationMs?: number };
+        // Unstated, the row's form decides - the cutscene clears itself away, a clip on stage stays.
+        expect(payloadOf("/play intro")).not.toHaveProperty("hideOnEnd");
+        expect(payloadOf("/play clip")).not.toHaveProperty("hideOnEnd");
+        expect(payloadOf("/play intro hide=false")).toMatchObject({ hideOnEnd: false });
+        expect(payloadOf("/play clip hide")).toMatchObject({ hideOnEnd: true });
+        // How it leaves is `/hide`'s own pair. `out=fade` alone is the default fade, written as nothing.
+        expect(payloadOf("/play intro out=fade")).toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+        expect(payloadOf("/play intro d=1.5")).toMatchObject({ durationMs: 1500 });
+        expect(payloadOf("/play intro out=none")).toMatchObject({ durationMs: 0 });
+        // Saying how a clip leaves asks for it to leave, on a row that would otherwise keep it.
+        expect(payloadOf("/play clip out=fade d=0.5")).toMatchObject({ hideOnEnd: true, durationMs: 500 });
+        expect(payloadOf("/play clip out=none")).toMatchObject({ hideOnEnd: true, durationMs: 0 });
+        // A clip fades or cuts; nothing else is a word here.
+        expect(parseCommandLine("/play intro out=slide-left")).toMatchObject({ issues: [{ code: "badValue" }] });
+    });
+
+    it("/hide on a clip takes a fade, written down because a hide otherwise cuts", () => {
+        const payloadOf = (source: string) => build(source).payload as { action: string; durationMs?: number };
+        expect(payloadOf("/hide clip")).toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+        expect(payloadOf("/hide clip out=fade")).toMatchObject({ action: "video", durationMs: 250 });
+        expect(payloadOf("/hide clip out=fade d=0.8")).toMatchObject({ durationMs: 800 });
+        expect(payloadOf("/hide clip d=0.8")).toMatchObject({ durationMs: 800 });
+        expect(payloadOf("/hide clip out=none")).toMatchObject({ durationMs: 0 });
+        expect(issuesOf("/hide clip out=slide-left")).toEqual(["unsupportedOption"]);
+    });
 });
 
 describe("dialogue", () => {

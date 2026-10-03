@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, Download, MoreVertical, Puzzle, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { Badge, Button } from "@/lib/components/elements";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
@@ -16,6 +17,7 @@ import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { escapeLeavesSubPage } from "../project/ProjectPanel";
 import { SearchBox } from "../assets/components/SearchBox";
 import type { PanelComponentProps } from "../types";
 import type { PluginsPanelPayload } from "./openPluginsPanel";
@@ -108,13 +110,22 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
         }
     }, [payload]);
 
-    // Escape backs out one step: off a plugin's page first, then out of the dependency screen.
+    // Escape backs out one step: off a plugin's page first, then out of the dependency screen -
+    // unless the key was meant for something else. A menu or picker that answered it has already
+    // said so (`defaultPrevented`); a field it was pressed in is abandoning an edit; and a key
+    // pressed outside this panel - another panel, a dialog - is not about this page at all, which
+    // matters because the listener is on the window and the panel stays mounted behind other tabs.
+    // The same rule the project panel's sub-pages follow (`escapeLeavesSubPage`).
+    const rootRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
         if (!detailId && view === "list") {
             return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
+            if (event.key !== "Escape" || event.defaultPrevented || isImeKeyEvent(event)) {
+                return;
+            }
+            if (!escapeLeavesSubPage(event.target, rootRef.current)) {
                 return;
             }
             event.stopPropagation();
@@ -304,7 +315,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
 
     if (view === "dependencies") {
         return (
-            <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
+            <div ref={rootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
                 <DependencyInstallScreen
                     rows={dependencies.rows}
                     actionable={dependencies.actionable}
@@ -326,7 +337,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
     }
 
     return (
-        <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
+        <div ref={rootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
             <div className="shrink-0 space-y-2 border-b border-edge px-3 py-2">
                 <div className="flex items-center gap-2">
                     <Segmented

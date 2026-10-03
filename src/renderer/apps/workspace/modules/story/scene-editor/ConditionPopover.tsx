@@ -4,18 +4,25 @@
  * inline — the author never has to open the side inspector to author an if / else-if condition.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import type { StoryConditionRef, StoryDocument, StorySceneId } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { ConditionEditor } from "./ConditionEditor";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 const MENU_Z = 90;
 
 export function ConditionPopover(props: {
     anchor: { top: number; left: number; bottom: number };
+    /**
+     * The chip this opened from. It counts as inside for light dismiss - pressing it again closes
+     * the popover through the chip's own handler, not here and then open again there - and it is
+     * where focus goes back to when the popover closes.
+     */
+    ownerRef?: RefObject<HTMLElement | null>;
     document: StoryDocument;
     sceneId: StorySceneId;
     value: StoryConditionRef | undefined;
@@ -23,37 +30,38 @@ export function ConditionPopover(props: {
     onClear: () => void;
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
+    // A popover on a header chip, not on the row being typed in: it takes the focus, Escape closes
+    // it alone (a menu inside the condition editor closes ahead of it), and closing hands the focus
+    // back to the chip.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: props.ownerRef ? [props.ownerRef] : undefined,
+    });
 
     useEffect(() => {
         const onDown = (event: MouseEvent) => {
             const target = event.target as HTMLElement | null;
-            if (panelRef.current?.contains(target) || target?.closest?.("[data-select-menu]")) {
+            if (
+                panelRef.current?.contains(target)
+                || props.ownerRef?.current?.contains(target)
+                || target?.closest?.("[data-select-menu]")
+            ) {
                 return;
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 320);
-    const left = Math.min(props.anchor.left, window.innerWidth - 288);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 320);
+    const left = Math.min(props.anchor.left, view.innerWidth - 288);
 
     return createPortal(
         <div
@@ -61,6 +69,7 @@ export function ConditionPopover(props: {
             className="fixed z-[80] w-72 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top: Math.max(8, top), left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.condition.title")}</div>
             <ConditionEditor
@@ -81,6 +90,6 @@ export function ConditionPopover(props: {
                 {t("story.condition.clear")}
             </button>
         </div>,
-        globalThis.document.body,
+        doc.body,
     );
 }

@@ -887,6 +887,12 @@ function videoShape(
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): NarralangShape {
     const subject = asName(actionableSubjectWord(ctx.scene, payload.target, "video", payload.objectName));
+    // How a clip leaves - whether a play clears it away, and the fade a play or a hide leaves with -
+    // has no slot in the script grammar. A row that states either is reported rather than written as
+    // a line that would read back without it.
+    if (payload.hideOnEnd !== undefined || payload.durationMs !== undefined) {
+        ctx.report(block.id, "customTransition");
+    }
     switch (payload.operation) {
         case "create":
             return {

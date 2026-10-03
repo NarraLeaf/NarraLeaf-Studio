@@ -5786,7 +5786,18 @@ describe("a play row that names its own clip", () => {
     const playOwn = videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" });
     const leave: StoryBlock = { id: "leave", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-2" } };
 
-    it("builds the clip, reveals it and runs it, as the first row of a scene", async () => {
+    /** What a row's `video:hide` was asked to do: the fade options it carries, if any. */
+    function hideOptionsOf(compiled: Compiled, blockId: string): unknown {
+        const hide = actionsOf(compiled, blockId).find(action => action.type === "video:hide");
+        return hide?.contentNode.getContent()[0];
+    }
+
+    /** The one-row play with some of its payload restated. */
+    function playOwnWith(extra: Partial<Extract<StoryActionPayload, { action: "video" }>>): StoryBlock {
+        return videoRow("play", { ...(playOwn.payload as Extract<StoryActionPayload, { action: "video" }>), ...extra });
+    }
+
+    it("builds the clip, reveals it, runs it and clears it away, as the first row of a scene", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ play: playOwn, leave }, ["play", "leave"]),
             sceneId: "scene-1",
@@ -5796,12 +5807,75 @@ describe("a play row that names its own clip", () => {
         expect(compiled.diagnostics).toEqual([]);
         const actions = actionsOf(compiled, "play");
         // Revealed first: the engine's `play` shows nothing, so a clip played without the reveal is
-        // heard and not seen.
-        expect(actions.map(action => action.type)).toEqual(["video:show", "video:play"]);
+        // heard and not seen. Hidden last: `play` waits for the end, and a clip left there holds its
+        // last frame over the scene the `/jump` after it goes to.
+        expect(actions.map(action => action.type)).toEqual(["video:show", "video:play", "video:hide"]);
+        expect(hideOptionsOf(compiled, "play")).toEqual({ duration: 250 });
         const clip = compiled.sceneElements?.["scene-1"]?.videos.get("festival");
         expect(clip).toBeDefined();
         expect(actions.every(action => action.callee === clip)).toBe(true);
         expect((clip as unknown as { config: { src: string } }).config.src).toBe("nlr://asset-festival");
+    });
+
+    it("keeps the clip on stage when the row says so", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ play: playOwnWith({ hideOnEnd: false }) }, ["play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(actionsOf(compiled, "play").map(action => action.type)).toEqual(["video:show", "video:play"]);
+    });
+
+    it("clears the clip away with the fade the row states, and cuts on none", async () => {
+        const fade = await compileStudioStoryToNlr({
+            document: baseDocument({ play: playOwnWith({ durationMs: 1200 }) }, ["play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+        expect(hideOptionsOf(fade, "play")).toEqual({ duration: 1200 });
+
+        const cut = await compileStudioStoryToNlr({
+            document: baseDocument({ play: playOwnWith({ durationMs: 0 }) }, ["play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+        expect(actionsOf(cut, "play").map(action => action.type)).toEqual(["video:show", "video:play", "video:hide"]);
+        // No options is the engine's instant hide - the call it has always made.
+        expect(hideOptionsOf(cut, "play")).toBeUndefined();
+    });
+
+    it("clears away a clip an earlier row declared only when the play row asks", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                declare: videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-festival" }),
+                play: videoRow("play", { action: "video", operation: "play", objectName: "festival", hideOnEnd: true, durationMs: 600 }),
+            }, ["declare", "play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(actionsOf(compiled, "play").map(action => action.type)).toEqual(["video:play", "video:hide"]);
+        expect(hideOptionsOf(compiled, "play")).toEqual({ duration: 600 });
+    });
+
+    it("fades a hide row out over the time it states, and cuts without one", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: videoRow("show", { action: "video", operation: "show", objectName: "festival", assetId: "asset-festival" }),
+                fade: videoRow("fade", { action: "video", operation: "hide", objectName: "festival", durationMs: 400 }),
+                cut: videoRow("cut", { action: "video", operation: "hide", objectName: "festival" }),
+            }, ["show", "fade", "cut"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(hideOptionsOf(compiled, "fade")).toEqual({ duration: 400 });
+        expect(actionsOf(compiled, "cut").map(action => action.type)).toEqual(["video:hide"]);
+        expect(hideOptionsOf(compiled, "cut")).toBeUndefined();
     });
 
     it("leaves a play row that names no clip to run what an earlier row declared, unrevealed", async () => {
@@ -5833,7 +5907,7 @@ describe("a play row that names its own clip", () => {
         expect(compiled.diagnostics).toEqual([]);
         const declared = actionsOf(compiled, "declare")[0]?.callee;
         const played = actionsOf(compiled, "play");
-        expect(played.map(action => action.type)).toEqual(["video:show", "video:play"]);
+        expect(played.map(action => action.type)).toEqual(["video:show", "video:play", "video:hide"]);
         expect(played.every(action => action.callee === declared)).toBe(true);
         expect((declared as { config: { src: string } }).config.src).toBe("nlr://asset-first");
         expect(compiled.sceneElements?.["scene-1"]?.videos.size).toBe(1);
@@ -5883,9 +5957,11 @@ describe("a play row that names its own clip", () => {
     });
 
     describe("in a row-precise launch", () => {
+        // The play row keeps its clip here, so the tail's `/hide` has a clip on stage to hide. The
+        // default - a cutscene that clears itself away - is the describe block after this one.
         const blocks: Record<string, StoryBlock> = {
             line: narrationBlock("line", "line-text", "The lights go down."),
-            play: playOwn,
+            play: playOwnWith({ hideOnEnd: false }),
             after: narrationBlock("after", "after-text", "The lights come up."),
             hide: videoRow("hide", { action: "video", operation: "hide", objectName: "festival" }),
         };
@@ -5972,6 +6048,33 @@ describe("a play row that names its own clip", () => {
             expect(types.indexOf("video:preload")).toBeGreaterThanOrEqual(0);
             expect(types.indexOf("video:show")).toBeGreaterThan(types.indexOf("video:preload"));
             expect(types.indexOf("video:play")).toBeGreaterThan(types.indexOf("video:show"));
+        });
+    });
+
+    describe("in a row-precise launch after a cutscene that cleared itself away", () => {
+        it("leaves nothing of the clip on the stage", async () => {
+            const document = baseDocument({
+                play: playOwn,
+                after: narrationBlock("after", "after-text", "The lights come up."),
+            }, ["play", "after"]);
+            const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "after" });
+            expect(snapshot.videos).toEqual([{
+                objectName: "festival",
+                sourceBlockId: "play",
+                assetId: "asset-festival",
+                staged: false,
+                visible: false,
+            }]);
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                resolveAssetUrl,
+                launch: { targetBlockId: "after", snapshot },
+            });
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            const types = entrySceneActions(compiled).map(action => action.type as string);
+            expect(types.filter(type => type.startsWith("video:"))).toEqual([]);
         });
     });
 });

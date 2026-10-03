@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { formatBrandLink } from "@shared/brand/brandLink";
 import type { BrandColor } from "@shared/types/brand";
@@ -293,6 +294,9 @@ export function ColorPickerTrigger({
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [isOpen, setIsOpen] = useState(false);
+    // The window this picker is drawn in - the renderer's own, or a detached editor's. The panel is
+    // portalled into it, measured against it, and dismissed by presses in it.
+    const hostWindow = useHostWindow();
     const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 });
     const [adjustedPanelPosition, setAdjustedPanelPosition] = useState(panelPosition);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -561,8 +565,22 @@ export function ColorPickerTrigger({
         onCommitRef.current?.(value);
     }, [flushPendingMapDragNotify]);
 
+    // A popover. Focus moves onto the panel when it opens - not into the hex field, which would stop
+    // following the map while it held focus - and Tab goes on into its controls. Escape closes it and
+    // only it: not the inspector or dialog it was portalled out of, and an input widened over it
+    // closes first. Tab out of it closes it, and closing gives focus back to the swatch. Every way
+    // out goes through `closePicker`, which commits what was chosen.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: closePicker,
+        panelRef,
+        ownerRefs: [triggerRef],
+        initialFocus: panelRef,
+    });
+
     useEffect(() => {
         if (!isOpen) return;
+        const doc = hostWindow.document;
         const handleOutside = (event: MouseEvent) => {
             if (
                 panelRef.current?.contains(event.target as Node) ||
@@ -572,9 +590,9 @@ export function ColorPickerTrigger({
             }
             closePicker();
         };
-        document.addEventListener("mousedown", handleOutside, true);
-        return () => document.removeEventListener("mousedown", handleOutside, true);
-    }, [isOpen, closePicker]);
+        doc.addEventListener("mousedown", handleOutside, true);
+        return () => doc.removeEventListener("mousedown", handleOutside, true);
+    }, [hostWindow, isOpen, closePicker]);
 
     useEffect(() => {
         setAdjustedPanelPosition(panelPosition);
@@ -583,8 +601,8 @@ export function ColorPickerTrigger({
     useLayoutEffect(() => {
         if (!isOpen || !panelRef.current) return;
         const rect = panelRef.current.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const viewportWidth = hostWindow.innerWidth;
+        const viewportHeight = hostWindow.innerHeight;
         const topLimit = Math.max(PANEL_EDGE_PADDING, viewportHeight - rect.height - PANEL_EDGE_PADDING);
         const leftLimit = Math.max(PANEL_EDGE_PADDING, viewportWidth - rect.width - PANEL_EDGE_PADDING);
         const clampTop = (value: number) =>
@@ -642,7 +660,7 @@ export function ColorPickerTrigger({
         if (top !== adjustedPanelPosition.top || left !== adjustedPanelPosition.left) {
             setAdjustedPanelPosition({ left, top });
         }
-    }, [isOpen, panelPosition, adjustedPanelPosition, anchorRect, layoutTick]);
+    }, [isOpen, panelPosition, adjustedPanelPosition, anchorRect, layoutTick, hostWindow]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -655,16 +673,16 @@ export function ColorPickerTrigger({
                 syncAnchorRect();
             });
         };
-        window.addEventListener("resize", handleLayoutChange);
-        window.addEventListener("scroll", handleLayoutChange, true);
+        hostWindow.addEventListener("resize", handleLayoutChange);
+        hostWindow.addEventListener("scroll", handleLayoutChange, true);
         return () => {
-            window.removeEventListener("resize", handleLayoutChange);
-            window.removeEventListener("scroll", handleLayoutChange, true);
+            hostWindow.removeEventListener("resize", handleLayoutChange);
+            hostWindow.removeEventListener("scroll", handleLayoutChange, true);
             if (rafId) {
                 cancelAnimationFrame(rafId);
             }
         };
-    }, [isOpen, syncAnchorRect]);
+    }, [hostWindow, isOpen, syncAnchorRect]);
 
     useEffect(() => {
         if (!isOpen || !panelRef.current) return;
@@ -676,17 +694,6 @@ export function ColorPickerTrigger({
             observer.disconnect();
         };
     }, [isOpen]);
-
-    useEffect(() => {
-        if (!isOpen) return;
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closePicker();
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen, closePicker]);
 
     // 2D map is HSV(s,v) at fixed hue. rgbToHsl maps achromatic RGB to h=0 — preserve prior hue for grays/white/black.
     const handleMapInteraction = useCallback(
@@ -729,15 +736,15 @@ export function ColorPickerTrigger({
             isDraggingMapRef.current = false;
             setIsDragging(false);
         };
-        window.addEventListener("pointermove", handlePointerMove, { passive: false });
-        window.addEventListener("pointerup", handlePointerUp);
-        window.addEventListener("pointercancel", handlePointerUp);
+        hostWindow.addEventListener("pointermove", handlePointerMove, { passive: false });
+        hostWindow.addEventListener("pointerup", handlePointerUp);
+        hostWindow.addEventListener("pointercancel", handlePointerUp);
         return () => {
-            window.removeEventListener("pointermove", handlePointerMove);
-            window.removeEventListener("pointerup", handlePointerUp);
-            window.removeEventListener("pointercancel", handlePointerUp);
+            hostWindow.removeEventListener("pointermove", handlePointerMove);
+            hostWindow.removeEventListener("pointerup", handlePointerUp);
+            hostWindow.removeEventListener("pointercancel", handlePointerUp);
         };
-    }, [isDragging, handleMapInteraction, flushPendingMapDragNotify]);
+    }, [hostWindow, isDragging, handleMapInteraction, flushPendingMapDragNotify]);
 
     useEffect(() => {
         return () => {
@@ -1165,7 +1172,7 @@ export function ColorPickerTrigger({
     return (
         <>
             {triggerContent}
-            {isOpen && createPortal(panelContent, document.body)}
+            {isOpen && createPortal(panelContent, hostWindow.document.body)}
         </>
     );
 }

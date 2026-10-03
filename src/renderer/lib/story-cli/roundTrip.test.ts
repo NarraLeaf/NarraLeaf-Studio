@@ -284,6 +284,67 @@ describe("a row that names a row the same file adds", () => {
     });
 
     /**
+     * How a clip leaves - `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
+     * into a scene and printed back as the same lines, so every one of them is a row the file can
+     * carry rather than a `»` line.
+     */
+    it("carries how a clip leaves through a file and back", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const clipId = "11111111-2222-4333-8444-555555555555";
+        const data: ProjectData = {
+            ...project!.data,
+            assets: {
+                ...project!.data.assets,
+                video: {
+                    [clipId]: {
+                        id: clipId, type: "video", name: "festival", ext: "mp4", hash: "hash", source: "local", meta: {}, tags: [], description: "",
+                    },
+                },
+            } as ProjectData["assets"],
+        };
+        const document = project!.document;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const lines = [
+            "/play festival name=festival hide=false",
+            "/play festival out=fade d=1.2s",
+            "/show festival",
+            "/hide festival out=fade d=0.5s",
+        ];
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const payloads = compiled.scene!.rootBlockIds.map(id => {
+            const block = compiled.scene!.blocks[id];
+            return block?.kind === "action" ? block.payload : null;
+        });
+        expect(payloads[0]).toMatchObject({ operation: "play", assetId: clipId, hideOnEnd: false });
+        expect(payloads[1]).toMatchObject({ operation: "play", hideOnEnd: true, durationMs: 1200 });
+        expect(payloads[3]).toMatchObject({ operation: "hide", durationMs: 500 });
+
+        const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
+        for (const line of lines) {
+            expect(printed.text).toContain(line);
+        }
+        expect(printed.text).not.toContain(OPAQUE_PREFIX);
+        for (const [id, block] of Object.entries(compiled.scene!.blocks)) {
+            expect(sameRowContent(reread.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+
+    /**
      * `/image` and `/hide` naming one picture in one file, then the whole scene printed and read back.
      *
      * The second pass reads names off the scene the first one built, and both halves of the stage

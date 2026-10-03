@@ -7,7 +7,8 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { AssetField } from "./AssetField";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
@@ -23,23 +24,13 @@ export function ExpressionPopover(props: {
     onRemove: () => void;
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // Takes the focus and keeps Tab inside, like every popover on a chip in the row being edited (see
+    // `PausePopover`). The sound picker opens a dialog of its own above this, which closes first.
+    useFloatingLayer({ open: true, onClose: props.onClose, panelRef, scope: "trap" });
     const characterId = props.character?.profile.getId();
-
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
 
     useEffect(() => {
         const onDown = (event: MouseEvent) => {
@@ -55,9 +46,9 @@ export function ExpressionPopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const expression = props.value.expression;
 
@@ -73,8 +64,9 @@ export function ExpressionPopover(props: {
         props.onChange(assetId ? { ...rest, sound: { assetId } } : rest);
     };
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 360);
-    const left = Math.min(props.anchor.left, window.innerWidth - 432);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 360);
+    const left = Math.min(props.anchor.left, view.innerWidth - 432);
 
     return createPortal(
         <div
@@ -83,8 +75,9 @@ export function ExpressionPopover(props: {
             // placed from its anchor rather than sized to fit - so it is told what is left of the
             // window below it and scrolls instead of running off the bottom.
             className="fixed z-[70] w-[26rem] overflow-y-auto rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
-            style={{ top, left: Math.max(8, left), maxHeight: Math.max(240, window.innerHeight - top - 8) }}
+            style={{ top, left: Math.max(8, left), maxHeight: Math.max(240, view.innerHeight - top - 8) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.inlineEvent.title")}</div>
             {props.character ? (
@@ -116,6 +109,6 @@ export function ExpressionPopover(props: {
                 {t("common.remove")}
             </button>
         </div>,
-        document.body,
+        doc.body,
     );
 }

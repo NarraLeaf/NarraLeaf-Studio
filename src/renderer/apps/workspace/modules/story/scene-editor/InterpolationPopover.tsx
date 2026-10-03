@@ -11,7 +11,8 @@ import { useTranslation } from "@/lib/i18n";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 const MENU_Z = 80;
 
@@ -29,11 +30,13 @@ export function InterpolationPopover(props: {
     /** Commit the in-progress text edit — called before navigating to the blueprint editor. */
     onCommitTextEdit?: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // Takes the focus and keeps Tab inside, like every popover on a chip in the row being edited (see
+    // `PausePopover`). A menu opened from one of the selects inside is a layer of its own, so Escape
+    // there closes the menu and leaves this open.
+    useFloatingLayer({ open: true, onClose: props.onClose, panelRef, scope: "trap" });
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
     const kindOptions: SelectOption[] = useMemo(() => [
@@ -46,17 +49,6 @@ export function InterpolationPopover(props: {
     );
 
     useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
-    useEffect(() => {
         const onDown = (event: MouseEvent) => {
             const target = event.target as HTMLElement | null;
             if (panelRef.current?.contains(target) || target?.closest?.("[data-select-menu]")) {
@@ -64,9 +56,9 @@ export function InterpolationPopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const kind = props.value.kind;
     const blueprintId = props.value.kind === "blueprint" ? props.value.blueprintId : "";
@@ -126,8 +118,9 @@ export function InterpolationPopover(props: {
         ? allVariables.map(option => ({ value: option.key, label: option.name, secondaryLabel: option.valueType }))
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 200);
-    const left = Math.min(props.anchor.left, window.innerWidth - 256);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 200);
+    const left = Math.min(props.anchor.left, view.innerWidth - 256);
 
     return createPortal(
         <div
@@ -135,6 +128,7 @@ export function InterpolationPopover(props: {
             className="fixed z-[70] w-60 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.interpolation.title")}</div>
             <div className="flex flex-col gap-1.5">
@@ -168,6 +162,6 @@ export function InterpolationPopover(props: {
                 {t("common.remove")}
             </button>
         </div>,
-        document.body,
+        doc.body,
     );
 }
