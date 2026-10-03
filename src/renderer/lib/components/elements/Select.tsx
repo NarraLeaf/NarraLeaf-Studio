@@ -614,14 +614,21 @@ export function Combobox({
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
-    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
-    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
-    useDismissWhenHidden(() => setIsOpen(false), isOpen);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
     const selectRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
+    // The list hangs off the input the author is typing in, so focus stays there; Escape and focus
+    // moving on still close it.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: () => setIsOpen(false),
+        panelRef: dropdownRef,
+        ownerRefs: [selectRef],
+        initialFocus: false,
+        itemSelector: SELECT_OPTION_SELECTOR,
+    });
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
 
     useEffect(() => {
@@ -745,6 +752,7 @@ export function Combobox({
                     {filteredOptions.map((option) => (
                         <button
                             key={option.value}
+                            data-select-option=""
                             className={cn(
                                 "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
                                 "transition-colors duration-150",
