@@ -17,9 +17,13 @@ import { anchorElementId } from "@shared/blueprint/ownerShape";
 import { BUILTIN_BRAND_COLORS, normalizeProjectBrandColors, type BrandColor } from "@shared/types/brand";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
@@ -124,6 +128,21 @@ describe.each(LANGUAGES)("the starter title page, in $name", language => {
         const load = controlRunning(lifted, BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
         expect(latest?.element.type).toBe("nl.button");
         expect(load?.element.id).toBe(latest?.element.id);
+    });
+
+    it("keeps what Continue does on this page, and drops only the step that opened another one", () => {
+        const { lifted } = lift();
+        const latest = controlRunning(lifted, BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST)!;
+        const blueprint = Object.values(lifted.payload.graphs.blueprintDocument.blueprints)
+            .find(candidate => anchorElementId(candidate.owner) === latest.element.id)!;
+        const nodes = graphsOf(blueprint).flatMap(graph => Object.values(graph.nodes ?? {}));
+        expect(nodes.some(node => node.type === BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(false);
+        // The note described the graph before the cut, so it does not come.
+        expect(nodes.some(node => node.type === BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(false);
+        const edges = graphsOf(blueprint).flatMap(graph => graph.edges ?? []);
+        const load = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)!;
+        // The latest auto save's id still reaches the load.
+        expect(edges.some(edge => edge.from.nodeId === latest.node.id && edge.to.nodeId === load.id && edge.to.port === "id")).toBe(true);
     });
 
     it("leaves behind every control that leads to a screen that did not come along", () => {
@@ -266,5 +285,110 @@ describe("hasNoInterfaceYet", () => {
             },
         } as unknown as BlueprintDocument;
         expect(hasNoInterfaceYet(blank, withLogic)).toBe(false);
+    });
+});
+
+describe("a title page that places library components", () => {
+    const pageId = "page-title";
+    const otherPageId = "page-settings";
+    const element = (id: string, type: string, parentId: string | null, childrenIds: string[] = [], extra?: Record<string, unknown>) => ({
+        id,
+        type,
+        name: id,
+        parentId,
+        childrenIds,
+        layout: { x: 0, y: 0, width: 10, height: 10, visible: true, opacity: 1 },
+        props: {},
+        ...(extra ? { extra } : {}),
+    });
+    const graphOf = (
+        nodes: Record<string, { type: string; params?: Record<string, unknown> }>,
+        edges: [string, string, string, string][],
+    ) => ({
+        events: {
+            layer: {
+                id: "layer",
+                graph: {
+                    nodes: Object.fromEntries(Object.entries(nodes).map(([id, node]) => [id, { id, ...node }])),
+                    edges: edges.map(([from, fromPort, to, toPort]) => ({ from: { nodeId: from, port: fromPort }, to: { nodeId: to, port: toPort } })),
+                },
+            },
+        },
+        eventIds: ["layer"],
+        functions: {},
+        macros: {},
+    });
+    const click = { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK };
+    const linkTo = (componentId: string) => ({ componentLink: { componentId, linked: true } });
+
+    function template() {
+        const document = {
+            schemaVersion: 12,
+            id: "doc",
+            name: "UI Document",
+            surfaces: [
+                { id: pageId, name: "Title", host: "app", kind: "appSurface", designSize: { width: 100, height: 100 }, rootElementId: "root" },
+                { id: otherPageId, name: "Settings", host: "app", kind: "appSurface", designSize: { width: 100, height: 100 }, rootElementId: "root2" },
+            ],
+            elements: {
+                root: element("root", "nl.root", null, ["start", "continue", "logs", "leaves"]),
+                start: element("start", "nl.button", "root"),
+                continue: element("continue", "nl.button", "root"),
+                logs: element("logs", "nl.container", "root", [], linkTo("comp-logs")),
+                leaves: element("leaves", "nl.container", "root", [], linkTo("comp-leaves")),
+                root2: element("root2", "nl.root", null),
+            },
+            components: [
+                { id: "comp-logs", name: "Logs", rootElementId: "c1", elements: { c1: element("c1", "nl.button", null) } },
+                { id: "comp-leaves", name: "Leaves", rootElementId: "c2", elements: { c2: element("c2", "nl.button", null) } },
+                { id: "comp-unused", name: "Unused", rootElementId: "c3", elements: { c3: element("c3", "nl.button", null) } },
+            ],
+            meta: {},
+        } as unknown as UIDocument;
+        const blueprint = (id: string, owner: Record<string, string>, graphs: ReturnType<typeof graphOf>) => ({ id, name: id, owner, graphs });
+        const blueprints = {
+            schemaVersion: 14,
+            blueprints: {
+                bpStart: blueprint("bpStart", { kind: "widgetMain", surfaceId: pageId, elementId: "start" }, graphOf(
+                    { h: click, s: { type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params: { storyId: "story-x", sceneId: "scene-x" } } },
+                    [["h", "then", "s", "in"]],
+                )),
+                bpContinue: blueprint("bpContinue", { kind: "widgetMain", surfaceId: pageId, elementId: "continue" }, graphOf(
+                    { h: click, l: { type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD } },
+                    [["h", "then", "l", "in"]],
+                )),
+                bpLogs: blueprint("bpLogs", { kind: "componentWidgetMain", componentId: "comp-logs", elementId: "c1" }, graphOf(
+                    { h: click, log: { type: BLUEPRINT_NODE_TYPE_LOG, params: { value: "hi" } } },
+                    [["h", "then", "log", "in"]],
+                )),
+                bpLeaves: blueprint("bpLeaves", { kind: "componentWidgetMain", componentId: "comp-leaves", elementId: "c2" }, graphOf(
+                    { h: click, go: { type: BLUEPRINT_NODE_TYPE_PAGE_GO, params: { surfaceId: otherPageId } } },
+                    [["h", "then", "go", "in"]],
+                )),
+            },
+            ownerRecords: {
+                [`widgetMain:${pageId}:start`]: { blueprintId: "bpStart" },
+                [`widgetMain:${pageId}:continue`]: { blueprintId: "bpContinue" },
+                "componentWidgetMain:comp-logs:c1": { blueprintId: "bpLogs" },
+                "componentWidgetMain:comp-leaves:c2": { blueprintId: "bpLeaves" },
+            },
+        } as unknown as BlueprintDocument;
+        return { document, blueprints };
+    }
+
+    it("brings the definitions it places, with their blueprints, so no instance names a component the project lacks", () => {
+        const lifted = liftStarterTitlePage({ ...template(), startTarget: target })!;
+        expect((lifted.payload.document.components ?? []).map(component => component.id)).toEqual(["comp-logs"]);
+        expect(lifted.payload.document.elements.logs).toBeDefined();
+        expect(Object.values(lifted.payload.graphs.blueprintDocument.blueprints).map(blueprint => blueprint.id).sort())
+            .toEqual(["bpContinue", "bpLogs", "bpStart"]);
+        expect(lifted.payload.graphs.blueprintDocument.ownerRecords["componentWidgetMain:comp-logs:c1"]).toEqual({ blueprintId: "bpLogs" });
+    });
+
+    it("leaves behind a component whose logic only led to another page, and every instance of it", () => {
+        const lifted = liftStarterTitlePage({ ...template(), startTarget: target })!;
+        expect(lifted.payload.document.elements.leaves).toBeUndefined();
+        expect(lifted.payload.document.elements.root.childrenIds).toEqual(["start", "continue", "logs"]);
+        expect(JSON.stringify(lifted.payload)).not.toContain(otherPageId);
     });
 });
