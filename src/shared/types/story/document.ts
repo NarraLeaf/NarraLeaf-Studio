@@ -979,6 +979,26 @@ export type StoryActionPayload =
           muted?: boolean;
           /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
           timeMs?: number;
+          /**
+           * `play` — whether the clip leaves the stage once it has played to the end.
+           *
+           * Unset, the row's own form decides: a `play` that names its own clip ({@link assetId}) is a
+           * cutscene and clears itself away, while one that runs a clip an earlier row put on stage
+           * leaves it as that row left it. A clip that ends holds its last frame above every scene,
+           * across a jump too, and the next scene cannot name it to hide it, so the cutscene form
+           * hides by default. `videoPlayHidesOnEnd` is the one reading of this field.
+           *
+           * Additive: no document written before it carries one, so no schema bump.
+           */
+          hideOnEnd?: boolean;
+          /**
+           * How long the clip takes to fade out, in milliseconds - on a `hide`, and on a `play` that
+           * hides its clip when it ends. `0` is a cut.
+           *
+           * Unset, a `hide` cuts, as it always did, and a hiding `play` fades over the default every
+           * other hide row is seeded with. `videoLeaveFadeMs` is the one reading of this field.
+           */
+          durationMs?: number;
       }
     | {
           /**

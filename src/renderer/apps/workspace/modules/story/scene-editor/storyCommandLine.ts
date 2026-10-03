@@ -20,6 +20,7 @@ import {
     listSceneLabels,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    DEFAULT_VIDEO_LEAVE_FADE_MS,
     revealCreates,
     storyVariableRefKey,
 } from "@shared/types/story";
@@ -1313,20 +1314,66 @@ function videoSentence(
         };
     }
     // The one-row form, `/show` or `/play` naming its own clip - see `imageSentence`. A clip carries
-    // no placement and no fade, so the line is the file and the name and nothing else.
-    if (revealCreates(payload)) {
-        return {
-            commandId,
-            args: [
-                positional("target", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
-                arg("name", name),
-            ],
-        };
+    // no placement, so the line is the file and the name, and on a `play` how the clip goes.
+    const subject = revealCreates(payload)
+        ? [
+            positional("target", assetWord(lookups, payload.assetId), {
+                ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                ...assetLink(lookups, payload.assetId),
+            }),
+            arg("name", name),
+        ]
+        : [positional("target", name, object)];
+    if (payload.operation === "play") {
+        return { commandId, args: [...subject, ...clipPlayLeaveArgs(payload)] };
     }
-    return { commandId, args: [positional("target", name, object)] };
+    if (payload.operation === "hide") {
+        return { commandId, args: [...subject, ...clipLeaveArgs(payload, DEFAULT_VIDEO_LEAVE_FADE_MS)] };
+    }
+    return { commandId, args: subject };
+}
+
+type VideoPayload = Extract<StoryActionPayload, { action: "video" }>;
+
+/**
+ * `hide=` and the leave args of a `/play`, as its build reads them back.
+ *
+ * `hide=` is printed when the row states it, except where the leave args already say it: on a clip
+ * the row would otherwise keep, writing how it leaves is what asks for it to leave, so `/play clip
+ * out=fade d=1` is the whole line and a `hide=true` beside it would be the same thing twice.
+ */
+function clipPlayLeaveArgs(payload: VideoPayload): (Arg | null)[] {
+    const leave = clipLeaveArgs(payload, undefined);
+    const saidByLeave = payload.hideOnEnd === true && !revealCreates(payload) && leave.length > 0;
+    const hide = payload.hideOnEnd === undefined || saidByLeave
+        ? null
+        : arg("hide", booleanValue(payload.hideOnEnd), { apply: next => ({ ...payload, hideOnEnd: next === "true" }) });
+    return [hide, ...leave];
+}
+
+/**
+ * How a clip leaves, as `out=` and `d=` - the inverse of `clipLeaveDurationMs`.
+ *
+ * A cut is `out=none`; a fade is `out=fade` with its length. A row that states no fade of its own
+ * prints neither, and picking `fade` on the word gives it `unstatedFadeMs` - the default fade a
+ * `/hide` writes down, or nothing on a `/play`, whose unstated fade already is the default one.
+ */
+function clipLeaveArgs(payload: VideoPayload, unstatedFadeMs: number | undefined): Arg[] {
+    const durationMs = payload.durationMs;
+    if (durationMs === undefined || !Number.isFinite(durationMs)) {
+        return [];
+    }
+    const word = arg("out", durationMs > 0 ? "fade" : "none", {
+        enum: true,
+        apply: next => ({
+            ...payload,
+            durationMs: next === "none" ? 0 : durationMs > 0 ? durationMs : unstatedFadeMs,
+        }),
+    });
+    const length = durationMs > 0
+        ? arg("d", seconds(durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })
+        : null;
+    return [word, length].filter((item): item is Arg => item !== null);
 }
 
 function vfxSentence(

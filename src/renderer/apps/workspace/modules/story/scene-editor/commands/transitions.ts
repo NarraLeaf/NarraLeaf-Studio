@@ -208,6 +208,21 @@ export function supportedTransitionWords(context: StoryTransitionContext): reado
 }
 
 /**
+ * The conceal words a clip can leave with: a fade, or a cut.
+ *
+ * A `Video` has no transform, so the presets that slide, zoom or clip a picture name nothing for it -
+ * the engine fades its opacity and nothing else. Not a context of its own: the two words mean on a
+ * clip exactly what they mean on a `/hide` of a picture, and they keep that context's labels, so the
+ * line and the inspector say 淡出 for the same thing on both.
+ */
+export const CLIP_CONCEAL_WORDS: readonly StoryTransitionWord[] = ["fade", "none"];
+
+/** {@link transitionOptions} for `conceal`, cut down to {@link CLIP_CONCEAL_WORDS}. */
+export function clipConcealOptions(): readonly StoryCommandEnumOption[] {
+    return transitionOptions("conceal").filter(option => CLIP_CONCEAL_WORDS.includes(option.value as StoryTransitionWord));
+}
+
+/**
  * The union of several contexts' options, deduped - what a generic verb's `t=` offers before its
  * target has resolved. The parser accepts the union; the spec's validate rejects a word the actual
  * target's context does not support, with the supported list in hand.

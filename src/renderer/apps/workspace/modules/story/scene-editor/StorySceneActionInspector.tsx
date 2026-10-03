@@ -23,6 +23,7 @@ import type {
 } from "@shared/types/story";
 import {
     authoredCharacterStageName,
+    DEFAULT_VIDEO_LEAVE_FADE_MS,
     declarationDefaultForType,
     declaresStageObject,
     isStoryExpressionEvaluable,
@@ -31,11 +32,14 @@ import {
     normalizeStageObjectName,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    revealCreates,
     savedVariableDefs,
     sceneLabelNames,
     sceneVariableDefs,
     storyPersistentDefs,
     storyTransitionKindOf,
+    videoLeaveFadeMs,
+    videoPlayHidesOnEnd,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
@@ -523,6 +527,12 @@ const videoOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "resume", label: t("storyInspector.videoOperation.resume") },
     { value: "stop", label: t("storyInspector.videoOperation.stop") },
     { value: "seek", label: t("storyInspector.videoOperation.seek") },
+];
+
+/** How a clip leaves: the two words `out=` takes on a clip, under the labels it has on a picture. */
+const videoLeaveOptions = (t: TFunc): SelectOption[] => [
+    { value: "fade", label: t("storyInspector.transformPreset.fadeOut") },
+    { value: "none", label: t("common.none") },
 ];
 
 const audioOperationOptions = (t: TFunc): SelectOption[] => [
@@ -1146,6 +1156,9 @@ function ActionPayloadFields(props: {
         // there would be a setting the compiler never reads. Mute rides on the clip the row builds,
         // so it is offered exactly where the row builds one.
         const readsClip = payload.operation === "create" || payload.operation === "show" || payload.operation === "play";
+        // How the clip leaves, on the two rows that take it off the stage: a hide, and a play that
+        // clears its clip away at the end. Shown as what the row will do, defaults included.
+        const leaveFadeMs = videoLeaveFadeMs(payload);
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1172,6 +1185,40 @@ function ActionPayloadFields(props: {
                         label={t("storyInspector.video.seekTime")}
                         value={payload.timeMs}
                         onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
+                    />
+                ) : null}
+                {payload.operation === "play" ? (
+                    // Written as the difference from the row's own form, so a row the author set back
+                    // to what its form does by default says nothing about it on its line.
+                    <ToggleField
+                        label={t("storyInspector.video.hideOnEnd")}
+                        checked={videoPlayHidesOnEnd(payload)}
+                        onChange={checked => props.onChange({ ...payload, hideOnEnd: checked === revealCreates(payload) ? undefined : checked })}
+                    />
+                ) : null}
+                {leaveFadeMs !== null ? (
+                    <SelectField
+                        label={t("storyInspector.video.leave")}
+                        options={videoLeaveOptions(t)}
+                        value={leaveFadeMs > 0 ? "fade" : "none"}
+                        onChange={word => props.onChange({
+                            ...payload,
+                            // Each verb's own default is the absent value: a hide cuts unless it says
+                            // otherwise, a hiding play fades. The other word is written down.
+                            durationMs: payload.operation === "hide"
+                                ? (word === "none" ? undefined : DEFAULT_VIDEO_LEAVE_FADE_MS)
+                                : (word === "none" ? 0 : undefined),
+                        })}
+                    />
+                ) : null}
+                {leaveFadeMs !== null && leaveFadeMs > 0 ? (
+                    <SecondsField
+                        label={t("storyInspector.field.duration")}
+                        value={leaveFadeMs}
+                        onChange={durationMs => props.onChange({
+                            ...payload,
+                            durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs),
+                        })}
                     />
                 ) : null}
             </div>
