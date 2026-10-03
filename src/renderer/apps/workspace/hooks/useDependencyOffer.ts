@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import type { Translator } from "@shared/i18n";
+import type { DependencyResolutionEntry } from "@shared/types/pluginDependencies";
 import { translate, translateN } from "@/lib/i18n";
 import { i18nStore } from "@/lib/i18n/store";
 import { dependencyDisplayName } from "@shared/utils/pluginDisplayText";
@@ -12,6 +14,23 @@ import { useWorkspace } from "../context";
 
 /** At most this many plugins are named; the rest are covered by the count in the message. */
 const NAMES_LISTED = 4;
+
+/**
+ * The plugins the warning names, in the interface's language.
+ *
+ * Joined the way that language writes a list - 画廊、快速存档 in Chinese, ギャラリー、クイックセーブ in
+ * Japanese - and in the narrow style, a plain enumeration with no "and": the list stops at
+ * {@link NAMES_LISTED} and the count in the message covers the rest, so it must not read as complete.
+ */
+export function listUnmetPluginNames(
+    unmet: readonly DependencyResolutionEntry[],
+    translator: Pick<Translator, "locale" | "formatList">,
+): string {
+    return translator.formatList(
+        unmet.slice(0, NAMES_LISTED).map(entry => dependencyDisplayName(entry, translator.locale)),
+        { style: "narrow" },
+    );
+}
 
 /**
  * Say that this project needs plugins it has not got, and hand the author to the place that
@@ -59,11 +78,7 @@ export function useDependencyOffer() {
         const evaluate = () => {
             const unmet = (dependencies.getResolution()?.entries ?? []).filter(isDependencyUnavailable);
             const message = translateN("plugins.dependencies.unavailable", unmet.length, { count: unmet.length });
-            const locale = i18nStore.getLocale();
-            const detail = unmet
-                .slice(0, NAMES_LISTED)
-                .map(entry => dependencyDisplayName(entry, locale))
-                .join(", ");
+            const detail = listUnmetPluginNames(unmet, i18nStore.getTranslator());
 
             if (offered) {
                 if (offerId === null) {
