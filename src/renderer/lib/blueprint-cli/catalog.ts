@@ -9,6 +9,7 @@
  * Comments in English per project convention.
  */
 
+import { createTranslator } from "@shared/i18n";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
@@ -211,6 +212,8 @@ export function resolveNodeType(input: string): string | null {
 export type NodeDetail = {
     type: string;
     displayName: string;
+    /** What the node does, in English: the sentence the palette and the card show an author. */
+    description?: string;
     category: string;
     keywords: string[];
     graphKinds: BlueprintGraphKind[];
@@ -229,6 +232,11 @@ export type NodeDetail = {
         optional?: boolean;
         acceptsLiteral?: boolean;
         assetRef?: unknown;
+        /**
+         * The other pins that can stand in for this one (`alternativeInputs` on the definition): the
+         * node needs one of the group, not each of them.
+         */
+        alternatives?: string[];
     }[];
     fields: {
         key: string;
@@ -277,9 +285,14 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
         return null;
     }
     const entry: BlueprintNodeEditorCatalogEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(type, params);
+    const alternativesOf = (pinId: string): string[] | undefined => {
+        const group = def.alternativeInputs?.find(candidate => candidate.includes(pinId));
+        return group ? group.filter(other => other !== pinId) : undefined;
+    };
     return {
         type: def.type,
         displayName: def.displayName,
+        description: def.description ? createTranslator("en").t(def.description) : undefined,
         category: def.category,
         keywords: def.keywords ?? [],
         graphKinds: def.graphKinds,
@@ -298,6 +311,7 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
             optional: pin.optional,
             acceptsLiteral: pin.allowInlineLiteral,
             assetRef: pin.assetRef,
+            alternatives: pin.kind === "input" ? alternativesOf(pin.id) : undefined,
         })),
         fields: (entry.inspectorParams ?? []).map(param => ({
             key: param.key,
@@ -396,6 +410,9 @@ export function formatNodeDetail(detail: NodeDetail): string {
     const lines: string[] = [];
     lines.push(`${detail.type}`);
     lines.push(`  name       ${detail.displayName}`);
+    if (detail.description) {
+        lines.push(`  about      ${detail.description}`);
+    }
     lines.push(`  category   ${detail.category}`);
     lines.push(`  graphs     ${detail.graphKinds.join(", ")}`);
     const traits = [
@@ -426,6 +443,7 @@ export function formatNodeDetail(detail: NodeDetail): string {
                 pin.optional ? "optional" : null,
                 pin.acceptsLiteral ? "takes a literal" : null,
                 pin.assetRef ? "asset id" : null,
+                pin.alternatives?.length ? `alternative to ${pin.alternatives.join(", ")}` : null,
             ].filter(Boolean);
             lines.push(`    ${pin.id.padEnd(width)}  ${bits.join(", ")}${pin.label ? `  - ${pin.label}` : ""}`);
         }

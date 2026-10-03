@@ -929,7 +929,7 @@ export class DevModeManager {
 
     private describeEntry(entry: DevModeEntry): string {
         if (entry.kind === "surface") {
-            return `surface ${entry.surfaceId}`;
+            return `surface ${entry.surfaceId ?? "(entry page)"}`;
         }
         if (entry.kind === "story") {
             return `story ${entry.storyId}/${entry.sceneId}${entry.blockId ? `@${entry.blockId}` : ""}`;

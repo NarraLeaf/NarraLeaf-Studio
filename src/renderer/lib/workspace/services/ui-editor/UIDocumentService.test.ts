@@ -17,7 +17,9 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
-import { UIDocumentService } from "./UIDocumentService";
+import { IMPORT_PLACEMENT_FROM_SOURCE, UIDocumentService } from "./UIDocumentService";
+import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
@@ -669,7 +671,7 @@ describe("UIDocumentService surface creation", () => {
         expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
         expect(mainSurface?.name).toBe("Start");
 
-        (service as any).ensureMainSurface(service.getDocument());
+        (service as any).ensureEntrySurface(service.getDocument());
         expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
         expect(mainSurface?.name).toBe("Start");
     });
@@ -1135,6 +1137,8 @@ describe("UIDocumentService component library", () => {
         }).graphs.events.click.graph.nodes.ref.params;
         expect(refParams.elementId).toBe(copy.id);
         expect(refParams.elementId).not.toBe(hit.id);
+        // Under the definition's own surface, which is what the runtime compares a reference against.
+        expect(refParams.surfaceId).toBe(buildUIComponentSurfaceId(component.id));
 
         // The original is untouched: extraction copies into the library, it does not move.
         expect(service.getDocument().elements[hit.id]).toBeTruthy();
@@ -1401,6 +1405,73 @@ describe("UIDocumentService template import: components and naming", () => {
         expect(cloned.id).not.toBe("tpl-bp");
         // The owner must point at the copied element, not the template's element id.
         expect(Object.keys(imported.elements)).toContain(cloned.owner.elementId);
+    });
+
+    it("points the copied component's element references at the copy, under either spelling", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+        const ref = (surfaceId: string) => ({
+            type: "blueprint.element.ref",
+            params: { surfaceId, elementId: "tpl-component-root", elementType: "nl.container" },
+        });
+        const graphs = {
+            blueprintDocument: {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                blueprints: {
+                    "tpl-bp": {
+                        id: "tpl-bp",
+                        name: "On click",
+                        owner: {
+                            kind: "componentWidgetMain",
+                            componentId: "tpl-component",
+                            elementId: "tpl-component-root",
+                        },
+                        graphs: {
+                            events: {
+                                click: {
+                                    id: "click",
+                                    graph: {
+                                        nodes: {
+                                            stored: { id: "stored", ...ref(buildUIComponentSurfaceId("tpl-component")) },
+                                            picked: { id: "picked", ...ref(buildUIComponentEditorSurfaceId("tpl-component")) },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                        members: { variables: {}, fields: {}, functions: {} },
+                        bindings: {},
+                    },
+                },
+                ownerRecords: {
+                    "componentWidgetMain:tpl-component:tpl-component-root": {
+                        blueprintId: "tpl-bp",
+                    },
+                },
+                persistentVariables: {},
+                meta: {},
+            },
+        };
+
+        const result = service.importTemplateBundle({
+            document: createComponentTemplate(),
+            graphs,
+            placement: { kind: "appSurface" },
+        });
+
+        const imported = result.importedComponents[0]!;
+        const cloned = Object.values<any>(blueprintDocument.blueprints).find(
+            blueprint => blueprint.owner.kind === "componentWidgetMain"
+                && blueprint.owner.componentId === imported.id,
+        );
+        const nodes = cloned.graphs.events.click.graph.nodes;
+        // The template's own component id survives nowhere: a reference still naming it would point
+        // into a definition this project does not have.
+        expect(nodes.stored.params.surfaceId).toBe(buildUIComponentSurfaceId(imported.id));
+        expect(nodes.picked.params.surfaceId).toBe(buildUIComponentEditorSurfaceId(imported.id));
+        expect(nodes.stored.params.elementId).toBe(imported.rootElementId);
+        expect(nodes.picked.params.elementId).toBe(imported.rootElementId);
     });
 });
 
@@ -1860,5 +1931,134 @@ describe("UIDocumentService.reorderSurfaces", () => {
         service.reorderSurfaces(ids, ids[0]);
 
         expect(projectHistory.canUndo(projectHistoryScope())).toBe(false);
+    });
+});
+
+/**
+ * The entry page is a pointer the document stores, not an id the page is given. Every test here
+ * checks the ids afterwards, because the id is what a page's blueprints are filed under and what
+ * every `Go Page` names - an entry that moved by renaming ids would leave all of that behind.
+ */
+describe("UIDocumentService entry page", () => {
+    const ids = (service: UIDocumentService) => service.getDocument().surfaces.map(surface => surface.id);
+
+    it("makes another page the entry without changing any page's id", () => {
+        const { service } = createHarness();
+        const second = service.createSurface({ kind: "appSurface", host: "app", name: "Splash" });
+        const before = ids(service);
+
+        expect(isEntrySurface(service.getDocument(), MAIN_APP_SURFACE_ID)).toBe(true);
+        service.setEntrySurface(second.id);
+
+        expect(service.getDocument().entrySurfaceId).toBe(second.id);
+        expect(isEntrySurface(service.getDocument(), second.id)).toBe(true);
+        expect(isEntrySurface(service.getDocument(), MAIN_APP_SURFACE_ID)).toBe(false);
+        expect(ids(service)).toEqual(before);
+    });
+
+    it("refuses a Game UI, and records nothing for the page that already is the entry", () => {
+        const { service, projectHistory } = createHarness();
+        const gameUi = service.createSurface({ kind: "stageSurface", host: "player", name: "Dialog" });
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.setEntrySurface(gameUi.id);
+        service.setEntrySurface(MAIN_APP_SURFACE_ID);
+
+        expect("entrySurfaceId" in service.getDocument()).toBe(false);
+        expect(projectHistory.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("takes the change back on the project stack, to a document that names no entry", () => {
+        const { service, projectHistory } = createHarness();
+        const second = service.createSurface({ kind: "appSurface", host: "app", name: "Splash" });
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.setEntrySurface(second.id);
+        expect(projectHistory.peekUndo(projectHistoryScope())).toEqual({
+            key: "uiEditor.history.setEntryPage",
+            params: { name: "Splash" },
+        });
+
+        expect(projectHistory.undo(projectHistoryScope())).toBe(true);
+        // Restored to what the file stored, not to the page that was resolved: a document that
+        // never named an entry is exactly as short afterwards as it was before.
+        expect("entrySurfaceId" in service.getDocument()).toBe(false);
+        expect(isEntrySurface(service.getDocument(), MAIN_APP_SURFACE_ID)).toBe(true);
+
+        expect(projectHistory.redo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().entrySurfaceId).toBe(second.id);
+    });
+
+    it("never deletes the entry page, and deletes the main page once it is not the entry", () => {
+        const { service } = createHarness();
+        const second = service.createSurface({ kind: "appSurface", host: "app", name: "Splash" });
+
+        service.deleteSurface(MAIN_APP_SURFACE_ID);
+        expect(ids(service)).toContain(MAIN_APP_SURFACE_ID);
+
+        service.setEntrySurface(second.id);
+        service.deleteSurface(second.id);
+        expect(ids(service)).toContain(second.id);
+
+        service.deleteSurface(MAIN_APP_SURFACE_ID);
+        expect(ids(service)).toEqual([second.id]);
+    });
+
+    // It used to give the first page the main id whenever no page had it - harmless only while the
+    // main page could not be deleted. Here it has been, and that rename would re-file every blueprint
+    // and every `Go Page` that named "Splash" by the id it has.
+    it("never renames a page on load, and drops a pointer that names no page", () => {
+        const { service } = createHarness();
+        const second = service.createSurface({ kind: "appSurface", host: "app", name: "Splash" });
+        const third = service.createSurface({ kind: "appSurface", host: "app", name: "Credits" });
+        service.setEntrySurface(second.id);
+        service.deleteSurface(MAIN_APP_SURFACE_ID);
+        const ensure = () => (service as any).ensureEntrySurface(service.getDocument()) as boolean;
+
+        expect(ensure()).toBe(false);
+        expect(ids(service)).toEqual([second.id, third.id]);
+
+        // A merge that kept the pointer from one side and the deletion from the other.
+        (service.getDocument() as { entrySurfaceId?: string }).entrySurfaceId = "gone";
+        expect(ensure()).toBe(true);
+        expect("entrySurfaceId" in service.getDocument()).toBe(false);
+        expect(ids(service)).toEqual([second.id, third.id]);
+        // With no main page and no pointer, the first page is the entry - read, never renamed.
+        expect(isEntrySurface(service.getDocument(), second.id)).toBe(true);
+    });
+
+    it("pastes a copied main page as an ordinary page, and still skips a template's own", () => {
+        const { service } = createHarness();
+        const copied = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "other-project",
+            name: "Other",
+            surfaces: [{
+                id: MAIN_APP_SURFACE_ID,
+                name: "Their title",
+                host: "app",
+                kind: "appSurface",
+                designSize: { width: 1280, height: 720 },
+                rootElementId: "their-root",
+            }],
+            elements: {
+                "their-root": {
+                    id: "their-root",
+                    type: "nl.root",
+                    name: "Root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 1280, height: 720 },
+                },
+            },
+        } as UIDocument;
+
+        const pasted = service.importTemplateBundle({ document: copied, graphs: undefined, placement: IMPORT_PLACEMENT_FROM_SOURCE });
+        expect(pasted.importedSurfaces.map(surface => surface.name)).toEqual(["Their title"]);
+        expect(pasted.importedSurfaces[0]?.id).not.toBe(MAIN_APP_SURFACE_ID);
+        expect(isEntrySurface(service.getDocument(), MAIN_APP_SURFACE_ID)).toBe(true);
+
+        const template = service.importTemplateBundle({ document: copied, graphs: undefined, placement: { kind: "appSurface" } });
+        expect(template.importedSurfaces).toEqual([]);
     });
 });

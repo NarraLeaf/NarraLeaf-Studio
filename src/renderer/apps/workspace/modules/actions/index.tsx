@@ -8,6 +8,7 @@ import {
     Home,
     LogOut,
     Info,
+    FileArchive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -22,6 +23,7 @@ import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectD
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
 import { describePackageExportFailure } from "@/lib/workspace/project/packageExportFailure";
+import { exportLogArchive } from "./exportLogArchive";
 
 /**
  * Global toolbar actions
@@ -251,6 +253,21 @@ export const helpActionGroup: ModuleActionGroup = {
             order: 0,
         },
         {
+            // Writes nothing to the project, so it stays usable in a frozen workspace along with
+            // the rest of this group - which is when an author is most likely to need it.
+            id: "narraleaf-studio:export-logs",
+            label: "Export Logs…",
+            labelKey: "actions.help.exportLogs.label",
+            icon: <FileArchive className="w-4 h-4" />,
+            tooltip: "Save all Studio logs as a zip archive",
+            tooltipKey: "actions.help.exportLogs.tooltip",
+            onClick: (workspace: Workspace) => {
+                void exportLogArchive(workspace.getContext());
+            },
+            order: 1,
+        },
+        Separator,
+        {
             id: "narraleaf-studio:about",
             label: "About",
             labelKey: "actions.help.about.label",
@@ -260,7 +277,7 @@ export const helpActionGroup: ModuleActionGroup = {
             onClick: (workspace: Workspace) => {
                 openAboutTab(workspace.getContext());
             },
-            order: 1,
+            order: 2,
         },
     ],
 };

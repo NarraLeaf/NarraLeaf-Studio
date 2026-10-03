@@ -13,6 +13,7 @@ import { activateWorkspacePlugin, deactivateWorkspacePlugin } from "@/lib/plugin
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { SearchBox } from "../assets/components/SearchBox";
@@ -49,7 +50,7 @@ type PluginsView = "list" | "dependencies";
  * project, and a plugin you have to reopen a project to try is a plugin nobody tries.
  */
 export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPanelPayload | undefined>) {
-    const { t, tn } = useTranslation();
+    const { t, tn, locale } = useTranslation();
     const { context, recovery } = useWorkspace();
     const [tab, setTab] = useState<PluginsTab>("installed");
     const [view, setView] = useState<PluginsView>("list");
@@ -127,7 +128,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [detailId, view]);
 
-    const visibleInstalled = useMemo(() => filterInstalled(plugins, query), [plugins, query]);
+    const visibleInstalled = useMemo(() => filterInstalled(plugins, query, locale), [plugins, query, locale]);
     const visibleStore = useMemo(() => filterStore(registry ?? [], query), [registry, query]);
 
     const reload = useCallback((pluginId: string) => {
@@ -435,7 +436,8 @@ function InstalledRow({
     onOpen: () => void;
     onMenu: (event: React.MouseEvent) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
+    const name = pluginDisplayName(plugin.manifest, locale);
     const updateAvailable = hasUpdate(plugin, entry);
     // `running` is the quiet default: a row that says "working correctly" on every plugin turns the
     // list into a status dashboard and buries the two rows that need reading.
@@ -447,10 +449,10 @@ function InstalledRow({
             onClick={onOpen}
             onContextMenu={onMenu}
         >
-            <PluginAvatar name={plugin.manifest.name} src={plugin.iconUrl} size={28} />
+            <PluginAvatar name={name} colorKey={plugin.manifest.name} src={plugin.iconUrl} size={28} />
             <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-sm text-fg">{plugin.manifest.name}</span>
+                    <span className="truncate text-sm text-fg">{name}</span>
                     {plugin.builtIn ? <Badge tone="primary">{t("plugins.builtIn")}</Badge> : null}
                     <PluginStatusBadge status={plugin.status} />
                     {updateAvailable ? <Badge tone="warning">{t("plugins.updateAvailable")}</Badge> : null}
@@ -466,8 +468,8 @@ function InstalledRow({
             <button
                 type="button"
                 onClick={onMenu}
-                data-tip={t("plugins.moreActionsNamed", { name: plugin.manifest.name })}
-                aria-label={t("plugins.moreActionsNamed", { name: plugin.manifest.name })}
+                data-tip={t("plugins.moreActionsNamed", { name })}
+                aria-label={t("plugins.moreActionsNamed", { name })}
                 className="grid h-6 w-6 shrink-0 cursor-default place-items-center rounded-md text-fg-muted opacity-0 transition hover:bg-fill-strong hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
             >
                 <MoreVertical className="h-3.5 w-3.5" />

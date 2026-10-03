@@ -18,6 +18,9 @@ import type { ActionCommandId } from "./storyActionCommands";
 
 export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
 
+/** The hue the starred list's own glyph wears wherever it heads a list, beside the subjects' hues. */
+export const STARRED_ICON_COLOR = "#c8b06e";
+
 /**
  * Legacy palette id → spec id, or `null` for "this command no longer exists as a menu entry".
  *

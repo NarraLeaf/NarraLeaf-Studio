@@ -16,7 +16,6 @@ import {
 import type { AppearanceModel, AppearanceRowValue, TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import type {
   CustomFieldProps,
   IconButtonSelection,
@@ -33,13 +32,13 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
-import { i18nStore, translate } from "@/lib/i18n";
+import { i18nStore } from "@/lib/i18n";
 import {
   TATE_CHU_YOKO_MAX_LENGTH_LIMIT,
   isVerticalWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
-import { TextRunMarksEditor } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
-import { getTextProps, TEXT_MARKED_LABEL } from "./helpers";
+import { getTextProps } from "./helpers";
+import { TEXT_BLUEPRINT_VALUE_CONFIG, TextSourceField } from "./TextSourceField";
 import type {
   TextAlign,
   TextOrientation,
@@ -148,33 +147,13 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
   );
 }
 
-const TextLocalizationKeyField = createLocalizationKeyField({
-  getKey: element => getTextProps(element).localizationKey ?? "",
-  setKey: (data, value) => {
-    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
-    data.documentService.updateElementProps(live.id, { localizationKey: value });
-  },
-});
-
-const TextBlueprintValueField = createBlueprintValueField({
-  propPath: "text",
-  valueType: "string",
-  valueLabel: "text",
-  title: "widgets.blueprintValue.textTitle",
-  getDisplayName: ({ liveElement }) =>
-    translate("widgets.blueprintValue.nameText", {
-      name: liveElement.name ?? translate("widgets.defaults.text.name"),
-    }),
-  getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
-  renderLiteralEditor: ({ data, liveElement, readOnly }) => (
-    <TextRunMarksEditor
-      documentService={data.documentService}
-      element={liveElement}
-      label={TEXT_MARKED_LABEL}
-      readOnly={readOnly}
-    />
-  ),
-});
+/**
+ * The text field with only its own words and a Blueprint Value - the pair every other widget's
+ * text offers. For the specialisations whose authored text is a design-time stand-in the story
+ * replaces at run time (the dialog line, the NVL entry): a translation key there would translate
+ * words no player sees.
+ */
+export const TextBlueprintValueField = createBlueprintValueField(TEXT_BLUEPRINT_VALUE_CONFIG);
 
 type Translator = ReturnType<typeof i18nStore.getTranslator>["t"];
 
@@ -266,33 +245,14 @@ export function createTextInspector(ctx: InspectorContext) {
             type: "section",
             title: t("widgets.content"),
             fields: [
+              // Where the words come from - the element's own, a translation key or a Blueprint
+              // Value - is chosen inside this one field rather than in a section of its own, so the
+              // box an author types into is always the one the game reads.
               defineField<D, any>({
                 id: "text.content",
                 type: "custom",
                 label: t("widgets.textLabel"),
-                component: TextBlueprintValueField,
-              }),
-            ],
-          }),
-          defineField<D, any>({
-            id: "section.localization",
-            type: "section",
-            title: t("widgets.localization.title"),
-            collapsible: true,
-            defaultCollapsed: true,
-            fields: [
-              defineField<D, any>({
-                id: "text.localizable",
-                type: "toggle",
-                label: t("widgets.text.localizeText"),
-                getValue: (d: D) => Boolean(getTextProps(d.element).localizable),
-                setValue: (_d: D, value: boolean) => patchProps({ localizable: value }),
-              }),
-              defineField<D, any>({
-                id: "text.localizationKey",
-                type: "custom",
-                label: t("widgets.localization.textKey"),
-                component: TextLocalizationKeyField,
+                component: TextSourceField,
               }),
             ],
           }),

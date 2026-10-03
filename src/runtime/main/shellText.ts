@@ -45,6 +45,11 @@ interface ShellStrings {
     /** `{files}` - the patch or DLC files the game left unapplied, by name. */
     contentNotApplied: string;
     /**
+     * The game's page loaded and none of its scripts ran: a file of the game missing or damaged. Said
+     * by this process because the page, which draws every other failure, is the part that did not run.
+     */
+    pageDidNotStart: string;
+    /**
      * `{name}` - window title of a preview running loose files, the everyday fast path.
      *
      * The one entry here an author reads rather than a player: a preview window is a game window,
@@ -67,6 +72,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         displayProcessExited: "The game's display process exited: {reason} (exit code {exitCode})",
         contentTooNew: "This content needs a newer version of the game.",
         contentNotApplied: "Not applied: {files}",
+        pageDidNotStart: "The game could not start: some of its files are missing or damaged. Reinstalling the game may fix this.",
         previewTitle: "{name} · Preview",
         previewAsShippedTitle: "{name} · Preview as shipped",
     },
@@ -81,6 +87,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         displayProcessExited: "游戏的显示进程已退出：{reason}（退出码 {exitCode}）",
         contentTooNew: "此内容需要更新版本的游戏。",
         contentNotApplied: "未应用：{files}",
+        pageDidNotStart: "游戏无法启动：部分游戏文件缺失或已损坏。重新安装游戏或许可以解决。",
         previewTitle: "{name} · 预览",
         previewAsShippedTitle: "{name} · 按出货方式预览",
     },
@@ -95,6 +102,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         displayProcessExited: "ゲームの表示プロセスが終了した：{reason}（終了コード {exitCode}）",
         contentTooNew: "このコンテンツには新しいバージョンのゲームが必要。",
         contentNotApplied: "適用されなかった：{files}",
+        pageDidNotStart: "ゲームを起動できない：一部のファイルが見つからないか破損している。ゲームを再インストールすると直る場合がある。",
         previewTitle: "{name} · プレビュー",
         previewAsShippedTitle: "{name} · 出荷どおりのプレビュー",
     },
@@ -112,6 +120,7 @@ export interface ShellText {
     displayProcessExited(reason: string, exitCode: number): string;
     readonly contentTooNew: string;
     contentNotApplied(files: readonly string[]): string;
+    readonly pageDidNotStart: string;
     /** The window title for a preview of `name`, saying which of the two forms it is running. */
     previewTitle(name: string, asShipped: boolean): string;
 }
@@ -144,6 +153,7 @@ export function resolveShellText(tags: readonly string[]): ShellText {
         contentTooNew: strings.contentTooNew,
         // File names are identifiers, joined the way a list of them reads in every language here.
         contentNotApplied: files => fill(strings.contentNotApplied, { files: files.join(", ") }),
+        pageDidNotStart: strings.pageDidNotStart,
         previewTitle: (name, asShipped) =>
             fill(asShipped ? strings.previewAsShippedTitle : strings.previewTitle, { name }),
     };

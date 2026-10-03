@@ -6,7 +6,10 @@
  *   execution environments (Dev Mode window, Preview, Production).
  *
  * All nodes operate on one reserved save slot id that players never see,
- * so a story graph gets quick save / quick read without managing ids.
+ * so a story graph gets quick save / quick read without managing ids. The
+ * manifest declares it in `contributes.reservedSaveIds`, which is what keeps it
+ * out of `List Saves` and so off an authored save screen; `Has Quick Save`
+ * still finds it because `app.game.saves.listIds` is the raw store listing.
  *
  * Powers come from `app.game`, the capability-gated surface the manifest
  * declares (`contributes.runtimeCapabilities`): `saves.read` to see whether the
@@ -19,6 +22,7 @@ import type { PluginBlueprintNodeContext, PluginBlueprintNodeDef } from "narrale
 type NodeGame = PluginBlueprintNodeContext["game"];
 
 export const PLUGIN_ID = "narraleaf.quick-save";
+/** Must stay listed in manifest.json `contributes.reservedSaveIds`; a test holds the two together. */
 export const QUICK_SAVE_SLOT_ID = `${PLUGIN_ID}.slot`;
 
 /**

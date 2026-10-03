@@ -7,7 +7,6 @@ import { spawn, type ChildProcess } from "child_process";
 import { type UtilityProcess } from "electron";
 import { WebSocket } from "ws";
 import type { App } from "@/app/app";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
     GameTestChoiceOption,
     GameTestCommand,
@@ -113,13 +112,14 @@ const NETWORK_BLOCKED_ENV_VAR = "NARRALEAF_TEST_NETWORK";
 const TEST_DRIVEN_ENV_VAR = "NARRALEAF_TEST_DRIVEN";
 
 /**
- * A test's game session runs the main app surface, which is what Run > Preview launches too.
+ * A test's game session runs on the project's entry page, which is what Run > Preview launches too.
+ * No page is named: the compile reads which page that is from the document it builds the game from.
  *
  * `GameTestLaunchRequest` deliberately carries no entry: a test asks for "this project's game", and
  * letting it name a scene would make "does this game reach an ending" a question about a starting
  * point the author never chose.
  */
-const TEST_LAUNCH_ENTRY: GameRuntimeLaunchEntry = { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID };
+const TEST_LAUNCH_ENTRY: GameRuntimeLaunchEntry = { kind: "surface" };
 
 type GameTestSession = {
     id: string;

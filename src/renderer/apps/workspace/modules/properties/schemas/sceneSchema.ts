@@ -6,7 +6,7 @@ import type {
     UIStageSurface,
     UISurface,
 } from "@shared/types/ui-editor/document";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { DEFAULT_UI_STAGE_SLOT_ID } from "@shared/types/ui-editor/stageSlots";
 import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
@@ -22,6 +22,7 @@ import type {
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
 import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
+import { SurfaceEntryPageField } from "../fields/SurfaceEntryPageField";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
@@ -38,8 +39,13 @@ const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
 
-const getInterfaceTypeLabel = (surface: UISurface, t: TranslateFn): string => {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
+/** Whether the page in the inspector is the one the game starts on. Read live: the entry moves. */
+const isEntryPage = (data: SceneEditorContext): boolean =>
+    isEntrySurface(data.documentService.getDocument(), data.surface.id);
+
+const getInterfaceTypeLabel = (data: SceneEditorContext, t: TranslateFn): string => {
+    const surface = data.surface;
+    if (isEntryPage(data)) {
         return t("uiEditor.surfaceKind.mainPage");
     }
     return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
@@ -87,7 +93,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
             items: [
                 {
                     label: t("properties.scene.type"),
-                    getValue: data => getInterfaceTypeLabel(data.surface, t),
+                    getValue: data => getInterfaceTypeLabel(data, t),
                 },
                 {
                     label: t("properties.layout.size"),
@@ -99,6 +105,12 @@ export const scenePropertySchema = (t: TranslateFn) =>
                     hidden: data => !isGameUi(data.surface),
                 },
             ],
+        }),
+        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+            id: "scene.entryPage",
+            type: "custom",
+            component: SurfaceEntryPageField,
+            hidden: data => isGameUi(data.surface) || isEntryPage(data),
         }),
         defineField<SceneEditorContext, TextFieldDefinition<SceneEditorContext>>({
             id: "scene.name",

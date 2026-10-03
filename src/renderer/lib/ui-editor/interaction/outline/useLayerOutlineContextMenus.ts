@@ -40,10 +40,15 @@ function developerIdEntries(
     elementId: string | null,
     surfaceId: string,
     surface: UISurface | undefined,
+    documentService: UIDocumentService,
 ): DeveloperIdEntry[] {
     const entries: DeveloperIdEntry[] = [{ kind: "element", value: elementId }];
     if (surface) {
-        entries.push({ kind: "surface", value: surfaceId, label: getSurfaceDisplayLabel(surface, translate) });
+        entries.push({
+            kind: "surface",
+            value: surfaceId,
+            label: getSurfaceDisplayLabel(surface, documentService.getDocument(), translate),
+        });
     }
     return entries;
 }
@@ -153,7 +158,7 @@ export function useLayerOutlineContextMenus(params: {
             });
             setMenuItems(appendDeveloperIdSection(
                 items,
-                developerIdEntries(element.id, surfaceId, surface),
+                developerIdEntries(element.id, surfaceId, surface, documentService),
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             ));
             showMenu(event);
@@ -176,11 +181,15 @@ export function useLayerOutlineContextMenus(params: {
     );
 
     const openBlankContextMenu = useCallback(
-        (event: MouseEvent<HTMLDivElement>) => {
+        (event: MouseEvent<HTMLElement>) => {
+            // The outline answers every right click inside it, menu or not. It sits over the
+            // canvas, inside the element the canvas menu listens on, so a click let through here
+            // opened the canvas's menu as well - on the same spot, on top of this one.
+            event.preventDefault();
+            event.stopPropagation();
             if (!effectiveRootId) {
                 return;
             }
-            event.preventDefault();
             const t = event.target as HTMLElement | null;
             if (t?.closest?.("[data-outline-row]")) {
                 return;
@@ -242,7 +251,7 @@ export function useLayerOutlineContextMenus(params: {
             });
             setMenuItems(appendDeveloperIdSection(
                 items,
-                developerIdEntries(null, surfaceId, surface),
+                developerIdEntries(null, surfaceId, surface, documentService),
                 { hideMenu, notify: uiService?.showNotification.bind(uiService) },
             ));
             showMenu(event);

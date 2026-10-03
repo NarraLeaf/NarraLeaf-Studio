@@ -176,6 +176,7 @@ export const help = {
                 + "\n"
                 + "- The panel spells commands the way they are typed. With the editor in Chinese the Chinese "
                 + "spellings parse, and the English spellings remain valid.\n"
+                + "- The star beside a command adds it to Starred. Starred commands are listed first in the “/” menu.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
         storyVariables: {
@@ -582,6 +583,7 @@ export const help = {
                 + "- A placement can be moved, resized and rotated. Changing anything else requires unlinking it "
                 + "first, after which it no longer follows the component.\n"
                 + "- The library states how many placements each component has.\n"
+                + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
                 + "unlinked.",
         },
@@ -594,6 +596,10 @@ export const help = {
                 + "Execution follows the wires between the nodes. One kind of wire sets the order of execution, the "
                 + "other carries values from one node into the next.\n"
                 + "\n"
+                + "- A blueprint with no layers shows a few templates that suit what it belongs to, the template "
+                + "library and, last, a blank layer.\n"
+                + "- The template library lists every template for the blueprint by category, with a preview of "
+                + "the graph each one adds. The button beside New in the layer panel opens it too.\n"
                 + "- Right-click the canvas to add a node. It follows the cursor until it is placed.\n"
                 + "- The toolbar sets what a drag on empty canvas does: selecting, or moving the view.\n"
                 + "- A selection can be framed as a group that moves as one, and the whole graph can be "

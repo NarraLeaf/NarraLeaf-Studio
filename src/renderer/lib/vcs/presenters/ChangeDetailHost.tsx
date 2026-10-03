@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { DocumentChange, DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
 import { useTranslation } from "@/lib/i18n";
 import { documentNameOf, NO_DOCUMENT_NAMES, renderDocumentName } from "../documentName";
 import { readableStoragePath } from "../identifierDisplay";
+import { changesAssetGroup, nameAssetFields, useAssetFolderNames } from "../assetFolderNames";
 import type { ComparisonSides } from "./comparisonSide";
 import { presenterFor } from "./registry";
 // Imported for the registration inside them, which is the only thing that puts a presenter in
@@ -88,6 +89,20 @@ export function ChangeDetailHost({
     const path = readableStoragePath(entry.path);
     const kind = happened ?? entry.kind;
 
+    // An asset record names its group by id. Named here, once, rather than by each presenter that
+    // can draw an asset - pictures, sound, type and the generic list all draw the record's changes,
+    // and a presenter that forgot would put the id back in front of the author.
+    const movesGroup = entry.documentKind === "assets-metadata" && changesAssetGroup(change ? [change] : entry.diff.changes);
+    const folders = useAssetFolderNames(sides ?? null, movesGroup);
+    const namedEntry = useMemo<DocumentDiffEntry>(
+        () => (movesGroup ? { ...entry, diff: { ...entry.diff, changes: nameAssetFields(entry.diff.changes, t, folders) } } : entry),
+        [entry, movesGroup, folders, t],
+    );
+    const namedChange = useMemo(
+        () => (movesGroup && change !== undefined ? nameAssetFields([change], t, folders)[0] : change),
+        [change, movesGroup, folders, t],
+    );
+
     return (
         <div className={cn("flex h-full min-h-0 flex-col", className)}>
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
@@ -110,7 +125,7 @@ export function ChangeDetailHost({
                 data-change-presenter={presenter.id}
                 className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
             >
-                <presenter.Detail entry={entry} change={change} member={member} sides={sides} />
+                <presenter.Detail entry={namedEntry} change={namedChange} member={member} sides={sides} />
             </div>
         </div>
     );

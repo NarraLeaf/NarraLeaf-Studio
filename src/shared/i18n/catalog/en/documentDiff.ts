@@ -293,6 +293,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "Interface renamed",
+        /** The two page names are drawn as the value pair. */
+        entryPage: "Entry page changed",
         surfaceAdded: "Surface added ({elementCount})",
         surfaceRemoved: "Surface removed ({elementCount})",
         surfaceChanged: "Surface changed",
@@ -382,6 +384,15 @@ export const documentDiff = {
          * keeping the bytes is exactly the state this row is the only evidence of.
          */
         orphanContent: "File with no asset record",
+        /**
+         * Record fields named as the assets panel names them. `group` is the group an asset is filed
+         * in; its values are the groups' own names, and `missingGroup` stands in for a group the
+         * record points at that no group list on either side has.
+         */
+        fields: {
+            group: "Group",
+            missingGroup: "Missing group",
+        },
     },
     /**
      * Tier 1, the project's palette.

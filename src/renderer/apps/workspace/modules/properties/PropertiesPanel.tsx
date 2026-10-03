@@ -53,7 +53,6 @@ import {
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
-    getUIComponentLink,
     isLinkedUIComponentElement,
     type UIDocument,
     type UIElement,
@@ -121,7 +120,10 @@ import {
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
+import { InteractionSoundField } from "@/lib/ui-editor/widget-modules/shared/sound/InteractionSoundField";
+import { hasUIInteractionSounds, uiElementTypeTakesInteractionSounds } from "@shared/types/ui-editor/interactionSounds";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
+import { LinkedComponentInfoField } from "./LinkedComponentInfoField";
 import { AssetSetInspector } from "./AssetSetInspector";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
@@ -622,6 +624,38 @@ function createElementAnimationField(element: UIElement, t: TranslateFn): FieldD
 }
 
 /**
+ * The hover and click sounds every element but a surface's root gets, above its animation.
+ *
+ * Built here for the reason the animation section is: a sound is offered wherever a pointer reaches,
+ * which is every widget, and one place cannot forget a type. Open when the element already plays a
+ * sound, so selecting it shows what it plays; folded away otherwise.
+ *
+ * Keyed by element: a section holds its open state for as long as it is mounted, and under one id it
+ * would carry the state of whatever was selected before - folded on a button with sounds because the
+ * picture selected a moment earlier had none. Keyed by element rather than by whether it has a sound,
+ * so clearing the last one does not fold the section away under the pointer.
+ */
+function createElementInteractionSoundField(element: UIElement, t: TranslateFn): FieldDefinition<UIInspectorData> | null {
+    if (!uiElementTypeTakesInteractionSounds(element.type)) {
+        return null;
+    }
+    return defineField<UIInspectorData, any>({
+        id: `element.interactionSound:${element.id}`,
+        type: "section",
+        title: t("properties.interactionSound.title"),
+        collapsible: true,
+        defaultCollapsed: !hasUIInteractionSounds(element),
+        fields: [
+            defineField<UIInspectorData, any>({
+                id: `element.interactionSound.editor:${element.id}`,
+                type: "custom",
+                component: InteractionSoundField,
+            }),
+        ],
+    });
+}
+
+/**
  * The state picker every element with more than one look gets, above everything else in the panel.
  *
  * Ordered before the layout fields because it is not a property of the element: it decides which
@@ -644,7 +678,9 @@ function mergeInspectorWithLayoutSchema(
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
     const stateField = createElementStateField(element);
+    const soundField = createElementInteractionSoundField(element, t);
     const animationField = createElementAnimationField(element, t);
+    const closingFields = soundField ? [soundField, animationField] : [animationField];
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
 
@@ -655,7 +691,7 @@ function mergeInspectorWithLayoutSchema(
             if (targetTabId && tab.id === targetTabId) {
                 return {
                     ...tab,
-                    fields: [stateField, ...layoutFields, ...tab.fields, animationField],
+                    fields: [stateField, ...layoutFields, ...tab.fields, ...closingFields],
                 };
             }
             return tab;
@@ -675,27 +711,10 @@ function mergeInspectorWithLayoutSchema(
     return createPropertyEditorSchema<UIInspectorData>({
         id: baseId,
         title: baseTitle,
-        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
+        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), ...closingFields],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
     });
-}
-
-function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
-    const { t } = useTranslation();
-    const link = getUIComponentLink(data.element);
-    const component = link ? data.documentService.getComponent(link.componentId) : null;
-    if (!link) {
-        return null;
-    }
-    return (
-        <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-fg">
-            <div className="font-medium">{component?.name ?? t("properties.linkedComponent.missing")}</div>
-            <div className="mt-1 text-2xs leading-snug text-fg-muted">
-                {t("properties.linkedComponent.info")}
-            </div>
-        </div>
-    );
 }
 
 /**
@@ -726,11 +745,14 @@ function createLinkedComponentInspectorSchema(
                 component: LinkedComponentParamsSection,
                 order: 98,
             }),
+            // First, above the frame fields: which component this is decides what every field below
+            // may change, and the instance's own name sits close enough to the component's that the
+            // card has to be read before anything else on the panel.
             defineField<UIInspectorData, any>({
                 id: "component.linkInfo",
                 type: "custom",
                 component: LinkedComponentInfoField,
-                order: 99,
+                order: -1,
             }),
         ],
     });

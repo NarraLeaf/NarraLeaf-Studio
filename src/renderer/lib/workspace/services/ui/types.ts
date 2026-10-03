@@ -51,6 +51,8 @@ export interface Notification {
     closable?: boolean;
     onClose?: () => void;
     timestamp: number;
+    /** Set when the notice was raised with a coalesce key; see `NotificationShowOptions.coalesceKey`. */
+    coalesceKey?: string;
 }
 
 /**

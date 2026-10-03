@@ -5,7 +5,7 @@ import type {
     ProjectDependencyTable,
     ProjectPluginDependency,
 } from "../types/pluginDependencies";
-import type { PluginStatus } from "../types/plugins";
+import type { PluginManifestLocalized, PluginStatus } from "../types/plugins";
 import { classifyCompatibility } from "./semver";
 
 /** The subset of an installed plugin the resolver needs. Derived from PluginListItem. */
@@ -15,6 +15,8 @@ export interface InstalledPluginInfo {
     enabled: boolean;
     /** Carried onto the entry as `installedStatus` when given; the verdict never reads it. */
     status?: PluginStatus;
+    /** Carried onto the entry as `installedLocalized` when given; the verdict never reads it. */
+    localized?: PluginManifestLocalized;
 }
 
 /**
@@ -68,6 +70,7 @@ export function resolveDependencies(
             installedVersion: match.version,
             installedEnabled: match.enabled,
             ...(match.status ? { installedStatus: match.status } : {}),
+            ...(match.localized ? { installedLocalized: match.localized } : {}),
             status,
             suppressed: isHeldBack(dependency, match.version),
         };

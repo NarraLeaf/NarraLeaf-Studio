@@ -248,6 +248,25 @@ describe("buildPluginEntries", () => {
         }]);
     });
 
+    it("carries the installed plugin's name translations for the row to apply", () => {
+        const localized = { zh: { name: "画廊" } };
+        const resolution: ProjectDependencyResolution = {
+            entries: [{
+                dependency: table.plugins[0],
+                installedVersion: "1.2.0",
+                installedLocalized: localized,
+                status: "satisfied",
+                suppressed: false,
+            }],
+            suppressedPluginIds: [],
+            overall: "ok",
+        };
+
+        const [entry] = buildPluginEntries(resolution, table);
+        expect(entry.label).toBe("Gallery");
+        expect(entry.localized).toEqual(localized);
+    });
+
     it("still names what ships before the first resolve, without claiming a status", () => {
         expect(buildPluginEntries(null, table)).toEqual([
             { id: "narraleaf.gallery", label: "Gallery", version: "1.2.0" },

@@ -94,6 +94,8 @@ describe("asset set command params", () => {
         // by the same route.
         ["/show Room", IMAGE_SET],
         ["/show Sting", VIDEO_SET],
+        // `/play` reads the clip library on the same terms and stores the clip in the same field.
+        ["/play Sting", VIDEO_SET],
     ])("commits %s and hands the set id to assembly", (source, setId) => {
         expect(assemblyReadsSet(build(source), setId)).toBe(true);
     });
@@ -176,6 +178,6 @@ describe("asset set command params", () => {
                 }
             }
         }
-        expect(reading.sort()).toEqual(["show.target: image+video"]);
+        expect(reading.sort()).toEqual(["play.target: video", "show.target: image+video"]);
     });
 });

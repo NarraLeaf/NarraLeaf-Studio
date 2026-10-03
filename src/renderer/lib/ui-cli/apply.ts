@@ -19,7 +19,7 @@
  * Comments in English per project convention.
  */
 
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { collectReachableUIStructIds } from "@shared/types/ui-editor/structLibrary";
 import { normalizeFlowChildLayouts } from "@services/ui-editor/uiDocumentTreeMove";
 import type { UiCompileResult } from "./dsl/compile";
@@ -36,6 +36,8 @@ export type ApplyResult = {
     /** Shapes a list named before this apply and nothing names after it. */
     structsRemoved: string[];
     actionsWritten: string[];
+    /** The page the file made the entry, by name; absent when the file did not say. */
+    entryPage?: string;
 };
 
 /**
@@ -157,6 +159,16 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         document.components = components;
     }
 
+    // After the surfaces, so a file can add a page and make it the entry in one go. A target that is
+    // not a page is left alone here; `check` is what refuses it, before anything is written.
+    if (compiled.documentEntry) {
+        const target = findEntryTarget(document.surfaces, compiled.documentEntry);
+        if (target?.kind === "appSurface") {
+            document.entrySurfaceId = target.id;
+            result.entryPage = target.name;
+        }
+    }
+
     if (Object.keys(compiled.structs).length > 0) {
         document.structs = { ...(document.structs ?? {}), ...compiled.structs };
         result.structsWritten = Object.keys(compiled.structs);
@@ -184,6 +196,11 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
     return result;
 }
 
+/** What `entry=` names: a surface by id, or else by name - the two spellings a `.ui` file uses. */
+export function findEntryTarget(surfaces: readonly UISurface[], nameOrId: string): UISurface | undefined {
+    return surfaces.find(surface => surface.id === nameOrId) ?? surfaces.find(surface => surface.name === nameOrId);
+}
+
 export function formatApplyResult(result: ApplyResult, written: boolean): string {
     const lines: string[] = [];
     const say = (label: string, items: readonly string[]): void => {
@@ -198,6 +215,9 @@ export function formatApplyResult(result: ApplyResult, written: boolean): string
     say("Structs written", result.structsWritten);
     say("Structs removed, as nothing names them any more", result.structsRemoved);
     say("Actions written", result.actionsWritten);
+    if (result.entryPage) {
+        lines.push(`Entry page: ${result.entryPage}`);
+    }
     lines.push(`${result.elementsWritten} element(s) written, ${result.elementsRemoved} removed.`);
     lines.push(written ? "Written." : "Dry run - pass --write to save.");
     return lines.join("\n");

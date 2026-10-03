@@ -119,12 +119,12 @@ describe("checking a document as it stands", () => {
         expect(diagnostics.map(item => item.code)).toContain("ui.unreachable_element");
     });
 
-    it("reports a document with no surface the game can boot into", () => {
+    it("reports a document with no page the game can boot into", () => {
         const diagnostics = checkProjectDocument(
             { schemaVersion: 12, id: "d", name: "d", surfaces: [], elements: {} },
             null,
         );
-        expect(diagnostics.map(item => item.code)).toContain("ui.no_main_surface");
+        expect(diagnostics.map(item => item.code)).toContain("ui.no_entry_page");
     });
 });
 

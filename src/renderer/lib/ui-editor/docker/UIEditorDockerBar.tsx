@@ -29,6 +29,10 @@ import {
 } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { TooltipGroup } from "@/lib/tooltip";
+import { CANVAS_FREE_CENTRE_LEFT } from "@/lib/components/layout/editorSidebarInset";
+
+/** The middle of the canvas the outline leaves free, which is the whole canvas where none is set. */
+const DOCKER_BAR_POSITION: React.CSSProperties = { left: CANVAS_FREE_CENTRE_LEFT };
 
 // Props
 type UIEditorDockerBarProps = {
@@ -813,12 +817,13 @@ export function UIEditorDockerBar({
     enableComponents = true,
     readOnly = UI_EDITOR_WRITABLE,
 }: UIEditorDockerBarProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const surface = useMemo(() => {
         return documentService.getDocument().surfaces.find(candidate => candidate.id === surfaceId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentService, surfaceId]);
-    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface]);
+    // The locale is a dependency because a plugin's name in the palette is in the editor's language.
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface, locale]);
     const primaryEntries = useMemo(
         () => paletteEntries.filter(entry => entry.placement === "primary"),
         [paletteEntries],
@@ -985,7 +990,8 @@ export function UIEditorDockerBar({
 
     return (
         <div className="pointer-events-none absolute inset-0 z-20">
-            <div className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2">
+            {/* Centred in the part of the canvas the outline leaves free; see `editorSidebarInset`. */}
+            <div className="pointer-events-auto absolute bottom-3 -translate-x-1/2" style={DOCKER_BAR_POSITION}>
                 <DockerBarAnimatedWidthShell>
                     {showMultiSelectDocker ? (
                         <MultiSelectDockerBar items={toReadOnlyDockerBarItems(multiSelectItems, readOnly)} />

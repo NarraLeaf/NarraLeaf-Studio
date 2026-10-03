@@ -37,7 +37,12 @@ export type PrintOptions = {
 export function printUiDocument(document: UIDocument, options: PrintOptions = {}): string {
     const blocks: string[] = [];
     if (options.includeSharedTables !== false) {
-        blocks.push(`document ${printValue(document.name ?? "")} id=${printValue(document.id ?? "")}`);
+        // `entry=` only when the document stores one: a document that names none starts on its main
+        // page, and printing that answer would make an apply write a pointer nobody set.
+        blocks.push(
+            `document ${printValue(document.name ?? "")} id=${printValue(document.id ?? "")}`
+                + (document.entrySurfaceId ? ` entry=${printValue(document.entrySurfaceId)}` : ""),
+        );
         for (const struct of Object.values(document.structs ?? {})) {
             const lines = [`struct ${struct.id}`];
             for (const field of struct.fields) {

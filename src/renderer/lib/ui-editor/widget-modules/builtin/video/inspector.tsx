@@ -1,26 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Film, Image as ImageIcon } from "lucide-react";
 import type { UIVideoObjectFit, UIVideoPreload, UIVideoWidgetProps } from "@shared/types/ui-editor/video";
 import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
-import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
-import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
-import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
-import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
-import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { Services } from "@/lib/workspace/services/services";
-import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
-import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { Select } from "@/lib/components/elements/Select";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { i18nStore, useTranslation } from "@/lib/i18n";
+import { AssetPickerRow } from "@/lib/ui-editor/widget-modules/shared/assets/AssetPickerRow";
+import { useProjectAudioTracks } from "@/lib/ui-editor/widget-modules/shared/sound/useProjectAudioTracks";
 import { getVideoProps, patchVideoProps } from "./helpers";
 
 /** Always read through the live document: a schema closure can outlive the props it captured. */
@@ -50,148 +41,15 @@ function patchChrome(data: UIInspectorData, partial: Partial<RectangleLikeProps>
 }
 
 /**
- * One asset row, used for both the clip and the poster.
- *
- * Single-select only: `AssetSelector`'s multiple mode has never actually worked, and a picker that
- * silently keeps only the first pick is worse than one that never offers the choice.
- */
-function AssetRow({
-    label,
-    emptyLabel,
-    chooseLabel,
-    icon: Icon,
-    assetType,
-    assetId,
-    onChange,
-}: {
-    label: string;
-    emptyLabel: string;
-    chooseLabel: string;
-    icon: typeof Film;
-    assetType: AssetType;
-    assetId: string | null;
-    onChange: (next: string | null) => void;
-}) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const assetsService = useMemo(
-        () => (context ? context.services.get<AssetsService>(Services.Assets) : null),
-        [context],
-    );
-    const [selectorOpen, setSelectorOpen] = useState(false);
-    const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-    // The library edits its records in place, so a rename or a delete moves nothing else this memo
-    // keys on - without the revision the field keeps the name the file had when it was picked.
-    const assetLibraryRevision = useAssetLibraryRevision();
-    // Through the shared reader, not the pool table: this slot may hold an asset set, and a set has
-    // no row in the library - looking only there would print "missing" for a reference the picker
-    // itself just offered.
-    const assetName = useMemo(() => {
-        if (!assetId || !assetsService) {
-            return null;
-        }
-        return resolveAssetDisplayName(context?.services, assetId);
-    }, [assetId, assetLibraryRevision, assetsService, context]);
-    // Both slots may be answered by a set: a clip and its still are one piece of art with one job,
-    // which is the kind of thing that changes with the language it is read in.
-    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
-        context,
-        isInitialized,
-        assetType,
-        enabled: true,
-    });
-
-    /**
-     * An id with no library record is a broken reference, not an empty slot - saying "None" there
-     * would hide the very thing `resourceDiagnostics` is warning about.
-     */
-    const valueLabel = assetId
-        ? assetName ?? t("widgets.video.assetMissing")
-        : emptyLabel;
-
-    const handleConfirm = useCallback((assets: Asset[]) => {
-        const selected = assets[0];
-        if (!selected) {
-            return;
-        }
-        onChange(selected.id);
-        setSelectorOpen(false);
-    }, [onChange]);
-
-    const handleClear = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-        event.stopPropagation();
-        onChange(null);
-    }, [onChange]);
-
-    return (
-        <>
-            <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-fg-muted">{label}</span>
-                <button
-                    type="button"
-                    ref={triggerRef}
-                    onClick={() => setSelectorOpen(true)}
-                    className="flex w-full items-center gap-2 rounded-md border border-edge bg-surface px-2 py-1.5 text-left text-xs text-fg focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
-                    <span className="min-w-0 flex-1 truncate">{valueLabel}</span>
-                    {assetId ? (
-                        <span
-                            role="button"
-                            tabIndex={-1}
-                            onClick={handleClear as unknown as (event: MouseEvent<HTMLSpanElement>) => void}
-                            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs tracking-wider text-fg-subtle hover:bg-fill hover:text-fg-muted"
-                        >
-                            {t("common.clear")}
-                        </span>
-                    ) : (
-                        <span className="shrink-0 text-2xs tracking-wider text-fg-subtle">{chooseLabel}</span>
-                    )}
-                </button>
-            </div>
-
-            <AssetSelector
-                visible={selectorOpen}
-                assetType={assetType}
-                multiple={false}
-                selectedIds={assetId ? [assetId] : []}
-                anchorRef={triggerRef}
-                title={chooseLabel}
-                onClose={() => setSelectorOpen(false)}
-                onConfirm={handleConfirm}
-                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
-            />
-        </>
-    );
-}
-
-/**
  * Which project audio track the clip's sound lands on.
  *
  * A custom field rather than a `select` with static options because the list is project data an
- * author can add to: an "Ambience" track created on the project Audio surface has to appear here
- * without the schema being rebuilt. Falls back to the built-in ids when there is no service to ask
- * (a component canvas outside a workspace), so the control is never empty and never dead.
+ * author can add to (`useProjectAudioTracks`), and has to stay current without the schema being
+ * rebuilt.
  */
 function VideoAudioTrackField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [revision, setRevision] = useState(0);
-    const trackService = useMemo(
-        () => (context ? context.services.get<AudioTrackService>(Services.AudioTracks) : null),
-        [context],
-    );
-
-    useEffect(() => trackService?.onTracksChanged(() => setRevision(value => value + 1)), [trackService]);
-
-    const tracks = useMemo(
-        () => trackService?.listTracks() ?? [...BUILTIN_AUDIO_TRACKS],
-        // `revision` is the subscription's only job: the service mutates its list in place.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [trackService, revision],
-    );
-
+    const tracks = useProjectAudioTracks();
     const current = getLiveVideoProps(props.data);
     return (
         <div className="flex flex-col gap-1">
@@ -213,19 +71,21 @@ function VideoSourceField(props: CustomFieldProps<UIInspectorData>) {
     const current = getLiveVideoProps(props.data);
     return (
         <div className="flex flex-col gap-2">
-            <AssetRow
+            <AssetPickerRow
                 label={t("widgets.video.asset")}
                 emptyLabel={t("widgets.video.assetNone")}
                 chooseLabel={t("widgets.video.assetChoose")}
+                missingLabel={t("widgets.video.assetMissing")}
                 icon={Film}
                 assetType={AssetType.Video}
                 assetId={current.assetId}
                 onChange={next => patchVideo(props.data, { assetId: next })}
             />
-            <AssetRow
+            <AssetPickerRow
                 label={t("widgets.video.poster")}
                 emptyLabel={t("widgets.video.posterNone")}
                 chooseLabel={t("widgets.video.posterChoose")}
+                missingLabel={t("widgets.video.assetMissing")}
                 icon={ImageIcon}
                 assetType={AssetType.Image}
                 assetId={current.posterAssetId}

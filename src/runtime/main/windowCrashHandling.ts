@@ -1,5 +1,9 @@
 import type { BrowserWindow } from "electron";
-import { GAME_RUNTIME_PROTOCOL, type GameCrashPolicy } from "@shared/types/gameRuntime";
+import {
+    GAME_RUNTIME_PAGE_STARTED_KEY,
+    GAME_RUNTIME_PROTOCOL,
+    type GameCrashPolicy,
+} from "@shared/types/gameRuntime";
 import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { buildGameRuntimeIndexUrl } from "@shared/utils/gameRuntimeIndexUrl";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
@@ -8,7 +12,8 @@ import type { ShellText } from "./shellText";
 
 /**
  * The ways a game window can stop working without anything throwing in JavaScript: its page process
- * exits, it stops answering, its preload never ran, or the game's page will not load into it.
+ * exits, it stops answering, its preload never ran, the game's page will not load into it, or the page
+ * loads and its scripts never run.
  *
  * All of them were silent before this existed. The page process dying takes the window down with it,
  * so what the player saw was a game that closed itself; a hang looked like a very long load; and a
@@ -68,6 +73,9 @@ export interface WindowCrashHandle {
 /** Chromium's code for a navigation that was replaced by another before it finished. */
 const ERR_ABORTED = -3;
 
+/** What the game's process asks a loaded page: did its scripts run. See `GAME_RUNTIME_PAGE_STARTED_KEY`. */
+const PAGE_STARTED_PROBE = `window[${JSON.stringify(GAME_RUNTIME_PAGE_STARTED_KEY)}] === true`;
+
 /** Whether a URL is the game's own page, as opposed to anywhere else the window was sent. */
 function isGamePage(url: string): boolean {
     return url.startsWith(`${GAME_RUNTIME_PROTOCOL}:`);
@@ -89,6 +97,10 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
     let pageLoaded = false;
     /** Set once this has decided the game is over, so the several signals of one failure act once. */
     let ending = false;
+    /** Whether the page now in the window is the game's, committed with a status that is not an error. */
+    let gamePageCommitted = false;
+    /** Whether the game's scripts have run in this window at all - the line between not starting and crashing. */
+    let scriptsRan = false;
 
     /**
      * The game's page would not load. Nothing can be shown instead of it - the crash screen is that
@@ -218,14 +230,59 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
         }
         void recoverDeadRenderer(details.reason, details.exitCode);
     });
+    /**
+     * The game's page loaded and its scripts never ran.
+     *
+     * The page answered and Chromium drew it, so nothing above has anything to say: no failed load, no
+     * error status, no process gone. But the page is an empty document until its script bundle runs,
+     * and everything a player is shown about a failure - the crash screen included - is drawn by that
+     * bundle. A build missing it, or carrying one that will not evaluate, showed an empty window for
+     * as long as the process lived, and wrote nothing anywhere: the request that failed is the only
+     * trace, and only once it is logged.
+     *
+     * Asked when the page has finished loading, which is after its scripts would have run: the bundle
+     * is a deferred script, and the load event waits for those. The answer is the flag the bundle sets
+     * as the first thing it does.
+     */
+    const checkScriptsRan = async (): Promise<void> => {
+        let started: unknown;
+        try {
+            started = await win.webContents.executeJavaScript(PAGE_STARTED_PROBE);
+        } catch (error) {
+            // The page went away before it could be asked - a reload, a crash, a quit. Each of those
+            // has its own signal and its own handling.
+            host.log("warning", `[Crash] Could not ask the game's page whether it started: ${describe(error)}`);
+            return;
+        }
+        if (started === true) {
+            scriptsRan = true;
+            return;
+        }
+        if (ending || host.isQuitting() || win.isDestroyed()) {
+            return;
+        }
+        ending = true;
+        const headline = host.text.pageDidNotStart;
+        if (!scriptsRan) {
+            host.failedToStart("could not start: the game's page loaded, but its scripts never ran", headline);
+            return;
+        }
+        host.log("error", "[Crash] The game's page loaded again, but its scripts never ran");
+        host.endAfterCrash(headline);
+    };
+
     win.webContents.on("did-finish-load", () => {
         expectedProcessSwap = false;
+        if (gamePageCommitted) {
+            void checkScriptsRan();
+        }
     });
     // The game's page answered with an error status. The game's protocol answers a page it cannot
     // read with 404 rather than failing the request, and Chromium treats that as a page that loaded:
     // `did-finish-load`, a resolved `loadURL`, and "Not found" in the window (measured). The status
     // is the only sign of it.
     win.webContents.on("did-navigate", (_event, url, httpResponseCode, httpStatusText) => {
+        gamePageCommitted = false;
         if (!isGamePage(url)) {
             return;
         }
@@ -234,6 +291,7 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
             return;
         }
         pageLoaded = true;
+        gamePageCommitted = true;
     });
     // The request for the page failed outright. Only the main frame, and never a navigation that was
     // replaced by another: a reload started while the first load is still going ends the first one
@@ -242,6 +300,8 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
         if (!isMainFrame || errorCode === ERR_ABORTED) {
             return;
         }
+        // Whatever finishes loading next is Chromium's error page, not the game's.
+        gamePageCommitted = false;
         if (!isGamePage(validatedURL)) {
             // Somewhere the game's own page sent the window, which did not load - not the game
             // failing to, so not a reason to end it here. Recorded without the address.

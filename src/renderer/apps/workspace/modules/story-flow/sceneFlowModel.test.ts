@@ -512,9 +512,9 @@ describe("buildSceneFlowGraph branch topology", () => {
         ], "a");
 
         expect(buildSceneFlowGraph(story, { variableNames: new Map([["saved:sv-1", "好感"]]) }).branches.map(branch => branch.label))
-            .toEqual(["好感 isTrue"]);
+            .toEqual(["好感"]);
         // The regression this guards: the same fork with no registry in hand.
-        expect(buildSceneFlowGraph(story).branches.map(branch => branch.label)).toEqual(["variable isTrue"]);
+        expect(buildSceneFlowGraph(story).branches.map(branch => branch.label)).toEqual(["variable"]);
     });
 
     it("terminates on a corrupted childrenIds cycle", () => {

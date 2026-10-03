@@ -1312,8 +1312,8 @@ function videoSentence(
             args: [positional("target", name, object), positional("time", seconds(payload.timeMs), { apply: next => ({ ...payload, timeMs: msOf(next) }) })],
         };
     }
-    // The one-row form - see `imageSentence`. A clip carries no placement and no fade, so the line is
-    // the file and the name and nothing else.
+    // The one-row form, `/show` or `/play` naming its own clip - see `imageSentence`. A clip carries
+    // no placement and no fade, so the line is the file and the name and nothing else.
     if (revealCreates(payload)) {
         return {
             commandId,

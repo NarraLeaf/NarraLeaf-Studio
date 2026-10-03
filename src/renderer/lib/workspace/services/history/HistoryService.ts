@@ -93,9 +93,21 @@ function historySnapshotsEqual<S>(a: S, b: S, equals?: (a: S, b: S) => boolean):
     return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * Why a stack changed. `record`, `undo` and `redo` are the document being edited; the rest are
+ * bookkeeping on the stack itself - thrown away, trimmed to a new depth, or dropped because nothing
+ * has used it for a while - and say nothing about anyone working in a document.
+ */
+export type HistoryChangeCause = "record" | "undo" | "redo" | "clear" | "limit" | "evict";
+
+/** Whether a change was somebody editing the document, as opposed to the stack being tidied. */
+export function isHistoryEditCause(cause: HistoryChangeCause): boolean {
+    return cause === "record" || cause === "undo" || cause === "redo";
+}
+
 export type HistoryEvents = {
-    /** A stack changed: pushed, merged, undone, redone or cleared. */
-    changed: { scopeId: HistoryScopeId };
+    /** A stack changed: pushed, merged, undone, redone, cleared, re-limited or evicted. */
+    changed: { scopeId: HistoryScopeId; cause: HistoryChangeCause };
     /** The scope that a bare Ctrl+Z would act on changed. */
     activeScopeChanged: { scopeId: HistoryScopeId | null };
 };
@@ -381,7 +393,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         for (const [scopeId, stack] of this.stacks) {
             if (this.scopes.get(scopeId)?.limit === undefined) {
                 stack.setLimit(next);
-                this.events.emit("changed", { scopeId });
+                this.events.emit("changed", { scopeId, cause: "limit" });
             }
         }
     }
@@ -389,7 +401,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
     /** Override the depth of one scope, whether or not it is registered yet. */
     public setScopeLimit(scopeId: HistoryScopeId, limit: number): void {
         this.ensureStack(scopeId).setLimit(limit);
-        this.events.emit("changed", { scopeId });
+        this.events.emit("changed", { scopeId, cause: "limit" });
     }
 
     /** Throw away one scope's stack, keeping its registration. */
@@ -399,7 +411,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             return;
         }
         stack.clear();
-        this.events.emit("changed", { scopeId });
+        this.events.emit("changed", { scopeId, cause: "clear" });
     }
 
     /**
@@ -415,7 +427,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             stack.clear();
         }
         for (const id of ids) {
-            this.events.emit("changed", { scopeId: id });
+            this.events.emit("changed", { scopeId: id, cause: "clear" });
         }
     }
 
@@ -431,7 +443,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             if (index >= 0) {
                 this.touchOrder.splice(index, 1);
             }
-            this.events.emit("changed", { scopeId });
+            this.events.emit("changed", { scopeId, cause: "clear" });
         }
     }
 
@@ -468,7 +480,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
         const stack = this.ensureStack(entry.scopeId);
         stack.push(entry, { now: entry.createdAt, mergeWindowMs: request.mergeWindowMs });
         this.touch(entry.scopeId);
-        this.events.emit("changed", { scopeId: entry.scopeId });
+        this.events.emit("changed", { scopeId: entry.scopeId, cause: "record" });
         return true;
     }
 
@@ -508,7 +520,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             this.suppressionDepth -= 1;
             accept();
             this.touch(id);
-            this.events.emit("changed", { scopeId: id });
+            this.events.emit("changed", { scopeId: id, cause: direction });
             return true;
         }
 
@@ -524,7 +536,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
                 this.suppressionDepth -= 1;
                 this.pending = null;
                 this.touch(id);
-                this.events.emit("changed", { scopeId: id });
+                this.events.emit("changed", { scopeId: id, cause: direction });
             });
         return true;
     }
@@ -595,7 +607,7 @@ export class HistoryService extends Service<HistoryService> implements IHistoryS
             if (index >= 0) {
                 this.touchOrder.splice(index, 1);
             }
-            this.events.emit("changed", { scopeId });
+            this.events.emit("changed", { scopeId, cause: "evict" });
         }
     }
 }

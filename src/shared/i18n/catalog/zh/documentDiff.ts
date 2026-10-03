@@ -221,6 +221,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "界面文档改名",
+        /** 两个页面名作为值对画出。 */
+        entryPage: "入口页面改动",
         surfaceAdded: "新增界面（{elementCount}）",
         surfaceRemoved: "删除界面（{elementCount}）",
         surfaceChanged: "界面改动",
@@ -300,6 +302,10 @@ export const documentDiff = {
         field: "{field} 改动",
         /** 资产内容文件，本次对比里没有任何资产记录指向它。文件名是 id 的分片，说不出别的。 */
         orphanContent: "没有对应资产记录的文件",
+        fields: {
+            group: "分组",
+            missingGroup: "已不存在的分组",
+        },
     },
     /**
      * 项目配色。

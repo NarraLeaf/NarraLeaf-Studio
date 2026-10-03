@@ -19,8 +19,29 @@ const PAGE = {
 };
 
 function composite(overrides: Partial<GameAppCompositeView> = {}): GameAppCompositeView {
-    return { page: PAGE, layers: [], queued: [], exitPending: false, ...overrides };
+    return { stage: null, page: PAGE, offScreenPages: [], layers: [], queued: [], exitPending: false, ...overrides };
 }
+
+const GAME_UI = [
+    {
+        key: "nlr:s:slot:dialog:box",
+        surfaceId: "box",
+        surfaceName: "Dialog box",
+        slotId: "dialog" as const,
+        concealed: false,
+        interactive: true,
+        takesInput: true,
+    },
+    {
+        key: "nlr:s:slot:notification:toasts",
+        surfaceId: "toasts",
+        surfaceName: "Toasts",
+        slotId: "notification" as const,
+        concealed: false,
+        interactive: false,
+        takesInput: false,
+    },
+];
 
 describe("LayerStackPanel", () => {
     it("marks the one slot that owns the keyboard, and says who takes clicks", () => {
@@ -63,6 +84,39 @@ describe("LayerStackPanel", () => {
         expect(screen.getByText("Not on screen")).toBeTruthy();
         // Named by its id, because the project has no surface to name it after.
         expect(screen.getByText("deleted")).toBeTruthy();
+    });
+
+    it("draws the stage and its Game UI under everything, the keys marked once on the group", () => {
+        render(<LayerStackPanel composite={composite({
+            page: null,
+            offScreenPages: [{ key: "title:1", surfaceId: "title", surfaceName: "Title", hiddenForGame: true }],
+            stage: { interactive: true, keyboardOwner: true, gameUi: GAME_UI },
+        })} />);
+        expect(screen.getByText("Stage")).toBeTruthy();
+        expect(screen.getByText("Game UI")).toBeTruthy();
+        // Slots by their catalogue names, surfaces by their authored ones.
+        expect(screen.getByText("Dialog box")).toBeTruthy();
+        expect(screen.getByText("Dialog")).toBeTruthy();
+        expect(screen.getByText("Notification")).toBeTruthy();
+        expect(screen.getByText("Takes no clicks or keys")).toBeTruthy();
+        expect(screen.getAllByText("Keyboard")).toHaveLength(1);
+        // The page the game hid, under its own heading and not in the stack.
+        expect(screen.getByText("Not on screen")).toBeTruthy();
+        expect(screen.getByText("Title")).toBeTruthy();
+        expect(screen.getByText("Hidden while the game runs")).toBeTruthy();
+    });
+
+    it("says which Game UI a page over the stage has faded out", () => {
+        render(<LayerStackPanel composite={composite({
+            page: { ...PAGE, interactive: true, keyboardOwner: true },
+            stage: {
+                interactive: false,
+                keyboardOwner: false,
+                gameUi: [{ ...GAME_UI[0]!, concealed: true, interactive: false }, GAME_UI[1]!],
+            },
+        })} />);
+        expect(screen.getAllByText("Faded out")).toHaveLength(1);
+        expect(screen.getAllByText("Keyboard")).toHaveLength(1);
     });
 
     it("lists what is waiting for a group, and an exit that has not finished", () => {

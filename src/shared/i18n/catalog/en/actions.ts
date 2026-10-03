@@ -90,6 +90,14 @@ export const actions = {
             label: "About",
             tooltip: "About NarraLeaf Studio",
         },
+        // Every log Studio keeps, on disk and in this window's memory, in one zip the author can
+        // attach to a report. Opens a save dialog, hence the ellipsis.
+        exportLogs: {
+            label: "Export Logs…",
+            tooltip: "Save all Studio logs as a zip archive",
+            done: "Logs saved to {path}",
+            failed: "The logs could not be exported.",
+        },
     },
     export: {
         chooseFolder: "Choose a folder for the exported project package.",

@@ -21,7 +21,8 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 
-const TEXT_AREA_CLASS =
+/** The box a label's text is typed into; shared by every inspector box that holds a label's words. */
+export const LABEL_TEXT_AREA_CLASS =
     "min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs "
     + "text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40";
 
@@ -133,7 +134,7 @@ export function TextRunMarksEditor(props: {
             <DraftTextInput
                 multiline
                 inputRef={areaRef}
-                className={TEXT_AREA_CLASS}
+                className={LABEL_TEXT_AREA_CLASS}
                 value={textProps.text}
                 rows={4}
                 readOnly={props.readOnly}

@@ -19,6 +19,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../context";
 import { PanelComponentProps } from "../types";
 import { consoleChannelDescription, consoleChannelLabel, consoleSourceLabel } from "./consoleChannelText";
+import { buildConsoleExportContent, consoleEntryText } from "./consoleExport";
 
 type ConsolePanelState = {
     activeChannel?: ConsoleChannelId;
@@ -65,37 +66,6 @@ function formatTimestamp(timestamp: number): string {
         minute: "2-digit",
         second: "2-digit",
     });
-}
-
-function entryText(entry: ConsoleEntry): string {
-    return entry.segments.map(segment => segment.text).join("");
-}
-
-/** `YYYY-MM-DD HH:MM:SS`, used inside the exported log body. */
-function formatExportTimestamp(timestamp: number): string {
-    const date = new Date(timestamp);
-    const pad = (value: number) => String(value).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-/**
- * Serialize a channel's buffered entries to plain text for export. Every entry is included
- * regardless of the panel's level filter; cleared entries are already gone from the buffer.
- */
-function buildExportContent(entries: ConsoleEntry[], label: string): string {
-    const header = [
-        `NarraLeaf Studio ${label} console log`,
-        `Exported: ${formatExportTimestamp(Date.now())}`,
-        `Entries: ${entries.length}`,
-        "",
-    ];
-    const lines = entries.map(entry => {
-        const time = formatExportTimestamp(entry.timestamp);
-        const level = entry.level.toUpperCase().padEnd(7);
-        const source = entry.source ? `[${entry.source}] ` : "";
-        return `[${time}] ${level} ${source}${entryText(entry)}`;
-    });
-    return [...header, ...lines].join("\n") + "\n";
 }
 
 /** Suggested `console-<channel>-<timestamp>.log` filename for the export dialog. */
@@ -283,7 +253,7 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
             return;
         }
         void (async () => {
-            const content = buildExportContent(entries, label);
+            const content = buildConsoleExportContent(entries, label);
             const defaultFileName = buildExportFileName(activeChannel);
             uiService?.showNotification(t("console.exportChoosingFolder", { label }), "info");
 
@@ -517,7 +487,7 @@ function ConsoleEntryGrid({ entries }: { entries: ConsoleEntry[] }) {
                             <ConsoleSegment key={`${entry.id}:${segmentIndex}`} segment={segment} fallbackColor={entry.color} />
                         ))}
                     </span>
-                    {entryText(entry).length === 0 ? <span className="text-fg-subtle">{t("console.entryEmpty")}</span> : null}
+                    {consoleEntryText(entry).length === 0 ? <span className="text-fg-subtle">{t("console.entryEmpty")}</span> : null}
                 </div>
             ))}
         </div>

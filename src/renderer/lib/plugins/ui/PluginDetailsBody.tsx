@@ -7,6 +7,7 @@ import { useTranslation } from "@/lib/i18n";
 import { PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPermissions";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayDescription, pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "./pluginPresentation";
 import { useStoreIcon } from "./useStoreIcon";
 
@@ -30,14 +31,14 @@ export interface PluginDetailsBodyProps {
  * buttons and the workspace panel as a sidebar row, and only the words in between are the same.
  */
 export function PluginDetailsBody({ installed, registryEntry, children }: PluginDetailsBodyProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
 
     const manifest = installed?.manifest;
     const pluginId = installed?.pluginId ?? registryEntry?.id ?? "";
-    const name = manifest?.name ?? registryEntry?.name ?? pluginId;
+    const name = (manifest ? pluginDisplayName(manifest, locale) : registryEntry?.name) ?? pluginId;
     const version = manifest?.version ?? registryEntry?.version ?? "";
     const publisher = manifest?.publisher ?? registryEntry?.publisher;
-    const description = manifest?.description ?? registryEntry?.description;
+    const description = (manifest && pluginDisplayDescription(manifest, locale)) ?? registryEntry?.description;
     const permissions = manifest?.permissions ?? registryEntry?.permissions ?? [];
     const entries = manifest
         ? (["studio", "runtime"] as const).filter(target => manifest.entries[target])
@@ -53,7 +54,7 @@ export function PluginDetailsBody({ installed, registryEntry, children }: Plugin
     return (
         <div className="space-y-4">
             <div className="flex items-start gap-3">
-                <PluginAvatar name={name} src={installed?.iconUrl ?? storeIcon} size={44} />
+                <PluginAvatar name={name} colorKey={manifest?.name} src={installed?.iconUrl ?? storeIcon} size={44} />
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                         {version ? <Badge tone="neutral">v{version}</Badge> : null}

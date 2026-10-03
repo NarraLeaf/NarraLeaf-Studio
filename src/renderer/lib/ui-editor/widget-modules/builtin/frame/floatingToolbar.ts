@@ -1,5 +1,6 @@
 import { Share } from "lucide-react";
 import type { FloatingToolbarContext, FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
+import { translate } from "@/lib/i18n";
 import { getFrameProps } from "./helpers";
 
 export function createFrameFloatingToolbarItems({
@@ -25,7 +26,7 @@ export function createFrameFloatingToolbarItems({
             kind: "button",
             id: "frame.open-target-page",
             icon: Share,
-            tooltip: `Open ${targetSurface.name}`,
+            tooltip: translate("uiEditor.editor.openPageNamed", { name: targetSurface.name }),
             onClick: () => openSurfaceEditor(targetSurface.id),
         },
     ];

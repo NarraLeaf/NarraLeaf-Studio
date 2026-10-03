@@ -43,6 +43,13 @@ export function newerRuntimePackSchemaVersion(pack: unknown): number | null {
 }
 
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
+/**
+ * Set on the game page's window by the first line of its own script bundle, and read by the game's
+ * process once the page has loaded: a page that loaded without it is one whose scripts never ran - a
+ * bundle missing from the build, or one that would not evaluate - and that page can draw nothing,
+ * its crash screen included. See `windowCrashHandling`.
+ */
+export const GAME_RUNTIME_PAGE_STARTED_KEY = "__NLS_GAME_PAGE_STARTED__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
@@ -73,10 +80,19 @@ export const GAME_RUNTIME_CLOSE_DECISION_CHANNEL = "runtime:close:decision" as c
  */
 export const GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL = "runtime:sidecar:message" as const;
 
+/**
+ * What a run starts on.
+ *
+ * `surfaceId` is optional on both kinds, and absent means the project's entry page - the page the
+ * interface document marks as the one the game starts on (`resolveEntrySurface`). Run, a test, a
+ * build and a patch all ask for that rather than naming a page, so the answer is read from the
+ * document the run is compiled from and not from whatever the caller held a moment earlier. The
+ * compiler writes the page it resolved into the pack, so a pack always says which page it opens.
+ */
 export type GameRuntimeLaunchEntry =
     | {
           kind: "surface";
-          surfaceId: UISurfaceId;
+          surfaceId?: UISurfaceId;
       }
     | {
           kind: "story";

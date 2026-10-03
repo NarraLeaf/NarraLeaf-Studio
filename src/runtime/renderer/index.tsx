@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { GAME_RUNTIME_PAGE_STARTED_KEY } from "@shared/types/gameRuntime";
 import "@/styles/styles.css";
 import {
     readGameRuntimeIndexUrl,
@@ -13,6 +14,11 @@ import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 import { getActiveProjectLocale, subscribeActiveProjectLocale } from "@shared/typography/projectFonts";
 import { installDocumentLanguage } from "./documentLanguage";
 import { publishGameLaunch } from "@/lib/ui-editor/runtime/app/gameTimeline";
+
+// First of all: the scripts ran. The game's process asks once the page has loaded, and a page that
+// loaded without this is one that can draw nothing at all - not even the crash screen - so the
+// process says so itself (see `windowCrashHandling`).
+(window as unknown as Record<string, unknown>)[GAME_RUNTIME_PAGE_STARTED_KEY] = true;
 
 // Before anything else, including the missing-root check below: what this build does about a crash
 // has to be settled before there is any chance of one, and read from the page's own address rather

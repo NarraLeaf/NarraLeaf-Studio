@@ -26,6 +26,8 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
+import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
+import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
@@ -238,8 +240,6 @@ export type UIOpSink = {
      */
     handle(op: LiveUIOp): boolean;
 };
-
-const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
 
 function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfaceSettings {
     return {
@@ -756,9 +756,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.document = migrated;
         const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
         const normalizedChanged = loadedSnapshot !== JSON.stringify(migrated);
-        const mainSurfaceChanged = this.ensureMainSurface(this.document);
+        const entrySurfaceChanged = this.ensureEntrySurface(this.document);
         const flowLayoutsChanged = normalizeFlowChildLayouts(this.document);
-        const needsSave = schemaChanged || normalizedChanged || mainSurfaceChanged || flowLayoutsChanged;
+        const needsSave = schemaChanged || normalizedChanged || entrySurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
             this.contentRevisions.reset();
@@ -2097,8 +2097,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return surface;
     }
 
+    /**
+     * Remove a surface and its tree. The entry page is refused: a game has to start somewhere, and
+     * the way to delete the page it starts on is to make another page the entry first.
+     */
     public deleteSurface(surfaceId: string): void {
-        if (surfaceId === MAIN_APP_SURFACE_ID) {
+        if (isEntrySurface(this.getDocument(), surfaceId)) {
             return;
         }
         this.mutateDocument(document => {
@@ -2171,6 +2175,49 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: { key: "uiEditor.history.moveSurface" as TranslationKey, params: { name } },
             undo: () => this.applySurfaceOrder(before),
             redo: () => this.applySurfaceOrder(after),
+        });
+    }
+
+    /**
+     * Make this page the one the game starts on.
+     *
+     * Only a page can be the entry - a Game UI has nothing to show before a story runs - and asking
+     * for the page that already is changes nothing and records nothing. The pages keep their ids:
+     * the document stores which one is the entry (`UIDocument.entrySurfaceId`), so every blueprint
+     * and every `Go Page` that names either page still names the same page afterwards.
+     *
+     * On the project stack, for the reason {@link reorderSurfaces} gives: it is an edit to no one
+     * surface, made from the panel. The entry restores to what the file stored rather than to the
+     * page that was resolved, so taking this back leaves a document that never named an entry as
+     * short as it was.
+     */
+    public setEntrySurface(surfaceId: string): void {
+        const document = this.getDocument();
+        const target = document.surfaces.find(surface => surface.id === surfaceId);
+        if (!target || target.kind !== "appSurface" || isEntrySurface(document, surfaceId)) {
+            return;
+        }
+        const before = document.entrySurfaceId;
+        this.applyEntrySurface(surfaceId);
+        const after = this.getDocument().entrySurfaceId;
+        // An operation sink took the gesture and this copy of the document has not changed yet.
+        if (after === before) {
+            return;
+        }
+        this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label: { key: "uiEditor.history.setEntryPage" as TranslationKey, params: { name: target.name } },
+            undo: () => this.applyEntrySurface(before),
+            redo: () => this.applyEntrySurface(after),
+        });
+    }
+
+    private applyEntrySurface(surfaceId: string | undefined): void {
+        this.mutateDocument(document => {
+            if (surfaceId) {
+                document.entrySurfaceId = surfaceId;
+            } else {
+                delete document.entrySurfaceId;
+            }
         });
     }
 
@@ -2425,7 +2472,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             sourceBlueprintDocument = null;
         }
 
-        const importable = sourceDocument.surfaces.filter(surface => surface.id !== MAIN_APP_SURFACE_ID);
+        // A template is a document of its own, and a document always has a page under the main id -
+        // the empty one it was created with, which is not what the template is offering. A copied
+        // page has nothing else in its payload: whatever page it was, it arrives as a page of this
+        // project under an id of its own (every id below is regenerated), and never as the entry.
+        const importable = input.placement === IMPORT_PLACEMENT_FROM_SOURCE
+            ? sourceDocument.surfaces
+            : sourceDocument.surfaces.filter(surface => surface.id !== MAIN_APP_SURFACE_ID);
         const occupiedStageSlots = new Set<UIStageSlotId>(
             this.getDocument().surfaces
                 .filter((surface): surface is UISurface & { kind: "stageSurface"; mount: UIStageSurfaceMount } =>
@@ -2543,12 +2596,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             }
 
-            // A component's elements live outside any surface, so the surface fields of
-            // the remap context are inert here — only the element/blueprint/asset maps
-            // and the component-instance map do work.
+            // A component's elements live outside any surface. The surface fields reach the
+            // element references in the component's own blueprints, which name the definition's
+            // surface under either of its two spellings (`normalizeUIElementRefSurfaceId`): each
+            // is carried over to the copy under the spelling it had.
             const remapContext: SurfaceDuplicateRemapContext = {
-                oldSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${source.id}`,
-                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                oldSurfaceId: buildUIComponentEditorSurfaceId(source.id),
+                newSurfaceId: buildUIComponentEditorSurfaceId(newComponentId),
+                surfaceIdMap: { [buildUIComponentSurfaceId(source.id)]: buildUIComponentSurfaceId(newComponentId) },
                 elementIdMap,
                 blueprintIdMap,
                 assetIdMap,
@@ -3043,9 +3098,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         if (blueprintDocument && Object.keys(blueprintIdMap).length > 0) {
+            // Element references the carried logic makes to the page now point into the definition,
+            // and are stored under its own surface: the one the runtime compares them against.
             const remapContext: SurfaceDuplicateRemapContext = {
                 oldSurfaceId: surfaceId,
-                newSurfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${componentId}`,
+                newSurfaceId: buildUIComponentSurfaceId(componentId),
                 elementIdMap,
                 blueprintIdMap,
             };
@@ -3245,7 +3302,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         if (binding.target.kind === "widgetProp") {
                             binding.target = {
                                 ...binding.target,
-                                surfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                                surfaceId: buildUIComponentEditorSurfaceId(newComponentId),
                                 elementId: idMap[binding.target.elementId] ?? binding.target.elementId,
                             };
                         }
@@ -5397,36 +5454,47 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    private ensureMainSurface(document: UIDocument): boolean {
+    /**
+     * A page for the game to start on, whatever the file said. True when the document had to change.
+     *
+     * Three repairs, each for a document that arrived broken - by a merge, a hand edit, or an older
+     * tool - and none of which a document Studio wrote ever needs:
+     *
+     *  - **no page at all**: one is made, under the main id when nothing holds it, so a project
+     *    always has somewhere to start;
+     *  - **an entry page whose root element is missing**: it gets an empty one, so it can be opened;
+     *  - **a stored entry that names no page**: the pointer is dropped, and the entry is the page the
+     *    document would name without it (`resolveEntrySurface` already reads it that way - this only
+     *    stops the file from saying something it does not mean).
+     *
+     * ⚠ **It never changes a page's id.** This used to give the first page the main id when no page
+     * had it, which was harmless only while the main page could not be deleted. Now that the entry is
+     * a pointer and the old main page can be deleted like any other, doing that would quietly re-file
+     * every blueprint and every `Go Page` that named the page by the id it had.
+     */
+    private ensureEntrySurface(document: UIDocument): boolean {
         const designSize = this.getProjectDesignSize();
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const existingMain = document.surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
         let changed = false;
-        if (existingMain) {
-            if (!document.elements[existingMain.rootElementId]) {
+        if (entrySurfacePointerMisses(document)) {
+            delete document.entrySurfaceId;
+            changed = true;
+        }
+        const entry = resolveEntrySurface(document);
+        if (entry) {
+            if (!document.elements[entry.rootElementId]) {
                 const rootElementId = uuidService.generate();
-                existingMain.rootElementId = rootElementId;
+                entry.rootElementId = rootElementId;
                 document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);
                 changed = true;
             }
             return changed;
         }
 
-        const candidate = document.surfaces.find(surface => surface.kind === "appSurface");
-        if (candidate) {
-            candidate.id = MAIN_APP_SURFACE_ID;
-            candidate.name = candidate.name || DEFAULT_APP_SURFACE_NAME;
-            if (!document.elements[candidate.rootElementId]) {
-                const rootElementId = uuidService.generate();
-                candidate.rootElementId = rootElementId;
-                document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);
-            }
-            return true;
-        }
-
         const rootElementId = uuidService.generate();
+        const mainIdTaken = document.surfaces.some(surface => surface.id === MAIN_APP_SURFACE_ID);
         const surface: UISurface = {
-            id: MAIN_APP_SURFACE_ID,
+            id: mainIdTaken ? uuidService.generate() : MAIN_APP_SURFACE_ID,
             name: DEFAULT_APP_SURFACE_NAME,
             host: "app",
             kind: "appSurface",

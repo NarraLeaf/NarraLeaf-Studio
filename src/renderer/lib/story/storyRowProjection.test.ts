@@ -359,7 +359,32 @@ describe("storyConditionSummary", () => {
         expect(storyConditionSummary(
             { kind: "variable", target: { scope: "persistent", variableId: "unknown" }, operator: "isTrue" },
             registry,
-        )).toBe("persistent is on");
+        )).toBe("persistent is true");
+    });
+
+    /**
+     * A boolean is one word per language wherever the author reads one. A branch stored as
+     * `equals true` (the picker no longer offers it for a boolean, but documents carry it) printed
+     * the code spelling beside a switch that said something else.
+     */
+    it("prints a compared boolean in the interface's words for it", () => {
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "equals", value: true },
+            registry,
+        )).toBe("Gold equals true");
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "notEquals", value: false },
+            registry,
+        )).toBe("Gold does not equal false");
+        i18nStore.setLocale("zh");
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "equals", value: true },
+            registry,
+        )).toBe("Gold 等于 真");
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "isFalse" },
+            registry,
+        )).toBe("Gold 为假");
     });
 
     it("prints each ordered comparison with its value", () => {

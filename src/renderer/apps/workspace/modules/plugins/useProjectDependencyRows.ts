@@ -20,6 +20,7 @@ import {
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 
 /** One plugin the project needs, with everything a row has to show about it. */
 export interface DependencyRow {
@@ -70,7 +71,7 @@ export function useProjectDependencyRows(
     /** False where a change can only be recorded, not started: recovery, and a frozen project. */
     live: boolean,
 ): ProjectDependencyRows {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [resolved, setResolved] = useState<DependencyResolutionEntry[]>([]);
     const [outcomes, setOutcomes] = useState<Record<string, DependencyRowOutcome>>({});
     const [running, setRunning] = useState(false);
@@ -123,6 +124,7 @@ export function useProjectDependencyRows(
             version: plugin.manifest.version,
             enabled: plugin.enabled,
             status: plugin.status,
+            ...(plugin.manifest.localized ? { localized: plugin.manifest.localized } : {}),
         }))).entries;
     }, [catalog.plugins, resolved]);
 
@@ -136,7 +138,7 @@ export function useProjectDependencyRows(
             entry,
             installed,
             registryEntry,
-            name: installed?.manifest.name
+            name: (installed ? pluginDisplayName(installed.manifest, locale) : "")
                 || entry.dependency.name?.trim()
                 || registryEntry?.name
                 || id,
@@ -148,7 +150,7 @@ export function useProjectDependencyRows(
                 ...(installed ? { installedStatus: installed.status } : {}),
             }),
         };
-    }), [catalog.installedById, catalog.registryById, entries, registryKnown]);
+    }), [catalog.installedById, catalog.registryById, entries, locale, registryKnown]);
 
     const actionable = useMemo(() => rows.filter(row => isActionable(row.remedy)), [rows]);
     const unavailable = useMemo(() => rows.filter(row => isDependencyUnavailable(row.entry)).length, [rows]);

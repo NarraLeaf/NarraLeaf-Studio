@@ -602,6 +602,9 @@ export const workspace = {
             queued: {
                 other: "还有 {count} 条",
             },
+            repeated: {
+                other: "共 {count} 次",
+            },
         },
         // 自定义背景对话框（从设置或命令面板打开）。
         background: {
@@ -1245,6 +1248,7 @@ export const workspace = {
                 localizationFind: "在译文中查找",
                 voiceFind: "在配音中查找",
                 lintFind: "在问题中查找",
+                blueprintOverviewFind: "在蓝图总览中查找",
                 // 一个键位对应开发模式、预览、测试里当前占着运行位的那一个,
                 // 所以停止它们的三条命令共用同一条可重绑的快捷键。
                 run: {

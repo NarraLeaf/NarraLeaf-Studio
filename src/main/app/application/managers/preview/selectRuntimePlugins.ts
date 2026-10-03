@@ -156,6 +156,7 @@ export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(in
             return {
                 pluginId: source.manifest.id,
                 pluginName: source.manifest.name || source.manifest.id,
+                ...(source.manifest.localized ? { localized: source.manifest.localized } : {}),
                 reason,
             };
         });

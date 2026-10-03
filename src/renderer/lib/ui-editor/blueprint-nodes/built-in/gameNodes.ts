@@ -142,6 +142,16 @@ const saveSlotIn: BlueprintNodePinDef = {
     optional: true,
 };
 
+/**
+ * `Id` and `Slot` are two ways of naming one save, so every node carrying both asks for one of them.
+ *
+ * `resolveSaveId` takes the slot when one is wired and the id otherwise, and refuses to run with
+ * neither - so `Id` is not required on its own, and is not optional either. Declared on each node so
+ * the unwired-input judgement reports a node with neither and stays quiet about one whose `Slot` is
+ * wired and whose `Id` is empty.
+ */
+const saveTargetAlternatives = [[saveIdIn.id, saveSlotIn.id]] as const;
+
 const saveSlotOut: BlueprintNodePinDef = {
     id: "slot",
     kind: "output",
@@ -1814,6 +1824,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [execIn, execNext, saveIdIn, saveSlotIn, saveMetadataIn, saveScreenshotIn],
         // One input pin per field the project declares, so what a slot carries is wired by name
         // instead of assembled with Make JSON Object and a string key.
@@ -1851,6 +1862,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [execIn, saveIdIn, saveSlotIn, execFailed],
         async execute(ctx) {
             const loaded = await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
@@ -1865,6 +1877,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [execIn, execNext, saveIdIn, saveSlotIn],
         async execute(ctx) {
             await requireHostApi(ctx).game.deleteSave(resolveSaveId(ctx));
@@ -1983,6 +1996,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,
@@ -2052,6 +2066,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,
@@ -2117,6 +2132,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,
@@ -2195,6 +2211,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,
@@ -2275,6 +2292,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,
@@ -2328,6 +2346,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
+        alternativeInputs: saveTargetAlternatives,
         pins: [
             execIn,
             execNext,

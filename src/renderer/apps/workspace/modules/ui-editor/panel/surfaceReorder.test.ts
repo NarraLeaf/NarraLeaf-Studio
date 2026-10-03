@@ -6,6 +6,7 @@ import {
     surfaceGapAnchor,
     surfaceGapForCard,
     surfaceHalfFromPointer,
+    surfaceHalfFromPointerAcross,
 } from "./surfaceReorder";
 
 function surface(id: string, kind: UISurfaceKind): UISurface {
@@ -28,6 +29,15 @@ describe("surfaceGapForCard / surfaceHalfFromPointer", () => {
         expect(surfaceHalfFromPointer(180, rect)).toBe("bottom");
         expect(surfaceGapForCard(0, "bottom")).toBe(1);
         expect(surfaceGapForCard(1, "top")).toBe(1);
+    });
+
+    it("splits a grid tile into its left and right halves, the earlier side first", () => {
+        const rect = { left: 200, width: 140 };
+        expect(surfaceHalfFromPointerAcross(250, rect)).toBe("top");
+        expect(surfaceHalfFromPointerAcross(300, rect)).toBe("bottom");
+        // The right half of one tile and the left half of the next aim at the same gap.
+        expect(surfaceGapForCard(2, surfaceHalfFromPointerAcross(300, rect))).toBe(3);
+        expect(surfaceGapForCard(3, surfaceHalfFromPointerAcross(210, rect))).toBe(3);
     });
 });
 

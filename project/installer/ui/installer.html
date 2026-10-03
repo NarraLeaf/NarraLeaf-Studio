@@ -66,11 +66,17 @@
   .fact .col { flex: 1; min-width: 0; }
   .fact .k { font-size: 11px; color: var(--fg-subtle); }
   .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Why the location cannot be changed, or why the folder just picked was not taken. */
+  .fact .hint { margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--fg-subtle); }
+  .fact .hint[data-tone="danger"] { color: var(--danger); }
 
   #note { margin-top: 22px; color: var(--fg-muted); line-height: 1.6; }
   /* Pulled left by its own padding so the link's text starts on the same column as the line
      above it, rather than being inset by the hover target. */
   #after { margin-top: 10px; margin-left: -6px; }
+  /* Shown when the shell could not open the documentation; the address can be selected and copied. */
+  #open-failed { margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--fg-muted);
+                 user-select: text; cursor: text; overflow-wrap: anywhere; }
   body[data-state="failed"] #note { color: var(--danger); }
 
   /* ---- controls ---------------------------------------------------------------------------- */
@@ -117,11 +123,26 @@
      running left to right. It sits on the window's bottom edge and is always there, so the edge
      does not move when the install starts. The number behind it is NSIS's own extraction progress,
      mirrored in by the host, so it is real rather than a sweep. */
-  #progress { flex: none; height: 2px; background: var(--fill-subtle); }
+  #progress { flex: none; height: 2px; background: var(--fill-subtle); overflow: hidden; }
   #progress > i { display: block; height: 100%; width: 0; background: var(--primary);
                   border-bottom-left-radius: 8px;
                   transition: width .3s ease-out, background-color .3s ease-out; }
   body[data-state="failed"] #progress > i { background: var(--danger); }
+  /* Until the first real number arrives. Work happens before the copy that the bar measures -
+     waiting for the running app to close and, on an update, removing the previous version - and
+     a bar standing at zero through it reads as a stalled installer. The segment says "working"
+     without claiming an amount; it gives way to the measured bar as soon as there is one. */
+  #progress[data-waiting="1"] > i { width: 28%; border-radius: 0; transition: none;
+                                    animation: nl-sweep 1.6s ease-in-out infinite; }
+  @keyframes nl-sweep { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
+
+  /* ---- update ------------------------------------------------------------------------------ */
+  /* An update runs without asking anything: the window only says what is happening, so the facts,
+     the buttons and the close glyph are not drawn, and the window is opened shorter to match. */
+  body[data-mode="update"] #facts,
+  body[data-mode="update"] footer,
+  body[data-mode="update"] #close { display: none !important; }
+  body[data-mode="update"] main { padding-bottom: 24px; }
 
   [hidden] { display: none !important; }
 </style>
@@ -141,6 +162,7 @@
         <div class="col">
           <div class="k" id="k-location"></div>
           <div class="v" id="v-location"></div>
+          <div class="hint" id="v-hint" hidden></div>
         </div>
         <button class="link" id="browse"></button>
       </div>
@@ -154,6 +176,7 @@
 
     <div id="note" hidden></div>
     <div id="after" hidden><button class="link" id="docs"></button></div>
+    <div id="open-failed" hidden></div>
   </main>
 
   <footer>
@@ -205,7 +228,12 @@
       confirm: "Install",
       launch: "Start",
       close: "Close",
-      docs: "Documentation"
+      docs: "Documentation",
+      locked: "{app} is already installed here. To install it elsewhere, uninstall it first.",
+      refused: "This folder cannot be written to. Choose another location.",
+      openFailed: "Could not open the browser. Documentation: {url}",
+      updating: "Updating {app}",
+      updateNote: "{app} restarts automatically when the update is complete."
     },
     zh: {
       name: "中文",
@@ -221,7 +249,12 @@
       confirm: "安装",
       launch: "启动",
       close: "关闭",
-      docs: "文档"
+      docs: "文档",
+      locked: "{app} 已安装在此位置。如需安装到其他位置，请先卸载",
+      refused: "无法写入该文件夹，请选择其他位置",
+      openFailed: "无法打开浏览器。文档地址：{url}",
+      updating: "正在更新 {app}",
+      updateNote: "更新完成后 {app} 将自动重新启动"
     },
     ja: {
       name: "日本語",
@@ -237,7 +270,12 @@
       confirm: "インストール",
       launch: "起動",
       close: "閉じる",
-      docs: "ドキュメント"
+      docs: "ドキュメント",
+      locked: "{app} はこの場所にインストールされています。別の場所にインストールするには、先にアンインストールしてください",
+      refused: "このフォルダーには書き込めません。別の場所を選択してください",
+      openFailed: "ブラウザーを開けませんでした。ドキュメント：{url}",
+      updating: "{app} を更新中",
+      updateNote: "更新が完了すると {app} は自動的に再起動します"
     }
   };
 
@@ -251,29 +289,49 @@
   var app = "";
   var dir = "";
   var state = "install";
+  // An existing install decides the folder; the host ignores "browse" while this is set.
+  var locked = false;
+  // The last folder picked was not taken; cleared by the next one that is.
+  var refused = false;
+  // The documentation address the shell could not open, or "".
+  var unopened = "";
+  // An update applied by the app itself: no questions, a title, a line and the bar.
+  var updating = false;
+  // The last fraction the host reported; zero until the copy is measurable.
+  var fraction = 0;
 
   function fill(template) {
-    return (template || "").replace("{app}", app).replace("{dir}", dir);
+    return (template || "").replace("{app}", app).replace("{dir}", dir).replace("{url}", unopened);
   }
 
   function apply() {
     document.body.setAttribute("data-state", state);
+    document.body.setAttribute("data-mode", updating ? "update" : "install");
 
     var installing = state === "installing";
     var done = state === "done";
     var failed = state === "failed";
 
-    el("title").textContent = fill(text[state]);
-    el("pct").hidden = !installing;
-    el("browse").hidden = state !== "install";
+    el("title").textContent = fill(updating && !failed ? text.updating : text[state]);
+    el("pct").hidden = !installing || fraction === 0;
+    el("progress").setAttribute("data-waiting", (installing || (updating && !failed)) && fraction === 0 ? "1" : "0");
+    el("browse").hidden = state !== "install" || locked;
     el("facts").hidden = done || failed;
+
+    var hint = el("v-hint");
+    hint.hidden = state !== "install" || !(locked || refused);
+    hint.setAttribute("data-tone", refused ? "danger" : "");
+    hint.textContent = refused ? text.refused : (locked ? fill(text.locked) : "");
 
     // The finish screen says where it went; nothing else needs saying, and the facts it replaces
     // were the question, not the answer.
-    el("note").hidden = !done;
-    el("after").hidden = !done;
+    el("note").hidden = !done && !updating;
+    el("after").hidden = !done || updating;
     if (done) { el("note").textContent = fill(text.installedIn); }
+    if (updating && !done) { el("note").textContent = fill(text.updateNote); }
     el("docs").textContent = text.docs;
+    el("open-failed").hidden = !done || unopened === "";
+    el("open-failed").textContent = unopened === "" ? "" : fill(text.openFailed);
 
     el("k-location").textContent = text.location;
     el("k-size").textContent = text.size;
@@ -333,11 +391,13 @@
 
   // ---- host -> page ---------------------------------------------------------------------------
 
-  window.nlInit = function (initial, brand, product, directory, size) {
+  window.nlInit = function (initial, brand, product, directory, size, existing, mode) {
     language = TEXT[initial] ? initial : "en";
     text = TEXT[language];
     app = product;
     dir = directory;
+    locked = existing === "1";
+    updating = mode === "update";
     el("brand").textContent = brand;
     el("v-location").textContent = directory;
     el("v-size").textContent = size;
@@ -347,15 +407,23 @@
   window.nlState = function (next) { state = next; apply(); };
   window.nlDir = function (directory) {
     dir = directory;
+    refused = false;
     el("v-location").textContent = directory;
+    apply();
   };
+  window.nlDirRefused = function () { refused = true; apply(); };
+  window.nlOpenFailed = function (address) { unopened = address; apply(); };
   window.nlMessage = function (message) { el("note").textContent = message; };
 
   // Called by the host's progress mirror, up to ten times a second.
-  window.nlProgress = function (fraction) {
-    var percent = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  window.nlProgress = function (value) {
+    fraction = Math.max(0, Math.min(1, value));
+    var percent = Math.round(fraction * 100);
     el("bar").style.width = percent + "%";
     el("pct").textContent = percent + "%";
+    el("pct").hidden = state !== "installing" || fraction === 0;
+    el("progress").setAttribute("data-waiting",
+      fraction === 0 && (state === "installing" || (updating && state !== "failed")) ? "1" : "0");
   };
 
   // ---- page -> host ---------------------------------------------------------------------------

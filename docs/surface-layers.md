@@ -53,7 +53,11 @@ answer both once more than one thing is live:
   one that asked for them. With neither a modal layer nor a page drawn - a running game has hidden
   the pages and the story is on screen - the keys belong to the stage, and every Game UI surface on
   it that takes input hears them (`keyboardOwner`). That is how a dialogue box answering an action
-  bound to Space advances the story.
+  bound to Space advances the story. In an NVL passage the engine draws itself, its page stands in for
+  the dialogue box: the keys that advance the box advance the page (`engineNvlKeys`). Whoever owns
+  the keys holds the keyboard focus too, so Tab starts on the page in front of the player
+  (`keyboardFocusHandover`), and nothing on the stage - a widget's own key heads included - hears a
+  key while a page or a modal layer is drawn over it.
 
 With no layers mounted both reduce to the rule the page lane always had, and a page behaves exactly
 as it did before layers existed.

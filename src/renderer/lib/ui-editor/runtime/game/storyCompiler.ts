@@ -1769,6 +1769,29 @@ async function buildLaunchEntryScene(params: {
         }
     }
 
+    // Clips, the Actionable half of the same two lists: every clip the scene declares is built here
+    // so the tail's rows find it in the registry a full compile would have given them, and the ones
+    // the walked path left on the stage are put back on it - the engine refuses to pause, stop, seek
+    // or hide a clip that is not there, so registering the name alone would turn the compile's
+    // "not on stage" into a runtime error. A clip the tail itself declares is built here first and
+    // handed back to that row by `getVideo`, which is the same object either way.
+    for (const record of snapshot.videos) {
+        if (!record.assetId) {
+            // A declaring row with no clip is reported where the scene itself compiles.
+            continue;
+        }
+        const video = await getVideo(ctx, record.objectName, record.assetId, record.muted, record.sourceBlockId);
+        if (!video) {
+            continue;
+        }
+        if (record.staged) {
+            statements.push(video.preload());
+        }
+        if (record.visible) {
+            statements.push(video.show());
+        }
+    }
+
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
     statements.push(...await compilePlaybackTail(ctx, plan));
@@ -4341,14 +4364,27 @@ async function compileVideoAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
-    // `create` builds the clip, and so does a `show` that names one (`revealCreates`); the transport
-    // verbs address one an earlier row built. `show` needs no `preload` beside it - the engine mounts
-    // the element on the show itself - so the one-row form is one statement.
+    // `create` builds the clip, and so do a `show` and a `play` that name one (`revealCreates`); the
+    // other transport verbs address one an earlier row built. `show` needs no `preload` beside it -
+    // the engine mounts the element on the show itself - so the one-row reveal is one statement.
+    //
+    // Building through `getVideo` is also what warms a one-row clip as early as a declaring row
+    // would: the warm order records the clip against this row, and the preload plan puts every clip
+    // ahead of the play head on the stage hidden, so the element is buffering from the moment the
+    // scene starts rather than from the moment this row is reached.
     const video = declaresStageObject(payload)
         ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
         : findStageVideo(ctx, block.id, payload);
     if (!video) {
         return [];
+    }
+    if (payload.operation === "play" && revealCreates(payload)) {
+        // The one-row cutscene: reveal, then run to the end. Two statements because the engine's
+        // `play` never shows anything - a clip played without a reveal is heard and not seen, which
+        // is what a `play` addressing a clip a hidden `/video` row declared still does. The reveal
+        // resolves once the clip can play, so `play` starts on a loaded clip; an element that is
+        // still loading draws nothing, and the stage shows through it until the first frame.
+        return [recordStatement(ctx, video.show(), block), recordStatement(ctx, video.play(), block)];
     }
     if (payload.operation === "create") {
         // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
@@ -5104,7 +5140,13 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     return getLayer(ctx, name, zIndex);
 }
 
-/** Builds the clip a `/video create` row declares; the transport verbs look up instead. */
+/**
+ * Builds the clip a declaring row names - `/video`, or a `/show` or `/play` naming its own clip - and
+ * hands back the one already built when an earlier row declared the name. That second case is the
+ * same get-or-create every stage object follows: the first declaration stands, the later row's asset
+ * goes nowhere, and lint's `story/stage-object-duplicate` is what tells the author. The transport
+ * verbs look up instead.
+ */
 async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: string | undefined, muted: boolean | undefined, blockId: string): Promise<Video | null> {
     const name = normalizeObjectName(objectName);
     const existing = ctx.videos.get(name);

@@ -25,6 +25,7 @@ import {
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
 import { useTranslation } from "@/lib/i18n";
+import { EDITOR_TAB_BODY_ATTRIBUTE } from "../../hooks/previewTabPromotion";
 
 /** px of breathing room left beside the active tab when it is scrolled into view. */
 const TAB_REVEAL_MARGIN = 12;
@@ -668,6 +669,9 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             className="h-full w-full"
                             style={{ display: isActive ? undefined : "none" }}
                             aria-hidden={isActive ? undefined : true}
+                            // Lets an edit be traced back to the tab it was made in from the event
+                            // that made it (see `previewTabPromotion`).
+                            {...{ [EDITOR_TAB_BODY_ATTRIBUTE]: tab.id }}
                         >
                             <WorkspacePanelErrorBoundary
                                 regionLabel={String(tab.title)}

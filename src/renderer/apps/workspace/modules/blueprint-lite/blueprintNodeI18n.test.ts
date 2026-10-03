@@ -14,8 +14,10 @@
  * A translator that echoes the key it is asked for therefore detects a gap exactly when
  * the resolver returns its own input.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18nStore } from "@/lib/i18n/store";
 import { allBuiltinBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/built-in";
+import { indexBlueprintNodeTranslations } from "@/lib/ui-editor/blueprint-nodes/nodeTranslations";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
@@ -92,5 +94,47 @@ describe("blueprint node i18n coverage", () => {
             .filter(({ text }) => !seen.has(text) && seen.add(text))
             .map(({ text, where }) => `${text} (${where})`);
         expect(unmapped).toEqual([]);
+    });
+});
+
+/**
+ * A node the host did not define brings its own words. They are indexed by English text the same
+ * way the host's tables are, so every reader that only holds a title or a label still finds them.
+ */
+describe("translations a node declares for itself", () => {
+    indexBlueprintNodeTranslations({
+        zh: {
+            "Get Shelf Items": "获取货架物品",
+            "Shelf": "货架",
+            "Crate": "货箱",
+            // The host already translates this one; its wording is kept.
+            "Count": "计数",
+        },
+    });
+
+    afterEach(() => {
+        i18nStore.setLocale("en");
+    });
+
+    it("draws the declared wording in the active locale", () => {
+        i18nStore.setLocale("zh");
+        expect(resolveBlueprintNodeTitle("Get Shelf Items", echoKey)).toBe("获取货架物品");
+        expect(resolveBlueprintCategoryLabel("Shelf", echoKey)).toBe("货架");
+        expect(resolveBlueprintLabel("Crate", echoKey)).toBe("货箱");
+    });
+
+    it("translates a numbered label by its stem", () => {
+        i18nStore.setLocale("zh");
+        expect(resolveBlueprintLabel("Crate 2", echoKey)).toBe("货箱 2");
+    });
+
+    it("keeps the host's wording for a word the host translates", () => {
+        i18nStore.setLocale("zh");
+        expect(resolveBlueprintLabel("Count", echoKey)).toBe("blueprint.port.count");
+    });
+
+    it("falls back to English in a locale the node does not cover", () => {
+        expect(resolveBlueprintNodeTitle("Get Shelf Items", echoKey)).toBe("Get Shelf Items");
+        expect(resolveBlueprintLabel("Crate 2", echoKey)).toBe("Crate 2");
     });
 });

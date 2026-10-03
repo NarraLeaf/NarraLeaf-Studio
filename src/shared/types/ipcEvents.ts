@@ -191,6 +191,7 @@ export enum IPCEventType {
     appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
+    appExportLogArchive = "app.exportLogArchive",
     appOpenLogsFolder = "app.openLogsFolder",
     appOpenThirdPartyNotices = "app.openThirdPartyNotices",
     appProbeDownloadSource = "app.probeDownloadSource",
@@ -1081,6 +1082,32 @@ export type IPCEvents = {
             canceled: boolean;
             filePath?: string;
             byteLength?: number;
+        };
+    };
+    /**
+     * Write every log Studio has to one zip the user picks a place for (Help > Export Logs).
+     *
+     * Main reads what lives on disk: `<userData>/logs` whole, and, when the asking window has a
+     * project open, the logs its Preview and test runs wrote inside `.nlstudio` plus the last build
+     * record. The project is the window's own, read off its props, so the payload names no path.
+     * The renderer adds only what it holds in memory, as text files it names; main files them under
+     * `workspace/` and decides nothing else from those names.
+     */
+    [IPCEventType.appExportLogArchive]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** Suggested file name, without a directory. Sanitized before use. */
+            defaultFileName: string;
+            /** In-memory logs from the asking window, already formatted. */
+            files: { name: string; content: string }[];
+        },
+        response: {
+            canceled: boolean;
+            filePath?: string;
+            byteLength?: number;
+            /** How many files the archive holds, `environment.txt` included. */
+            fileCount?: number;
         };
     };
     /**

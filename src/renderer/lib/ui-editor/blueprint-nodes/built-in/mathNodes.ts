@@ -151,35 +151,43 @@ const MIN_MAX_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keyw
     },
 ];
 
-const COMPARE_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
+// The ordering four behave exactly as their `blueprint.compare.*` twins and share their description.
+// The equality pair reads both sides as numbers first, which is the one way the two sets differ.
+const COMPARE_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords" | "description">> = [
     {
         type: BLUEPRINT_NODE_TYPE_MATH_EQUAL,
         displayName: "=",
+        description: "blueprint.nodeDescription.mathEqual",
         keywords: ["equal", "eq", "=="],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
         displayName: "≠",
+        description: "blueprint.nodeDescription.mathNotEqual",
         keywords: ["not equal", "neq", "!=", "<>"],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_LESS,
         displayName: "<",
+        description: "blueprint.nodeDescription.compareLessThan",
         keywords: ["less", "lt", "<"],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
         displayName: "≤",
+        description: "blueprint.nodeDescription.compareLessThanOrEqual",
         keywords: ["less or equal", "lte", "<="],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_GREATER,
         displayName: ">",
+        description: "blueprint.nodeDescription.compareGreaterThan",
         keywords: ["greater", "gt", ">"],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
         displayName: "≥",
+        description: "blueprint.nodeDescription.compareGreaterThanOrEqual",
         keywords: ["greater or equal", "gte", ">="],
     },
 ];
@@ -264,11 +272,17 @@ export const mathBlueprintNodes: BlueprintNodeDef[] = [
         ],
         execute: () => ({}),
     },
+    // Kept registered so the graphs that already hold them load and run exactly as before, but no
+    // longer offered: the `blueprint.compare.*` nodes are the comparisons the palette lists, and two
+    // sets of the same six operators side by side read as two different things. The pairs do differ
+    // in one place - these turn both sides into numbers first, so `=` here calls the text "1" equal
+    // to the number 1 where Compare's `Equal` does not.
     ...COMPARE_NODES.map(def => ({
         ...def,
         category: "Math",
         graphKinds: [...GRAPH_KINDS],
         isPure: true,
+        hideInPalette: true,
         pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT_BOOL],
         execute: () => ({}),
     })),

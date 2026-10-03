@@ -53,6 +53,7 @@ async function writePlugin(id: string, externalLinks: string[]): Promise<Runtime
             blueprintNodes: [],
             widgets: [],
             tests: [],
+            reservedSaveIds: [],
             runtimeData: [],
             network: [],
             locales: [],

@@ -47,7 +47,7 @@
 
 - UI document 路径：`editor/ui/uidoc.json`
 - UIGraph / local blueprint 路径：`editor/ui/uigraphs.json`
-- Main Page 使用稳定 id，运行时按 id 查找，不按 name 查找。
+- 入口页面（游戏启动时打开的页面）由 `UIDocument.entrySurfaceId` 指定；缺省时是 id 为 `narraleaf-studio:main-surface` 的页面（新文档的第一个页面）。一律经 `@shared/types/ui-editor/entrySurface` 的 `resolveEntrySurface` 解析，运行、开发模式、测试、构建、补丁与界面上的「入口页面」标记都读这一处。改入口只改指针，不改任何页面的 id；入口页面不能删除，其余页面（包括 main-surface 那一个）都可以。
 - Page 底层为 `appSurface`，host 为 `app`。
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`、`nvl`。
 - Dialog Game UI 默认模板把推进逻辑集中在 Dialog Content 的 widgetMain 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 和默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连接到同一个 Game `Next` 节点，触发 NarraLeaf virtual click 路径。全屏透明 `nl.container` 只作为工具控件负责命中面板外点击；Dialog Panel 是视觉壳，Dialog Content 是实际顶层点击区。句子仍使用私有 `nl.dialog.sentence` 映射 NarraLeaf React `<Texts />`；说话人名使用普通 `nl.text`，通过自身 `Init` / `On Flush` 事件图读取 Game `Get Nametag` 并在空值时隐藏，不再提供特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog hook 在文本/说话人变化时会对带 Blueprint Value 或 `On Flush` 逻辑的 Dialog 元素派发 flush，因此 Dialog 不重新挂载时也会更新。

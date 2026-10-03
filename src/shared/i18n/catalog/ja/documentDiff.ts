@@ -264,6 +264,8 @@ export const documentDiff = {
      */
     uiDocument: {
         renamed: "インターフェースの名前を変更",
+        /** 2 つのページ名は値の組として描かれる。 */
+        entryPage: "入口ページを変更",
         surfaceAdded: "サーフェスを追加（{elementCount}）",
         surfaceRemoved: "サーフェスを削除（{elementCount}）",
         surfaceChanged: "サーフェスを変更",
@@ -346,6 +348,10 @@ export const documentDiff = {
         field: "{field} を変更",
         /** アセットの中身のファイルだが、この比較のどの記録もこれを指していない。名前は id の断片。 */
         orphanContent: "アセットの記録がないファイル",
+        fields: {
+            group: "グループ",
+            missingGroup: "存在しないグループ",
+        },
     },
     /**
      * 第 1 段階のプロジェクトのパレット。

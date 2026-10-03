@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator } from "./translator";
-import { getLocaleMeta, getRegisteredLocales, isRegisteredLocale, normalizeLocale } from "./locales";
+import { getLocaleMeta, getRegisteredLocales, isRegisteredLocale, normalizeLocale, resolvePreferredLocale } from "./locales";
 import { setLocaleContributions } from "./registry";
 
 // A key the en catalog defines (built-in-satisfied in every built-in locale).
@@ -107,5 +107,46 @@ describe("locale registry", () => {
         reset();
         // Provider removed: the persisted value degrades to the fallback.
         expect(normalizeLocale("ko")).toBe("en");
+    });
+});
+
+describe("the language a machine that never chose one is shown", () => {
+    beforeEach(reset);
+    afterEach(reset);
+
+    function contribute(code: string, intl?: string) {
+        setLocaleContributions([
+            {
+                pluginId: `acme.${code}`,
+                code,
+                ...(intl ? { meta: { nativeName: code, intl } } : {}),
+                messages: { [BUILTIN_KEY]: code },
+            },
+        ]);
+    }
+
+    it("finds a Traditional Chinese pack whichever way the machine and the pack spell it", () => {
+        contribute("zh-Hant");
+        expect(resolvePreferredLocale(["zh-TW", "en-US"])).toBe("zh-Hant");
+        expect(resolvePreferredLocale(["zh-HK"])).toBe("zh-Hant");
+        contribute("zh-TW");
+        expect(resolvePreferredLocale(["zh-Hant-TW"])).toBe("zh-TW");
+        expect(resolvePreferredLocale(["zh-Hant"])).toBe("zh-TW");
+    });
+
+    it("keeps the built-in language for a reader it serves, pack or no pack", () => {
+        contribute("zh-Hans");
+        expect(resolvePreferredLocale(["zh-CN"])).toBe("zh");
+        contribute("ja-JP");
+        expect(resolvePreferredLocale(["ja-JP"])).toBe("ja");
+    });
+
+    it("reads the tag a pack declares for Intl as one it answers to", () => {
+        contribute("ko-x-formal", "ko-KR");
+        expect(resolvePreferredLocale(["ko-KR"])).toBe("ko-x-formal");
+    });
+
+    it("still shows Chinese to a Traditional reader when no Traditional pack is installed", () => {
+        expect(resolvePreferredLocale(["zh-TW"])).toBe("zh");
     });
 });

@@ -20,6 +20,9 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
@@ -1113,6 +1116,38 @@ describe("node.input_missing", () => {
         const diagnostics = validate(graphWith({ id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY }));
 
         expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    describe.each([
+        ["Save Game", BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE],
+        ["Load Save", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD],
+    ])("%s, which names its save by Id or by Slot", (title, type) => {
+        it("says nothing when Slot is wired and Id is empty", () => {
+            const diagnostics = validate(
+                graphWith(
+                    { id: "save", type },
+                    [{ from: { nodeId: "slot", port: "slot" }, to: { nodeId: "save", port: "slot" } }],
+                    { slot: { id: "slot", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT, params: { id: "slot-01" } } },
+                ),
+            );
+
+            expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+        });
+
+        it("says nothing when only Id is given", () => {
+            const diagnostics = validate(graphWith({ id: "save", type, params: { id: "slot-01" } }));
+
+            expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+        });
+
+        it("names Id once when neither is given", () => {
+            const missing = validate(graphWith({ id: "save", type })).filter(d => d.code === "node.input_missing");
+
+            expect(missing).toHaveLength(1);
+            expect(missing[0].message).toContain(title);
+            expect(missing[0].message).toContain("\"Id\"");
+            expect(missing[0].target).toMatchObject({ kind: "node", nodeId: "save" });
+        });
     });
 
     it("leaves an unfinished draft alone", () => {

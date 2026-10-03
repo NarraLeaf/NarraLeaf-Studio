@@ -85,6 +85,12 @@ export function popUIComponentInstanceKey(
 }
 
 /**
+ * Spelled like an instance key segment, but a different thing: that one carries a placement's element
+ * id, this one a definition's id. Kept apart so neither format moves when the other does.
+ */
+const COMPONENT_SURFACE_PREFIX = "component:";
+
+/**
  * The surface id a component definition's own tree is laid out under.
  *
  * A definition is rendered inside a virtual surface of its own (see `SurfaceElementTree`), because
@@ -98,16 +104,76 @@ export function popUIComponentInstanceKey(
  * spelled twice is a format that stops matching the first time either side is touched.
  */
 export function buildUIComponentSurfaceId(componentId: string): string {
-    return `component:${componentId}`;
+    return `${COMPONENT_SURFACE_PREFIX}${componentId}`;
+}
+
+/**
+ * The component definition a `buildUIComponentSurfaceId` surface id names, or null when the id names
+ * anything else.
+ *
+ * For whoever holds an element reference written inside a definition and has to find the tree it
+ * points into: that surface is in no document's surface list, so looking it up there finds nothing.
+ */
+export function readUIComponentSurfaceComponentId(surfaceId: string | undefined): string | null {
+    if (!surfaceId?.startsWith(COMPONENT_SURFACE_PREFIX)) {
+        return null;
+    }
+    const id = surfaceId.slice(COMPONENT_SURFACE_PREFIX.length);
+    return id.length > 0 ? id : null;
+}
+
+const COMPONENT_EDITOR_SURFACE_PREFIX = "component-editor:";
+
+/**
+ * The surface id the component editor shows a definition under.
+ *
+ * Not the one the definition is drawn and run under (`buildUIComponentSurfaceId`): this names the
+ * editor's tab, whose tree has a made-up root of its own around the definition's.
+ */
+export function buildUIComponentEditorSurfaceId(componentId: string): string {
+    return `${COMPONENT_EDITOR_SURFACE_PREFIX}${componentId}`;
+}
+
+/** The component definition a `buildUIComponentEditorSurfaceId` id names, or null. */
+export function readUIComponentEditorSurfaceComponentId(surfaceId: string | null | undefined): string | null {
+    if (!surfaceId?.startsWith(COMPONENT_EDITOR_SURFACE_PREFIX)) {
+        return null;
+    }
+    const id = surfaceId.slice(COMPONENT_EDITOR_SURFACE_PREFIX.length);
+    return id.length > 0 ? id : null;
+}
+
+/**
+ * The surface an element reference names, in the spelling it is stored and compared under.
+ *
+ * An element inside a component definition is picked on the component editor's surface, and the
+ * element picker used to store that id as it was. Every check at runtime compares against the
+ * definition's own surface instead, so those references were refused the first time the graph ran.
+ * Both name the same tree: the picker now stores the definition's surface, and a reference saved
+ * under the editor's id reads as the definition's wherever references are compared. Any other id is
+ * returned as it is.
+ */
+export function normalizeUIElementRefSurfaceId(surfaceId: string): string {
+    const componentId = readUIComponentEditorSurfaceComponentId(surfaceId);
+    return componentId ? buildUIComponentSurfaceId(componentId) : surfaceId;
+}
+
+/** Whether two surface ids name the same surface for an element reference, whichever spelling each uses. */
+export function isSameUIElementRefSurface(a: string | undefined, b: string | undefined): boolean {
+    if (a === undefined || b === undefined) {
+        return a === b;
+    }
+    return normalizeUIElementRefSurfaceId(a) === normalizeUIElementRefSurfaceId(b);
 }
 
 /**
  * Whether an element reference is allowed to name this surface from this execution.
  *
  * A graph may reach the surface it runs on, and a component definition's graph may reach its own
- * tree. Nothing else: reaching into another surface is the thing the check exists to stop, and it
- * still is. An execution that cannot say where it is running answers yes, which is what the check
- * did before there was anything to compare against.
+ * tree, under either spelling of that tree's surface (`normalizeUIElementRefSurfaceId`). Nothing
+ * else: reaching into another surface is the thing the check exists to stop, and it still is. An
+ * execution that cannot say where it is running answers yes, which is what the check did before
+ * there was anything to compare against.
  */
 export function isUIElementRefInScope(
     refSurfaceId: string | undefined,
@@ -116,8 +182,8 @@ export function isUIElementRefInScope(
     if (!owner?.surfaceId) {
         return true;
     }
-    if (refSurfaceId === owner.surfaceId) {
+    if (isSameUIElementRefSurface(refSurfaceId, owner.surfaceId)) {
         return true;
     }
-    return Boolean(owner.componentId) && refSurfaceId === buildUIComponentSurfaceId(owner.componentId!);
+    return Boolean(owner.componentId) && isSameUIElementRefSurface(refSurfaceId, buildUIComponentSurfaceId(owner.componentId!));
 }

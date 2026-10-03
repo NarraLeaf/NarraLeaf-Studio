@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import type { TranslationKey } from "@shared/i18n";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
@@ -395,6 +396,20 @@ export type BlueprintNodeDeclaration = {
     saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
     role?: BlueprintNodeRole;
+    /**
+     * The node's own words in other languages, for a node the host did not define.
+     *
+     * Keyed by locale code, then by the English text exactly as this declaration writes it: the
+     * title, the category, a pin label, an inspector label, an option label or an empty-option
+     * label. That is how the host's own catalogue is keyed (see `blueprintNodeI18n`), because the
+     * canvas, the palette and the issue list all hold a title or a label rather than the node that
+     * declared it. A string the host already translates keeps the host's wording, so one English
+     * word reads the same on every node; a string with no entry for the active locale is drawn in
+     * English.
+     *
+     * Built-in nodes leave this unset: their words live in Studio's catalogue.
+     */
+    translations?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 };
 
 /**
@@ -423,6 +438,36 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * neither - it is a property of how the graph is called.
      */
     requiresHostApi?: boolean;
+    /**
+     * What the node does, in a sentence or two an author can act on - as a catalog key, not text.
+     * The add-node palette and the card header resolve it in the interface language when they draw
+     * it, the moment the title is resolved too. Written first for the nodes an author can mistake for
+     * another one: `Return` beside `Return Value`, `App Boot` beside `On Game Ready`.
+     *
+     * Here rather than on {@link BlueprintNodeDeclaration} for the reason `scope` is: the key names a
+     * string in Studio's own catalog, and a published type carrying it would hand plugins the host's
+     * key union.
+     */
+    description?: TranslationKey;
+    /**
+     * Data inputs that answer the same question, so a node needs one pin out of each group.
+     *
+     * The save nodes take the save they act on as a typed `Id` or as a wired `Slot`, and a wired
+     * `Slot` wins. Neither pin is required on its own - the node is fine with either - but the pair
+     * is: with both empty the node has no save to act on and refuses to run. Marking `Id` optional
+     * would lose that second half, and leaving it required reports a node whose `Slot` is wired.
+     *
+     * `listUnwiredRequiredInputPins` judges a group as one: answered when any member is wired or
+     * carries a value on the card, and reported once, under its first pin, when none is. A member's
+     * own `optional` flag goes on deciding how the card draws it and nothing else.
+     *
+     * Every member must be a data input declared in `pins`; the registry refuses a node otherwise.
+     *
+     * Here rather than on {@link BlueprintNodeDeclaration} because a plugin's node already says what
+     * it needs through `optional`, and a field on the declaration would be a new piece of the
+     * published plugin type surface.
+     */
+    alternativeInputs?: readonly (readonly string[])[];
     execute: BlueprintNodeExecuteFn;
 };
 
@@ -542,6 +587,8 @@ export type BlueprintNodeEditorCatalogEntry = {
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /** Carried through from the definition; see {@link BlueprintNodeDef.description}. */
+    description?: TranslationKey;
     /**
      * True when the node type is not in the editor registry: the plugin that contributed it is
      * uninstalled, disabled, or failed to load. The entry is then a placeholder stub - the pins are

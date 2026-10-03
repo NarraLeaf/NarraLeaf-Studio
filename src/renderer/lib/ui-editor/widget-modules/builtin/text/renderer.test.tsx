@@ -43,6 +43,11 @@ vi.mock("@/lib/ui-editor/hooks/useEnteredElementState", () => ({
 }));
 
 import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import {
+    getDesignTimeLocalizationKeys,
+    setDesignTimeLocalizationKeys,
+    setDesignTimeLocalizationKeyWriter,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { TextRenderer } from "./renderer";
 
 const SURFACE: UISurface = {
@@ -436,5 +441,70 @@ describe("TextRenderer marked runs", () => {
             { text: "Goodbye " },
             { text: "world", marks: { bold: true } },
         ]);
+    });
+});
+
+describe("TextRenderer read from a translation key", () => {
+    const written: Array<[string, string]> = [];
+    beforeEach(() => {
+        written.length = 0;
+        setDesignTimeLocalizationKeys({ "config.skipDelay": "Skip wait" });
+        setDesignTimeLocalizationKeyWriter((name, sourceText) => {
+            written.push([name, sourceText]);
+            setDesignTimeLocalizationKeys({ ...getDesignTimeLocalizationKeys(), [name]: sourceText });
+        });
+    });
+    afterEach(() => {
+        // Unmounted first: withdrawing the keys would otherwise repaint a mounted canvas outside act.
+        cleanup();
+        setDesignTimeLocalizationKeyWriter(null);
+        setDesignTimeLocalizationKeys(null);
+    });
+
+    function keyedDocument(): UIDocument {
+        const document = createDocument("Skip delay");
+        document.elements.text.props!.localizationKey = "config.skipDelay";
+        return document;
+    }
+
+    it("draws the key's text on the canvas, as the game does, not the element's own", () => {
+        const document = keyedDocument();
+        const canvas = renderText(document, canvasHostAdapter(createServices(document)));
+        expect(canvas.container.querySelector("p")!.textContent).toBe("Skip wait");
+    });
+
+    it("draws the element's own text while the project carries no keys", () => {
+        setDesignTimeLocalizationKeys(null);
+        const document = keyedDocument();
+        const canvas = renderText(document, canvasHostAdapter(createServices(document)));
+        expect(canvas.container.querySelector("p")!.textContent).toBe("Skip delay");
+    });
+
+    it("repaints when the key's text changes elsewhere", () => {
+        const document = keyedDocument();
+        const canvas = renderText(document, canvasHostAdapter(createServices(document)));
+        act(() => setDesignTimeLocalizationKeys({ "config.skipDelay": "Skip interval" }));
+        expect(canvas.container.querySelector("p")!.textContent).toBe("Skip interval");
+    });
+
+    it("edits the key's text in place, from the key's text, and leaves the element's alone", () => {
+        const document = keyedDocument();
+        const services = createServices(document);
+        const canvas = renderText(document, canvasHostAdapter(services));
+
+        act(() => {
+            beginInlineTextEdit(services.stateService as never, SURFACE.id, "text");
+        });
+        const textarea = canvas.container.querySelector("textarea")!;
+        expect(textarea.value).toBe("Skip wait");
+        fireEvent.change(textarea, { target: { value: "Skip pause" } });
+        clockMs += 1_000;
+        act(() => {
+            fireEvent.blur(textarea);
+        });
+
+        expect(written).toEqual([["config.skipDelay", "Skip pause"]]);
+        expect(document.elements.text.props?.text).toBe("Skip delay");
+        expect(canvas.container.querySelector("p")!.textContent).toBe("Skip pause");
     });
 });

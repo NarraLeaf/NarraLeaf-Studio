@@ -41,7 +41,6 @@ export const blueprint = {
         collapse: "收起侧栏",
     },
     canvas: {
-        addLayer: "添加图层",
         selectLayer: "在左侧选择一个图层",
         previewUnavailable: "预览不可用",
         unknownNode: "未知节点",
@@ -274,6 +273,49 @@ export const blueprint = {
             other: "已被 {count} 个图层运行",
         },
     },
+    /**
+     * 没有图层的蓝图显示的内容：几个适合其所属对象的模板、模板库，以及最后的空白图层。
+     */
+    layerTemplates: {
+        heading: "新建图层",
+        description: "从模板开始，或新建空白图层",
+        listLabel: "图层模板",
+        blank: {
+            title: "空白图层",
+            description: "空画布，或运行自己的脚本",
+        },
+        library: {
+            title: "更多模板",
+            description: "按分类浏览适用于这个蓝图的全部模板",
+        },
+    },
+    /** 模板库：适用于当前蓝图的全部模板，按分类列出。 */
+    templateLibrary: {
+        title: "模板库",
+        open: "从模板库添加",
+        all: "全部",
+        categoriesLabel: "分类",
+        search: "搜索模板",
+        emptyFiltered: "没有匹配的模板",
+        empty: "没有适用于这个蓝图的模板",
+        add: "添加",
+        back: "返回",
+        openDetail: "查看详情",
+        choicesHeading: "添加后需要选择",
+        choicesNone: "添加后即可运行",
+        previewLabel: "图预览",
+        category: {
+            pageFlow: "页面流程",
+            navigation: "跳转",
+            game: "游戏",
+            settings: "设置",
+            audio: "声音",
+            motion: "动画",
+            keys: "按键",
+            window: "窗口",
+            display: "显示内容",
+        },
+    },
     // 蓝图挂在什么东西上——搜索结果要靠它说明节点在哪。
     owner: {
         global: "全局",
@@ -378,6 +420,7 @@ export const blueprint = {
         select: "选择元素",
         selectNamed: "选择元素 {name}",
         unbound: "未绑定",
+        missing: "元素缺失",
     },
     pin: {
         addInput: "添加输入端口",
@@ -1193,7 +1236,7 @@ export const blueprint = {
         getVisible: "获取可见性",
         getWrapMode: "获取换行模式",
         goPage: "前往页面",
-        goBack: "返回",
+        goBack: "返回上一页",
         showLayer: "叠加页面",
         hideLayer: "移除叠加页面",
         waitForLayer: "等待叠加页面",
@@ -1447,7 +1490,39 @@ export const blueprint = {
         getPlaytime: "获取游玩时长",
         getTotalPlaytime: "获取累计游玩时长",
     },
+    nodeDescription: {
+        compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
+        compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
+        compareGreaterThan: "A 大于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
+        compareGreaterThanOrEqual: "A 大于或等于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
+        compareLessThan: "A 小于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
+        compareLessThanOrEqual: "A 小于或等于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
+        mathEqual: "A 与 B 是同一个数字时为真。两边先读作数字，因此文本“1”等于数字 1",
+        mathNotEqual: "A 与 B 是不同的数字时为真。两边先读作数字，因此文本“1”与数字 1 视为相等",
+        flowReturn: "在此结束本次执行，之后的节点都不再运行，包括「顺序执行」尚未执行的输出。不交出任何值；需要交出值时用「返回值」，函数中用「函数返回」",
+        returnValue: "交出该值作为结果，并结束本次执行。用于需要产出值的蓝图，如蓝图值",
+        appBoot: "每次启动游戏时运行一次，在第一个界面显示之后，界面不等它执行完。此时「游戏就绪时」已经运行过。开发模式中每次重新加载后会再次运行",
+        gameReady: "游戏准备就绪时运行，早于任何故事开始，也早于第一个界面显示；界面会等它执行完。先于「应用启动」运行，开始或读取游戏时可能再次运行",
+        goBack: "关闭当前页面，回到它下面的页面；已在最底层的页面上时不执行任何操作",
+    },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",
+    },
+    overview: {
+        title: "蓝图总览",
+        count: {
+            other: "{count} 个蓝图",
+        },
+        noBlueprints: "没有蓝图",
+        search: "搜索蓝图",
+        noMatches: "没有匹配“{query}”的蓝图",
+        nodes: {
+            other: "{count} 个节点",
+        },
+        group: {
+            project: "项目",
+            componentCaption: "组件",
+            storyCaption: "故事",
+        },
     },
 } satisfies LocaleNamespace<"blueprint">;

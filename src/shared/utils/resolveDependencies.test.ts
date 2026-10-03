@@ -51,6 +51,17 @@ describe("resolveDependencies", () => {
         expect(result.entries[0].suppressed).toBe(false);
     });
 
+    it("carries the installed plugin's name translations onto the entry, and none for a missing plugin", () => {
+        const localized = { zh: { name: "画廊" }, ja: { name: "ギャラリー" } };
+        const result = resolveDependencies(
+            table([dep({ id: "a.b", name: "Gallery" }), dep({ id: "c.d", name: "Absent" })]),
+            installed([{ id: "a.b", localized }]),
+        );
+        expect(result.entries[0].installedLocalized).toEqual(localized);
+        expect(result.entries[0].dependency.name).toBe("Gallery");
+        expect("installedLocalized" in result.entries[1]).toBe(false);
+    });
+
     it("does not suppress a soft dependency even when incompatible", () => {
         const result = resolveDependencies(table([dep({ id: "a.b", hard: false, authoredVersion: "1.0.0" })]), installed([{ id: "a.b", version: "2.0.0" }]));
         expect(result.entries[0].status).toBe("incompatible");

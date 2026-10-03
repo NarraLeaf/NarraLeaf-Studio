@@ -79,6 +79,7 @@ export const menu = {
         welcome: "ようこそページを開く",
         docs: "ドキュメント",
         feedback: "フィードバックを送信",
+        exportLogs: "ログを書き出す…",
         about: "{name} について",
     },
 } satisfies LocaleNamespace<"menu">;

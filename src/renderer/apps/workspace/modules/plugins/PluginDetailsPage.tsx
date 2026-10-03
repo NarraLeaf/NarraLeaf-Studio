@@ -6,6 +6,7 @@ import { hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
 import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
+import { pluginDisplayName } from "@shared/utils/pluginDisplayText";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
@@ -65,10 +66,10 @@ export function PluginDetailsPage({
     onReload,
     onRetry,
 }: PluginDetailsPageProps) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
 
     const pluginId = installed?.pluginId ?? registryEntry?.id ?? "";
-    const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
+    const name = (installed ? pluginDisplayName(installed.manifest, locale) : registryEntry?.name) ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
     const actions = installed ? pluginRecordActions(installed, canReload) : null;

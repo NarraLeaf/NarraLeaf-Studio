@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
@@ -9,66 +11,8 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { EditorNodeWrapper, isElementHoveredByPointer } from "./EditorNodeWrapper";
 
-vi.mock("motion/react", async () => {
-    const ReactModule = await import("react");
-    return {
-        motion: {
-            div: ({
-                animate,
-                children,
-                initial,
-                transition,
-                style,
-                ...props
-            }: React.HTMLAttributes<HTMLDivElement> & {
-                animate?: unknown;
-                initial?: unknown;
-                transition?: unknown;
-            }) => ReactModule.createElement("div", {
-                ...props,
-                // Motion writes a motion value into the channel it names; the mock reads it back so
-                // the pose still shows up in the markup these tests assert on.
-                style: style
-                    ? Object.fromEntries(
-                          Object.entries(style).map(([key, value]) => [
-                              key,
-                              value && typeof value === "object" && typeof (value as { get?: unknown }).get === "function"
-                                  ? (value as { get: () => unknown }).get()
-                                  : value,
-                          ]),
-                      )
-                    : style,
-                "data-motion-animate": JSON.stringify(animate),
-                "data-motion-initial": JSON.stringify(initial),
-                "data-motion-transition": JSON.stringify(transition),
-            }, children),
-        },
-        useAnimationControls: () => ({
-            mount: () => () => undefined,
-            set: () => undefined,
-            start: () => Promise.resolve(),
-            stop: () => undefined,
-        }),
-        useMotionValue: (initial: number) => {
-            const ref = ReactModule.useRef<{ current: number; get(): number; set(next: number): void } | null>(null);
-            if (!ref.current) {
-                ref.current = {
-                    current: initial,
-                    get() {
-                        return this.current;
-                    },
-                    set(next: number) {
-                        this.current = next;
-                    },
-                };
-            }
-            return ref.current;
-        },
-        animate: (value: { set(next: number): void }, target: number) => {
-            value.set(target);
-            return { stop: () => undefined };
-        },
-    };
+afterEach(() => {
+    cleanup();
 });
 
 const element: UIElement = {
@@ -85,8 +29,10 @@ const element: UIElement = {
     },
 };
 
-function renderWrapper(store: WidgetRuntimeStateStore, layout = element.layout): string {
-    return renderToStaticMarkup(
+const KEY = "scope\0image";
+
+function tree(store: WidgetRuntimeStateStore, layout = element.layout) {
+    return (
         <WidgetRuntimeStateProvider externalStore={store}>
             <WidgetRuntimeScopeProvider runtimeScopeId="scope">
                 <EditorNodeWrapper
@@ -95,8 +41,21 @@ function renderWrapper(store: WidgetRuntimeStateStore, layout = element.layout):
                     interactive={false}
                 />
             </WidgetRuntimeScopeProvider>
-        </WidgetRuntimeStateProvider>,
+        </WidgetRuntimeStateProvider>
     );
+}
+
+function renderWrapper(store: WidgetRuntimeStateStore, layout = element.layout): string {
+    return renderToStaticMarkup(tree(store, layout));
+}
+
+function mountWrapper(store: WidgetRuntimeStateStore, layout = element.layout) {
+    const view = render(tree(store, layout));
+    const node = view.container.querySelector<HTMLElement>(".ui-editor-node-preview");
+    if (!node) {
+        throw new Error("the wrapper drew no node");
+    }
+    return { view, node };
 }
 
 describe("EditorNodeWrapper", () => {
@@ -126,43 +85,195 @@ describe("EditorNodeWrapper", () => {
 
     it("lets displayable opacity motion own opacity style", () => {
         const store = new WidgetRuntimeStateStore();
-        store.setDisplayableMotion("scope\0image", {
+        store.setDisplayableMotion(KEY, {
             target: { opacity: [0, 1] },
             transition: { type: "tween", durationMs: 200 },
         });
 
-        const markup = renderWrapper(store);
-
-        expect(markup).toContain("data-motion-initial=\"false\"");
-        expect(markup).not.toContain("opacity:0.35");
+        expect(renderWrapper(store)).not.toContain("opacity:0.35");
     });
 
-    it("routes the persistent base offset through motion-managed style values", () => {
+    it("draws the persistent base offset through the pose's own transform", () => {
         const store = new WidgetRuntimeStateStore();
-        store.setDisplayableBaseTransform("scope\0image", { offsetX: 24, offsetY: -12 });
+        store.setDisplayableBaseTransform(KEY, { offsetX: 24, offsetY: -12 });
 
-        const markup = renderWrapper(store);
-
-        // The offset is a motion style value (x/y), not a raw transform string, so a motion
-        // rendering its own transform composes with it instead of discarding it.
-        expect(markup).toContain("x:24px");
-        expect(markup).toContain("y:-12px");
-        expect(markup).not.toContain("transform:");
+        expect(renderWrapper(store)).toContain("transform:translateX(24px) translateY(-12px)");
     });
 
-    it("keeps static rotation in the motion-managed transform channel", () => {
-        const markup = renderWrapper(new WidgetRuntimeStateStore(), { ...element.layout, rotation: 15 });
-
-        // Static rotation must survive motions: a raw style.transform string is dropped as soon
-        // as motion renders transforms, so it always flows through the motion `rotate` value.
-        expect(markup).toContain("rotate:15");
-        expect(markup).not.toContain("transform:rotate(15deg)");
+    it("draws static rotation in the pose's transform", () => {
+        expect(renderWrapper(new WidgetRuntimeStateStore(), { ...element.layout, rotation: 15 })).toContain(
+            "transform:rotate(15deg)",
+        );
     });
 
-    it("keeps plain widgets free of motion transform values until they carry a pose", () => {
+    it("keeps plain widgets free of a transform until they carry a pose", () => {
         const markup = renderWrapper(new WidgetRuntimeStateStore());
 
-        expect(markup).not.toContain("x:");
-        expect(markup).not.toContain("rotate:");
+        expect(markup).not.toContain("transform:");
+        expect(markup).toContain("left:10px");
+        expect(markup).toContain("top:20px");
+    });
+});
+
+/**
+ * The node is a plain `div` that React writes until something moves it; from then on a driver writes
+ * the channels that move, and React must never write them again - one writer per channel, or the last
+ * React render wins over a motion mid-flight. These hold that handover.
+ */
+describe("EditorNodeWrapper motion handover", () => {
+    it("draws a motion's first frame in the commit that starts it", () => {
+        const store = new WidgetRuntimeStateStore();
+        const { node } = mountWrapper(store);
+        expect(node.style.transform).toBe("");
+
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { x: [40, 80] },
+                transition: { type: "tween", durationMs: 5000 },
+            });
+        });
+
+        expect(node.style.transform).toBe("translateX(40px)");
+    });
+
+    it("never lets a later render write a channel the motion has taken", () => {
+        const store = new WidgetRuntimeStateStore();
+        const { view, node } = mountWrapper(store);
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { x: [40, 80], opacity: [0.2, 1] },
+                transition: { type: "tween", durationMs: 5000 },
+            });
+        });
+        expect(node.style.opacity).toBe("0.2");
+
+        // A render for an unrelated reason, with a new authored opacity and a moved element.
+        act(() => {
+            view.rerender(tree(store, { ...element.layout, x: 30, opacity: 0.6 }));
+        });
+
+        expect(node.style.transform).toBe("translateX(40px)");
+        expect(node.style.opacity).toBe("0.2");
+        // Placement is not part of the motion, so the move lands.
+        expect(node.style.left).toBe("30px");
+    });
+
+    it("keeps opacity with the motions once one has taken it, until the running one clears", () => {
+        const store = new WidgetRuntimeStateStore();
+        const { view, node } = mountWrapper(store);
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { opacity: [0.2, 1] },
+                transition: { type: "tween", durationMs: 5000 },
+            });
+        });
+        act(() => {
+            store.clearDisplayableMotion(KEY);
+        });
+        expect(node.style.opacity).toBe("0.35");
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { x: [40, 80] },
+                transition: { type: "tween", durationMs: 5000 },
+            });
+        });
+
+        // The authored opacity changes mid-motion: React would write it, and the channel is not React's.
+        act(() => {
+            view.rerender(tree(store, { ...element.layout, opacity: 0.6 }));
+        });
+        expect(node.style.opacity).toBe("0.35");
+
+        act(() => {
+            store.clearDisplayableMotion(KEY);
+        });
+        expect(node.style.opacity).toBe("0.6");
+    });
+
+    it("snaps back to the resting pose in the commit that clears the motion", () => {
+        const store = new WidgetRuntimeStateStore();
+        store.setDisplayableBaseTransform(KEY, { offsetX: 12 });
+        const { node } = mountWrapper(store);
+        expect(node.style.transform).toBe("translateX(12px)");
+
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { x: [40, 80], scale: [1, 2] },
+                transition: { type: "tween", durationMs: 5000 },
+            });
+        });
+        expect(node.style.transform).toBe("translateX(40px)");
+
+        act(() => {
+            store.clearDisplayableMotion(KEY);
+        });
+        expect(node.style.transform).toBe("translateX(12px)");
+        expect(node.style.opacity).toBe("0.35");
+    });
+
+    it("puts the pose back on the next render after something else wrote the transform", () => {
+        const store = new WidgetRuntimeStateStore();
+        const rotated = { ...element.layout, rotation: 15 };
+        const { view, node } = mountWrapper(store, rotated);
+        expect(node.style.transform).toBe("rotate(15deg)");
+
+        // What the editor's drag leaves behind when a gesture ends.
+        node.style.transform = "";
+        act(() => {
+            view.rerender(tree(store, { ...rotated, opacity: 0.5 }));
+        });
+        expect(node.style.transform).toBe("rotate(15deg)");
+
+        // The same once a motion has taken the channel.
+        act(() => {
+            store.setDisplayableMotion(KEY, { target: { x: [40, 80] }, transition: { type: "tween", durationMs: 5000 } });
+        });
+        node.style.transform = "";
+        act(() => {
+            view.rerender(tree(store, { ...rotated, opacity: 0.6 }));
+        });
+        expect(node.style.transform).toBe("translateX(40px) rotate(15deg)");
+    });
+
+    it("starts a state's trip from where the element was, not from where React just put it", () => {
+        const store = new WidgetRuntimeStateStore();
+        const offset = (x: number) => ({ x, y: 0, durationMs: 400, easing: "easeOut" as const });
+        const placed = (x: number): UIElement => ({ ...element, parentId: "parent", extra: { stateMotionOffset: offset(x) } });
+        const placedTree = (x: number) => (
+            <WidgetRuntimeStateProvider externalStore={store}>
+                <WidgetRuntimeScopeProvider runtimeScopeId="scope">
+                    <EditorNodeWrapper element={placed(x)} layout={element.layout} interactive={false} />
+                </WidgetRuntimeScopeProvider>
+            </WidgetRuntimeStateProvider>
+        );
+        const view = render(placedTree(0));
+        const node = view.container.querySelector<HTMLElement>(".ui-editor-node-preview")!;
+        expect(node.style.left).toBe("10px");
+
+        act(() => {
+            view.rerender(placedTree(60));
+        });
+
+        // React has written 70px by now; the trip puts the node back at 10px to travel from there.
+        expect(node.style.left).toBe("10px");
+    });
+
+    it("reports nothing for a motion still running when the element leaves", async () => {
+        const store = new WidgetRuntimeStateStore();
+        const complete = vi.spyOn(store, "completeDisplayableMotion");
+        const { view } = mountWrapper(store);
+        act(() => {
+            store.setDisplayableMotion(KEY, {
+                target: { x: [0, 80] },
+                transition: { type: "tween", durationMs: 5000 },
+                resetOnComplete: true,
+            });
+        });
+
+        view.unmount();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(complete).not.toHaveBeenCalled();
     });
 });

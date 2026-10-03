@@ -4,6 +4,7 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { extendWidgetModule } from "@/lib/ui-editor/widget-modules/inheritance";
 import { patchTextWidgetDefaultElement } from "@/lib/ui-editor/widget-modules/shared/text/textWidgetDefaults";
 import { TextWidgetModule } from "./text";
+import { TextBlueprintValueField } from "./text/inspector";
 import { NvlTextsRenderer } from "./nvl/renderer";
 
 const NVL_TEXTS_TYPE = "nl.nvl.texts";
@@ -30,7 +31,8 @@ export const NvlTextsWidgetModule: UIWidgetModule = extendWidgetModule(TextWidge
         }),
     render: NvlTextsRenderer,
     inspector: () => ({
-        // Same as the dialog line: the entry the list scope supplies replaces this text at run time.
-        remove: ["section.localization"],
+        // Same as the dialog line: the entry the list scope supplies replaces this text at run time,
+        // so the text offers only its own words and a Blueprint Value.
+        patch: { "text.content": { component: TextBlueprintValueField } },
     }),
 });

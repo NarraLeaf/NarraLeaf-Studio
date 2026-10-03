@@ -23,6 +23,7 @@ import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-ed
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -85,6 +86,17 @@ import {
     createDefaultBlueprintLayerValue,
     type BlueprintLayerDialogValue,
 } from "../components/BlueprintLayerDialogContent";
+import { BlueprintLayerTemplateGrid } from "../components/BlueprintLayerTemplateGrid";
+import { BlueprintTemplateLibrary } from "../components/BlueprintTemplateLibrary";
+import { blueprintTemplateText, type BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
+import {
+    buildBlueprintLayerTemplate,
+    listBlueprintLayerTemplates,
+    pickFeaturedBlueprintTemplates,
+    type BlueprintLayerTemplateTarget,
+} from "../templates/buildBlueprintLayerTemplate";
+import { SUPPORTED_LOCALES, type Locale } from "@shared/i18n/locales";
+import { collectBlueprintLayerTemplateFacts } from "../templates/blueprintLayerTemplateFacts";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
@@ -132,12 +144,7 @@ import {
     listCallableBlueprintFnOptions,
     resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
-import {
-    ELEMENT_REF_PARAM_ELEMENT_ID,
-    ELEMENT_REF_PARAM_ELEMENT_TYPE,
-    ELEMENT_REF_PARAM_SURFACE_ID,
-    readBlueprintElementRefParams,
-} from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
+import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
 import { FileCode2, PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
 import {
@@ -145,6 +152,7 @@ import {
     readElementBindingCompletion,
     startElementBindingSession,
     subscribeElementBindingSession,
+    withPickedElement,
 } from "../elementBindingSession";
 import {
     createComponentDocumentServiceAdapter,
@@ -156,7 +164,9 @@ import {
     listEffectiveBlueprintVariables,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { anchorElementId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
+import { isSameUIElementRefSurface } from "@shared/types/ui-editor/componentInstanceKey";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
+import { createElementCardTargetResolver } from "./elementCardTarget";
 import {
     buildBlueprintGraphClipboardPayload,
     pasteBlueprintGraphClipboardPayload,
@@ -318,7 +328,9 @@ function collectMagicElementRefs(input: {
             continue;
         }
         const ref = readBlueprintElementRefParams(node.params);
-        if (!ref || ref.surfaceId !== input.surfaceId) {
+        // Either spelling of a component definition's surface: a definition's blueprint is opened under
+        // the component editor's, and its references are stored under the definition's own.
+        if (!ref || !isSameUIElementRefSurface(ref.surfaceId, input.surfaceId)) {
             continue;
         }
         const element = input.document.elements[ref.elementId];
@@ -532,7 +544,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
 }
 
 function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     /** Already in a window of its own: the pop-out control has nothing left to offer. */
@@ -568,6 +580,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [isComponentDefinitionGraph, payload.componentId, uidoc],
     );
     const uiService = context.services.get<UIService>(Services.UI);
+    const historyService = context.services.get<HistoryService>(Services.History);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
@@ -760,12 +773,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (!node) {
                     return;
                 }
-                node.params = {
-                    ...(node.params ?? {}),
-                    [ELEMENT_REF_PARAM_SURFACE_ID]: target.surfaceId,
-                    [ELEMENT_REF_PARAM_ELEMENT_ID]: target.elementId,
-                    [ELEMENT_REF_PARAM_ELEMENT_TYPE]: target.elementType,
-                };
+                node.params = withPickedElement(node.params, target);
             };
             if (session.graphKind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, session.graphId, apply);
@@ -1416,6 +1424,93 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         t,
     ]);
 
+    const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
+    // A template's text is written in the editor's language; one the library is not written in
+    // falls back to English, as the catalogue does.
+    const templateLocale = useMemo<Locale>(() => {
+        const base = locale.split("-")[0];
+        return (SUPPORTED_LOCALES as readonly string[]).includes(base) ? (base as Locale) : "en";
+    }, [locale]);
+
+    // Only while the templates are on screen - an empty blueprint, or the library open - since the
+    // facts walk the whole blueprint document.
+    const layerTemplateTarget = useMemo<BlueprintLayerTemplateTarget | null>(() => {
+        if (eventIds.length > 0 && !templateLibraryOpen) {
+            return null;
+        }
+        const storyId = storyService.getDefaultStoryId() ?? storyService.listStories()[0]?.id;
+        return {
+            owner: bp.owner,
+            widgetElementType: widgetElement?.type,
+            uiElements: uiDocument.elements,
+            facts: collectBlueprintLayerTemplateFacts({
+                owner: bp.owner,
+                uiDocument: uidoc.getDocument(),
+                blueprintDocument: doc,
+                storyId,
+                storyDocuments: storyDocumentsById,
+                locale: templateLocale,
+            }),
+        };
+        // `revision` and `uiDocumentRevision` stand in for the two documents read through services.
+    }, [
+        bp.owner,
+        eventIds.length,
+        revision,
+        storyDocumentsById,
+        storyService,
+        templateLibraryOpen,
+        templateLocale,
+        uiDocumentRevision,
+        uidoc,
+        widgetElement?.type,
+    ]);
+    const layerTemplates = useMemo(
+        () => (layerTemplateTarget ? listBlueprintLayerTemplates(layerTemplateTarget) : []),
+        [layerTemplateTarget],
+    );
+    const featuredLayerTemplates = useMemo(() => pickFeaturedBlueprintTemplates(layerTemplates), [layerTemplates]);
+    const openTemplateLibrary = useCallback(() => setTemplateLibraryOpen(true), []);
+    const closeTemplateLibrary = useCallback(() => setTemplateLibraryOpen(false), []);
+    /** The graph a template builds here, for the library's preview; ids are throwaway. */
+    const previewLayerTemplate = useCallback(
+        (template: BlueprintLayerTemplate) => {
+            if (!layerTemplateTarget) {
+                return null;
+            }
+            let next = 0;
+            return buildBlueprintLayerTemplate(template, layerTemplateTarget, () => `preview-${(next += 1)}`);
+        },
+        [layerTemplateTarget],
+    );
+
+    /**
+     * Create a layer from a template, as one undo step, and open it with whatever is left for the
+     * author to choose already selected.
+     */
+    const onPickLayerTemplate = useCallback(
+        (template: BlueprintLayerTemplate) => {
+            if (!layerTemplateTarget) {
+                return;
+            }
+            const built = buildBlueprintLayerTemplate(template, layerTemplateTarget, () => uuid.generate());
+            if (!built) {
+                return;
+            }
+            const layerId = uuid.generate();
+            localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
+                localBp.ensureEventGraph(payload.blueprintId, layerId, blueprintTemplateText(template, templateLocale).title);
+                localBp.updateEventGraphIr(payload.blueprintId, layerId, ir => {
+                    ir.nodes = built.ir.nodes;
+                    ir.edges = built.ir.edges;
+                });
+            });
+            selectEventGraph(layerId);
+            editor.setSelectedNodeIds(built.pendingNodeIds);
+        },
+        [editor, layerTemplateTarget, localBp, payload.blueprintId, selectEventGraph, templateLocale, uuid],
+    );
+
     const onDeleteLayer = useCallback(
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
@@ -1558,23 +1653,34 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         widgetLogicEvents,
     ]);
 
+    /**
+     * Against the project's document rather than this tab's. On a component definition's blueprint
+     * this tab's document is the component editor's view of the definition, and a definition is drawn
+     * from the project's document, not from that view (see `elementCardTarget`). Rebuilt when the
+     * interface document changes and only then, so the previews keep their objects while the graph
+     * around them is edited.
+     */
+    const resolveElementCardTarget = useMemo(
+        () => createElementCardTargetResolver(uidoc.getDocument()),
+        [uidoc, uiDocumentRevision],
+    );
+
     const elementPreviews = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
         if (!activeIr) {
             return {};
         }
-        const uiDocument = blueprintDocumentService.getDocument();
         const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (!isElementBindingNodeType(node.type)) {
                 continue;
             }
             const ref = readBlueprintElementRefParams(node.params);
-            const element = ref ? uiDocument.elements[ref.elementId] : undefined;
-            const surface = ref ? uiDocument.surfaces.find(item => item.id === ref.surfaceId) : undefined;
-            if (!ref || !element || !surface) {
+            const target = ref ? resolveElementCardTarget(ref) : null;
+            if (!ref || !target) {
                 continue;
             }
+            const { document: targetDocument, surface, element } = target;
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
                 revisionKey,
@@ -1589,7 +1695,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     <ElementLiteralSurfacePreview
                         key={revisionKey}
                         runtimeBridge={runtimeBridge}
-                        document={uiDocument}
+                        document={targetDocument}
                         surface={surface}
                         element={element}
                     />
@@ -1597,7 +1703,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             };
         }
         return previews;
-    }, [blueprintDocumentService, editor.graphView, ir, runtimeBridge, uiDocumentRevision]);
+    }, [editor.graphView, ir, resolveElementCardTarget, runtimeBridge, uiDocumentRevision]);
 
     const displayableTargetVariantsByNodeId = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
@@ -1752,18 +1858,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         uiDocumentRevision,
         widgetElement,
     ]);
-
-    const contextTitle = useMemo(
-        () =>
-            [
-                payload.ownerKind,
-                payload.surfaceId,
-                payload.elementId,
-                payload.propPath,
-                bp.id,
-            ].filter(Boolean).join(" · "),
-        [bp.id, payload.elementId, payload.ownerKind, payload.propPath, payload.surfaceId],
-    );
 
     const blueprintMemberVariables = useMemo(() => {
         return buildAccessibleBlueprintVariableOptions({
@@ -2052,17 +2146,23 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             if (staleSnapshots.size === 0) {
                 continue;
             }
-            localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
-                for (const [nodeId, snapshot] of staleSnapshots) {
-                    const node = draft.nodes?.[nodeId];
-                    if (!node) {
-                        continue;
+            // Not an undo step, for the same reason it is deferred while frozen: the author did not
+            // make this change. Recorded, it was the first thing Ctrl+Z took back in a blueprint that
+            // had only just been opened, and it read as an edit - so a blueprint opened as a preview
+            // tab became an ordinary tab before the author had touched it.
+            historyService.withoutRecording(() => {
+                localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
+                    for (const [nodeId, snapshot] of staleSnapshots) {
+                        const node = draft.nodes?.[nodeId];
+                        if (!node) {
+                            continue;
+                        }
+                        node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
                     }
-                    node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
-                }
+                });
             });
         }
-    }, [freeze.frozen, localBp, payload.blueprintId]);
+    }, [freeze.frozen, historyService, localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -2133,7 +2233,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const header = (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" data-tip={contextTitle}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
         </div>
@@ -2194,19 +2294,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             </div>
             </BlueprintBreakpointScope>
         ) : !hasAnyGraph ? (
-            <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
-                <button
-                    type="button"
-                    className="rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary/10"
-                    onClick={onAddEvent}
-                    // Declaring a layer writes the blueprint, the same as the member panel's New
-                    // button beside it - which was already refused while this one was not, so an
-                    // empty frozen blueprint offered a layer it could not keep.
-                    {...freeze.writes()}
-                >
-                    {t("blueprint.canvas.addLayer")}
-                </button>
-            </div>
+            <BlueprintLayerTemplateGrid
+                templates={featuredLayerTemplates}
+                onPickTemplate={onPickLayerTemplate}
+                onOpenLibrary={layerTemplates.length > featuredLayerTemplates.length ? openTemplateLibrary : undefined}
+                onPickBlank={onAddEvent}
+                // Declaring a layer writes the blueprint, the same as the member panel's New button
+                // beside it - which was already refused while the empty state's button was not, so
+                // an empty frozen blueprint offered a layer it could not keep.
+                writeProps={freeze.writes()}
+            />
         ) : (
             <div className="flex h-full min-h-0 items-center justify-center text-xs text-fg-subtle">
                 {t("blueprint.canvas.selectLayer")}
@@ -2245,12 +2342,21 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                             onVariableGroupOpenChange={setVariableGroupOpen}
                             onSelectLayer={selectEventGraph}
                             onAddLayer={onAddEvent}
+                            onOpenTemplateLibrary={openTemplateLibrary}
                             onDeleteLayer={onDeleteLayer}
                         />
                     </div>
                 }
                 canvas={canvas}
                 diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+            />
+            <BlueprintTemplateLibrary
+                isOpen={templateLibraryOpen}
+                onClose={closeTemplateLibrary}
+                templates={layerTemplates}
+                build={previewLayerTemplate}
+                onAdd={onPickLayerTemplate}
+                addDisabledReason={freeze.frozen ? freeze.reason : undefined}
             />
         </div>
         </BlueprintGraphAddressProvider>

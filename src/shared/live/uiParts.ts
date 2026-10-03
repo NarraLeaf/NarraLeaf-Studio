@@ -46,7 +46,7 @@ import type { UIStructDef, UIStructId } from "@shared/types/ui-editor/struct";
  *  - **surfaces** and **components** - their records without the trees, so that carrying one costs
  *    a few hundred bytes rather than the whole screen.
  *  - **structs**, **actions** - the two document-level tables an element points into by id.
- *  - the document's own **name**.
+ *  - the document's own **name**, and which page is its **entry**.
  *
  * ⚠ **A component travels without its `elements`.** The largest component in the shipped skeleton is
  * 24 KB whole and 400 bytes without them, and the message cap is 16 KB - so a shell that carried its
@@ -89,6 +89,11 @@ export type LiveUIParts = {
     actions?: Readonly<Record<string, UIInputActionDef | null>>;
     /** The document's own name, when it changed. */
     name?: string;
+    /**
+     * Which page the game starts on, when that changed. `null` is the document naming none - which
+     * is a value of its own (the main page is the entry), not "unchanged".
+     */
+    entrySurfaceId?: UISurfaceId | null;
 };
 
 /** One element, and which map it lives in. `componentId` is null for a Surface's own elements. */
@@ -181,6 +186,11 @@ export function diffUIParts(before: UIDocument, after: UIDocument): LiveUIParts 
         changed = true;
     }
 
+    if ((before.entrySurfaceId ?? null) !== (after.entrySurfaceId ?? null)) {
+        parts.entrySurfaceId = after.entrySurfaceId ?? null;
+        changed = true;
+    }
+
     return changed ? parts : null;
 }
 
@@ -269,6 +279,13 @@ export function applyUIParts(document: UIDocument, parts: LiveUIParts): void {
     }
     if (parts.name !== undefined) {
         document.name = parts.name;
+    }
+    if (parts.entrySurfaceId !== undefined) {
+        if (parts.entrySurfaceId === null) {
+            delete document.entrySurfaceId;
+        } else {
+            document.entrySurfaceId = parts.entrySurfaceId;
+        }
     }
 }
 
@@ -362,6 +379,11 @@ export function composeUIParts(earlier: LiveUIParts, later: LiveUIParts): LiveUI
     const name = later.name ?? earlier.name;
     if (name !== undefined) {
         composed.name = name;
+    }
+    // Not `??`: null is a statement here, and a later one stands over an earlier page.
+    const entrySurfaceId = later.entrySurfaceId !== undefined ? later.entrySurfaceId : earlier.entrySurfaceId;
+    if (entrySurfaceId !== undefined) {
+        composed.entrySurfaceId = entrySurfaceId;
     }
     return composed;
 }
@@ -483,6 +505,9 @@ export function uiPartsBefore(document: UIDocument, parts: LiveUIParts): LiveUIP
     if (parts.name !== undefined) {
         before.name = document.name;
     }
+    if (parts.entrySurfaceId !== undefined) {
+        before.entrySurfaceId = document.entrySurfaceId ?? null;
+    }
     return before;
 }
 
@@ -543,8 +568,8 @@ export function uiHasElement(document: UIDocument | null, ref: LiveUIElementRef)
  * path of every nudge of every element. The map is all that is read of it.
  *
  * The shell is reported whenever the delta touches anything the Surface and component digests do not
- * cover: the two ordered lists, the structs, the actions, the document's name, and any element that
- * belongs to no Surface at all.
+ * cover: the two ordered lists, the structs, the actions, the document's name, the entry page, and any
+ * element that belongs to no Surface at all.
  */
 export function uiPartsTouched(
     ownersBefore: ReadonlyMap<UIElementId, UISurfaceId>,
@@ -554,7 +579,12 @@ export function uiPartsTouched(
     const surfaces = new Set<UISurfaceId>();
     const components = new Set<UIComponentId>();
     let shell = Boolean(
-        parts.surfaces || parts.components || parts.structs || parts.actions || parts.name !== undefined,
+        parts.surfaces
+        || parts.components
+        || parts.structs
+        || parts.actions
+        || parts.name !== undefined
+        || parts.entrySurfaceId !== undefined,
     );
 
     if (parts.elements) {
@@ -616,8 +646,8 @@ export function uiComponentDigest(document: UIDocument | null, componentId: UICo
 /**
  * Everything about the document that no Surface and no component covers.
  *
- * The two ordered lists as ids, the two document-level tables, the name, and the elements that
- * belong to no Surface. **Cheap on purpose**: it carries no element bodies except the orphans, so it
+ * The two ordered lists as ids, the two document-level tables, the name, the entry page, and the
+ * elements that belong to no Surface. **Cheap on purpose**: it carries no element bodies except the orphans, so it
  * can be computed on every effect without the cost the per-document digest this design refuses would
  * have - one `JSON.stringify` of a large interface document is milliseconds, and it would be paid on
  * every nudge of every element on every machine in the room.
@@ -640,6 +670,8 @@ export function uiShellDigest(document: UIDocument | null): string {
         structs: pruneUndefined(document.structs ?? {}),
         actions: pruneUndefined(document.actions ?? {}),
         orphans: pruneUndefined(orphans),
+        // Only when there is one, so a document that names no entry fingerprints as it always has.
+        ...(document.entrySurfaceId ? { entrySurfaceId: document.entrySurfaceId } : {}),
     });
 }
 

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
     AUTO_SAVE_ID_PREFIX,
     DEFAULT_AUTO_SAVE_CONFIGURATION,
+    LOCALE_RESTART_SAVE_ID,
     autoSaveSlotId,
     isAutoSaveId,
+    isReservedSaveId,
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
 } from "./saves";
@@ -75,5 +77,29 @@ describe("auto save slot ids", () => {
         expect(id).not.toMatch(/[\\/]/);
         expect(id).not.toBe(".");
         expect(id).not.toBe("..");
+    });
+});
+
+describe("reserved save ids", () => {
+    const none = new Set<string>();
+    const quickSave = new Set(["narraleaf.quick-save.slot"]);
+
+    it("reserves Studio's own bookkeeping whatever the plugins declared", () => {
+        expect(isReservedSaveId(autoSaveSlotId(0), none)).toBe(true);
+        expect(isReservedSaveId(LOCALE_RESTART_SAVE_ID, none)).toBe(true);
+    });
+
+    it("reserves an id a running plugin declared, and only while it is declared", () => {
+        // The quick save is an ordinary-looking id: nothing about its spelling marks it, so it is
+        // reserved exactly when the game carries the plugin that declared it.
+        expect(isReservedSaveId("narraleaf.quick-save.slot", quickSave)).toBe(true);
+        expect(isReservedSaveId("narraleaf.quick-save.slot", none)).toBe(false);
+    });
+
+    it("leaves the player's own slots alone", () => {
+        expect(isReservedSaveId("1", quickSave)).toBe(false);
+        expect(isReservedSaveId("slot-1", quickSave)).toBe(false);
+        // A prefix of a reserved id is not reserved: reservations are exact ids, not namespaces.
+        expect(isReservedSaveId("narraleaf.quick-save", quickSave)).toBe(false);
     });
 });
