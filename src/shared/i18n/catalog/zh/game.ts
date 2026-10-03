@@ -11,6 +11,8 @@ export const game = {
         storyStarted: "读取存档：「{id}」写在本项目的另一个故事里，已启动那个故事来承接它。",
         relaunchedRow: "读取存档：「{id}」来自另一次构建，已从该存档记录的行重新开始故事。",
         relaunchedScene: "读取存档：「{id}」来自另一次构建，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
+        rowLaunchRelaunchedRow: "读取存档：「{id}」来自一次「从这一行开始播放」的运行，已从该存档记录的行重新开始故事。",
+        rowLaunchRelaunchedScene: "读取存档：「{id}」来自一次「从这一行开始播放」的运行，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
         detail: {
             unreadable: "该存档无法读取。{error}",
             missing: "该 id 下没有存档。",
