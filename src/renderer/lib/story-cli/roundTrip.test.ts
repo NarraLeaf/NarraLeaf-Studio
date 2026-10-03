@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import { declaredStageObject } from "@shared/types/story";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
+import { parseCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandParser";
+import { resolveCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
+import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { compileStoryFile } from "./dsl/compile";
 import { sameRowContent } from "./dsl/equal";
 import { parseStoryFile } from "./dsl/parse";
@@ -401,6 +404,51 @@ describe("a row that names a row the same file adds", () => {
     });
 });
 
+/** The skeleton with one clip, `festival`, in its library - the skeleton ships none. */
+function withFestivalClip(data: ProjectData): ProjectData {
+    const clipId = "11111111-2222-4333-8444-555555555555";
+    return {
+        ...data,
+        assets: {
+            ...data.assets,
+            video: {
+                [clipId]: {
+                    id: clipId, type: "video", name: "festival", ext: "mp4", hash: "hash", source: "local", meta: {}, tags: [], description: "",
+                },
+            },
+        } as ProjectData["assets"],
+    };
+}
+
+/**
+ * The rows the story editor lands when `lines` are typed into an empty `scene` one after another:
+ * each line parsed, resolved and built by the three calls Enter makes, against the scene as the rows
+ * above it left it. Row `index` takes the id `ids[index]`, so the rows can be compared with a file's
+ * payload for payload - a reference to an earlier row names the same id in both.
+ */
+function typedInOrder(
+    data: ProjectData,
+    document: StoryDocument,
+    scene: StoryScene,
+    lines: readonly string[],
+    ids: readonly string[],
+): StoryBlock[] {
+    let stage: StoryScene = { ...scene, rootBlockIds: [], blocks: {} };
+    let next = 0;
+    return lines.map((line, index) => {
+        const context = buildContext(data, document, stage);
+        const parsed = parseCommandLine(line);
+        expect(parsed.kind === "command" && parsed.def, line).toBeTruthy();
+        const { args, issues } = resolveCommandLine(parsed, context);
+        expect(issues, line).toEqual([]);
+        const spec = getCommandSpec(parsed.kind === "command" ? parsed.def!.commandId : "");
+        const built = spec!.build!(args, { generateId: () => `typed-${next++}`, context });
+        const block = { ...built, id: ids[index] } as StoryBlock;
+        stage = { ...stage, rootBlockIds: [...stage.rootBlockIds, block.id], blocks: { ...stage.blocks, [block.id]: block } };
+        return block;
+    });
+}
+
 /**
  * Compiles `lines` as the whole body of `scene`, through both passes, with ids minted in order.
  * The scene is the one the file says it describes - `existing` - so an anchored line keeps its row.
@@ -496,6 +544,71 @@ describe("the branches of one /if", () => {
         expect(branchKinds(compiled.scene!, condition)).toEqual(["if", "elseIf", "else"]);
         // The stored branch is the same row, now second.
         expect(compiled.scene!.blocks[condition].childrenIds[1]).toBe(scene!.blocks[condition].childrenIds[0]);
+    });
+});
+
+/**
+ * A clip declared in a file, then paused, resumed, sought and stopped further down.
+ *
+ * The transport verbs reach sound as well as video, and a name nothing on stage answers to is taken
+ * for a sound - the row editor's rule for a name made somewhere it cannot see. The first reading of
+ * a file runs against the scene as stored, which does not hold the clip yet, so it took `clip` for a
+ * sound on every one of those lines; the second reading then found `clip` twice on the stage the
+ * first one built - the clip, and the sound those rows had made up - and refused every line as
+ * ambiguous. Typed into the editor in this order, each line finds the clip and nothing else.
+ */
+describe("a clip the file declares, then pauses or stops", () => {
+    const declarations: readonly (readonly string[])[] = [
+        ["/play festival name=clip hide=false"],
+        ["/video festival name=clip", "/show clip"],
+    ];
+    for (const declaration of declarations) {
+        it(`lands the rows the editor lands, after ${declaration[0].split(" ")[0]}`, () => {
+            commandI18nStore.setPreference(false);
+            const project = skeletonProject();
+            expect(project).not.toBeNull();
+            const data = withFestivalClip(project!.data);
+            const document = project!.document;
+            const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+            const lines = [...declaration, "/pause clip", "/resume clip", "/seek clip 2", "/stop clip"];
+
+            const compiled = compileBody(data, document, scene, lines);
+            expect(compiled.diagnostics).toEqual([]);
+            const rows = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+            expect(rows.length).toBe(lines.length);
+
+            const typed = typedInOrder(data, document, scene, lines, rows.map(row => row.id));
+            for (const [index, row] of rows.entries()) {
+                expect(sameRowContent(row, typed[index]), lines[index]).toBe(true);
+            }
+            // Spelled out, so a regression reads as what went wrong rather than as a payload diff.
+            for (const [index, operation] of ["pause", "resume", "seek", "stop"].entries()) {
+                const row = rows[declaration.length + index];
+                expect(row.kind === "action" && row.payload, lines[declaration.length + index]).toMatchObject({
+                    action: "video",
+                    operation,
+                    objectName: "clip",
+                    target: { sourceBlockId: rows[0].id },
+                });
+            }
+        });
+    }
+
+    it("still takes a name no row declares for a sound", () => {
+        // The fallback the first reading leans on is right where nothing answers the name at all: the
+        // sound may be started in another scene. Leaving the first reading's guesses out of what the
+        // second one resolves against must not turn that into an error.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const compiled = compileBody(data, document, scene, ["/pause rain", "/stop rain"]);
+        expect(compiled.diagnostics).toEqual([]);
+        for (const id of compiled.scene!.rootBlockIds) {
+            const row = compiled.scene!.blocks[id];
+            expect(row.kind === "action" && row.payload).toMatchObject({ action: "audio", objectName: "rain" });
+        }
     });
 });
 
