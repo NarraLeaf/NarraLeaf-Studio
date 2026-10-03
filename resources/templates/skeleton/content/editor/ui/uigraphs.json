@@ -617,9 +617,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the log\"): Clear Page returns to the story, and with no game running Go back returns to the page beneath.",
-                      "width": 760,
-                      "height": 110
+                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the log\"): Clear Page returns to the story, and with no game running Go back returns to the page beneath. The same graph as the Back button component the other rails place, kept as a copy: here Back wears the rail's lit look (brighter, bolder text, with the bar beside it), and every instance of a component draws its definition's look.",
+                      "width": 1100,
+                      "height": 160
                     },
                     "meta": {
                       "editorLayout": {
@@ -635,7 +635,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": -450
+                        "y": -400
                       }
                     }
                   },
@@ -646,7 +646,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": -450
+                        "y": -400
                       }
                     }
                   },
@@ -657,7 +657,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 580,
-                        "y": -450
+                        "y": -400
                       }
                     }
                   }
@@ -2657,111 +2657,6 @@
         "graphs": {
           "eventIds": [],
           "events": {},
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "0b660bf4-137f-4058-b2c7-51688b53a694": {
-        "id": "0b660bf4-137f-4058-b2c7-51688b53a694",
-        "name": "Back",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
-          "elementId": "698c5179-f91a-4c4a-9802-15bdf43fff72"
-        },
-        "graphs": {
-          "eventIds": [
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5"
-          ],
-          "events": {
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5": {
-              "id": "992d40a9-6e75-4ec8-8af1-b273b080a1c5",
-              "name": "Go back to where the page was opened from",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the page on Escape\"): over a running game Clear Page returns to the story; from the title page Go back returns to the title.",
-                      "width": 1100,
-                      "height": 110
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": 150
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": 150
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
           "functionIds": [],
           "functions": {}
         },
@@ -7361,111 +7256,6 @@
         },
         "bindings": {}
       },
-      "e7ad7d69-c417-4760-8756-886cb4403bb3": {
-        "id": "e7ad7d69-c417-4760-8756-886cb4403bb3",
-        "name": "Back",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "b919294e-a700-4365-8cac-c98292a63ec4"
-        },
-        "graphs": {
-          "eventIds": [
-            "60387d2d-372b-4364-b5e0-300fea176484"
-          ],
-          "events": {
-            "60387d2d-372b-4364-b5e0-300fea176484": {
-              "id": "60387d2d-372b-4364-b5e0-300fea176484",
-              "name": "Go back to where the page was opened from",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the page on Escape\"): over a running game Clear Page returns to the story; outside one Go back returns to the page this one was opened from.",
-                      "width": 828,
-                      "height": 130
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 10300
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 10470
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": 10470
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": 10470
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "c974b812-5b30-40bc-a454-b924a34cd425": {
         "id": "c974b812-5b30-40bc-a454-b924a34cd425",
         "name": "Screen title",
@@ -9559,111 +9349,6 @@
                     },
                     "to": {
                       "nodeId": "open",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "fc3591e0-5a32-4cbb-b72c-966b84698190": {
-        "id": "fc3591e0-5a32-4cbb-b72c-966b84698190",
-        "name": "Back",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "6a041a92-623c-4d48-bb46-ee0d0e2c2a68"
-        },
-        "graphs": {
-          "eventIds": [
-            "786b65bb-9313-42ff-a0a1-03bcd4965bc8"
-          ],
-          "events": {
-            "786b65bb-9313-42ff-a0a1-03bcd4965bc8": {
-              "id": "786b65bb-9313-42ff-a0a1-03bcd4965bc8",
-              "name": "Go back to where the page was opened from",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the page on Escape\"): over a running game Clear Page returns to the story; outside one Go back returns to the page this one was opened from.",
-                      "width": 828,
-                      "height": 130
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 10300
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 10470
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": 10470
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": 10470
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
                       "port": "in"
                     }
                   }
@@ -12401,7 +12086,8 @@
         },
         "graphs": {
           "eventIds": [
-            "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19"
+            "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19",
+            "746a2fee-bbcb-4b65-ae37-54419d95df8e"
           ],
           "events": {
             "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19": {
@@ -12638,6 +12324,467 @@
                   "graphKind": "event"
                 }
               }
+            },
+            "746a2fee-bbcb-4b65-ae37-54419d95df8e": {
+              "id": "746a2fee-bbcb-4b65-ae37-54419d95df8e",
+              "name": "Open on the CG grid",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Runs each time the page opens. Shows CG grid, hides the other three lists and lights the CG button (Selected variant, Default on the other three), so the page always opens on the CG pictures. The four buttons switch lists the same way when pressed. To open on another list instead, show that list and light its button here, and hide CG grid and dim CG.",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -6000,
+                        "y": -3000
+                      }
+                    }
+                  },
+                  "frame.list": {
+                    "id": "frame.list",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Show CG grid, hide the others",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 2116,
+                      "height": 536
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -5740,
+                        "y": -2810
+                      }
+                    }
+                  },
+                  "frame.light": {
+                    "id": "frame.light",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Light CG, dim the others",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 2116,
+                      "height": 556
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -3564,
+                        "y": -2830
+                      }
+                    }
+                  },
+                  "opened": {
+                    "id": "opened",
+                    "type": "blueprint.event.head.surfaceInit",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": -6000,
+                        "y": -2651
+                      }
+                    }
+                  },
+                  "showEl": {
+                    "id": "showEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000310",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -5712,
+                        "y": -2513
+                      }
+                    }
+                  },
+                  "show": {
+                    "id": "show",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -5442,
+                        "y": -2762
+                      }
+                    }
+                  },
+                  "hide1El": {
+                    "id": "hide1El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000320",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -5182,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "hide1": {
+                    "id": "hide1",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -4912,
+                        "y": -2762
+                      }
+                    }
+                  },
+                  "hide2El": {
+                    "id": "hide2El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000330",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -4652,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "hide2": {
+                    "id": "hide2",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -4382,
+                        "y": -2762
+                      }
+                    }
+                  },
+                  "hide3El": {
+                    "id": "hide3El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000340",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -4122,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "hide3": {
+                    "id": "hide3",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -3852,
+                        "y": -2762
+                      }
+                    }
+                  },
+                  "lightEl": {
+                    "id": "lightEl",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000301",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -3536,
+                        "y": -2513
+                      }
+                    }
+                  },
+                  "light": {
+                    "id": "light",
+                    "type": "blueprint.element.displayable.setVariant",
+                    "params": {
+                      "variantId": "selected"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -3266,
+                        "y": -2782
+                      }
+                    }
+                  },
+                  "dim1El": {
+                    "id": "dim1El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000302",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -3006,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "dim1": {
+                    "id": "dim1",
+                    "type": "blueprint.element.displayable.setVariant",
+                    "params": {
+                      "variantId": "default"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -2736,
+                        "y": -2782
+                      }
+                    }
+                  },
+                  "dim2El": {
+                    "id": "dim2El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000303",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -2476,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "dim2": {
+                    "id": "dim2",
+                    "type": "blueprint.element.displayable.setVariant",
+                    "params": {
+                      "variantId": "default"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -2206,
+                        "y": -2782
+                      }
+                    }
+                  },
+                  "dim3El": {
+                    "id": "dim3El",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000304",
+                      "elementType": "nl.button"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -1946,
+                        "y": -2561
+                      }
+                    }
+                  },
+                  "dim3": {
+                    "id": "dim3",
+                    "type": "blueprint.element.displayable.setVariant",
+                    "params": {
+                      "variantId": "default"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -1676,
+                        "y": -2782
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "opened",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "showEl",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "show",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "hide1",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide1El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hide1",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide1",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "hide2",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide2El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hide2",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide2",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "hide3",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide3El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "hide3",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "hide3",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "light",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "lightEl",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "light",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "light",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "dim1",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "dim1El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "dim1",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "dim1",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "dim2",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "dim2El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "dim2",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "dim2",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "dim3",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "dim3El",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "dim3",
+                      "port": "element"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
             }
           },
           "functionIds": [],
@@ -12703,111 +12850,6 @@
         "graphs": {
           "eventIds": [],
           "events": {},
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "cdf3782c-fa4f-4de8-b95d-a1f1326d92e9": {
-        "id": "cdf3782c-fa4f-4de8-b95d-a1f1326d92e9",
-        "name": "Back",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "9a7c2f1b-f36b-4c27-a813-681b14f9081a"
-        },
-        "graphs": {
-          "eventIds": [
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5"
-          ],
-          "events": {
-            "992d40a9-6e75-4ec8-8af1-b273b080a1c5": {
-              "id": "992d40a9-6e75-4ec8-8af1-b273b080a1c5",
-              "name": "Go back to the title page",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "Does what Escape does on this page when no picture is open (the page blueprint, layer \"Close the picture or the page on Escape\"). This page is opened only from the title page, so Go back returns there.",
-                      "width": 1100,
-                      "height": 110
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": -6000,
-                        "y": -3000
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": -6000,
-                        "y": -2850
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": -5710,
-                        "y": -2850
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": -5420,
-                        "y": -2850
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
           "functionIds": [],
           "functions": {}
         },
@@ -23696,6 +23738,111 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "a7f9fdd6-6002-40d8-9751-ca908ecced39": {
+        "id": "a7f9fdd6-6002-40d8-9751-ca908ecced39",
+        "name": "Back button",
+        "owner": {
+          "kind": "componentWidgetMain",
+          "componentId": "6dea9a83-5008-4547-a0ad-dc4fea97cedb",
+          "elementId": "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be"
+        },
+        "graphs": {
+          "eventIds": [
+            "9a23343b-2c02-4804-a8a6-6c377b8e6b64"
+          ],
+          "events": {
+            "9a23343b-2c02-4804-a8a6-6c377b8e6b64": {
+              "id": "9a23343b-2c02-4804-a8a6-6c377b8e6b64",
+              "name": "Leave the page",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Leaves the page the way Escape does on it. Over a running game, Clear Page closes every page opened over the story, and the player is back in it. With no game running, Clear Page does nothing and Go back returns to the page this one was opened from. The Save, Load, Config and Extra pages all place this one button, so what Back does is changed here, once.",
+                      "width": 1100,
+                      "height": 130
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "pressed": {
+                    "id": "pressed",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "clear": {
+                    "id": "clear",
+                    "type": "blueprint.page.clear",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 290,
+                        "y": 170
+                      }
+                    }
+                  },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.page.back",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 580,
+                        "y": 170
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "pressed",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "clear",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "clear",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "back",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -23761,9 +23908,6 @@
       },
       "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:3fe6d95c-c054-4aee-821d-01a978f62dbf": {
         "blueprintId": "831be49c-0c5a-4f84-bee4-62c941380b22"
-      },
-      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:698c5179-f91a-4c4a-9802-15bdf43fff72": {
-        "blueprintId": "0b660bf4-137f-4058-b2c7-51688b53a694"
       },
       "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:a732f704-cd5a-4b98-9120-5638e83ffccb": {
         "blueprintId": "7e327bfb-8375-46d4-b0a7-7b95e9c350f7"
@@ -23915,9 +24059,6 @@
       "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:2bd4d5de-6e58-4438-92f1-13db78304813": {
         "blueprintId": "8f2d74f7-9902-431b-9077-325dc55880f8"
       },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:b919294e-a700-4365-8cac-c98292a63ec4": {
-        "blueprintId": "e7ad7d69-c417-4760-8756-886cb4403bb3"
-      },
       "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:eb7c1fef-8eca-41d7-8098-fc7c302f64f8": {
         "blueprintId": "c974b812-5b30-40bc-a454-b924a34cd425"
       },
@@ -24004,9 +24145,6 @@
       },
       "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:c51ff06a-1d55-4698-98f5-539825b59a87": {
         "blueprintId": "5f1141e2-fd71-47f2-89ff-ef7353076b2c"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:6a041a92-623c-4d48-bb46-ee0d0e2c2a68": {
-        "blueprintId": "fc3591e0-5a32-4cbb-b72c-966b84698190"
       },
       "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:216dc3b7-ec84-4fb0-9135-0babad12b3ef": {
         "blueprintId": "ade5e943-95e6-456b-ad4c-6d6532a09abd"
@@ -24125,9 +24263,6 @@
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:f9e9ef68-527d-457c-8801-e0f566349aa1": {
         "blueprintId": "4d20fe47-cf58-4327-92d6-e8731093fe6e"
       },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:9a7c2f1b-f36b-4c27-a813-681b14f9081a": {
-        "blueprintId": "cdf3782c-fa4f-4de8-b95d-a1f1326d92e9"
-      },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:59da63be-cfb9-40b4-a216-d6a4caf369e9": {
         "blueprintId": "060c3a4e-a57b-40dc-b0da-ba17a6552e7e"
       },
@@ -24226,12 +24361,15 @@
       },
       "surfaceMain:5107c0a1-0000-4000-8000-000000000500": {
         "blueprintId": "5107c0a1-0000-4000-8000-000000000510"
+      },
+      "componentWidgetMain:6dea9a83-5008-4547-a0ad-dc4fea97cedb:f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be": {
+        "blueprintId": "a7f9fdd6-6002-40d8-9751-ca908ecced39"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T20:51:47.910Z"
+    "updatedAt": "2026-10-03T21:17:40.079Z"
   }
 }

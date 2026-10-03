@@ -298,6 +298,66 @@ describe("Studio's preload scheduler", () => {
 
             expect(said).toEqual([`An image row 3 of "The ending" asks for was shown without being warmed.`]);
         });
+
+        /** One clip, asked for by an early row of the corridor and by row 4 of the club room. */
+        function sharedClip(extra?: { scene?: object; sceneId?: string }): CompiledNlrStory {
+            return {
+                ...compiledWith({
+                    scenes: { corridor: sceneOne, club: sceneTwo },
+                    warmOrder: {
+                        corridor: order({
+                            sceneName: "Corridor",
+                            blockOrder: ["corridor-play"],
+                            byBlock: { "corridor-play": [{ type: "video", url: "clip.mp4" }] },
+                            rows: { "corridor-play": 5 },
+                        }),
+                        club: order({
+                            sceneName: "Club room",
+                            blockOrder: ["club-play"],
+                            byBlock: { "club-play": [{ type: "video", url: "clip.mp4" }] },
+                            rows: { "club-play": 4 },
+                        }),
+                    },
+                    actions: [
+                        { staticId: "corridor-play-action", blockId: "corridor-play" },
+                        { staticId: "club-play-action", blockId: "club-play" },
+                    ],
+                }),
+                ...extra,
+            } as CompiledNlrStory;
+        }
+
+        it("names the row the play head is on, when another scene asked for the same clip first", () => {
+            // A clip reports itself from inside the action that plays it, which the engine announced
+            // a moment earlier. The scene of the latest plan trails a jump by a render, so it is not
+            // the thing to ask.
+            const said: string[] = [];
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(sharedClip());
+            scheduler.useMissingReport(message => said.push(message));
+
+            scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null });
+            scheduler.plan({ kind: "advance", actionId: "club-play-action", scene: sceneOne as never, story: null });
+            scheduler.onMissing!({ type: "video", src: "clip.mp4" });
+
+            expect(said).toEqual([`A clip row 4 of "Club room" asks for was played without being buffered.`]);
+        });
+
+        it("names the scene a row-precise launch stands for, not the first scene that used the clip", () => {
+            // The launch enters through a synthetic scene no warm order describes. Every row it plays
+            // belongs to the scene it was launched in, and that is the scene to name - even before
+            // the play head has said which row.
+            const launchScene = {};
+            const said: string[] = [];
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(sharedClip({ scene: launchScene, sceneId: "club" }));
+            scheduler.useMissingReport(message => said.push(message));
+
+            scheduler.plan({ kind: "scene", scene: launchScene as never, story: null });
+            scheduler.onMissing!({ type: "video", src: "clip.mp4" });
+
+            expect(said).toEqual([`A clip row 4 of "Club room" asks for was played without being buffered.`]);
+        });
     });
 
     describe("what the stage mounts when a scene starts", () => {
