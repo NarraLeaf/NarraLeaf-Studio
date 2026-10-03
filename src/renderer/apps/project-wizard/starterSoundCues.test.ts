@@ -240,13 +240,14 @@ function assertHoverSound(element: Element): void {
 }
 
 /**
- * The rail entries each in-game page authors for itself, and the one the Extra page carries.
+ * The rail entries each in-game page authors for itself.
  *
- * Title is not among them: it is the one entry that is the same on every rail - never the page you
- * are standing on, so never wearing the active look - and the four pages place one component
- * instead of holding four copies of it. Its sounds are asserted once, below.
+ * Title and Back are not among them: each is the same on every rail that places it, so the pages
+ * place one component instead of holding copies of it, and its sounds are asserted once, below. The
+ * Log page's Back is the exception - it wears the rail's lit look there, which an instance cannot -
+ * and is listed on its own.
  */
-const RAIL_ENTRIES = ["Save", "Load", "Config", "Back"];
+const RAIL_ENTRIES = ["Save", "Load", "Config"];
 
 /**
  * The entries a page's rail can press: every one but the entry for the page itself, which is a
@@ -280,18 +281,17 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         clip: "ui-confirm",
     })),
     // The Config page's other rail entries are in the block above, among its controls.
-    { page: "Config", button: "Back", clip: "ui-back" },
     ...["Log", "Save", "Load"].flatMap(page =>
-        pressableRailEntries(page).map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
+        pressableRailEntries(page).map(button => ({ page, button, clip: "ui-confirm" })),
     ),
-    { page: "Extra", button: "Back", clip: "ui-back" },
+    { page: "Log", button: "Back", clip: "ui-back" },
 ];
 
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({ page: "Title", button })),
     ...["Config", "Log", "Save", "Load"].flatMap(page => pressableRailEntries(page).map(button => ({ page, button }))),
-    { page: "Extra", button: "Back" },
+    { page: "Log", button: "Back" },
     // The segment rail is a menu, so it answers the pointer the way the nav rails do.
     ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
 ];
@@ -314,6 +314,9 @@ const CG_GRID = "5107c0a1-0000-4000-8000-000000000310";
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
 
+/** The button the Save, Load, Config and Extra rails all place to leave the page. */
+const BACK_BUTTON = "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be";
+
 describe("the sounds the starter template makes", () => {
     it("declares the cues its gated sounds call once, on the track the player can turn down", () => {
         // Two left: what a gated sound plays is still one fact, named in one place. The hover cue
@@ -331,10 +334,10 @@ describe("the sounds the starter template makes", () => {
         // is what says nobody added one somewhere outside them.
         const clicks = ALL_ELEMENTS.filter(element => soundOf(element, "click") !== null);
         const hovers = ALL_ELEMENTS.filter(element => soundOf(element, "hover") !== null);
-        // The buttons each page authors, the Title button and the save card's hit area, and the
-        // rows of the two lists whose every press is a pick.
-        expect(clicks).toHaveLength(CLICKS.length + 1 + 1 + ROW_CLICKS.length);
-        expect(hovers).toHaveLength(HOVERS.length + 1);
+        // The buttons each page authors, the Title and Back buttons and the save card's hit area,
+        // and the rows of the two lists whose every press is a pick.
+        expect(clicks).toHaveLength(CLICKS.length + 2 + 1 + ROW_CLICKS.length);
+        expect(hovers).toHaveLength(HOVERS.length + 2);
 
         // The music and voice rows are deliberately not among them: the sound such a row makes is
         // the clip it plays, and two sounds for one press is one too many. Nor is a press inside
@@ -375,6 +378,14 @@ describe("the sounds the starter template makes", () => {
         // rail cannot have a way back to the title that answers and one that does not.
         const button = elementById(TITLE_BUTTON);
         assertClickSound(button, "ui-confirm");
+        assertHoverSound(button);
+    });
+
+    it("the back button answers wherever a rail places it", () => {
+        // One button, placed on the Save, Load, Config and Extra rails, with the clip that means
+        // undo. The Log page's own Back is among the cases above.
+        const button = elementById(BACK_BUTTON);
+        assertClickSound(button, "ui-back");
         assertHoverSound(button);
     });
 
