@@ -1,6 +1,7 @@
 import path from "path";
-import { build, Platform, Arch, type Configuration } from "electron-builder";
+import { build, Platform, Arch, type AfterPackContext, type Configuration } from "electron-builder";
 import { perTargetFileSets } from "./perTargetPayload";
+import { installLinuxLauncher, LINUX_PROGRAM_SUFFIX } from "./linuxLauncher";
 import {
     gameBuildArtifactNamePattern,
     type GameBuildArch,
@@ -23,7 +24,7 @@ import {
 import { signArtifactsWithGpg } from "./gpgSign";
 import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
-import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
+import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache } from "./winCodeSignCache";
 
 /**
@@ -132,7 +133,12 @@ export function builderConfiguration(
         electronLanguages: config.electronLanguages,
         asar: true,
         asarUnpack: config.asarUnpack,
-        electronFuses: target.fuses,
+        // Every platform but Linux leaves the fuses to electron-builder. Linux flips them itself in
+        // `afterPack`, because by the time electron-builder would, the executable's name belongs to
+        // the launcher script; see linuxPackagingFor.
+        ...(target.platform === "linux"
+            ? linuxPackagingFor(target, log)
+            : { electronFuses: target.fuses }),
         artifactName: gameBuildArtifactNamePattern(config.artifactBaseName),
         /*
          * The game has no dependency tree. Everything it loads is staged into the app directory by
@@ -193,6 +199,79 @@ function macSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
     }
     const signing = target.signing;
     return macSigningConfiguration(signing && isMacSigning(signing) ? signing : null);
+}
+
+/**
+ * What a Linux target adds: the launcher in front of the Electron binary, and the AppImage runtime
+ * that starts on a stock desktop.
+ *
+ * The launcher (see linuxLauncher.ts) is installed in `afterPack`, the last point at which the app
+ * directory is complete and no artifact has been made from it yet, so the dir, the zip and the
+ * AppImage all carry it. That is also before electron-builder flips the fuses - and it flips them on
+ * whatever file has the executable's name, which by then would be the launcher script. So a Linux
+ * target hands electron-builder no fuses at all and flips the same set itself, through the packager's
+ * own `addElectronFuses`, on the binary while it still has that name; the launcher goes in after.
+ *
+ * The AppImage runtime is the static one. electron-builder's default (toolset 0.0.0) needs libfuse2,
+ * which Ubuntu 24.04 no longer installs, so the AppImage stops with "AppImages require FUSE to run"
+ * before anything of the game starts; the static runtime carries what it needs and mounts on a stock
+ * system. electron-builder still labels this toolset beta. Its desktop entry also stops passing the
+ * sandbox switch unconditionally, which the default one did - the launcher decides that now.
+ */
+function linuxPackagingFor(target: GameBuildWorkerTarget, log: GameBuildLogger): Partial<Configuration> {
+    return {
+        toolsets: { appimage: "1.0.3" },
+        afterPack: async context => {
+            const executableName = linuxExecutableName(context);
+            await context.packager.addElectronFuses(context, electronFuseConfig(target.fuses));
+            await installLinuxLauncher(context.appOutDir, executableName);
+            log("info", `${executableName} is a launcher script; the Electron binary is ${executableName}${LINUX_PROGRAM_SUFFIX}`);
+        },
+    };
+}
+
+/** The Linux executable's name, as electron-builder settled it. */
+function linuxExecutableName(context: AfterPackContext): string {
+    const name = (context.packager as { executableName?: unknown }).executableName;
+    if (typeof name !== "string" || name.length === 0) {
+        throw new Error("electron-builder did not say what the Linux executable is called");
+    }
+    return name;
+}
+
+/** The fuse settings in the form `addElectronFuses` takes. */
+type ElectronFuseConfig = Parameters<AfterPackContext["packager"]["addElectronFuses"]>[1];
+
+/**
+ * The fuse settings electron-builder would have flipped for `electronFuses: fuses`, in the form its
+ * `addElectronFuses` takes - written out because the conversion it uses is private to it.
+ *
+ * The keys are positions in the fuse wire Electron compiles into its binary, a format that only ever
+ * grows at the end, and `"1"` is that wire's version. Kept field for field with electron-builder's
+ * conversion (a fuse left undefined is left as the binary has it), which the test checks against
+ * electron-builder's own.
+ */
+export function electronFuseConfig(fuses: GameBuildWorkerFuses): ElectronFuseConfig {
+    const positions: Array<[number, boolean | undefined]> = [
+        [0, fuses.runAsNode],
+        [1, fuses.enableCookieEncryption],
+        [2, fuses.enableNodeOptionsEnvironmentVariable],
+        [3, fuses.enableNodeCliInspectArguments],
+        [4, fuses.enableEmbeddedAsarIntegrityValidation],
+        [5, fuses.onlyLoadAppFromAsar],
+        // 6 is the browser-process V8 snapshot, which the game's fuse set does not name.
+        [7, fuses.grantFileProtocolExtraPrivileges],
+    ];
+    const config: Record<string, unknown> = {
+        version: "1",
+        resetAdHocDarwinSignature: fuses.resetAdHocDarwinSignature,
+    };
+    for (const [position, value] of positions) {
+        if (value != null) {
+            config[position] = value;
+        }
+    }
+    return config as ElectronFuseConfig;
 }
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
