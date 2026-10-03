@@ -102,7 +102,14 @@ import {
     type BlueprintMinimapPreference,
     type BlueprintMinimapSize,
 } from "./blueprintMinimapPreference";
-import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
+import {
+    layoutBlueprintGraph,
+    type BlueprintLayoutCard,
+    type BlueprintLayoutComment,
+    type BlueprintLayoutDirection,
+    type BlueprintLayoutGraph,
+    type BlueprintLayoutPin,
+} from "./blueprintAutoLayout";
 import {
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
@@ -110,7 +117,6 @@ import {
     growBlueprintFrameToHold,
     growBlueprintGroupFramesForDrop,
     pickBlueprintGroupDropTarget,
-    refitBlueprintGroupFrames,
     type BlueprintFrameBox,
     type BlueprintFrameRect,
 } from "./blueprintGroupFrame";
@@ -205,6 +211,81 @@ function readBlueprintCanvasBoxes(nodes: readonly Node<BlueprintFlowNodeData>[])
         });
     }
     return out;
+}
+
+/**
+ * Where React Flow drew a node's handles, relative to the node. Spelled out rather than imported:
+ * only the id and the vertical extent are read, and those are stable across the 12.x line.
+ */
+type BlueprintHandleBounds =
+    | {
+          source?: readonly { id?: string | null; y: number; height: number }[] | null;
+          target?: readonly { id?: string | null; y: number; height: number }[] | null;
+      }
+    | undefined;
+
+/**
+ * The graph as "Format graph" sees it: every card as it measured, its pins where React Flow drew
+ * them, the comments, and the wires. Unmeasured nodes are left out for the same reason as above.
+ */
+function readBlueprintLayoutGraph(
+    nodes: readonly Node<BlueprintFlowNodeData>[],
+    handleBoundsOf: (id: string) => BlueprintHandleBounds,
+    ir: BlueprintGraphIr,
+): BlueprintLayoutGraph {
+    const cards: BlueprintLayoutCard[] = [];
+    const comments: BlueprintLayoutComment[] = [];
+    // What each frame holds is decided by the same test dragging a group uses, read before anything
+    // moves - afterwards the frames still stand where they were, answering about a graph that is gone.
+    const boxes = readBlueprintCanvasBoxes(nodes);
+    for (const node of nodes) {
+        const width = node.measured?.width ?? 0;
+        const height = node.measured?.height ?? 0;
+        if (node.id === BP_PLACEMENT_PREVIEW_ID || width <= 0 || height <= 0) {
+            continue;
+        }
+        if (node.data.catalog.role === "comment") {
+            const frame = node.data.params.frame === true;
+            const box = { x: node.position.x, y: node.position.y, width, height };
+            comments.push({
+                id: node.id,
+                ...box,
+                frame,
+                ...(frame ? { members: blueprintGroupMemberIds(node.id, box, boxes) } : {}),
+            });
+            continue;
+        }
+        const bounds = handleBoundsOf(node.id);
+        const pins: BlueprintLayoutPin[] = [];
+        const sides = [
+            ["out", bounds?.source ?? []],
+            ["in", bounds?.target ?? []],
+        ] as const;
+        for (const [side, handles] of sides) {
+            for (const handle of handles) {
+                if (!handle.id) {
+                    continue;
+                }
+                const def = node.data.catalog.pins.find(
+                    pin => pin.id === handle.id && pin.kind === (side === "out" ? "output" : "input"),
+                );
+                pins.push({
+                    id: handle.id,
+                    side,
+                    kind: def?.semantic === "exec" ? "exec" : "data",
+                    offset: handle.y + handle.height / 2,
+                });
+            }
+        }
+        cards.push({ id: node.id, x: node.position.x, y: node.position.y, width, height, pins });
+    }
+    const wires = (ir.edges ?? []).map(edge => ({
+        from: edge.from.nodeId,
+        fromPin: edge.from.port,
+        to: edge.to.nodeId,
+        toPin: edge.to.port,
+    }));
+    return { cards, wires, comments };
 }
 
 /**
@@ -511,7 +592,7 @@ function BlueprintFlowCanvasInner({
         const ctx = workspace?.context;
         return workspace?.isInitialized && ctx ? ctx.services.get<UIService>(Services.UI) : null;
     }, [workspace]);
-    const { getNodes, screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow();
+    const { getNodes, getInternalNode, screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow();
     const store = useStoreApi();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1498,51 +1579,34 @@ function BlueprintFlowCanvasInner({
      * Lay the whole graph out again: left to right along the way its wires run, or down the page
      * for an author who would rather read a long chain that way.
      *
-     * Group frames do not take part in the layout - they have no pins, so they would each be an
-     * island of one and end up stacked below the graph. They are re-fitted around wherever their
-     * members landed instead, which is what keeps a group a group. Plain comment notes are left
-     * exactly where the author put them: they annotate a region rather than enclose it, and
-     * resizing somebody's note to fit whatever now happens to sit under it would be worse than
-     * leaving it behind.
+     * The layout is handed every card as it measured, with its pins where React Flow drew them, so
+     * it can line execution pins up along a row and stack a card's feeders in the order of its
+     * inputs. Comments go too: a note is moved to sit above the piece of graph it was written over,
+     * and a frame is re-fitted around the cards it held, which is what keeps a group a group.
+     *
+     * One commit, so one undo puts every card back.
      */
     const formatGraph = useCallback((direction: BlueprintLayoutDirection) => {
         setFormatDirection(direction);
-        const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
-        const cards = boxes.filter(box => !box.isComment);
-        if (cards.length === 0) {
+        const snap = irRef.current;
+        const graph = readBlueprintLayoutGraph(
+            getNodes() as Node<BlueprintFlowNodeData>[],
+            id => getInternalNode(id)?.internals.handleBounds,
+            snap,
+        );
+        if (graph.cards.length === 0) {
             return;
         }
-        const frames = boxes.filter(box => box.isFrame);
-        // Read before anything moves: afterwards the frames still stand where they were, so the
-        // same containment test would be answering about a graph that no longer exists.
-        const membersByFrameId = new Map(
-            frames.map(frame => [frame.id, blueprintGroupMemberIds(frame.id, frame, boxes)] as const),
-        );
-
-        const snap = irRef.current;
-        const positions = layoutBlueprintGraph(
-            cards,
-            (snap.edges ?? []).map(edge => ({ from: edge.from.nodeId, to: edge.to.nodeId })),
-            { direction },
-        );
-        const moved = new Map(
-            cards
-                .filter(card => positions[card.id])
-                .map(card => [
-                    card.id,
-                    { ...positions[card.id]!, width: card.width, height: card.height },
-                ] as const),
-        );
-        const refitted = refitBlueprintGroupFrames(frames, membersByFrameId, moved);
+        const result = layoutBlueprintGraph(graph, { direction });
 
         const next = cloneBlueprintIr(snap);
-        for (const [id, rect] of moved) {
+        for (const [id, point] of Object.entries(result.positions)) {
             const node = next.nodes?.[id];
             if (node) {
-                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+                writeNodeEditorLayout(node, { x: point.x, y: point.y });
             }
         }
-        for (const [id, rect] of Object.entries(refitted)) {
+        for (const [id, rect] of Object.entries(result.frames)) {
             const node = next.nodes?.[id];
             if (node) {
                 node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
@@ -1550,7 +1614,7 @@ function BlueprintFlowCanvasInner({
             }
         }
         commitBlueprintIr(next);
-    }, [commitBlueprintIr, getNodes]);
+    }, [commitBlueprintIr, getInternalNode, getNodes]);
 
     /** Nothing to arrange on an empty graph, or on one that holds only comments. */
     const canFormat = useMemo(
