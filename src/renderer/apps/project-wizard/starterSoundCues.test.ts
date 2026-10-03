@@ -305,14 +305,6 @@ const ROW_CLICKS: readonly { page: string; list: string }[] = [
 /** The card the save and load pages both place; its Hit area is what answers a press. */
 const SAVE_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 
-/**
- * The scene card, which the component library still holds and no page places any more: the Scenes
- * page became the Extra screen's Recollection segment, whose rows come out of the gallery. It is
- * asserted here because its cue is still one of the cues the template declares, and because the
- * gate in front of it is the shape a row that may be locked has to keep.
- */
-const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
-
 /** The Extra screen's recollection grid, whose rows start the scene they point at. */
 const RECOLLECTION_GRID = "5107c0a1-0000-4000-8000-000000000320";
 
@@ -353,9 +345,9 @@ describe("the sounds the starter template makes", () => {
                 Object.values(event.graph.nodes).filter(node => isCueCall(node)),
             ),
         );
-        // The scene card, the recollection and CG rows, and the confirm dialog's two answers: the
-        // sounds that depend on something.
-        expect(cues).toHaveLength(5);
+        // The recollection and CG rows, and the confirm dialog's two answers: the sounds that depend
+        // on something.
+        expect(cues).toHaveLength(4);
     });
 
     it("plays every clip on a sound that names one the template ships", () => {
@@ -427,28 +419,14 @@ describe("the sounds the starter template makes", () => {
     });
 
     it("a recollection tile answers only when the row is unlocked", () => {
-        // The same shape as the scene card below, for the same reason: a locked row's press ends at
-        // the gate, and a sound in front of it would answer a press that does nothing.
+        // A locked row's press ends at the gate, and a sound in front of it would answer a press that
+        // does nothing.
         const graph = graphFor(RECOLLECTION_GRID, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const gate = next(graph, click.id, "then");
         expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
         assertCue(next(graph, gate.id, "true"), "ui-confirm");
         expect(subtree(RECOLLECTION_GRID).filter(element => soundOf(element, "click") !== null)).toEqual([]);
-    });
-
-    it("a scene card answers only when it has a scene to open", () => {
-        // One card, placed once per scene. Which scene it opens and what that scene is called are
-        // its params, so a page cannot have a card that answers and a card that does not.
-        const graph = graphFor(SCENE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-        // The cue sits past the visited gate rather than in front of it. A locked card's click
-        // ends at that gate, and a sound answering a press that does nothing is the one thing a UI
-        // sound must not teach.
-        const gate = next(graph, click.id, "then");
-        expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
-        assertCue(next(graph, gate.id, "true"), "ui-confirm");
-        expect(soundOf(elementById(SCENE_CARD), "click")).toBeNull();
     });
 
     it("the confirm dialog answers in two voices, one per kind of answer", () => {
