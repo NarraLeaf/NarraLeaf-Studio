@@ -29,6 +29,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
+    BLUEPRINT_NODE_TYPE_PAGE_REPLACE,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
 import { translate } from "@/lib/i18n";
@@ -108,6 +109,62 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         execute: ctx => goToSurface(ctx, readPin(ctx, "surfaceId")),
+    },
+    {
+        // Go Page for a page the player is not meant to come back to: a splash, a disclaimer, a
+        // loading screen. Go Page keeps the page it leaves underneath the new one, and for the page
+        // a game starts on that is the bottom of the stack - so the splash would be where `Go Page
+        // (None)` and Go back land, and every "back to title" would play it again. This one opens
+        // the page the same way and then drops the page it replaced, so the new page takes its place.
+        //
+        // The same two pins as Go Page, and the same picker. A page is required: "replace this page
+        // with nothing" has no meaning, where Go Page's None does.
+        type: BLUEPRINT_NODE_TYPE_PAGE_REPLACE,
+        displayName: "Replace Page",
+        description: "blueprint.nodeDescription.replacePage",
+        category: "App",
+        keywords: ["page", "replace", "switch", "navigate", "open", "surface", "splash", "history"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            {
+                id: "surfaceId",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Page",
+                optional: true,
+            },
+            {
+                id: "props",
+                kind: "input",
+                semantic: "data",
+                valueType: "json",
+                label: "Page props",
+                optional: true,
+            },
+        ],
+        inspectorParams: [
+            {
+                key: "surfaceId",
+                label: "Page",
+                kind: "select",
+                dynamicOptionsSource: "surfaces",
+            },
+        ],
+        async execute(ctx) {
+            const targetSurfaceId = String(readPin(ctx, "surfaceId") ?? "").trim();
+            if (!targetSurfaceId) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickPage", { node: translate("blueprint.node.replacePage") }),
+                    ctx.node.id,
+                );
+            }
+            await requireHostApi(ctx).navigation.replaceSurface(targetSurfaceId, readPin(ctx, "props"));
+            return { nextPort: undefined };
+        },
     },
     {
         // The way back out of a page. Pages are a stack, so the alternative an author reaches for -

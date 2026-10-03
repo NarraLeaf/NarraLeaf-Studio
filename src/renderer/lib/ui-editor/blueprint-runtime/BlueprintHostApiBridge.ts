@@ -415,6 +415,8 @@ export type BlueprintLayerShowOptions = {
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
+        /** `openSurface`, after which the page that was on top is no longer in the stack. */
+        replaceSurface: (surfaceId: string, props?: unknown) => Promise<void>;
         getPageProps: () => Record<string, unknown>;
         pageBack: () => Promise<void>;
         clearPages: () => Promise<void>;
@@ -1080,6 +1082,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onLocaleChanged?: (code: string) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
+    /**
+     * Open a page in place of the one on top of the stack. Hosts without a page stack leave it unset,
+     * and the page is simply opened - there is no history for the replaced page to stay in.
+     */
+    onReplaceSurface?: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onPageBack: () => void | Promise<void>;
     /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
     onClearPages?: () => void | Promise<void>;
@@ -2701,6 +2708,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onLocaleChanged,
         emit,
         onOpenSurface,
+        onReplaceSurface,
         onPageBack,
         onClearPages,
         onClearGameOverlay,
@@ -2921,6 +2929,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 }
                 await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
                 emitHostCall(emit, cap, "return");
+            },
+            replaceSurface: async (surfaceId: string, props?: unknown) => {
+                const cap = "navigation.replaceSurface";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const targetSurfaceId = String(surfaceId ?? "").trim();
+                    // Unlike Go Page, no page is not a meaning of its own here: replacing the page on
+                    // top with nothing would leave the player looking at whatever was under it, which
+                    // is Go back. Refused the way an unknown page is, on the node that asked.
+                    if (!targetSurfaceId || !document.surfaces.some(s => s.id === targetSurfaceId)) {
+                        throw new Error(translate("blueprint.runtimeError.pageNotFound"));
+                    }
+                    await (onReplaceSurface ?? onOpenSurface)(targetSurfaceId, normalizeJsonRecord(props));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
             },
             getPageProps: () => {
                 const cap = "navigation.getPageProps";

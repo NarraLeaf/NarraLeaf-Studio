@@ -535,6 +535,10 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "navigation.openSurface" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.openSurface" });
                 },
+                replaceSurface: async (_surfaceId: string, _props?: unknown) => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.replaceSurface" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.replaceSurface" });
+                },
                 getPageProps: () => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.getPageProps" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.getPageProps" });

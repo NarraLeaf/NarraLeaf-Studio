@@ -310,6 +310,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Get Visible": "blueprint.node.getVisible",
     "Get Wrap Mode": "blueprint.node.getWrapMode",
     "Go Page": "blueprint.node.goPage",
+    "Replace Page": "blueprint.node.replacePage",
     "Go back": "blueprint.node.goBack",
     "Show Layer": "blueprint.node.showLayer",
     "Hide Layer": "blueprint.node.hideLayer",

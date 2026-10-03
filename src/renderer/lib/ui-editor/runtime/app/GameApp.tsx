@@ -1471,6 +1471,27 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
+     * `Replace Page`: open a page, then take the page it covered out of the stack.
+     *
+     * The page replaced is the one on top when the call arrives, which is the page whose graph is
+     * asking - a splash handing over to the title, say. It is dropped only once the new page is up:
+     * dropping it first would leave the transition nothing to leave from, and the player would see
+     * the new page cut in rather than arrive. While the game holds the screen the entry on top is a
+     * page the game hid when it started, not one the player is looking at, so there is nothing to
+     * replace and this is exactly `openSurface` - dropping that entry would leave `Clear Page` with
+     * no page to come back to when the game ends.
+     */
+    const replaceSurface = useCallback(async (surfaceId: string, props?: PageProps): Promise<void> => {
+        const currentStack = navigation.getState().navStack;
+        const replaced = currentStack[currentStack.length - 1] ?? null;
+        const replaceable = replaced !== null && !isGameHiddenEntry(replaced);
+        await openSurface(surfaceId, props);
+        if (replaceable) {
+            navigation.forget(replaced.key);
+        }
+    }, [isGameHiddenEntry, navigation, openSurface]);
+
+    /**
      * Close down to `targetIndex` in one transition. `goBack` is this with the default index;
      * `clearPages` and `clearGameOverlay` name a lower one.
      */
@@ -3966,6 +3987,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return {
             onOpenSurface: openSurface,
+            onReplaceSurface: replaceSurface,
             onPageBack: goBack,
             onClearPages: clearPages,
             onClearGameOverlay: clearGameOverlay,
@@ -4117,6 +4139,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nextInGame,
         openSurface,
         quitGame,
+        replaceSurface,
         canRedoHistoryInGame,
         canUndoHistoryInGame,
         redoHistoryInGame,

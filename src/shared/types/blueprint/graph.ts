@@ -978,6 +978,15 @@ export function readBlueprintFnSignatureSnapshot(
 }
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 /**
+ * Open a page in place of the one on top of the stack - Go Page for a page nobody comes back to.
+ *
+ * A splash or a disclaimer that hands the game to its title page cannot use Go Page: the page stack
+ * would keep it underneath, and `Go Page (None)`, which empties the stack down to its root, would then
+ * land every "back to title" on the splash again. This node opens the page the same way and then
+ * drops the page it replaced, so the page it opens takes that page's place in the stack.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_REPLACE = "blueprint.page.replace" as const;
+/**
  * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
  *
  * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
