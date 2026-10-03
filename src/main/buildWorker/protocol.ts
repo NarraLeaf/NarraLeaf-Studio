@@ -1,4 +1,5 @@
 import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type {
     GameBuildArch,
@@ -403,6 +404,13 @@ export type GameBuildWorkerConfig = {
      * variable a Studio user had no way to set.
      */
     electronBuilderBinariesMirror?: string;
+    /**
+     * Studio's cache root, for the toolchains Studio's own packager fetches without electron-builder
+     * (the AppImage runtime on a Windows host). The same value the compile worker gets.
+     */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, applied by those same fetches; see downloadRewrites.ts. */
+    downloadRewrites?: DownloadRewriteRule[];
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
     /**

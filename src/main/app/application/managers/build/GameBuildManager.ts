@@ -2278,6 +2278,8 @@ export class GameBuildManager {
             ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
+            hostCacheRoot: this.app.getCacheRootDir(),
+            downloadRewrites: currentDownloadRewrites(),
             asarUnpack: buildAsarUnpackPatterns(protectAssets),
             electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
