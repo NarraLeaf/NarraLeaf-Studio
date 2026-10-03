@@ -1455,6 +1455,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return lifted;
     }
 
+    /**
+     * Rename one layer.
+     *
+     * A linked component instance renames like any other layer: its name is copied from the
+     * definition once, when the instance is placed, and is the instance's own from then on - it is
+     * how the outline tells "save slot 1" from "save slot 2". Props and shape are what the definition
+     * owns, and their own setters still refuse them on an instance.
+     */
     public renameElement(elementId: string, name: string): void {
         const trimmed = name.trim();
         if (!trimmed) {
@@ -1463,7 +1471,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const el = document.elements[elementId];
-            if (!el || el.type === "nl.root" || isLinkedUIComponentElement(el)) {
+            if (!el || el.type === "nl.root") {
                 return;
             }
             el.name = trimmed;

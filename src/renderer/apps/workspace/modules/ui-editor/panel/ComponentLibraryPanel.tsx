@@ -16,6 +16,7 @@ import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 import { onComponentLibraryReveal } from "./componentLibraryReveal";
 import { linkedComponentIdsForSelection, scrollRowIntoListView } from "./selectionHighlights";
 import { useSelectionHighlight } from "./useSelectionHighlight";
+import { useRailSectionOpen } from "./useRailSectionOpen";
 
 /** How long a card asked for by name stays marked, long enough to be found by eye. */
 const REVEAL_FLASH_MS = 1600;
@@ -71,7 +72,7 @@ export function ComponentLibraryPanel({
     // only creating, renaming, duplicating and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const [open, setOpen] = useState(true);
+    const [open, setOpen] = useRailSectionOpen("componentLibrary");
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);
     const [query, setQuery] = useState("");
     const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());

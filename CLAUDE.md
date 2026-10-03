@@ -88,6 +88,22 @@ about whether the scene plays right - that is Dev Mode's answer, and it has not 
 `debug.js` pulls Studio's own log panel and the DevTools console of any window over HTTP, with no
 CDP session and no screenshots. `cdp.js` drives the app when something really does need clicking.
 
+**Label every window you launch.** The person at this machine works in Studio and in games
+alongside whatever an agent started, and the windows are indistinguishable - one click or keystroke
+in the wrong one ruins either their work or your run. So every Studio, Dev Mode, preview, test or
+packaged game a tool starts carries the task's name in front of its title, in the language the
+person uses (`[游戏窗口抖动修复] Workspace - NarraLeaf Studio`):
+
+```sh
+node project/app/dev-electron.js --cdp --cdp-port=9377 --window-tag="游戏窗口抖动修复"
+NLS_WINDOW_TAG="游戏窗口抖动修复" "<a packaged Studio or game>.exe"         # anything else you launch
+```
+
+`--window-tag` is `dev-electron.js` setting `NLS_WINDOW_TAG`, and every process the app starts
+inherits it, so a game launched from a tagged Studio is tagged too. `debug.js health` prints the
+tag back. It is fixed for the life of the process - the windows of a Studio you did not start are
+not yours to label, nor to drive.
+
 ## Verifying a change
 
 ```sh
