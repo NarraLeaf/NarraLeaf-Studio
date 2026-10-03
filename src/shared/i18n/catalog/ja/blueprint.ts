@@ -1431,7 +1431,7 @@ export const blueprint = {
         setVisible: "表示を設定",
         showDialog: "ダイアログを表示",
         skip: "スキップ",
-        skipDelay: "スキップ開始までの時間",
+        skipDelay: "待ちを打ち切る",
         split: "分割",
         startGame: "ゲームを始める",
         startsWith: "この文字で始まる",
