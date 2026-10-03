@@ -146,7 +146,9 @@ describe.each(COMPRESSIONS)("a squashfs image written with %s", compression => {
         expect(found.get("usr/share/icons")).toMatchObject({ kind: "directory", mode: 0o755 });
         expect(found.get("")).toMatchObject({ kind: "directory", mode: 0o755, nlink: 2 + 3 });
         expect(found.get("names/ünïcödé ✓.txt")!.data!.toString()).toBe("u");
-    });
+    // Compresses a megabyte several ways and reads it back: about a second alone, and several times
+    // that inside a full run on a loaded machine, past the default five-second limit.
+    }, 30_000);
 
     it("records the format, compression and table layout electron-builder's mksquashfs call produces", async () => {
         const image = await imageOf(entries(), { compression });
