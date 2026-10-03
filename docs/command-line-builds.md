@@ -30,7 +30,7 @@ running the command twice. One variant, one platform, one format, one exit code.
 | `--build-variant` | A build variant's name | `main`, the release variant |
 | `--build-target` | `windows`, `macos`, `linux`, `web`, `android`, `ios` | the host's own platform |
 | `--build-format` | One format of that platform | the platform's first (`zip` for the desktops and the web, `apk`, `ipa`) |
-| `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `x64` otherwise |
+| `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `universal` for macOS built elsewhere, `x64` otherwise |
 | `--build-output` | Where the artifacts land; relative to the working directory | `<project>/dist` |
 | `--build-report` | Where to write the JSON report | no report file |
 | `--build-allow-unsigned` | — | the run stops rather than shipping unsigned |

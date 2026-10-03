@@ -152,8 +152,9 @@ export function describeMacSigning(signing: GameBuildWorkerMacSigning): string {
  *
  * One set for the whole run, like `signtoolPathForTargets`: the environment is
  * process-wide, so per-target values could not be honoured even if they differed.
- * Only one macOS target can exist in a build anyway - `hostCanBuildTarget` keeps
- * macOS to macOS hosts and each platform appears once.
+ * Only one macOS target can exist in a build anyway, since each platform appears
+ * once, and only a Mac gets this far with a macOS credential: preflight refuses
+ * one anywhere else (`signingCredentialSupportedOnHost`).
  */
 export function notarizationForTargets(targets: GameBuildWorkerTarget[]): GameBuildWorkerNotarization | null {
     for (const target of targets) {
