@@ -142,9 +142,9 @@ function DependencyBannerStrip({ entries }: { entries: readonly DependencyResolu
 }
 
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
-    const { t, tn, locale } = useTranslation();
+    const { t, tn, formatList, locale } = useTranslation();
     const { dependency, installedVersion } = entry;
-    const usage = summarizeUsage(dependency.usedBy, tn);
+    const usage = summarizeUsage(dependency.usedBy, { tn, formatList });
     const state = describeDependencyState(entry);
 
     // What is installed is stated only when something is, as on the Plugins panel's dependency
@@ -179,9 +179,10 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     );
 }
 
+/** What the plugin is used for, joined the way the interface's language writes a list (4 个节点、1 个存储). */
 function summarizeUsage(
     usedBy: Partial<Record<DependencyKind, string[]>>,
-    tn: Translator["tn"],
+    { tn, formatList }: Pick<Translator, "tn" | "formatList">,
 ): string | null {
     const parts: string[] = [];
     for (const kind of Object.keys(usedBy) as DependencyKind[]) {
@@ -190,5 +191,5 @@ function summarizeUsage(
             parts.push(tn(USAGE_KEYS[kind], count));
         }
     }
-    return parts.length > 0 ? parts.join(", ") : null;
+    return parts.length > 0 ? formatList(parts, { style: "narrow" }) : null;
 }

@@ -12,6 +12,8 @@
  * those against the scene as it was BEFORE the edit, so a row added in this file could not be named
  * by another row in the same file. So the file is compiled twice: once against the stored scene, and
  * again against the scene the first pass produced. Only the second pass's diagnostics are kept.
+ * What the first pass could only guess - a sound it took a name for because the clip the file
+ * declares was not on the stored stage yet - is left out of that scene (`withoutRows`).
  *
  * A new row is minted ONCE across the two passes, not once per pass. The second pass resolves names
  * against the first pass's scene, so a `/set hp` there is bound to the id the first pass gave the
@@ -63,8 +65,12 @@ import {
     expressionScope,
     resolveCommandLine,
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
-import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
-import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
+import type {
+    StoryCommandContext,
+    StoryCommandResolvedArgs,
+} from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
+import type { StoryCommandParamType } from "@/apps/workspace/modules/story/scene-editor/storyCommandGrammar";
+import { getCommandSpec, type AnyStoryCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { DECLARATION_COMMANDS } from "@/apps/workspace/modules/story/scene-editor/commands/specs/variables";
 import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLine } from "./ast";
 import { conditionFromSource, type ConditionLookups } from "./condition";
@@ -94,13 +100,43 @@ export function compileStoryFile(input: CompileInput): CompileResult {
     // against that, which is the one whose diagnostics an author reads. See the note above.
     const minted = new Map<number, string[]>();
     const first = compilePass(input, input.contextFor(input.existing), minted, null);
-    return compilePass(input, input.contextFor(first.scene ?? input.existing), minted, first.lineRowIds);
+    const stage = first.scene ? withoutRows(first.scene, first.guessedRowIds) : input.existing;
+    return compilePass(input, input.contextFor(stage), minted, first.lineRowIds);
 }
 
 type PassResult = CompileResult & {
     /** The row each line of the file became, by line index; null where the line built nothing. */
     lineRowIds: (StoryBlockId | null)[];
+    /** The rows that stand on a kind of stage object their line had to guess - see `guessesTargetKind`. */
+    guessedRowIds: Set<StoryBlockId>;
 };
+
+/**
+ * `scene` without `rowIds`: what the second pass resolves names against.
+ *
+ * The rows left out are the first pass's guesses. `/pause clip` reaches a sound, a clip or an overlay,
+ * and a name nothing on stage answers is taken for a sound - right where the name is made in another
+ * scene, and what the editor does too. But the first pass reads the scene as stored, and a clip the
+ * file declares two lines up is not on that stage yet, so it guesses "sound" for a name the file does
+ * give a clip. Handed to the second pass, that made-up sound stands on the stage beside the clip and
+ * every line naming `clip` is ambiguous. Without it, the second pass sees the stage the editor sees
+ * when the lines are typed in order, and the line finds the clip - or, where nothing declares the
+ * name, guesses the sound again.
+ */
+function withoutRows(scene: StoryScene, rowIds: ReadonlySet<StoryBlockId>): StoryScene {
+    if (rowIds.size === 0) {
+        return scene;
+    }
+    const blocks: Record<StoryBlockId, StoryBlock> = {};
+    for (const [id, block] of Object.entries(scene.blocks)) {
+        if (!rowIds.has(id)) {
+            blocks[id] = block.childrenIds.some(child => rowIds.has(child))
+                ? ({ ...block, childrenIds: block.childrenIds.filter(child => !rowIds.has(child)) } as StoryBlock)
+                : block;
+        }
+    }
+    return { ...scene, rootBlockIds: scene.rootBlockIds.filter(id => !rowIds.has(id)), blocks };
+}
 
 /**
  * The id source for one line in one pass: the ids this line was given in an earlier pass, in the
@@ -138,6 +174,7 @@ function compilePass(
     // names, or the row the first pass built for it. What "the rows above" a declaration means.
     const contextRowIds = lines.map((_line, index) => previousOf[index]?.id ?? priorLineRowIds?.[index] ?? null);
     const lineRowIds: (StoryBlockId | null)[] = lines.map(() => null);
+    const guessedRowIds = new Set<StoryBlockId>();
     const rowsAbove = new Set<StoryBlockId>();
 
     for (const [index, line] of lines.entries()) {
@@ -180,14 +217,18 @@ function compilePass(
         usedIds.add(block.id);
 
         const parent = parentFor(line, openAt, diagnostics);
+        // `openAt` holds a parent as it was placed; the children it has gathered since are in `blocks`.
         const placed: StoryBlock = {
-            ...block,
+            ...withBranchKindOfPlace(block, parent ? blocks[parent.id] : null, blocks),
             parentId: parent?.id ?? null,
             childrenIds: [],
             ...(line.disabled ? { disabled: true } : {}),
         } as StoryBlock;
         blocks[placed.id] = placed;
         lineRowIds[index] = placed.id;
+        if (built.guessesKind) {
+            guessedRowIds.add(placed.id);
+        }
         if (parent) {
             blocks[parent.id] = { ...blocks[parent.id], childrenIds: [...blocks[parent.id].childrenIds, placed.id] } as StoryBlock;
         } else {
@@ -198,13 +239,13 @@ function compilePass(
         openAt[line.depth] = canAcceptChildren(placed) ? placed : null;
     }
 
-    diagnostics.push(...checkStructure(blocks, input.ast));
+    diagnostics.push(...checkStructure(blocks, lines, lineRowIds));
 
     const base = input.existing;
     const scene: StoryScene | null = base
         ? { ...base, name: input.ast.sceneName ?? base.name, rootBlockIds, blocks: inStoredOrder(blocks, base) }
         : null;
-    return { scene, diagnostics, lineRowIds };
+    return { scene, diagnostics, lineRowIds, guessedRowIds };
 }
 
 /**
@@ -253,7 +294,8 @@ type LineContext = {
 };
 
 type LineResult =
-    | { ok: true; block: StoryBlock }
+    /** `guessesKind` when the row stands on a kind of stage object the line could not resolve. */
+    | { ok: true; block: StoryBlock; guessesKind?: boolean }
     | { ok: false; diagnostics: StoryFileDiagnostic[] };
 
 export function buildLineBlock(line: StoryFileLine, ctx: LineContext): LineResult {
@@ -353,9 +395,9 @@ function buildBranch(line: StoryFileLine, ctx: LineContext): LineResult {
             diagnostics: [errorAt("compile.bad_condition", condition.message, line.lineNumber)],
         };
     }
-    // The branch keeps whichever of `if` / `elseIf` it already was, because the two differ only in
-    // where they sit and the order of the lines already says that. A new branch is an `if`; the
-    // structure check below is what reports a second one.
+    // `if` and `elseIf` differ only in where the branch sits, so a whole file's compile gives each
+    // branch the kind of its place (`withBranchKindOfPlace`). One line read on its own - the printer's
+    // echo check - has no place, and keeps the kind its row already had so that it reads back as it.
     const branch = ctx.previous?.kind === "control" && ctx.previous.payload.control === "conditionBranch"
         ? ctx.previous.payload.branch
         : "if";
@@ -435,7 +477,35 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
     const built = spec.build(args, { generateId: ctx.mintId, context });
     // The row the anchor names keeps its id, so a line an agent edited is the same row - and with it
     // every save anchor filed under it. Everything else comes from the line.
-    return { ok: true, block: ctx.previous ? carryIdentity(built, ctx.previous) : built };
+    return {
+        ok: true,
+        block: ctx.previous ? carryIdentity(built, ctx.previous) : built,
+        guessesKind: guessesTargetKind(spec, args),
+    };
+}
+
+/**
+ * Whether a target slot that reaches several kinds of stage object took a name nothing on stage
+ * answers to, and so fell back to its default kind (`/pause clip` as a sound).
+ *
+ * A slot that reaches one kind guesses nothing about the kind, and a slot without a fallback refuses
+ * the name instead, so neither counts. What is done with the answer is in `withoutRows`.
+ */
+function guessesTargetKind(spec: AnyStoryCommandSpec, args: StoryCommandResolvedArgs): boolean {
+    return Object.entries(spec.params).some(([key, param]) => {
+        const value = args[key];
+        if (value?.kind !== "target" || value.target.type !== "stageObject" || value.target.known) {
+            return false;
+        }
+        const objectKind = value.target.objectKind;
+        const types: readonly StoryCommandParamType[] = Array.isArray(param.type)
+            ? param.type
+            : [param.type as StoryCommandParamType];
+        return types.some(type =>
+            type.kind === "target"
+            && type.fallbackKind === objectKind
+            && type.accepts.filter(kind => kind !== "character").length > 1);
+    });
 }
 
 /** The commands whose row declares a variable - the ones that must not find themselves. */
@@ -605,24 +675,59 @@ function parentFor(
     return null;
 }
 
+function isConditionBranch(block: StoryBlock | undefined): block is Extract<StoryBlock, { kind: "control" }> {
+    return block?.kind === "control" && block.payload.control === "conditionBranch";
+}
+
 /**
- * The three placements the tree itself decides, which no single line can check.
+ * A conditional branch as the kind its place makes it: `if` when it is the first branch under its
+ * `/if` row, `elseIf` when a branch is already above it.
  *
- * A branch outside a condition, an option outside a menu, and a condition with no branch: each is a
- * shape the editor can only produce deliberately, and each compiles to something that does not run.
+ * The format has one spelling for both - `? expression` - because the two differ only in position,
+ * and that is the row editor's rule too: `/if` lands the first branch as the `if`, and "+ else if"
+ * adds every later one as an `elseIf`. So the kind is read off the order of the lines, for a new
+ * line and an anchored one alike - a condition written above the stored first branch becomes the
+ * `if`, and the branch it displaced follows as an `elseIf`, rather than the scene holding two rows
+ * that each open the chain. `? else` is left alone; where it may sit is `checkStructure`'s concern.
+ *
+ * Returned unchanged, not copied, when the kind is already right, so an unedited row stays the same
+ * bytes.
+ */
+function withBranchKindOfPlace(
+    block: StoryBlock,
+    parent: StoryBlock | null,
+    blocks: Record<StoryBlockId, StoryBlock>,
+): StoryBlock {
+    if (block.kind !== "control" || block.payload.control !== "conditionBranch" || block.payload.branch === "else") {
+        return block;
+    }
+    if (!parent || parent.kind !== "control" || parent.payload.control !== "condition") {
+        return block;
+    }
+    const branch = parent.childrenIds.some(id => isConditionBranch(blocks[id])) ? "elseIf" : "if";
+    return block.payload.branch === branch ? block : { ...block, payload: { ...block.payload, branch } };
+}
+
+/**
+ * The four placements the tree itself decides, which no single line can check.
+ *
+ * A branch outside a condition, an option outside a menu, a condition with no branch, and a branch
+ * below its condition's `else`: each is a shape the editor can only produce deliberately, and each
+ * compiles to something that does not run as written. The last one runs, but not in the order it
+ * reads - the game tries every condition before it falls back to the `else`, while the preview and
+ * the editor read the rows top to bottom - so it is refused rather than left to mean two things.
  */
 function checkStructure(
     blocks: Record<StoryBlockId, StoryBlock>,
-    ast: StoryFileAst,
+    lines: readonly StoryFileLine[],
+    lineRowIds: readonly (StoryBlockId | null)[],
 ): StoryFileDiagnostic[] {
     const diagnostics: StoryFileDiagnostic[] = [];
+    // Every row a line built, new ones included, so a finding names the line that wrote the row.
     const lineOf = new Map<StoryBlockId, number>();
-    for (const line of ast.lines) {
-        if (line.anchorId) {
-            const block = Object.values(blocks).find(candidate => candidate.id.startsWith(line.anchorId as string));
-            if (block) {
-                lineOf.set(block.id, line.lineNumber);
-            }
+    for (const [index, rowId] of lineRowIds.entries()) {
+        if (rowId) {
+            lineOf.set(rowId, lines[index].lineNumber);
         }
     }
 
@@ -649,6 +754,21 @@ function checkStructure(
             diagnostics.push(
                 errorAt("compile.condition_without_branch", "An /if row with no \"?\" branch under it runs nothing.", line),
             );
+        }
+        if (block.kind === "control" && block.payload.control === "condition") {
+            const branches = block.childrenIds.map(id => blocks[id]).filter(isConditionBranch);
+            const elseAt = branches.findIndex(branch =>
+                branch.payload.control === "conditionBranch" && branch.payload.branch === "else");
+            for (const late of elseAt < 0 ? [] : branches.slice(elseAt + 1)) {
+                diagnostics.push(
+                    errorAt(
+                        "compile.branch_after_else",
+                        `"? ${BRANCH_ELSE}" is the last branch of its /if. Move this branch above it, or delete one of `
+                            + `the two if both are "? ${BRANCH_ELSE}".`,
+                        lineOf.get(late.id),
+                    ),
+                );
+            }
         }
     }
     return diagnostics;
