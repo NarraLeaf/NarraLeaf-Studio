@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import { specPaletteCommands } from "./commands/specPalette";
-import { searchActionCommands } from "./storyCommandSearch";
+import { searchActionCommands, findPluginActionsByCommandWord } from "./storyCommandSearch";
 
 /**
  * The matcher runs over the spec palette - the one catalogue since A1, shared by the `/` creator and
@@ -90,5 +90,33 @@ describe("searchActionCommands", () => {
     it("matches a pinyin substring, so partial input still finds the command", () => {
         // "yinyue" is inside `bgm`'s full pinyin "beijingyinyue".
         expect(ids("yinyue")).toContain("bgm");
+    });
+});
+
+/**
+ * A plugin action takes its params from the text after its command word, so the commit path finds it
+ * by that word - and must never take a built-in command's line from it.
+ */
+describe("findPluginActionsByCommandWord", () => {
+    const PLUGIN: PaletteActionCommand[] = [
+        { id: "acme.rps.play", group: "utils", label: "Rock, Paper, Scissors", detail: "Play a round." } as PaletteActionCommand,
+        { id: "acme.bg-tools.fade", group: "utils", label: "Background Fade", detail: "Fade it." } as PaletteActionCommand,
+    ];
+    const ids = (word: string) => findPluginActionsByCommandWord(PLUGIN, word).map(command => command.id);
+
+    it("finds an action by the start of its label", () => {
+        expect(ids("rock")).toEqual(["acme.rps.play"]);
+        expect(ids("Rock")).toEqual(["acme.rps.play"]);
+    });
+
+    it("leaves a built-in command's word to the built-in", () => {
+        // `bg` is Background's token; a plugin label starting with "Background" must not take it.
+        expect(ids("bg")).toEqual([]);
+        expect(ids("background")).toEqual([]);
+    });
+
+    it("does not match on a loose subsequence or an empty word", () => {
+        expect(ids("rps")).toEqual([]);
+        expect(ids("  ")).toEqual([]);
     });
 });

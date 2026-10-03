@@ -17,6 +17,11 @@ import type { RuntimePluginDescriptor } from "@shared/types/plugins";
 import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
 import { registerStoryCompilePass } from "../game/storyCompilePass";
+import {
+    getStoryPluginActionOwner,
+    registerStoryPluginAction,
+    type RuntimeStoryActionDef,
+} from "../game/storyPluginActions";
 import type {
     ElementRendererDefinition,
     ElementRendererProps,
@@ -380,6 +385,24 @@ function createRuntimePluginApp(
         notifyContributedWidgetsChanged();
     };
 
+    const registerStoryAction = (def: RuntimeStoryActionDef): void => {
+        const id = typeof def?.id === "string" ? def.id.trim() : "";
+        if (!id || typeof def.run !== "function") {
+            throw new Error("Runtime story action requires an id and a run function");
+        }
+        // The same ownership rule as everything else a plugin contributes, and the studio entry's
+        // `story.actions.register` enforces it on the other half of the pair. It also keeps one
+        // plugin from answering rows another plugin's action wrote.
+        if (!id.startsWith(`${pluginId}.`)) {
+            throw new Error(`Story action id must be prefixed with plugin id: ${pluginId}`);
+        }
+        const existingOwner = getStoryPluginActionOwner(id);
+        if (existingOwner && existingOwner !== pluginId) {
+            throw new Error(`Story action already registered by another owner: ${id}`);
+        }
+        registerStoryPluginAction({ id, run: ctx => def.run(ctx) }, pluginId, game);
+    };
+
     const readData = <T,>(namespace: string): T | null => {
         const key = typeof namespace === "string" ? namespace.trim() : "";
         if (!key) {
@@ -449,6 +472,14 @@ function createRuntimePluginApp(
             registerMany: defs => {
                 for (const def of defs) {
                     registerWidget(def);
+                }
+            },
+        },
+        storyActions: {
+            register: registerStoryAction,
+            registerMany: defs => {
+                for (const def of defs) {
+                    registerStoryAction(def);
                 }
             },
         },

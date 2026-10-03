@@ -1150,6 +1150,12 @@ type StoryPluginActionRegistration = {
     detail?: string;
     group?: string;
     createBlock: (input: StoryPluginActionCreateInput) => StoryBlock;
+    /**
+     * The text a committed row of this action reads as, from the params the row carries; `label`
+     * when absent, or when it returns nothing. A row's params are otherwise invisible in the scene
+     * editor, so an action whose params change what the row does says what they are here.
+     */
+    describe?: (params: Record<string, unknown>) => string | null | undefined;
 };
 
 interface IStoryService extends IService {

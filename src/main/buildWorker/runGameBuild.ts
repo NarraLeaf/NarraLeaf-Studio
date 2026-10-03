@@ -1,8 +1,11 @@
 import path from "path";
-import { build, Platform, Arch, type Configuration } from "electron-builder";
+import { build, Platform, Arch, type AfterPackContext, type Configuration } from "electron-builder";
 import { perTargetFileSets } from "./perTargetPayload";
+import { installLinuxLauncher, LINUX_PROGRAM_SUFFIX } from "./linuxLauncher";
 import {
+    currentGameBuildPlatform,
     gameBuildArtifactNamePattern,
+    hostPackagesWithoutPlatformTools,
     type GameBuildArch,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
@@ -20,10 +23,11 @@ import {
     withNotarizationEnv,
     withSigntoolPath,
 } from "./desktopSigning";
+import { packWithoutPlatformTools } from "./crossHost/packWithoutPlatformTools";
 import { signArtifactsWithGpg } from "./gpgSign";
 import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
-import type { GameBuildWorkerConfig, GameBuildWorkerTarget } from "./protocol";
+import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
 import { ensureWinCodeSignCache } from "./winCodeSignCache";
 
 /**
@@ -66,7 +70,7 @@ export function builderConfiguration(
     target: GameBuildWorkerTarget,
     log: GameBuildLogger,
 ): Configuration {
-    const extraFiles = extraFilesFor(config);
+    const extraFiles = extraFilesFor(config, target.platform);
     return {
         // Each platform's options are gated on the target's own platform, not
         // just on the block being present: a stray block would otherwise put a
@@ -102,10 +106,8 @@ export function builderConfiguration(
         },
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
-        // `to` is the app's content root, which is next to the executable on Windows and Linux and
-        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in, and
-        // the one that holds Electron's own LICENSE.electron.txt and LICENSES.chromium.html (put
-        // there by electron-builder on Windows and Linux, by tidyElectronStage on macOS).
+        // Beside Electron's own LICENSE.electron.txt and LICENSES.chromium.html: next to the
+        // executable on Windows and Linux, `Contents/Resources/` on macOS. See extraFilesFor.
         ...(extraFiles.length > 0 ? { extraFiles } : {}),
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
@@ -132,7 +134,12 @@ export function builderConfiguration(
         electronLanguages: config.electronLanguages,
         asar: true,
         asarUnpack: config.asarUnpack,
-        electronFuses: target.fuses,
+        // Every platform but Linux leaves the fuses to electron-builder. Linux flips them itself in
+        // `afterPack`, because by the time electron-builder would, the executable's name belongs to
+        // the launcher script; see linuxPackagingFor.
+        ...(target.platform === "linux"
+            ? linuxPackagingFor(target, log)
+            : { electronFuses: target.fuses }),
         artifactName: gameBuildArtifactNamePattern(config.artifactBaseName),
         /*
          * The game has no dependency tree. Everything it loads is staged into the app directory by
@@ -159,11 +166,27 @@ export function builderConfiguration(
     };
 }
 
-/** The notices shipped beside the executable, outside the asar where a player can open them. */
-function extraFilesFor(config: GameBuildWorkerConfig): Array<{ from: string; to: string }> {
+/**
+ * The notices shipped outside the asar, where a player can open them, in the folder that holds
+ * Electron's own licence texts (put there by electron-builder on Windows and Linux, and by
+ * tidyElectronStage on macOS).
+ *
+ * `to` is relative to the app's content root: the executable's folder on Windows and Linux,
+ * `Contents/` inside the bundle on macOS. On macOS they go one level further, into `Resources/`: a
+ * top-level file in `Contents/` counts as nested code to codesign, which signs it into extended
+ * attributes that no zip carries, so the app a player unpacked would fail verification. See
+ * `macLicenceDestination` in electronRuntimeFiles.ts.
+ */
+export function extraFilesFor(
+    config: GameBuildWorkerConfig,
+    platform: GameBuildDesktopPlatform,
+): Array<{ from: string; to: string }> {
+    const folder = platform === "macos" ? "Resources/" : "";
     return [
-        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] : []),
-        ...(config.thirdPartyNoticesFile ? [{ from: config.thirdPartyNoticesFile, to: "THIRD-PARTY-NOTICES.txt" }] : []),
+        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: `${folder}COPYRIGHT.txt` }] : []),
+        ...(config.thirdPartyNoticesFile
+            ? [{ from: config.thirdPartyNoticesFile, to: `${folder}THIRD-PARTY-NOTICES.txt` }]
+            : []),
     ];
 }
 
@@ -193,6 +216,79 @@ function macSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
     }
     const signing = target.signing;
     return macSigningConfiguration(signing && isMacSigning(signing) ? signing : null);
+}
+
+/**
+ * What a Linux target adds: the launcher in front of the Electron binary, and the AppImage runtime
+ * that starts on a stock desktop.
+ *
+ * The launcher (see linuxLauncher.ts) is installed in `afterPack`, the last point at which the app
+ * directory is complete and no artifact has been made from it yet, so the dir, the zip and the
+ * AppImage all carry it. That is also before electron-builder flips the fuses - and it flips them on
+ * whatever file has the executable's name, which by then would be the launcher script. So a Linux
+ * target hands electron-builder no fuses at all and flips the same set itself, through the packager's
+ * own `addElectronFuses`, on the binary while it still has that name; the launcher goes in after.
+ *
+ * The AppImage runtime is the static one. electron-builder's default (toolset 0.0.0) needs libfuse2,
+ * which Ubuntu 24.04 no longer installs, so the AppImage stops with "AppImages require FUSE to run"
+ * before anything of the game starts; the static runtime carries what it needs and mounts on a stock
+ * system. electron-builder still labels this toolset beta. Its desktop entry also stops passing the
+ * sandbox switch unconditionally, which the default one did - the launcher decides that now.
+ */
+function linuxPackagingFor(target: GameBuildWorkerTarget, log: GameBuildLogger): Partial<Configuration> {
+    return {
+        toolsets: { appimage: "1.0.3" },
+        afterPack: async context => {
+            const executableName = linuxExecutableName(context);
+            await context.packager.addElectronFuses(context, electronFuseConfig(target.fuses));
+            await installLinuxLauncher(context.appOutDir, executableName);
+            log("info", `${executableName} is a launcher script; the Electron binary is ${executableName}${LINUX_PROGRAM_SUFFIX}`);
+        },
+    };
+}
+
+/** The Linux executable's name, as electron-builder settled it. */
+function linuxExecutableName(context: AfterPackContext): string {
+    const name = (context.packager as { executableName?: unknown }).executableName;
+    if (typeof name !== "string" || name.length === 0) {
+        throw new Error("electron-builder did not say what the Linux executable is called");
+    }
+    return name;
+}
+
+/** The fuse settings in the form `addElectronFuses` takes. */
+type ElectronFuseConfig = Parameters<AfterPackContext["packager"]["addElectronFuses"]>[1];
+
+/**
+ * The fuse settings electron-builder would have flipped for `electronFuses: fuses`, in the form its
+ * `addElectronFuses` takes - written out because the conversion it uses is private to it.
+ *
+ * The keys are positions in the fuse wire Electron compiles into its binary, a format that only ever
+ * grows at the end, and `"1"` is that wire's version. Kept field for field with electron-builder's
+ * conversion (a fuse left undefined is left as the binary has it), which the test checks against
+ * electron-builder's own.
+ */
+export function electronFuseConfig(fuses: GameBuildWorkerFuses): ElectronFuseConfig {
+    const positions: Array<[number, boolean | undefined]> = [
+        [0, fuses.runAsNode],
+        [1, fuses.enableCookieEncryption],
+        [2, fuses.enableNodeOptionsEnvironmentVariable],
+        [3, fuses.enableNodeCliInspectArguments],
+        [4, fuses.enableEmbeddedAsarIntegrityValidation],
+        [5, fuses.onlyLoadAppFromAsar],
+        // 6 is the browser-process V8 snapshot, which the game's fuse set does not name.
+        [7, fuses.grantFileProtocolExtraPrivileges],
+    ];
+    const config: Record<string, unknown> = {
+        version: "1",
+        resetAdHocDarwinSignature: fuses.resetAdHocDarwinSignature,
+    };
+    for (const [position, value] of positions) {
+        if (value != null) {
+            config[position] = value;
+        }
+    }
+    return config as ElectronFuseConfig;
 }
 
 export async function runGameBuild(config: GameBuildWorkerConfig, log: GameBuildLogger): Promise<string[]> {
@@ -229,26 +325,49 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
     // use; unset when the host has no Windows SDK, in which case it downloads
     // its own bundle. The Apple variables are likewise @electron/notarize's only
     // interface - see withNotarizationEnv.
+    const host = currentGameBuildPlatform();
+    // electron-builder for one target, also run by Studio's own packager for the parts it can still
+    // do on this host (see packWithoutPlatformTools).
+    const runBuilder = async (runConfig: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Promise<string[]> => {
+        if (target.platform === "windows") {
+            // Cached after the first call; a payload laid out as a Windows app needs it as much as an
+            // installer does (rcedit lives in the same bundle).
+            await ensureWinCodeSignCache(log, runConfig.electronBuilderBinariesMirror);
+        }
+        const produced = await build({
+            // Exactly one arch per target: a multi-arch NSIS request would be
+            // folded into a single installer whose name drops the ${arch} macro,
+            // which the dialog's artifact preview could not have predicted.
+            targets: BUILDER_PLATFORMS[target.platform].createTarget(
+                target.formats.map(format => BUILDER_TARGET_NAMES[format]),
+                BUILDER_ARCHS[target.arch],
+            ),
+            projectDir: appDir,
+            config: builderConfiguration(runConfig, target, log),
+        });
+        return produced.map(artifact => path.resolve(artifact));
+    };
     await withNotarizationEnv(notarizationForTargets(config.targets), () =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
-                const platform = BUILDER_PLATFORMS[target.platform];
-                const targetNames = target.formats.map(format => BUILDER_TARGET_NAMES[format]);
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
+                if (hostPackagesWithoutPlatformTools(host, target.platform)) {
+                    artifacts.push(...await packWithoutPlatformTools({
+                        config,
+                        target,
+                        runBuilder: async (runConfig, runTarget) => {
+                            await runBuilder(runConfig, runTarget);
+                        },
+                        log,
+                    }));
+                    continue;
+                }
                 if (target.signing) {
                     log("info", isMacSigning(target.signing)
                         ? describeMacSigning(target.signing)
                         : describeWindowsSigning(target.signing));
                 }
-                const produced = await build({
-                    // Exactly one arch per target: a multi-arch NSIS request would be
-                    // folded into a single installer whose name drops the ${arch} macro,
-                    // which the dialog's artifact preview could not have predicted.
-                    targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
-                    projectDir: appDir,
-                    config: builderConfiguration(config, target, log),
-                });
-                artifacts.push(...produced.map(artifact => path.resolve(artifact)));
+                artifacts.push(...await runBuilder(config, target));
             }
         }));
     return artifacts;

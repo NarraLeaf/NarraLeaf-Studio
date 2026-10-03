@@ -438,6 +438,12 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
             `use app.services.${namespace} from the studio entry instead.`,
         );
     };
+    const storyActionsUnavailable = (): never => {
+        throw new Error(
+            `[plugin:${pluginId}] app.game.storyActions is only available in a game runtime entry; ` +
+            "it registers what runs when the story reaches the row, which only a running game does.",
+        );
+    };
 
     return {
         blueprintNodes: {
@@ -447,6 +453,13 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
         widgets: {
             register: () => registrationUnavailable("widgets"),
             registerMany: () => registrationUnavailable("widgets"),
+        },
+        // Not `registrationUnavailable`: the studio entry's `app.services.story.actions` registers
+        // the action the author inserts, which is the other half of the pair rather than this one,
+        // and pointing at it would send the reader to the wrong registration.
+        storyActions: {
+            register: () => storyActionsUnavailable(),
+            registerMany: () => storyActionsUnavailable(),
         },
         data: {
             // In a game this reads the copy published with the pack, synchronously.

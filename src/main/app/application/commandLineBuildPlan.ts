@@ -3,6 +3,8 @@ import {
     defaultGameBuildArch,
     GAME_BUILD_ARCHS_BY_PLATFORM,
     GAME_BUILD_FORMATS_BY_PLATFORM,
+    hostBuildLimitsSentence,
+    hostCanBuildFormat,
     hostCanBuildTarget,
     isDesktopBuildPlatform,
     type GameBuildArch,
@@ -107,9 +109,7 @@ export function planCommandLineBuild(input: {
     }
     const platform = platformName;
     if (!hostCanBuildTarget(hostPlatform, platform)) {
-        // The same sentence the pipeline uses for a stored selection carried across hosts, because
-        // it is the same fact: macOS needs a Mac, Linux needs a Unix host.
-        return { ok: false, reason: `Cannot build for ${platform} on this machine. macOS builds require a Mac; Linux builds require a Unix host.` };
+        return { ok: false, reason: `Cannot build for ${platform} on this machine.` };
     }
 
     const offered = GAME_BUILD_FORMATS_BY_PLATFORM[platform];
@@ -120,6 +120,11 @@ export function planCommandLineBuild(input: {
     const format = offered.find(candidate => candidate === formatName);
     if (!format) {
         return { ok: false, reason: `The ${platform} platform has no format "${formatName}". Expected one of: ${offered.join(", ")}.` };
+    }
+    if (!hostCanBuildFormat(hostPlatform, platform, format)) {
+        // The same sentence the pipeline uses for a stored selection carried across hosts, because
+        // it is the same fact.
+        return { ok: false, reason: `Cannot build ${platform} ${format} on this machine. ${hostBuildLimitsSentence(hostPlatform)}` };
     }
 
     let arch: GameBuildArch | undefined;

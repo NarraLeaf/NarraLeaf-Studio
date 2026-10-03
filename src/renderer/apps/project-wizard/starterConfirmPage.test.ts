@@ -22,6 +22,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
 } from "@shared/types/blueprint/graph";
@@ -134,7 +135,22 @@ function onlyGraph(blueprint: Blueprint) {
             return carries({ nodeId: hop.id, port: "result" }, to);
         });
     };
-    return { nodes, edges, byType, wired, reaches, carries };
+    /**
+     * Whether a pin is fed by the pressed row's own field, read with `Get Item Field`.
+     *
+     * The other way to hand on the pressed index: the rows are the `buttons` Show Confirm passed in,
+     * each carrying its `index`, so reading the field where the answer is given gives the same number
+     * as the press does, without a Memo holding it across the branch that picks the sound.
+     */
+    const readsRowField = (to: { nodeId: string; port: string }, fieldId: string): boolean =>
+        edges.some(edge => {
+            if (edge.to.nodeId !== to.nodeId || edge.to.port !== to.port) {
+                return false;
+            }
+            const from = nodes[edge.from.nodeId];
+            return from?.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD && from.params?.field === fieldId;
+        });
+    return { nodes, edges, byType, wired, reaches, carries, readsRowField };
 }
 
 /** Pin ids the shipping catalogue declares for a node type. */
@@ -176,7 +192,7 @@ describe("the Confirm page in the starter template", () => {
         const blueprint = blueprints.find(
             candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === list.id,
         )!;
-        const { byType, carries, reaches } = onlyGraph(blueprint);
+        const { byType, carries, reaches, readsRowField } = onlyGraph(blueprint);
         const click = byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)!;
         const close = byType(BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF)!;
         expect(pinIds(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toEqual(expect.arrayContaining(["then", "index"]));
@@ -185,7 +201,10 @@ describe("the Confirm page in the starter template", () => {
         // answers do not sound alike, so a branch and a cue sit between the press and the close.
         // Every route still ends there - an answer that closed nothing would be a dead dialog.
         expect(reaches({ nodeId: click.id, port: "then" }, close.id)).toBe(true);
-        expect(carries({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
+        // The answer is the pressed index: straight off the press (through a Memo when the press is
+        // read twice), or the pressed row's own `index` field read where the answer is given.
+        const result = { nodeId: close.id, port: "result" };
+        expect(carries({ nodeId: click.id, port: "index" }, result) || readsRowField(result, "index")).toBe(true);
     });
 
     /**

@@ -107,8 +107,10 @@ export type StoryRowLookups = {
      * rather than in the document, so it exists only while the plugin is installed and enabled. Omit
      * the lookup - as the Dev Mode timeline does, having no plugin host to ask - and the row names
      * itself generically rather than printing `pluginId`, which is an identifier and not a name.
+     *
+     * `params` are the row's own, for a registration that describes its rows from them.
      */
-    pluginActionLabel?: (pluginId: string, actionId: string) => string | null;
+    pluginActionLabel?: (pluginId: string, actionId: string, params: Record<string, unknown>) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -848,7 +850,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
         if (payload.action === "plugin") {
-            return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId)
+            return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId, payload.params)
                 ?? translate("story.describe.pluginAction");
         }
         return translate("story.badge.effect");
