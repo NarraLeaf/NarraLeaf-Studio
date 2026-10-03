@@ -5750,6 +5750,233 @@ describe("a row-precise launch that reaches a scene jump", () => {
 });
 
 /**
+ * `/play <clip>` - one row that builds a clip, reveals it and runs it to the end.
+ *
+ * A `play` used to address only a clip some earlier row declared, so a scene that opened on a
+ * cutscene and named its clip on the play row itself compiled to nothing and showed the background.
+ * The asset on the row is now what makes it a declaration, on the terms a `/show <clip>` already
+ * declares; a `play` with no asset is the transport verb it always was.
+ */
+describe("a play row that names its own clip", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    function videoRow(id: string, payload: Extract<StoryActionPayload, { action: "video" }>): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    type Compiled = Awaited<ReturnType<typeof compileStudioStoryToNlr>>;
+
+    /** The engine actions a row compiled to, in order. */
+    function actionsOf(compiled: Compiled, blockId: string): any[] {
+        return compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .map(binding => binding.action as any);
+    }
+
+    /** Every action the entry scene runs, the launch's pre-pose included. */
+    function entrySceneActions(compiled: Compiled): any[] {
+        (compiled.story as unknown as { constructStory(): void }).constructStory();
+        const scene = compiled.scene as unknown as {
+            getAllChildren: (story: unknown, root: unknown, options: { allowFutureScene: boolean }) => any[];
+            getSceneRoot: () => unknown;
+        };
+        return scene.getAllChildren(compiled.story, scene.getSceneRoot(), { allowFutureScene: false });
+    }
+
+    const playOwn = videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" });
+    const leave: StoryBlock = { id: "leave", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-2" } };
+
+    it("builds the clip, reveals it and runs it, as the first row of a scene", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ play: playOwn, leave }, ["play", "leave"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = actionsOf(compiled, "play");
+        // Revealed first: the engine's `play` shows nothing, so a clip played without the reveal is
+        // heard and not seen.
+        expect(actions.map(action => action.type)).toEqual(["video:show", "video:play"]);
+        const clip = compiled.sceneElements?.["scene-1"]?.videos.get("festival");
+        expect(clip).toBeDefined();
+        expect(actions.every(action => action.callee === clip)).toBe(true);
+        expect((clip as unknown as { config: { src: string } }).config.src).toBe("nlr://asset-festival");
+    });
+
+    it("leaves a play row that names no clip to run what an earlier row declared, unrevealed", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                declare: videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-festival" }),
+                play: videoRow("play", { action: "video", operation: "play", objectName: "festival" }),
+            }, ["declare", "play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(actionsOf(compiled, "play").map(action => action.type)).toEqual(["video:play"]);
+    });
+
+    it("runs the clip an earlier row declared under the same name, and builds no second one", async () => {
+        // The rule every declaration follows, `/show <clip>` included: the first stands, and the
+        // later row's own clip goes nowhere - lint's `story/stage-object-duplicate` says so.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                declare: videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-first" }),
+                play: videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-second" }),
+            }, ["declare", "play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const declared = actionsOf(compiled, "declare")[0]?.callee;
+        const played = actionsOf(compiled, "play");
+        expect(played.map(action => action.type)).toEqual(["video:show", "video:play"]);
+        expect(played.every(action => action.callee === declared)).toBe(true);
+        expect((declared as { config: { src: string } }).config.src).toBe("nlr://asset-first");
+        expect(compiled.sceneElements?.["scene-1"]?.videos.size).toBe(1);
+    });
+
+    it("lets the rows after it pause, stop and hide the clip it left on stage", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                play: playOwn,
+                pause: videoRow("pause", { action: "video", operation: "pause", objectName: "festival" }),
+                stop: videoRow("stop", {
+                    action: "video",
+                    operation: "stop",
+                    objectName: "festival",
+                    target: { name: "festival", label: "festival", sourceBlockId: "play" },
+                }),
+                hide: videoRow("hide", { action: "video", operation: "hide", objectName: "festival" }),
+            }, ["play", "pause", "stop", "hide"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const clip = compiled.sceneElements?.["scene-1"]?.videos.get("festival");
+        for (const [row, type] of [["pause", "video:pause"], ["stop", "video:stop"], ["hide", "video:hide"]] as const) {
+            expect(actionsOf(compiled, row).map(action => action.type)).toEqual([type]);
+            expect(actionsOf(compiled, row)[0].callee).toBe(clip);
+        }
+    });
+
+    it("hands the warm order the clip it builds, so it buffers from the start of the scene", async () => {
+        // The same record a `/video` row leaves: the plan names the element, and only the element
+        // that buffered can be the one that plays.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ play: playOwn, leave }, ["play", "leave"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+            collectWarmOrder: true,
+        });
+
+        expect(compiled.sceneWarmOrder?.["scene-1"]?.byBlock["play"]).toEqual([{
+            type: "video",
+            url: "nlr://asset-festival",
+            assetId: "asset-festival",
+            video: compiled.sceneElements?.["scene-1"]?.videos.get("festival"),
+        }]);
+    });
+
+    describe("in a row-precise launch", () => {
+        const blocks: Record<string, StoryBlock> = {
+            line: narrationBlock("line", "line-text", "The lights go down."),
+            play: playOwn,
+            after: narrationBlock("after", "after-text", "The lights come up."),
+            hide: videoRow("hide", { action: "video", operation: "hide", objectName: "festival" }),
+        };
+        const rootBlockIds = ["line", "play", "after", "hide"];
+
+        async function compileLaunch(targetBlockId: string): Promise<Compiled> {
+            const document = baseDocument(blocks, rootBlockIds);
+            return compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId,
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId }),
+                },
+            });
+        }
+
+        it("plays the clip from the play row itself", async () => {
+            const compiled = await compileLaunch("play");
+
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            const types = entrySceneActions(compiled).map(action => action.type);
+            expect(types).toEqual(expect.arrayContaining(["video:show", "video:play", "video:hide"]));
+            // Nothing staged ahead of the row: the walk stopped before it, so the clip arrives with it.
+            expect(types).not.toContain("video:preload");
+        });
+
+        it("puts the clip back on stage for a launch after it, so a later hide has something to hide", async () => {
+            const compiled = await compileLaunch("after");
+
+            // The tail's `/hide` used to report the clip missing and compile to nothing, because the
+            // row that declared it was before the launch and nothing carried it over.
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            const actions = entrySceneActions(compiled);
+            const preload = actions.find(action => action.type === "video:preload");
+            const hide = actions.find(action => action.type === "video:hide");
+            expect(preload).toBeDefined();
+            expect(hide?.callee).toBe(preload?.callee);
+            // It ran to its end before the launch row, a frame the launch cannot reproduce, so it is
+            // staged and not revealed.
+            expect(actions.filter(action => action.type === "video:show")).toEqual([]);
+            expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+        });
+
+        it("records where the walk left the clip, and registers the ones it never reached", () => {
+            const document = baseDocument(blocks, rootBlockIds);
+            expect(computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "after" }).videos).toEqual([{
+                objectName: "festival",
+                sourceBlockId: "play",
+                assetId: "asset-festival",
+                staged: true,
+                visible: false,
+            }]);
+            expect(computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "line" }).videos).toEqual([{
+                objectName: "festival",
+                sourceBlockId: "play",
+                assetId: "asset-festival",
+                staged: false,
+                visible: false,
+            }]);
+        });
+
+        it("reveals a clip a `/video` and a `/show` row put up, for a launch on the `/play` that runs it", async () => {
+            // The three-row path. A launch on its `/play` row used to report the clip missing: the
+            // two rows that declare and reveal it are before the launch, and nothing carried them.
+            const document = baseDocument({
+                declare: videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-festival" }),
+                reveal: videoRow("reveal", { action: "video", operation: "show", objectName: "festival" }),
+                play: videoRow("play", { action: "video", operation: "play", objectName: "festival" }),
+            }, ["declare", "reveal", "play"]);
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId: "play",
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "play" }),
+                },
+            });
+
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            const types = entrySceneActions(compiled).map(action => action.type);
+            expect(types.indexOf("video:preload")).toBeGreaterThanOrEqual(0);
+            expect(types.indexOf("video:show")).toBeGreaterThan(types.indexOf("video:preload"));
+            expect(types.indexOf("video:play")).toBeGreaterThan(types.indexOf("video:show"));
+        });
+    });
+});
+
+/**
  * `/quit` — the row that says this playthrough is over.
  *
  * The same two acts an `/ending` performs, minus the one that makes an ending an ending: it tells

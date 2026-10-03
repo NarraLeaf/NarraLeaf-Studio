@@ -34,7 +34,12 @@ import { blueprintDocumentOf, graphOf, type GraphNode } from "@/lib/ui-editor/ru
 import type { AppSurfaceLayerNavEntry } from "./AppSurfaceLayer";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles, type PageHostInputs } from "./hostAdapterBundles";
-import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import {
+    listenForGameKeys,
+    resolveKeyboardOwnerEntry,
+    resolveKeyboardOwnerLane,
+    type KeyboardOwner,
+} from "./keyboardOwner";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { LayerStackController } from "./layers/LayerStackController";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
@@ -368,5 +373,25 @@ describe("the keys go to whichever entry owns the keyboard", () => {
         const game = runningGame({ dialog: { modal: true }, dialogReady: false });
 
         expect(await game.pressEscape()).toEqual(["global: key down"]);
+    });
+});
+
+describe("the lane a key reaches", () => {
+    it("is the owning entry whenever there is one, without asking about the story", () => {
+        const asked: string[] = [];
+        const lane = resolveKeyboardOwnerLane({
+            entry: { key: "page:1" },
+            isStoryOnScreen: () => {
+                asked.push("story");
+                return true;
+            },
+        });
+        expect(lane).toEqual({ kind: "entry", entry: { key: "page:1" } });
+        expect(asked).toEqual([]);
+    });
+
+    it("is the stage with no owning entry while the story is on screen, and nothing otherwise", () => {
+        expect(resolveKeyboardOwnerLane({ entry: null, isStoryOnScreen: () => true })).toEqual({ kind: "stage" });
+        expect(resolveKeyboardOwnerLane({ entry: null, isStoryOnScreen: () => false })).toBeNull();
     });
 });

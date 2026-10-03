@@ -1402,7 +1402,7 @@ export const story = {
         vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
-        play: { label: "Play", detail: "Play a video" },
+        play: { label: "Play", detail: "Play a video on stage, or a video from the asset library" },
         front: { label: "Bring to Front", detail: "Draw a character or a stage object in front of the rest of its layer" },
         font: { label: "Font", detail: "Change a text's size or color" },
         bgm: { label: "BGM", detail: "Set the background music" },

@@ -131,13 +131,18 @@ point resolve against. A line with an anchor keeps its row; a line without one i
 a new row; **a line deleted takes its row with it**, because a file describes the
 whole scene.
 
-### `/show <asset>` writes `name=`, and has to
+### `/show <asset>` and `/play <clip>` write `name=`, and have to
 
 `/show` reaches the picture and clip libraries as well as the stage: `/show sunset` on
 a file no row has put on stage creates the element and reveals it in one row, the way
 `/sound hit` plays a clip without a row declaring it first. `name=` is what the element
 is called afterwards - `/hide`, `/transform` and every other verb address it by that
 word - and it defaults to the file's own name.
+
+`/play` reaches the clip library on the same terms: `/play intro name=intro` creates the
+clip, reveals it and runs it to the end in one row. `/play intro` with no `name=` means
+the clip on stage called `intro` when an earlier row declared one, and then only runs it -
+it does not reveal a clip that row left hidden.
 
 **The key is always written, even where it repeats the file's name.** Once the row
 exists, the element it made answers to that word on the stage, so a line without the key

@@ -16,6 +16,7 @@ import type {
 } from "@shared/types/story";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import {
+    actionableStageRefName,
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
@@ -127,6 +128,37 @@ export type StageSnapshotDisplayable = {
     loop?: StoryTransformRef;
 };
 
+/**
+ * A clip the scene declares, and how it stands at the target row.
+ *
+ * Kept apart from {@link StageSnapshotDisplayable} because a `Video` is an Actionable with no pose to
+ * settle: what a launch needs from it is only whether the tail can address it and whether the walked
+ * path left an element on the stage for the tail to talk to. The engine refuses every transport verb
+ * on a clip that is not on the stage, so registering the name alone would trade the compile's "not
+ * on stage" report for a runtime error.
+ */
+export type StageSnapshotVideo = {
+    /** Normalized object name - the compiler's clip-registry key. */
+    objectName: string;
+    /** The row that declares it, whose source and mute flag the clip is built from. */
+    sourceBlockId: string;
+    assetId?: string;
+    muted?: boolean;
+    /**
+     * On the stage at the target row: a row the walk ran declared it, and no row since hid it - the
+     * engine takes a hidden clip off the stage entirely. False for a clip only another arm, or a row
+     * at or past the target, declares; that one is registered for the tail and nothing more.
+     */
+    staged: boolean;
+    /**
+     * Showing a frame nothing has moved past: revealed on the walked path, and neither hidden nor
+     * run since. A clip that played to its end shows its last frame in a full playthrough, which a
+     * launch has no way to reproduce without knowing the clip's length, so it arrives staged and
+     * hidden instead - the same approximation `videoSkipped` already reports for the preview.
+     */
+    visible: boolean;
+};
+
 export type StoryStageSnapshot = {
     background: { assetId?: string; color?: string } | null;
     /** Displayables in creation order. */
@@ -149,6 +181,13 @@ export type StoryStageSnapshot = {
      * there, with its accumulated state, and the two lists must not both speak for one object.
      */
     declarations: StageSnapshotDisplayable[];
+    /**
+     * Every clip the scene declares, on any arm and at any row - the clip half of
+     * {@link declarations}, for the same reason: a launch's tail has to find every clip a full
+     * compile of the scene would have registered. Each says whether the walked path left it on the
+     * stage, which the engine requires before any row may pause, stop, seek or hide it.
+     */
+    videos: StageSnapshotVideo[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -300,6 +339,8 @@ class SnapshotWalker {
     private readonly declaredOrder: string[] = [];
     /** True while the declaration pass runs, so {@link ensure} files into {@link declared}. */
     private declaring = false;
+    /** Clips by registry key, in the order they were first met - the walk's, then the declaration pass's. */
+    private readonly videos = new Map<string, StageSnapshotVideo>();
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
@@ -359,6 +400,7 @@ class SnapshotWalker {
             declarations: this.declaredOrder
                 .filter(key => !this.displayables.has(key))
                 .map(key => this.declared.get(key) as StageSnapshotDisplayable),
+            videos: [...this.videos.values()],
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
@@ -404,7 +446,12 @@ class SnapshotWalker {
                     case "character":
                         this.applyCharacter(block, block.payload);
                         break;
-                    // video / vfx / audio declare Actionables, which no displayable record models.
+                    // A clip has a table of its own; this pass only makes sure it is in it. A clip
+                    // the walk already met keeps the record the walk left, which is the real one.
+                    case "video":
+                        this.declareVideo(block, block.payload);
+                        break;
+                    // vfx / audio declare Actionables, which no record here models.
                     default:
                         break;
                 }
@@ -648,7 +695,10 @@ class SnapshotWalker {
                 this.applySetVariable(block, payload);
                 return;
             case "video":
+                // The preview draws no clip, which is what the diagnostic says. The record is for a
+                // launch, whose tail has to be able to address the clip this row left on the stage.
                 this.diagnostic(block.id, translate("story.preview.diagnostics.videoSkipped"));
+                this.applyVideo(block, payload);
                 return;
             case "vfx":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
@@ -745,6 +795,84 @@ class SnapshotWalker {
             record.visible = false;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "hide", block.id));
         }
+    }
+
+    /**
+     * A clip row on the walked path, read the way the compiler and the engine read it.
+     *
+     * A declaring row builds the clip through the compiler's get-or-create, so the first declaration
+     * of a name is the one that stands and a later one only acts on it. What each operation leaves:
+     * `create` mounts the clip hidden; a reveal (`show`, or a `play` naming its own clip) puts it on
+     * screen; `hide` takes it off the stage altogether; and anything that runs or moves the clip
+     * leaves it showing a frame a launch cannot reproduce. A row addressing a clip nothing on the
+     * path declared changes nothing here - the compile of the tail reports it.
+     */
+    private applyVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): void {
+        const declares = declaresStageObject(payload);
+        const name = declares
+            ? normalizeObjectName(payload.objectName)
+            : actionableStageRefName(this.scene, payload.target, "video", payload.objectName).name;
+        const record = declares ? this.declareVideo(block, payload) : this.videos.get(name);
+        if (!record) {
+            return;
+        }
+        switch (payload.operation) {
+            case "create":
+                record.staged = true;
+                return;
+            case "show":
+                record.staged = true;
+                record.visible = true;
+                return;
+            case "hide":
+                record.staged = false;
+                record.visible = false;
+                return;
+            case "play":
+                // A play that names its own clip reveals it on the way in; it then runs to the end,
+                // which is a frame this record cannot describe either way.
+                record.staged = record.staged || declares;
+                record.visible = false;
+                return;
+            case "resume":
+            case "seek":
+                record.visible = false;
+                return;
+            // `pause` and `stop` hold whatever frame the clip is on.
+            default:
+                return;
+        }
+    }
+
+    /**
+     * The clip a declaring row builds - the existing record when an earlier row declared the name.
+     *
+     * An earlier declaration with no clip builds nothing in the compiler (it reports the row and
+     * moves on), so the first row that does name one is the one the clip is built from.
+     */
+    private declareVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): StageSnapshotVideo {
+        const name = normalizeObjectName(payload.objectName);
+        const existing = this.videos.get(name);
+        if (existing) {
+            if (!existing.assetId && payload.assetId) {
+                existing.sourceBlockId = block.id;
+                existing.assetId = payload.assetId;
+                if (payload.muted !== undefined) {
+                    existing.muted = payload.muted;
+                }
+            }
+            return existing;
+        }
+        const record: StageSnapshotVideo = {
+            objectName: name,
+            sourceBlockId: block.id,
+            ...(payload.assetId ? { assetId: payload.assetId } : {}),
+            ...(payload.muted !== undefined ? { muted: payload.muted } : {}),
+            staged: false,
+            visible: false,
+        };
+        this.videos.set(name, record);
+        return record;
     }
 
     private applyText(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "text" }>): void {

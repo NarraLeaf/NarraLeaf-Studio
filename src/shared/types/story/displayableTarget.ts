@@ -124,10 +124,10 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
         case "character":
             return payload.operation === "enter";
         // A `show` that names an asset brings the element into existence on the row that reveals it,
-        // so it declares exactly as a `create` row does. Only `image` and `video` carry that form: a
-        // text has no asset to name, a layer is never revealed, and an ambience overlay settles how it
-        // composites on the row that declares it (blend, fit, opacity, z) - settings a reveal has
-        // nowhere to put.
+        // so it declares exactly as a `create` row does - and so does a video `play` that names one
+        // (see {@link revealCreates}). Only `image` and `video` carry that form: a text has no asset
+        // to name, a layer is never revealed, and an ambience overlay settles how it composites on the
+        // row that declares it (blend, fit, opacity, z) - settings a reveal has nowhere to put.
         case "image":
         case "video":
             return payload.operation === "create" || revealCreates(payload);
@@ -146,22 +146,32 @@ export function declaresStageObject(payload: StoryActionPayload): boolean {
 }
 
 /**
- * A `show` row that names its own source: `/show <asset>`, which creates the element and reveals it
- * in one line.
+ * A row that reveals what it creates, naming its own source: `/show <asset>`, which creates the
+ * element and reveals it in one line, and `/play <clip>`, which creates the clip, reveals it and runs
+ * it in one line.
  *
  * Read by {@link declaresStageObject} and by the "declared and never shown" reading, which are the
  * two questions this shape answers differently from every other row: it declares, and it is also the
  * reveal, so nothing later has to show it.
  *
- * The asset id is what distinguishes it, and it has to be: a plain `/show poster` addresses an object
- * some other row created, and reading it as a declaration would let every dangling reveal quietly
- * conjure an empty element - the failure the create/show split exists to end.
+ * The asset id is what distinguishes it, and it has to be: a plain `/show poster` or `/play intro`
+ * addresses an object some other row created, and reading it as a declaration would let every
+ * dangling reference quietly conjure an empty element - the failure the create/show split exists to
+ * end.
+ *
+ * `play` is the one transport verb with this form, because it is the one a clip is written for: a
+ * cutscene is a clip that appears and runs, and asking for a declaring row above it put a step
+ * between the author and the one thing the row is for. A `play` with no asset still only runs a clip
+ * an earlier row put on stage, and runs it hidden when nothing showed it - nothing here changes that.
  */
 export function revealCreates(payload: StoryActionPayload): boolean {
-    if (payload.action !== "image" && payload.action !== "video") {
-        return false;
+    if (payload.action === "image") {
+        return payload.operation === "show" && Boolean(payload.assetId?.trim());
     }
-    return payload.operation === "show" && Boolean(payload.assetId?.trim());
+    if (payload.action === "video") {
+        return (payload.operation === "show" || payload.operation === "play") && Boolean(payload.assetId?.trim());
+    }
+    return false;
 }
 
 /**

@@ -342,4 +342,18 @@ describe("the surfaces that register themselves", () => {
         leaveSecond();
         expect(names(registered)).toEqual(["first"]);
     });
+
+    it("tells a watcher about every drawing that comes and goes, and about nothing else", () => {
+        const registered = new AmbientSurfaceTargets();
+        const revisions: number[] = [];
+        const stop = registered.subscribe(() => revisions.push(registered.getRevision()));
+        const leave = registered.add(drawing("choice", "choice list"));
+        leave();
+        // A second removal of the same drawing changes nothing, so it is not reported either.
+        leave();
+        stop();
+        registered.add(drawing("dialog", "box"));
+        expect(revisions).toEqual([1, 2]);
+        expect(registered.getRevision()).toBe(3);
+    });
 });

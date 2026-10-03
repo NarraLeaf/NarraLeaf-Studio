@@ -68,10 +68,15 @@ export const properties = {
     interactionSound: {
         title: "Sound",
         hover: "Hover",
-        hoverTip: "Plays on the SFX track when the pointer moves onto the element. Of nested elements with a hover sound, only the innermost one plays.",
+        hoverTip: "Plays when the pointer moves onto the element, on the SFX track unless its options name another. Of nested elements with a hover sound, only the innermost one plays.",
         click: "Click",
-        clickTip: "Plays on the SFX track when the element is clicked. Of nested elements with a click sound, only the innermost one plays.",
+        clickTip: "Plays when the element is clicked, on the SFX track unless its options name another. Of nested elements with a click sound, only the innermost one plays.",
         none: "No sound",
+        // The folded line under a sound, which states its volume and track while closed.
+        options: "Playback options",
+        summary: "Volume {volume} · {track}",
+        volume: "Volume",
+        track: "Track",
         chooseHover: "Choose hover sound",
         chooseClick: "Choose click sound",
         missing: "Missing sound",

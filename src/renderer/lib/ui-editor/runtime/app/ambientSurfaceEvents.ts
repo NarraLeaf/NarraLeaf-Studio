@@ -57,10 +57,17 @@ export type AmbientSurfaceTarget = {
  * The scope is reached through the drawing registered for it last, which is the one arriving - the
  * called scene's box, not the caller's on its way out - and through the one before it once that has
  * gone. It keeps the place in the order the scope first came in at.
+ *
+ * It can also be watched. The events above read it as they arrive and need no telling, but a reader
+ * that draws what is on the stage - the Dev Mode Layers panel listing the Game UI - has to redraw
+ * when a choice list comes up or the dialogue box leaves, and nothing else in the game app changes
+ * at that moment.
  */
 export class AmbientSurfaceTargets {
     /** Each scope's drawings, oldest first; the map keeps the order the scopes came in. */
     private readonly drawingsByScope = new Map<string, AmbientSurfaceTarget[]>();
+    private readonly listeners = new Set<() => void>();
+    private revision = 0;
 
     /** Add a drawing of a surface; the returned function takes it off again. */
     public add(target: AmbientSurfaceTarget): () => void {
@@ -70,6 +77,7 @@ export class AmbientSurfaceTargets {
         } else {
             this.drawingsByScope.set(target.runtimeScopeId, [target]);
         }
+        this.changed();
         let registered = true;
         return () => {
             if (!registered) {
@@ -85,12 +93,34 @@ export class AmbientSurfaceTargets {
             if (current.length === 0) {
                 this.drawingsByScope.delete(target.runtimeScopeId);
             }
+            this.changed();
         };
     }
 
     /** One per scope, in the order the scopes came in. */
     public list(): AmbientSurfaceTarget[] {
         return [...this.drawingsByScope.values()].map(drawings => drawings[drawings.length - 1]!);
+    }
+
+    /**
+     * Hear every addition and removal; the returned function stops it. An arrow so it can be handed
+     * to `useSyncExternalStore` as it is.
+     */
+    public readonly subscribe = (listener: () => void): (() => void) => {
+        this.listeners.add(listener);
+        return () => {
+            this.listeners.delete(listener);
+        };
+    };
+
+    /** A number that changes whenever the list does - the snapshot a subscriber compares. */
+    public readonly getRevision = (): number => this.revision;
+
+    private changed(): void {
+        this.revision += 1;
+        for (const listener of [...this.listeners]) {
+            listener();
+        }
     }
 }
 

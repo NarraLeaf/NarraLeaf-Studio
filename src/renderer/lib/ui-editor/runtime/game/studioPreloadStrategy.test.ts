@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PreloadPlan } from "narraleaf-react";
-import type { CompiledNlrStory, SceneWarmOrder } from "./storyCompiler";
+import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryActionPayload, type StoryBlock, type StoryDocument, type StoryScene } from "@shared/types/story";
+import { compileStudioStoryToNlr, type CompiledNlrStory, type SceneWarmOrder } from "./storyCompiler";
 import { createStudioPreloadScheduler } from "./studioPreloadStrategy";
 
 /**
@@ -414,5 +415,82 @@ describe("naming the scene's sounds for the audio cache", () => {
         // Not undefined: the player skips `retainOnly` entirely for a plan with no audio field, so
         // an absent one would leave the previous scene's clips held for ever.
         expect(plan.audio).toEqual([]);
+    });
+});
+
+/**
+ * A clip the play row itself names, planned exactly as one a `/video` row above it declares.
+ *
+ * Real compiles, because what is pinned is the seam between the two halves: the compiler records the
+ * clip against the row that builds it, and the plan names every clip ahead of the play head. A
+ * one-row cutscene has no earlier row to start the buffering, so this is the only thing that does -
+ * and it has to start it at the same moment the three-row form would, scene entry included.
+ */
+describe("a clip a play row names itself", () => {
+    function videoRow(id: string, payload: Extract<StoryActionPayload, { action: "video" }>): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    function line(id: string): StoryBlock {
+        return {
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "narration", text: { textId: `text-${id}`, value: id, role: "narration" } },
+        };
+    }
+
+    function sceneOf(id: string, blocks: StoryBlock[]): StoryScene {
+        return {
+            id,
+            name: id,
+            runtimeName: id,
+            rootBlockIds: blocks.map(block => block.id),
+            blocks: Object.fromEntries(blocks.map(block => [block.id, block])),
+        };
+    }
+
+    async function compile(): Promise<CompiledNlrStory> {
+        const document: StoryDocument = {
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            id: "story-1",
+            name: "Story",
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["one-row", "three-row"] }],
+            scenes: {
+                "one-row": sceneOf("one-row", [
+                    videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
+                    line("after"),
+                ]),
+                "three-row": sceneOf("three-row", [
+                    videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-festival" }),
+                    videoRow("reveal", { action: "video", operation: "show", objectName: "festival" }),
+                    videoRow("run", { action: "video", operation: "play", objectName: "festival" }),
+                    line("later"),
+                ]),
+            },
+        };
+        return compileStudioStoryToNlr({
+            document,
+            sceneId: "one-row",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            collectWarmOrder: true,
+        });
+    }
+
+    it("puts the clip on the stage to buffer the moment the scene starts, as the three-row form does", async () => {
+        const compiled = await compile();
+        const scheduler = createStudioPreloadScheduler();
+        scheduler.useCompiled(compiled);
+
+        const planFor = (sceneId: string) => scheduler.plan({
+            kind: "scene", scene: compiled.scenes[sceneId] as never, story: null,
+        }) as PreloadPlan;
+
+        const oneRow = compiled.sceneElements?.["one-row"]?.videos.get("festival");
+        const threeRow = compiled.sceneElements?.["three-row"]?.videos.get("festival");
+        expect(oneRow).toBeDefined();
+        expect(planFor("one-row").video).toEqual([oneRow]);
+        expect(planFor("three-row").video).toEqual([threeRow]);
     });
 });

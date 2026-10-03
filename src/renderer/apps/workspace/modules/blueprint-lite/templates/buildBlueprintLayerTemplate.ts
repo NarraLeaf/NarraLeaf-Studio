@@ -16,6 +16,11 @@ import { parseBlueprintText } from "@/lib/blueprint-cli/dsl/parse";
 import { compileBlueprintDocument } from "@/lib/blueprint-cli/dsl/compile";
 import { BLUEPRINT_OWNER_GRAMMAR } from "@/lib/blueprint-cli/dsl/ownerGrammar";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    formatBlueprintKeyboardBinding,
+} from "@shared/types/blueprint/graph";
+import {
     BLUEPRINT_LAYER_TEMPLATES,
     type BlueprintLayerTemplate,
     type BlueprintLayerTemplateFacts,
@@ -68,7 +73,7 @@ export function buildBlueprintLayerTemplate(
     const blueprint = compiled.blueprints[0];
     const layerId = blueprint?.graphs.eventIds?.[0];
     const graph = layerId ? blueprint.graphs.events[layerId]?.graph : undefined;
-    if (refused || !graph) {
+    if (refused || !graph || bindsTakenKey(graph, target.facts.takenKeys)) {
         return null;
     }
 
@@ -131,6 +136,21 @@ function ownerFieldsOf(owner: BlueprintOwnerRef): Record<string, string> {
         }
     }
     return fields;
+}
+
+/** Whether a key head in `graph` listens for a key the blueprint already answers through an action. */
+function bindsTakenKey(graph: BlueprintGraphIr, takenKeys: readonly string[] | undefined): boolean {
+    if (!takenKeys || takenKeys.length === 0) {
+        return false;
+    }
+    const taken = new Set(takenKeys.map(key => key.toLowerCase()));
+    return Object.values(graph.nodes ?? {}).some(node => {
+        if (node.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN && node.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP) {
+            return false;
+        }
+        const key = node.params?.key;
+        return typeof key === "string" && taken.has(formatBlueprintKeyboardBinding(key).toLowerCase());
+    });
 }
 
 function isUnset(value: unknown): boolean {
