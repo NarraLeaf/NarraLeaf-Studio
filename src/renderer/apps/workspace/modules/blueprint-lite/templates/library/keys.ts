@@ -16,9 +16,10 @@ import { lines } from "./templateText";
  *
  * The game's own blueprint hears keys on every page. Is In Game keeps a key off the title screen,
  * where a preference set now would be waiting in the next game the player starts. Is Game Overlay -
- * asked of the page the player is looking at, which is whose host the game's blueprint runs on -
- * keeps it off a menu opened over the story: H pressed in the settings would otherwise hide the
- * dialogue box behind them, and the player would come back to a story with no box until they clicked.
+ * which the game's blueprint answers for the game: true while a page or a modal layer covers the
+ * story - keeps it off a menu opened over the story, whether it was opened as a page or with Show
+ * Layer: H pressed in the settings would otherwise hide the dialogue box behind them, and the player
+ * would come back to a story with no box until they clicked.
  *
  * `head` is the key head's type and fields: one key, or any key for a layer that reads which.
  */
