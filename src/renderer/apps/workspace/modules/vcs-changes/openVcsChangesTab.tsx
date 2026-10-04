@@ -36,7 +36,19 @@ export function createVcsChangesTab(payload: VcsChangesPayload): EditorTabDefini
  * `vcsChangesIds` are what decide which comparisons share a tab.
  */
 export function openVcsChangesTab(ctx: WorkspaceContext, payload: VcsChangesPayload, groupId?: string): void {
-    ctx.services.get<UIService>(Services.UI).editor.openOrUpdate(createVcsChangesTab(payload), groupId);
+    // The working tree is read when it is asked for, and every press is an ask - including one that
+    // lands on the tab already open (see `readRequest`). A revision pair never changes, so it needs
+    // no such number.
+    const requested = payload.mode === "working-tree" ? { ...payload, readRequest: nextReadRequest() } : payload;
+    ctx.services.get<UIService>(Services.UI).editor.openOrUpdate(createVcsChangesTab(requested), groupId);
+}
+
+let lastReadRequest = 0;
+
+/** A number no earlier request in this window used, so a request is never mistaken for the last one. */
+function nextReadRequest(): number {
+    lastReadRequest = Math.max(Date.now(), lastReadRequest + 1);
+    return lastReadRequest;
 }
 
 /**

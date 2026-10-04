@@ -21,7 +21,11 @@ import { useWorkspace } from "@/apps/workspace/context";
  */
 
 export type DocumentDiffRequest =
-    | { readonly mode: "working-tree" }
+    /**
+     * `readRequest` asks for a fresh read when it changes: the way back into an open comparison after
+     * the author has changed something, which is a request for the list as it is now.
+     */
+    | { readonly mode: "working-tree"; readonly readRequest?: number }
     | { readonly mode: "between"; readonly from: RevisionId; readonly to: RevisionId };
 
 /** The two result shapes' common half, which is all either surface draws. */
@@ -88,7 +92,9 @@ export function useDocumentDiff(
     // The request as a value, so an inline object literal at the call site does not re-read on every
     // render - which is the shape this hook is most likely to be used in and the one way it could
     // silently become a poll.
-    const key = request.mode === "between" ? `between:${request.from}:${request.to}` : "working-tree";
+    const key = request.mode === "between"
+        ? `between:${request.from}:${request.to}`
+        : `working-tree:${request.readRequest ?? 0}`;
     const mode = request.mode;
     const from = request.mode === "between" ? request.from : null;
     const to = request.mode === "between" ? request.to : null;

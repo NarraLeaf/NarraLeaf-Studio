@@ -21,7 +21,12 @@
  *
  * Read from the graphs: an action head from which `Next` can be reached along the graph's edges. A
  * branch that only sometimes reaches `Next` counts, because pressing the key in ADV sometimes reads on
- * too. A script layer is not read - nothing can say what a file does without running it.
+ * too. A script layer cannot be read that way - nothing can say what a file does without running it -
+ * so what it does is watched instead: an action the dialogue box answered while the game was asked to
+ * read on joins the set for the rest of the session ({@link createDialogueAdvanceRecord}). A box whose
+ * `Next` lives in a script therefore reads NVL on with the keys it was seen reading on with, from the
+ * first time the player used one of them on it; before that, a key does what it always did on an
+ * engine NVL page, which is nothing, and a click still reads on.
  *
  * Comments in English per project convention.
  */
@@ -106,6 +111,60 @@ export function resolveDialogueAdvanceActionIds(
 /** Whether the project draws its NVL page itself, which then answers its own keys. */
 export function projectDrawsNvlPage(document: UIDocument): boolean {
     return slotSurface(document, "nvl") !== null;
+}
+
+/** Whether a stage surface is the dialogue box. */
+export function isDialogueSlotSurface(surface: { kind: string; mount?: unknown }): boolean {
+    return surface.kind === "stageSurface" && (surface.mount as { slotId?: unknown } | undefined)?.slotId === "dialog";
+}
+
+/**
+ * What a key press tells about the dialogue box while the box has the keys: whether answering the
+ * press's actions asked the game to read on.
+ *
+ * The part of the box's behaviour the graphs cannot state - a script layer's - learnt the only way it
+ * can be: by seeing it happen. Counted at the host's `Next` (every graph node and every script call to
+ * `game.next` comes through it) around the box's answer to one press, so the actions that press raised
+ * on the box are the ones credited.
+ */
+export type DialogueAdvanceObserver = {
+    /** How many times a graph or a script has asked the game to read on, so far. */
+    nextCalls(): number;
+    /** The box answered these actions and the game was asked to read on while it did. */
+    witnessed(actionIds: readonly string[]): void;
+};
+
+export type DialogueAdvanceRecord = DialogueAdvanceObserver & {
+    /** Count one request to read on. The host's `Next` calls this before it reads on. */
+    noteNext(): void;
+    /** The dialogue box's advance actions: those its graphs reach `Next` from, and those seen doing it. */
+    actionIds(fromGraphs: ReadonlySet<string>): ReadonlySet<string>;
+};
+
+/**
+ * One record per game app. Nothing in it is a resource and nothing tears it down - a session that
+ * learns an action keeps it, and the next playthrough in the same window reads the same box.
+ */
+export function createDialogueAdvanceRecord(): DialogueAdvanceRecord {
+    let calls = 0;
+    const seen = new Set<string>();
+    return {
+        nextCalls: () => calls,
+        noteNext: () => {
+            calls += 1;
+        },
+        witnessed: actionIds => {
+            for (const actionId of actionIds) {
+                seen.add(actionId);
+            }
+        },
+        actionIds: fromGraphs => {
+            if (seen.size === 0) {
+                return fromGraphs;
+            }
+            return new Set([...fromGraphs, ...seen]);
+        },
+    };
 }
 
 /** What the stage's keyboard owner carries for the engine's NVL page while it is up. */

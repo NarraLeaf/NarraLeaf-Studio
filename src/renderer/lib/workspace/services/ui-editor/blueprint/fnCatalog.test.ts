@@ -206,14 +206,53 @@ describe("fnCatalog", () => {
             uiDocument: testUiDocument(),
             caller: { kind: "widgetMain", surfaceId: "s1", elementId: "other" },
         });
-        expect(options.map(o => o.label)).toEqual(["GlobalFn (Global)", "SurfaceFn (Menu)", "WidgetFn (Confirm)"]);
+        expect(options.map(o => o.label)).toEqual(["GlobalFn (App logic)", "SurfaceFn (Menu)", "WidgetFn (Confirm)"]);
 
         const globalOnly = listCallableBlueprintFnOptions({
             blueprintDocument: testDocument(),
             uiDocument: testUiDocument(),
             caller: { kind: "globalMain" },
         });
-        expect(globalOnly.map(o => o.label)).toEqual(["GlobalFn (Global)"]);
+        expect(globalOnly.map(o => o.label)).toEqual(["GlobalFn (App logic)"]);
+    });
+
+    it("names every declaring owner the way the editor does, never by an internal word", () => {
+        const component: BlueprintOwnerRef = { kind: "componentWidgetMain", componentId: "c1", elementId: "slot-root" };
+        const namedStory: BlueprintOwnerRef = { kind: "storyAction", blueprintId: "bp-story-named" };
+        const factoryStory: BlueprintOwnerRef = { kind: "storyAction", blueprintId: "bp-story-factory" };
+        const unnamedWidget: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "s1", elementId: "root" };
+        const doc = testDocument();
+        const add = (id: string, owner: BlueprintOwnerRef, fnName: string, name?: string) => {
+            doc.blueprints[id] = { ...graphBlueprint(id, owner, {
+                nodes: { [`${id}-head`]: { id: `${id}-head`, ...fnHeadNode(fnName) } },
+                edges: [],
+            }), ...(name ? { name } : {}) };
+            doc.ownerRecords[ownerRefToIndexKey(owner)] = { blueprintId: id };
+        };
+        add("bp-c1", component, "ComponentFn");
+        add("bp-story-named", namedStory, "NamedStoryFn", "Door logic");
+        add("bp-story-factory", factoryStory, "FactoryStoryFn", "Story Action");
+        add("bp-root", unnamedWidget, "RootFn");
+        const ui = testUiDocument();
+        ui.components = [{
+            id: "c1",
+            name: "Save slot",
+            rootElementId: "slot-root",
+            elements: {
+                "slot-root": { id: "slot-root", type: "nl.container", name: "Hit area", parentId: null, childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 } },
+            },
+        } as unknown as NonNullable<UIDocument["components"]>[number]];
+
+        const labelsFor = (caller: BlueprintOwnerRef) =>
+            listCallableBlueprintFnOptions({ blueprintDocument: doc, uiDocument: ui, caller }).map(o => o.label);
+
+        expect(labelsFor(component)).toEqual(["ComponentFn (Hit area)", "GlobalFn (App logic)"]);
+        expect(labelsFor(namedStory)).toEqual(["FactoryStoryFn (Story action)", "GlobalFn (App logic)", "NamedStoryFn (Door logic)"]);
+        // An element with no name of its own reads as its owner label rather than as its widget type.
+        expect(labelsFor(unnamedWidget)).toContain("RootFn (Component logic)");
+        for (const label of [...labelsFor(component), ...labelsFor(namedStory), ...labelsFor(unnamedWidget)]) {
+            expect(label).not.toMatch(/componentWidgetMain|storyAction|widgetMain|nl\.\w+/);
+        }
     });
 
     it("detects stale signature snapshots", () => {

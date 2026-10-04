@@ -23,11 +23,29 @@ export type BlueprintEntryTabPayload = {
     focusNodeId?: string;
 };
 
+/** Every blueprint editor tab's id starts with this. */
+const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
+
 export function getBlueprintEntryTabId(parts: {
     blueprintId: string;
     surfaceId?: UISurfaceId;
     elementId?: UIElementId;
     propPath?: string;
 }): string {
-    return `blueprint-entry:${parts.blueprintId}:${parts.surfaceId ?? "~"}:${parts.elementId ?? "~"}:${parts.propPath ?? "~"}`;
+    return `${BLUEPRINT_ENTRY_TAB_PREFIX}${parts.blueprintId}:${parts.surfaceId ?? "~"}:${parts.elementId ?? "~"}:${parts.propPath ?? "~"}`;
+}
+
+/**
+ * Whether `tab` is a blueprint editor tab showing `blueprintId`.
+ *
+ * Read from the payload rather than rebuilt with {@link getBlueprintEntryTabId}, because the same
+ * blueprint can be open under more than one id: the inspector, the blueprint wall and search each
+ * open it with the owner parts they hold.
+ */
+export function isBlueprintEntryTabShowing(tab: { id: string; payload?: unknown }, blueprintId: string): boolean {
+    if (!tab.id.startsWith(BLUEPRINT_ENTRY_TAB_PREFIX)) {
+        return false;
+    }
+    const payload = tab.payload as Partial<BlueprintEntryTabPayload> | undefined;
+    return payload?.blueprintId === blueprintId;
 }

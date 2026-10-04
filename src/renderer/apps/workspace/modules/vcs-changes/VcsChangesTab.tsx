@@ -57,8 +57,9 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
  * `VcsResolvePanel`, which is a separate component so that the two cannot share a hook.
  *
  * **Never re-reads on its own.** The working-tree comparison scans, and a scan records newly
- * discovered directories into staged state (docs §4.17), so the only re-read is the button in the
- * header. A revision pair is immutable and cached in the main process, so it has no button at all.
+ * discovered directories into staged state (docs §4.17), so it re-reads only when asked: the button in
+ * the header, or a press of a way into it while it is already open (`readRequest` on the payload).
+ * A revision pair is immutable and cached in the main process, so it has no button at all.
  */
 
 /**
@@ -89,8 +90,15 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const request = useMemo<DocumentDiffRequest>(
-        () => (mode.mode === "between" ? { mode: "between", from: mode.from, to: mode.to } : { mode: "working-tree" }),
-        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null],
+        () => (mode.mode === "between"
+            ? { mode: "between", from: mode.from, to: mode.to }
+            : { mode: "working-tree", readRequest: mode.readRequest }),
+        [
+            mode.mode,
+            mode.mode === "between" ? mode.from : null,
+            mode.mode === "between" ? mode.to : null,
+            mode.mode === "working-tree" ? mode.readRequest : null,
+        ],
     );
     const diff = useDocumentDiff(request, { enabled: true });
     const result = diff.result;
