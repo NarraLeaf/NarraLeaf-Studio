@@ -249,7 +249,7 @@ describe("fnCatalog", () => {
         expect(labelsFor(component)).toEqual(["ComponentFn (Hit area)", "GlobalFn (App logic)"]);
         expect(labelsFor(namedStory)).toEqual(["FactoryStoryFn (Story action)", "GlobalFn (App logic)", "NamedStoryFn (Door logic)"]);
         // An element with no name of its own reads as its owner label rather than as its widget type.
-        expect(labelsFor(unnamedWidget)).toContain("RootFn (Component logic)");
+        expect(labelsFor(unnamedWidget)).toContain("RootFn (Widget logic)");
         for (const label of [...labelsFor(component), ...labelsFor(namedStory), ...labelsFor(unnamedWidget)]) {
             expect(label).not.toMatch(/componentWidgetMain|storyAction|widgetMain|nl\.\w+/);
         }
