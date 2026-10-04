@@ -49,6 +49,14 @@ export const blueprint = {
             other: "已删除该未知节点及其 {count} 个未显示的连接，撤销可恢复",
         },
     },
+    wire: {
+        nodeDetail: "{node}（{detail}）",
+        end: "{node} · {pin}",
+        connectedTo: "连接到 {target}",
+        goTo: "跳到 {target}",
+        goToNth: "跳到 {target}（{n}）",
+        goToConnected: "跳到连接的节点",
+    },
     crossProject: {
         pasted: {
             one: "已粘贴 {count} 个节点",

@@ -973,6 +973,23 @@ input[type="radio"]:focus {
 }
 
 /*
+ * The mark on a node the canvas has just been moved to by following a wire: an outline in the wire's
+ * colour (`--nl-blueprint-arrive`, set by the rule that starts it), held long enough to find the
+ * node, then faded. Which node wears it is written by `BlueprintWireEmphasis`.
+ */
+@keyframes narraleaf-blueprint-arrive {
+    0%,
+    55% {
+        outline: 2px solid var(--nl-blueprint-arrive);
+        outline-offset: 3px;
+    }
+    100% {
+        outline: 2px solid transparent;
+        outline-offset: 3px;
+    }
+}
+
+/*
  * Scene flow: the selected line.
  *
  * `!important` because the line paints its stroke inline — it carries the conditional dash pattern,
