@@ -4,6 +4,7 @@ import {
     PLAYER_PREFERENCES_PERSISTENCE_KEY,
     attachPlayerPreferences,
     readPersistedPlayerPreferences,
+    startPlaythroughPreferences,
     type PreferenceStoreLike,
 } from "./preferenceRuntime";
 
@@ -52,6 +53,11 @@ describe("readPersistedPlayerPreferences", () => {
         expect(readPersistedPlayerPreferences(null)).toEqual({});
         expect(readPersistedPlayerPreferences([1, 2])).toEqual({});
         expect(readPersistedPlayerPreferences("cps=30")).toEqual({});
+    });
+
+    // Stores written before the hide stopped being kept still carry the last one a player left on.
+    it("skips a stored hide of the dialogue box", () => {
+        expect(readPersistedPlayerPreferences({ showDialog: false, cps: 30 })).toEqual({ cps: 30 });
     });
 });
 
@@ -106,7 +112,21 @@ describe("attachPlayerPreferences", () => {
         expect(write).toHaveBeenCalledTimes(1);
         const [key, value] = write.mock.calls[0];
         expect(key).toBe(PLAYER_PREFERENCES_PERSISTENCE_KEY);
-        expect(value).toEqual({ ...DEFAULT_PLAYER_PREFERENCES, cps: 33 });
+        const { showDialog: _notKept, ...kept } = DEFAULT_PLAYER_PREFERENCES;
+        expect(value).toEqual({ ...kept, cps: 33 });
+    });
+
+    it("neither restores nor keeps a hidden dialogue box", async () => {
+        const write = vi.fn();
+        const preference = fakePreferenceStore();
+        await attachPlayerPreferences({
+            preference,
+            read: async () => ({ showDialog: false }),
+            write,
+        });
+        expect(preference.values.showDialog).toBe(true);
+        preference.set("showDialog", false);
+        expect(write).not.toHaveBeenCalled();
     });
 
     it("ignores a change to something that is not a preference of ours", async () => {
@@ -184,5 +204,38 @@ describe("attachPlayerPreferences", () => {
             write: async () => undefined,
         });
         expect(() => dispose()).not.toThrow();
+    });
+});
+
+describe("startPlaythroughPreferences", () => {
+    it("brings back a box the last playthrough left hidden", () => {
+        const preference = fakePreferenceStore({ ...DEFAULT_PLAYER_PREFERENCES, showDialog: false });
+        startPlaythroughPreferences(preference);
+        expect(preference.values.showDialog).toBe(true);
+    });
+
+    // The author's value is the state a game starts in, which is what the Player defaults row says.
+    it("starts the box the way the author set it", () => {
+        const preference = fakePreferenceStore({ ...DEFAULT_PLAYER_PREFERENCES });
+        startPlaythroughPreferences(preference, normalizePlayerPreferences({ showDialog: false }));
+        expect(preference.values.showDialog).toBe(false);
+    });
+
+    it("leaves every other preference alone", () => {
+        const preference = fakePreferenceStore({ ...DEFAULT_PLAYER_PREFERENCES, cps: 33, showDialog: false });
+        startPlaythroughPreferences(preference, normalizePlayerPreferences({ cps: 40 }));
+        expect(preference.values.cps).toBe(33);
+    });
+
+    it("announces nothing when the game already agrees", () => {
+        const preference = fakePreferenceStore({ ...DEFAULT_PLAYER_PREFERENCES });
+        const heard = vi.fn();
+        preference.onPreferenceChange(heard);
+        startPlaythroughPreferences(preference);
+        expect(heard).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op against an engine build with no preference store", () => {
+        expect(() => startPlaythroughPreferences(undefined)).not.toThrow();
     });
 });

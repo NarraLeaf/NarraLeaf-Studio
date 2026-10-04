@@ -172,7 +172,7 @@ import {
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
-import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { attachPlayerPreferences, startPlaythroughPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
@@ -3109,6 +3109,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 apply: savedGame => {
                     const game = activeLiveGame();
                     game.game.router.clear().cleanHistory();
+                    // A loaded save is a playthrough of its own: the box opens the author's way,
+                    // not the way the game it replaced last left it.
+                    startPlaythroughPreferences(
+                        (game.game as { preference?: PreferenceStoreLike }).preference,
+                        currentBundleRef.current.preferences,
+                    );
                     game.newGame().deserialize(savedGame);
                 },
                 /**
@@ -4579,6 +4585,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         const sceneReady = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
+        // A box the player put away in the last playthrough is not away in this one. Before
+        // `newGame()`, so the first line mounts with the box the author's way.
+        startPlaythroughPreferences(
+            (liveGame.game as { preference?: PreferenceStoreLike }).preference,
+            currentBundleRef.current.preferences,
+        );
         liveGame.newGame();
         // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
         // later with the reading it inherited; nothing else in the file resets it.
