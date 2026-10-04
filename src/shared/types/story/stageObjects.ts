@@ -409,9 +409,9 @@ const REVEALABLE_KINDS: ReadonlySet<StageObjectKind> =
  * Every row of this scene that DECLARES something a later row has to reveal.
  *
  * The candidates for "declared and never shown". Paired with {@link shownStageObjectKeys}, which is
- * the other half of that question and is kept separate because the two are not always read over the
- * same span: an ambience overlay belongs to the whole story rather than to one scene, so its reveal
- * may be anywhere, while an image is gone when its scene ends and can only be shown inside it.
+ * the other half of that question: both are read over the one scene, because everything on the stage
+ * - an ambience overlay as much as an image - is gone when its scene ends and can only be shown
+ * inside it.
  */
 export function revealableStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
     const declarations: StageObjectDeclaration[] = [];

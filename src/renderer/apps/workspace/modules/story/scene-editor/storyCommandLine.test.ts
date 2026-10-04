@@ -963,18 +963,10 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
     });
 
-    it("points an overlay at its declaring row in ANOTHER scene, which is where it usually is", () => {
-        // The overlay is the one stage object the engine does not scope to a scene, so the row that
-        // started the rain a scene hides is normally somewhere else - and the link has to say where,
-        // or the jump opens the right row number in the scene being read.
-        const context: StoryCommandContext = {
-            ...LINK_CONTEXT,
-            stageObjects: { ...LINK_CONTEXT.stageObjects, vfx: ["petals", "rain"] },
-            vfxSources: { rain: { blockId: "d_rain", sceneId: "s2" } },
-        };
-        const lookups: StoryCommandLineLookups = { ...LINK_LOOKUPS, commandContext: context };
-        expect(links(row({ action: "vfx", operation: "hide", objectName: "rain" }), lookups))
-            .toContainEqual({ text: "rain", ref: { kind: "block", blockId: "d_rain", sceneId: "s2" } });
+    it("leaves an overlay another scene started unlinked, like any other object of another scene", () => {
+        // An overlay leaves the stage with its scene, so its declaration index is this scene's alone:
+        // rain another scene started is not something this one can point at.
+        expect(links(row({ action: "vfx", operation: "hide", objectName: "rain" }))).toEqual([]);
     });
 
     it("resolves an old document by name, since that is what the engine does with it", () => {

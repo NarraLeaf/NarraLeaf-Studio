@@ -531,6 +531,43 @@ export type UnresolvedSaveReferences = {
 
 const NO_UNRESOLVED_REFERENCES: UnresolvedSaveReferences = { scenes: [], elements: [], actions: [], all: [] };
 
+/** The prefix every ambience overlay's element id carries; see `getVfx` in the story compiler. */
+const OVERLAY_ID_PREFIX = "nl:vfx:";
+
+/**
+ * The save, less the ambience overlays it names that the running story does not have.
+ *
+ * An overlay is decoration: loading a save without the rain it had is far better than refusing the
+ * save, and the engine already drops an overlay it cannot find on the stage rather than throwing.
+ * Its element-state record is the one place a missing overlay would still throw, so that goes too.
+ *
+ * It matters most for saves written before overlays belonged to scenes. An overlay was then named
+ * for the whole story (`nl:vfx:rain`), and is now named under the scene that declares it, so every
+ * such save names an overlay no story has any more - and would otherwise be refused outright over
+ * weather.
+ */
+export function withoutStrandedOverlays(savedGame: SavedGame, maps: SaveStoryMaps): SavedGame {
+    const stranded = (id: unknown): boolean =>
+        typeof id === "string" && id.startsWith(OVERLAY_ID_PREFIX) && !maps.hasElement(id);
+    const game = savedGame.game as unknown as Record<string, unknown>;
+    const stage = game.stage as unknown as Record<string, unknown>;
+    const elementStates = Array.isArray(game.elementStates) ? game.elementStates as unknown[] : [];
+    const overlays = Array.isArray(stage?.vfx) ? stage.vfx as unknown[] : [];
+    const keptStates = elementStates.filter(entry => !(isRecord(entry) && stranded(entry.id)));
+    const keptOverlays = overlays.filter(entry => !(Array.isArray(entry) && stranded(entry[0])));
+    if (keptStates.length === elementStates.length && keptOverlays.length === overlays.length) {
+        return savedGame;
+    }
+    return {
+        ...savedGame,
+        game: {
+            ...savedGame.game,
+            elementStates: keptStates,
+            stage: { ...stage, vfx: keptOverlays },
+        },
+    } as unknown as SavedGame;
+}
+
 /**
  * What the save names that the running story does not have.
  *
@@ -883,7 +920,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         return refuse("malformed", translate("game.saveLoad.detail.malformed"));
     }
 
-    const savedGame = record.savedGame;
+    let savedGame = record.savedGame;
     // Both of these read the running story, and both are allowed to be unavailable. An engine that
     // refuses to answer costs a report its precision, or costs the pre-check, and neither is worth
     // failing a load the player asked for.
@@ -1084,6 +1121,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     try {
         const maps = game.resolveStoryMaps();
         if (maps) {
+            savedGame = withoutStrandedOverlays(savedGame, maps);
             unresolved = collectUnresolvedSaveReferences(savedGame, maps);
         }
     } catch {

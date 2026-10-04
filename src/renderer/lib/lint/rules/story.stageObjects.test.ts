@@ -367,10 +367,9 @@ describe("story/declared-never-shown", () => {
         ])).toEqual([]);
     });
 
-    it("reads an ambience overlay across the whole story, not one scene", async () => {
-        // An overlay is game-level: rain declared in a prologue and shown two scenes later is the
-        // ordinary way to write one, and reporting it would make the rule wrong exactly where the
-        // feature is used properly.
+    it("reads an ambience overlay within its own scene, as every other stage object", async () => {
+        // An overlay leaves the stage with the scene that declares it, so a show in a later scene
+        // reveals nothing of it: the declaration is never shown, and says so.
         const declare = actionBlock("declare", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" });
         const reveal = actionBlock("reveal", { action: "vfx", operation: "show", objectName: "rain" });
         const entry: LintStoryEntry = {
@@ -395,7 +394,8 @@ describe("story/declared-never-shown", () => {
         };
 
         const findings = await run("story/declared-never-shown", createTestLintContext({ stories: [entry] }));
-        expect(findings).toEqual([]);
+        expect(findings.map(finding => finding.ruleId)).toEqual(["story/declared-never-shown"]);
+        expect(findings[0].location).toMatchObject({ blockId: "declare" });
     });
 });
 

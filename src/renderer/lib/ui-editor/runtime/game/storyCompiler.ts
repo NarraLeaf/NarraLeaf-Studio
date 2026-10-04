@@ -968,7 +968,7 @@ type SceneCompileContext = {
     vfx: Map<string, Vfx>;
     /**
      * The clip each named overlay was built from, keyed the same way {@link SceneCompileContext.vfx}
-     * is, and compile-wide with it.
+     * is, and scoped to the scene with it.
      *
      * Exists for the reason `soundTrackIds` does: two rows may name one overlay and only the first
      * creates it, so a later row naming a DIFFERENT clip has to be reported rather than silently
@@ -1312,17 +1312,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string; clip: AudioClipRegion | undefined }>();
-    /**
-     * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
-     *
-     * A `Vfx` is the one stage object the engine does not scope to a scene: `GameState` holds it,
-     * scene exit does not remove it, and only its own `hide` does. So rain started in one scene is
-     * still falling in the next, and a per-scene map made that unreachable - the next scene's
-     * `/hide rain` resolved no handle and compiled to nothing, while a second `/vfx rain` built a
-     * SECOND overlay on top of the first. One map means one name is one overlay, everywhere.
-     */
-    const vfxByName = new Map<string, Vfx>();
-    const vfxAssetIds = new Map<string, string | undefined>();
     const scenesBuild = await createNlrScenes({
         elementIdBindings,
         document: input.document,
@@ -1405,8 +1394,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
-            vfx: vfxByName,
-            vfxAssetIds,
+            // Per scene, like every other stage object: an overlay leaves the stage with the scene
+            // that started it, so a name another scene declares is not one this scene can address.
+            vfx: new Map(),
+            vfxAssetIds: new Map(),
             resolveWeatherClip: input.resolveWeatherClip,
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
@@ -1470,8 +1461,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             launch: input.launch,
             nlrStory,
             allScenes,
-            vfx: vfxByName,
-            vfxAssetIds,
             actionIdBindings,
             elementIdBindings,
             diagnostics,
@@ -1547,10 +1536,6 @@ async function buildLaunchEntryScene(params: {
     launch: NonNullable<CompileInput["launch"]>;
     nlrStory: Story;
     allScenes: Record<string, Scene>;
-    /** The compile's ambience overlays - shared, so the entry scene and the story it hands over to
-     *  address one overlay per name rather than two objects wearing one id. */
-    vfx: Map<string, Vfx>;
-    vfxAssetIds: Map<string, string | undefined>;
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1652,8 +1637,8 @@ async function buildLaunchEntryScene(params: {
         puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
-        vfx: params.vfx,
-        vfxAssetIds: params.vfxAssetIds,
+        vfx: new Map(),
+        vfxAssetIds: new Map(),
         resolveWeatherClip: params.input.resolveWeatherClip,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
@@ -1817,6 +1802,38 @@ async function buildLaunchEntryScene(params: {
         }
         if (record.staged) {
             statements.push(video.preload());
+        }
+    }
+
+    // Overlays, on the same terms as clips - every one the scene declares is built so the tail finds
+    // it - with one difference: an overlay loops, so the one the walked path left showing can be shown
+    // again faithfully, and is, at once. It is the target row's stage, not a reveal.
+    for (const record of snapshot.vfx) {
+        const source = scene.blocks[record.sourceBlockId];
+        if (!source || source.kind !== "action" || source.payload.action !== "vfx") {
+            continue;
+        }
+        const vfx = await getVfx(ctx, source.payload, record.sourceBlockId);
+        if (!vfx) {
+            continue;
+        }
+        if (!record.staged) {
+            continue;
+        }
+        statements.push(vfx.preload());
+        const shownBy = record.shownBy ? scene.blocks[record.shownBy] : undefined;
+        if (shownBy && shownBy.kind === "action" && shownBy.payload.action === "vfx") {
+            const shown = shownBy.payload;
+            statements.push(vfx.show({
+                ...(shown.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(shown.opacity, 1))) } : {}),
+                ...(shown.rate !== undefined ? { rate: Math.max(0, finiteOr(shown.rate, 1)) } : {}),
+            } as any));
+        }
+        if (record.rate !== undefined) {
+            statements.push(vfx.setPlaybackRate(Math.max(0, finiteOr(record.rate, 1))));
+        }
+        if (record.paused) {
+            statements.push(vfx.pause());
         }
     }
 
@@ -4639,10 +4656,9 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    // No scene in the id, unlike every other element: this overlay does not belong to one. Naming
-    // it after the scene that happened to create it first would also make the anchor depend on
-    // scene ORDER, so reordering scenes would move it under a save that referenced it.
-    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${name}`);
+    // Under its scene's namespace, like every other element: the overlay belongs to the scene that
+    // declares it, and two scenes may each have rain of their own.
+    setStableElementId(ctx.elementIdBindings, vfx, sceneElementStaticId(ctx, "vfx", name));
     ctx.vfx.set(name, vfx);
     ctx.vfxAssetIds.set(name, source);
     return vfx;
@@ -7495,7 +7511,7 @@ function launchSceneIdPrefix(sceneId: string, targetBlockId: string): string {
 /** The id an element a scene builds is stamped with: its kind and name, under the scene's own namespace. */
 function sceneElementStaticId(
     ctx: SceneCompileContext,
-    kind: "image" | "text" | "layer" | "video" | "puppet",
+    kind: "image" | "text" | "layer" | "video" | "puppet" | "vfx",
     name: string,
 ): string {
     return ctx.launchElementIdPrefix
