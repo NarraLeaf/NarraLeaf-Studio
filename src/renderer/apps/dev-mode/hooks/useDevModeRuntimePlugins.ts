@@ -29,12 +29,19 @@ export type DevModeRuntimePluginsState = {
      * Enabled runtime plugins this project does not run, with the reason.
      *
      * The main process decides this with the function a build decides it with,
-     * so what runs here is what a build carries. It is reported rather than
-     * merely applied: the nodes of an excluded plugin degrade to the unknown-node
-     * stub, and a stub with nothing said about it is an author looking for a bug
-     * in their graph.
+     * so what runs here is what a build carries. Every enabled plugin the
+     * table does not name is here, used or not; which of them the author is
+     * told about is decided against the bundle (`reportableRuntimePluginExclusions`).
      */
     excluded: RuntimePluginExclusion[];
+    /**
+     * The plugins this project runs here, whether or not their entry loaded.
+     *
+     * Read alongside `excluded`: deciding whether the project refers to an excluded plugin means
+     * reading plugin ids off type names, and an id nested inside a running plugin's (`acme.fx`
+     * beside `acme.fx.pro`) has to leave the longer one its own types.
+     */
+    running: string[];
 };
 
 /**
@@ -52,7 +59,7 @@ export function useDevModeRuntimePlugins(
     rendererRegistry: ElementRendererRegistry,
     pluginHost: RuntimePluginHostController,
 ): DevModeRuntimePluginsState {
-    const [state, setState] = useState<DevModeRuntimePluginsState>({ ready: false, errors: [], excluded: [] });
+    const [state, setState] = useState<DevModeRuntimePluginsState>({ ready: false, errors: [], excluded: [], running: [] });
 
     useEffect(() => {
         let disposed = false;
@@ -92,6 +99,7 @@ export function useDevModeRuntimePlugins(
                             }];
                         }),
                         excluded: result.data.excluded,
+                        running: result.data.plugins.map(plugin => plugin.plugin.id),
                     });
                 }
             } catch (error) {
@@ -107,6 +115,7 @@ export function useDevModeRuntimePlugins(
                             error: error instanceof Error ? error.message : String(error),
                         }],
                         excluded: [],
+                        running: [],
                     });
                 }
             }
