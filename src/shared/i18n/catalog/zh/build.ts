@@ -93,7 +93,7 @@ export const build = {
         appId: "应用 ID",
         copyright: "版权",
         icons: "图标",
-        iconsHint: "点击图标可在项目设置中修改",
+        iconsHint: "点击图标可在「项目 ▸ 应用」中修改",
         iconUnset: "未设置",
         // 项目版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
         // 而不是看起来像一个等着输入的控件。
@@ -102,8 +102,8 @@ export const build = {
     },
     content: {
         protection: "资产保护",
-        protectionOn: "打包后的游戏会加密资产与存档",
-        protectionOff: "资产与存档以明文随包发布",
+        protectionOn: "打包后的游戏会加密资产",
+        protectionOff: "资产以明文随包发布",
         plugins: "随包插件",
         pluginsNone: "没有插件会随游戏发布",
         pluginsRescanUnavailable: "当前窗口无法重新扫描插件列表",
