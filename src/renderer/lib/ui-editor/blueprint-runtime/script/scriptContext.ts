@@ -194,7 +194,9 @@ type SurfaceBound<Self extends ScriptSelf, T> = Self extends { kind: "surface" |
  * even while it answers Item Click in one of its rows - the list is not inside its rows. A module-level `let` is one per *module*, shared by every row of a list
  * and every placement of a component, which is the wrong answer for almost everything a widget
  * script wants to remember. `stopPropagation` is the graph's `eventControl`: on a pointer event it
- * keeps the parent from hearing it, on `windowCloseRequested` it is `Keep Window Open`.
+ * keeps the parent from hearing it, on `windowCloseRequested` it is `Keep Window Open`. It stops the
+ * event going further, not the other listeners that heard it in the same place - those started
+ * together with this one.
  */
 export type GameScriptContext<Self extends ScriptSelf = ScriptSelf> = {
     self: Self;

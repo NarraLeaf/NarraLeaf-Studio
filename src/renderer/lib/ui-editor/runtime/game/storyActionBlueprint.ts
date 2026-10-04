@@ -29,6 +29,7 @@ import type {
     StorySceneVariableDefinition,
 } from "@shared/types/story";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
+import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
 import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
@@ -455,19 +456,27 @@ function storyActionLocals(document: BlueprintDocument, blueprintId: string): Re
     return acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
 }
 
+/**
+ * Run every `On Call` head of the row's blueprint, all of them together, and wait for all of them -
+ * the story waits on the row until its last head is done.
+ *
+ * A head that fails stops none of the others. The row reports a failure the way it reports a lone
+ * head's, by rejecting - once every head has settled, with the first failure in head order. The value
+ * answered is still the last head's in head order to set one, not whichever happened to finish last.
+ */
 async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unknown> {
     const bp = resolveActiveStoryActionBlueprint(env.input.blueprintDocument, env.input.blueprintId);
     if (!bp) {
         return undefined;
     }
-    let lastReturn: unknown;
+    const runs: Array<() => Promise<{ returnValueSet: boolean; returnValue?: unknown }>> = [];
     for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
         const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("storyAction", bp.id, eventGraph.id));
         for (const headId of headIds) {
-            const result = await executeGraph({
+            runs.push(() => executeGraph({
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter: env.hostAdapter,
@@ -476,9 +485,20 @@ async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unkno
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: env.input.persistentVariables,
                 signal: env.signal,
-            });
-            if (result.returnValueSet) lastReturn = result.returnValue;
+            }));
         }
+    }
+    let lastReturn: unknown;
+    let firstFailure: { reason: unknown } | null = null;
+    for (const outcome of await startTogether(runs)) {
+        if (outcome.status === "rejected") {
+            firstFailure ??= { reason: outcome.reason };
+            continue;
+        }
+        if (outcome.value.returnValueSet) lastReturn = outcome.value.returnValue;
+    }
+    if (firstFailure) {
+        throw firstFailure.reason;
     }
     return lastReturn;
 }

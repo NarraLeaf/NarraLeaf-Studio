@@ -638,6 +638,8 @@ export const help = {
                 + "- A selection can be framed as a group that moves as one, and the whole graph can be "
                 + "arranged from left to right.\n"
                 + "- Each pin takes one wire. Values with no wire are typed on the node itself.\n"
+                + "- Several event heads can listen for the same event. They all start when it happens, and none "
+                + "waits for another to finish.\n"
                 + "- Problems are listed under the canvas, and selecting one selects what it refers to.\n"
                 + "- The node reference on the website lists every node and its pins. Open the full page, below, "
                 + "goes there.",
