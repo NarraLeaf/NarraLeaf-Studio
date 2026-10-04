@@ -1,5 +1,8 @@
+import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GameBuildStateSnapshot } from "@shared/types/gameBuild";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import {
@@ -552,5 +555,115 @@ describe("iosSigningToolPathFrom", () => {
             detail: "there is no build of it for this machine",
             searched: [],
         })).toThrow(/no build of it for this machine/);
+    });
+});
+
+/**
+ * The codec images a run's compiles leave beside their app dirs, inside the author's project.
+ *
+ * Driven through the session plumbing rather than a whole build: what is being pinned is the
+ * decision at the end of a run - gone after a success, kept after a failure - and a real build to
+ * reach it would need a toolchain and a packager.
+ */
+describe("the codec images a run leaves in the project", () => {
+    type Plumbing = {
+        noteCodecScratch(session: unknown, artifact: { codecImageDir: string }): void;
+        finishSession(session: unknown, snapshot: GameBuildStateSnapshot): Promise<void>;
+        failSession(session: unknown, message: string): void;
+    };
+    const makeManager = () => new GameBuildManager({
+        logger: { error: () => undefined, warn: () => undefined },
+    } as unknown as ConstructorParameters<typeof GameBuildManager>[0]) as unknown as Plumbing;
+    const makeSession = (projectPath: string) => ({
+        id: "run",
+        projectPath,
+        snapshot: { status: "packaging", progress: null, startedAt: 1, platforms: ["windows"] },
+        worker: null,
+        abandonWeatherBake: null,
+        cancelled: false,
+        kind: "build",
+        appTagName: "Release",
+        assetReport: null,
+        assetCompression: null,
+        codecScratch: [] as string[],
+    });
+
+    let projectPath = "";
+    /** One output root's images, written the way a compile leaves them. */
+    const seedImages = async (root: string): Promise<string> => {
+        const dir = path.join(projectPath, ".nlstudio", "build", root, "codec-images");
+        await fs.mkdir(path.join(dir, "win32-x64"), { recursive: true });
+        await fs.writeFile(path.join(dir, "win32-x64", "bindings.node"), "image");
+        await fs.mkdir(path.join(dir, "nlc-1-abc"), { recursive: true });
+        await fs.writeFile(path.join(dir, "nlc-1-abc", "bindings.node"), "scratch");
+        return dir;
+    };
+    const exists = (target: string) => fs.access(target).then(() => true, () => false);
+
+    beforeEach(async () => {
+        projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-codec-scratch-"));
+    });
+    afterEach(async () => {
+        await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it("removes every root's images once the run has succeeded, and nothing else", async () => {
+        const manager = makeManager();
+        const session = makeSession(projectPath);
+        const staging = await seedImages("staging");
+        const dlc = await seedImages(path.join("dlc", "side"));
+        const appDir = path.join(projectPath, ".nlstudio", "build", "staging", "app");
+        await fs.mkdir(appDir, { recursive: true });
+        manager.noteCodecScratch(session, { codecImageDir: staging });
+        manager.noteCodecScratch(session, { codecImageDir: dlc });
+        // A second compile into the same root names the same directory once.
+        manager.noteCodecScratch(session, { codecImageDir: staging });
+
+        await manager.finishSession(session, {
+            status: "done",
+            progress: null,
+            startedAt: 1,
+            finishedAt: 2,
+            platforms: ["windows"],
+            artifacts: [],
+        });
+
+        expect(await exists(staging)).toBe(false);
+        expect(await exists(dlc)).toBe(false);
+        // The payload the packager read is not scratch and stays where it was.
+        expect(await exists(appDir)).toBe(true);
+    });
+
+    it("keeps them when the run fails, for whoever looks into why", async () => {
+        const manager = makeManager();
+        const session = makeSession(projectPath);
+        const staging = await seedImages("staging");
+        manager.noteCodecScratch(session, { codecImageDir: staging });
+
+        manager.failSession(session, "packaging failed");
+        // The failure path writes its record without waiting; let it land before looking.
+        await vi.waitFor(async () => {
+            expect(await exists(path.join(projectPath, ".nlstudio", "build", "last-run.json"))).toBe(true);
+        });
+
+        expect(await exists(path.join(staging, "win32-x64", "bindings.node"))).toBe(true);
+        expect(await exists(path.join(staging, "nlc-1-abc", "bindings.node"))).toBe(true);
+    });
+
+    it("is satisfied by a root whose compile needed no images", async () => {
+        const manager = makeManager();
+        const session = makeSession(projectPath);
+        manager.noteCodecScratch(session, {
+            codecImageDir: path.join(projectPath, ".nlstudio", "build", "staging-web", "codec-images"),
+        });
+
+        await expect(manager.finishSession(session, {
+            status: "done",
+            progress: null,
+            startedAt: 1,
+            finishedAt: 2,
+            platforms: ["web"],
+            artifacts: [],
+        })).resolves.toBeUndefined();
     });
 });

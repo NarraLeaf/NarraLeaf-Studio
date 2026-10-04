@@ -216,6 +216,17 @@ type BuildSession = {
      * carry it. Null until they have run, which is every run that failed before them.
      */
     assetCompression: AssetCompressionReport | null;
+    /**
+     * The codec image directories this run's compiles produced, one per output root, removed when
+     * the run finishes successfully and left in place when it does not.
+     *
+     * Removed because nothing reads them again: each image is copied into its app dir during the
+     * compile, and the next compile under the same root writes its own. They sit inside the
+     * author's project folder and carry the title's material, so a finished run leaves none
+     * behind. A failed run keeps them, because what the codec step produced is part of what there
+     * is to look at when it is the step that failed.
+     */
+    codecScratch: string[];
 };
 
 /**
@@ -1005,6 +1016,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         // Another Studio having the project is refused the same way and for a kindred reason: the
@@ -1104,6 +1116,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
@@ -1305,6 +1318,7 @@ export class GameBuildManager {
             onAudit: report => { contentAudit = report; },
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.emit(session, {
             level: "info",
             source: "Build",
@@ -1484,6 +1498,7 @@ export class GameBuildManager {
                 cancelled: () => session.cancelled,
             });
             session.worker = null;
+            this.noteCodecScratch(session, artifact);
             this.ensureNotCancelled(session);
 
             const outputFile = resolveDlcDeliveryPath(
@@ -1578,6 +1593,7 @@ export class GameBuildManager {
             cancelled: () => session.cancelled,
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.ensureNotCancelled(session);
         return artifact.appDir;
     }
@@ -2129,6 +2145,7 @@ export class GameBuildManager {
                 onAudit: report => { contentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, desktopArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -2184,6 +2201,7 @@ export class GameBuildManager {
                 onAudit: report => { webContentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, webArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -3934,8 +3952,39 @@ export class GameBuildManager {
      */
     private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
         const stamped = this.stampRunVariant(session, snapshot);
+        if (stamped.status === "done") {
+            await this.discardCodecScratch(session);
+        }
         await writeLastGameBuildRun(session.projectPath, this.runRecord(session, stamped));
         session.snapshot = stamped;
+    }
+
+    /** Remember where one of this run's compiles produced its codec images; see `codecScratch`. */
+    private noteCodecScratch(session: BuildSession, artifact: GameRuntimeArtifactCompileResult): void {
+        if (!session.codecScratch.includes(artifact.codecImageDir)) {
+            session.codecScratch.push(artifact.codecImageDir);
+        }
+    }
+
+    /**
+     * Remove the codec images a successful run produced.
+     *
+     * Best effort and silent on the build console: the run has already succeeded, and a directory
+     * that will not go (a file some other program still holds) is not a fact about the game. It is
+     * written to the application log instead, and the next successful run under the same root
+     * removes it.
+     */
+    private async discardCodecScratch(session: BuildSession): Promise<void> {
+        for (const dir of session.codecScratch) {
+            try {
+                await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+            } catch (error) {
+                this.app.logger.warn(
+                    `[Build] could not remove ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
+        }
+        session.codecScratch = [];
     }
 
     /**
