@@ -2894,9 +2894,9 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     // numbers after the row's own, so installing a plugin cannot rename what the row already had.
     // Not bound, so the play head does not step onto the row before the row has begun.
     return [
-        nameRowInternals(ctx, injection.before, blockId),
+        ...nameRowInternals(ctx, injection.before, blockId) as NlrStatement[],
         ...own,
-        nameRowInternals(ctx, injection.after, blockId),
+        ...nameRowInternals(ctx, injection.after, blockId) as NlrStatement[],
     ];
 }
 
@@ -7538,8 +7538,11 @@ function nameRowInternals(
  * place), which is named under the scene with an empty row. Unlike a row's pass this one looks
  * inside everything, named or not, so nothing a row's pass could not see is left to the engine.
  */
-function nameSceneActions(ctx: SceneCompileContext, statements: NlrStatement[]): NlrStatement {
-    return nameRowInternals(ctx, statements, null, { reachInsideNamed: true });
+function nameSceneActions(ctx: SceneCompileContext, statements: NlrStatement[]): NlrStatement[] {
+    // One entry per statement still, each now the actions it stands for: the scene takes either.
+    const constructed = statements.map(statement => constructStatement(statement));
+    nameRowInternals(ctx, constructed, null, { reachInsideNamed: true });
+    return constructed;
 }
 
 /** The prefix every id {@link nameRowInternals} gives carries, and no other action id does. */

@@ -176,6 +176,7 @@ import { attachPlayerPreferences, startPlaythroughPreferences, type PreferenceSt
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { legacyElementIdTableFor } from "./legacyElementIds";
+import { legacyActionIdTableFor } from "./legacyActionIds";
 import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
 import { createGameMenuController, type GameMenuPort } from "./gameMenu";
 import {
@@ -3153,6 +3154,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // The story the save is about to be applied to, walked as a build without stable
                 // names for the camera and the sounds would have numbered it.
                 legacyElementIds: () => legacyElementIdTableFor(activeLiveGame().story),
+                // The same story, walked as a build that numbered menus and scene steps would have.
+                legacyActionIds: () => legacyActionIdTableFor(activeLiveGame().story),
                 snapshot: () => activeLiveGame().serialize(),
                 apply: savedGame => {
                     const game = activeLiveGame();
