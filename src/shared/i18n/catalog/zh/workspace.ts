@@ -18,7 +18,7 @@ export const workspace = {
             removeConfirmDetail: "译文仍保留在磁盘上，再次添加该语言时会恢复",
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
-            staleCount: "{count} 条待校对",
+            staleCount: "{count} 条待复查",
             importCounts: "已导入 {applied}（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
             translationCount: {
                 other: "{count} 条翻译",
@@ -55,7 +55,7 @@ export const workspace = {
             formatJsonHint: "脚本与自建流程",
             scopeLabel: "范围",
             scopeAll: "全部",
-            scopePending: "未翻译与待校对",
+            scopePending: "未翻译与待复查",
             exportAction: "导出",
             exportDone: {
                 other: "已导出 {count} 条到 {path}",
@@ -76,7 +76,7 @@ export const workspace = {
             modeReview: "审校",
             filterAll: "全部",
             filterUntranslated: "未翻译",
-            filterStale: "待校对",
+            filterStale: "待复查",
             filterCompleted: "已翻译",
             reviewFilterReviewed: "已校对",
             reviewFilterUnreviewed: "未校对",
@@ -101,8 +101,8 @@ export const workspace = {
             unmarkReviewed: "退回已翻译",
             reviewApprove: "通过",
             reviewReturn: "退回",
-            reviewPendingCount: "{count} 条待校对",
-            reviewAllClear: "没有待校对的条目",
+            reviewPendingCount: "{count} 条未校对",
+            reviewAllClear: "没有未校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
             placeholderHint: "保留 {n} 占位符，它们用于渲染内联数值",
             tagsLabel: "标记",
@@ -152,7 +152,7 @@ export const workspace = {
                 other: "{count} 条",
             },
             importFailed: "无法导入音频文件",
-            importScript: "导入录音本…",
+            importScript: "导入录音脚本…",
             importScriptCounts: "应用了 {applied}（{unchanged} 行未变，{unknown} 行没有语音）",
             scriptRowCount: {
                 other: "{count} 行",
@@ -304,7 +304,7 @@ export const workspace = {
     history: {
         scope: {
             storyScene: "场景",
-            storyMotion: "运动",
+            storyMotion: "故事动效",
             audioLoop: "音频标记与增益",
             uiSurface: "界面",
             blueprint: "蓝图",
@@ -321,7 +321,7 @@ export const workspace = {
             storySplitScene: "场景拆分",
             storyMergeScenes: "场景合并",
             storySpeakerChange: "说话人变更",
-            storyMotionEdit: "运动编辑",
+            storyMotionEdit: "动效编辑",
             audioMarkers: "标记变更",
             audioGain: "增益变更",
             surfaceEdit: "界面编辑",
@@ -804,7 +804,7 @@ export const workspace = {
                 openEditors: "正在编辑的行",
             },
         },
-        // 带入项目却未成功的文件：资产、翻译文件、录音本、故事脚本。{name} 是文件本身的名称，
+        // 带入项目却未成功的文件：资产、翻译文件、录音脚本、故事脚本。{name} 是文件本身的名称，
         // 不是路径；原因取自下面的 reason，只列作者能处理的。永不显示读取器或导入器自带的消息。
         import: {
             failed: "无法导入“{name}”",
@@ -855,7 +855,7 @@ export const workspace = {
                 unrecognizedMedia: "该地址返回的内容不是 NarraLeaf 可识别的音频或视频格式",
                 unrecognizedFont: "该地址返回的内容不是 NarraLeaf 可识别的字体格式",
             },
-            // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
+            // 翻译文件或录音脚本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
             // JSON 数组的项、PO 文件的行。
             skipped: {
                 missingId: "有条目缺少 ID",
@@ -1063,10 +1063,10 @@ export const workspace = {
                 checkpoint: "检查点",
                 checkpointClose: "关闭项目前的检查点",
                 checkpointBuild: "构建前的检查点",
-                checkpointRestore: "还原前的检查点",
+                checkpointRestore: "恢复前的检查点",
                 checkpointLiveSession: "实时会话前的检查点",
                 liveSessionMatched: "已对齐实时会话的版本",
-                restored: "还原到 {version}",
+                restored: "恢复到 {version}",
             },
             // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以
             // 这两句话不一样，因为作者只有其中一种情况能自己动手。两者都不渲染成禁用控件：在那些
@@ -1318,7 +1318,7 @@ export const workspace = {
             // 开关行末尾那个展开替换行的按钮。搜索是常事，所以面板默认只有搜索框。
             toggleReplace: "替换",
             replacePlaceholder: "替换为",
-            replaceAll: "替换全部",
+            replaceAll: "全部替换",
             replaceRow: "替换这一行",
             // 计划里要改的东西已经被删掉或改过了。替换要么整体生效，要么什么都不做，所以这里直接拒绝。
             replaceStale: "项目内容刚发生变更，请重新搜索",

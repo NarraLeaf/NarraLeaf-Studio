@@ -271,7 +271,7 @@ export const help = {
                 + "occurs wherever it appears.",
         },
         storyMotion: {
-            title: "Motion",
+            title: "Story Motion",
             body:
                 "A motion is a reusable movement: a character sliding in, a picture fading, the camera pushing "
                 + "in on the stage. It is defined once and can be used on any row.\n"
@@ -320,7 +320,7 @@ export const help = {
                 + "- Select two or more files of one type and choose New Set from Selection. In a folder's "
                 + "menu, New Asset Set starts one from files chosen in the dialog.\n"
                 + "- The dialog asks what the set varies by, then which file each value uses.\n"
-                + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
+                + "- Choosing a file for a value in the Values list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
                 + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
                 + "- Story rows, character appearances and dialog avatars, images, backgrounds and videos in "
@@ -554,8 +554,8 @@ export const help = {
                 "Three nodes read input actions.\n"
                 + "\n"
                 + "- On Action runs when the action fires. It reports which device raised it and where the "
-                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget. "
-                + "On the global blueprint it runs for every action on every screen, before any interface "
+                + "pointer was. It belongs to an interface or to the App logic blueprint, not to one widget. "
+                + "On the App logic blueprint it runs for every action on every screen, before any interface "
                 + "answers it.\n"
                 + "- Is Action Held answers whether the action is held at this moment. A key, a mouse button "
                 + "and a long press can be held; a scroll is an instant and a double click is a sequence, so "
@@ -612,7 +612,7 @@ export const help = {
         scripts: {
             title: "Scripts",
             body:
-                "The logic of a page, a component or a story row is a list of layers, and each layer is "
+                "The logic of a page, a widget or a story row is a list of layers, and each layer is "
                 + "either a blueprint or a script. A blueprint is a graph on a canvas. A script is a TypeScript "
                 + "file under the project's scripts folder, written in an external editor. Studio creates the "
                 + "file once and never writes it again.\n"

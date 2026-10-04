@@ -577,8 +577,8 @@ export const storyInspector = {
         conditionContainer: "条件の入れ物。条件の枝を子として足す",
         control: "制御",
         sequence: "順に実行",
-        parallel: "すべて並列",
-        race: "どれか 1 つ",
+        parallel: "並行",
+        race: "先着",
         repeat: "繰り返し",
         mode: {
             do: "実行",

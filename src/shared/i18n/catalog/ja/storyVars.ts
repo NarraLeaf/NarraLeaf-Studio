@@ -5,8 +5,8 @@ import type { LocaleNamespace } from "../types";
  *
  * 見出しはこのパネルの持ち分をそのまま表す。プロジェクトの 2 つのスコープはプロジェクト側で
  * 定義され、このパネルが書き換える。シーンスコープはストーリー側の宣言で、ここには写るだけ。
- * `persistent` はキー名を保つが、表示は「グローバル」にする。ストーリーの `/global` 行と
- * そのバッジがすでにそう呼んでいる。
+ * `persistent` はキー名も表示も「永続」。ブループリントエディタ、ヘルプ、開発モードがそう呼び、
+ * 「グローバル」はアプリロジックのブループリント自身の変数を指すので、2 つのスコープで共有できない。
  */
 export const storyVars = {
     valueType: {
@@ -38,7 +38,7 @@ export const storyVars = {
         hint: "プロジェクトで定義し、値はセーブファイルに入る",
     },
     persistent: {
-        title: "グローバル変数",
+        title: "永続変数",
         hint: "プロジェクトで定義し、アプリ全体で有効。ブループリントと共有される",
     },
 } satisfies LocaleNamespace<"storyVars">;

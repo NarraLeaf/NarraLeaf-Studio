@@ -13,8 +13,8 @@ export const uiEditor = {
     ownerLabel: {
         globalMain: "アプリロジック",
         surfaceMain: "ページロジック",
-        widgetMain: "コンポーネントロジック",
-        widgetValue: "コンポーネントの値",
+        widgetMain: "ウィジェットロジック",
+        widgetValue: "ウィジェットの値",
         storyAction: "ストーリーアクション",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、

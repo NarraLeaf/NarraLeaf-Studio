@@ -19,7 +19,7 @@ export const storyInspector = {
     },
     voice: {
         voiced: "已配音",
-        none: "无音轨",
+        none: "未配音",
         stale: "待更新",
         openTable: "打开配音表",
     },
@@ -72,7 +72,7 @@ export const storyInspector = {
     variableScope: {
         scene: "场景",
         saved: "存档",
-        persistent: "持久化",
+        persistent: "持久",
     },
     transformCard: {
         menu: "更多操作",
@@ -516,8 +516,8 @@ export const storyInspector = {
         conditionContainer: "条件容器，在其下添加条件分支作为子项",
         control: "控制",
         sequence: "顺序",
-        parallel: "全部并行",
-        race: "任一竞速",
+        parallel: "并行",
+        race: "竞速",
         repeat: "重复",
         mode: {
             do: "执行",

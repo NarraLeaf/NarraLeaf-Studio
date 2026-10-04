@@ -43,7 +43,7 @@ export const characters = {
         unnamed: "未命名",
         appearanceLabel: "立绘类型",
         kindDescription: {
-            preset: "每个姿势一张完整立绘",
+            preset: "每个姿态一张完整立绘",
             layered: "分层组合，按标签切换",
         },
         runtimeGroup: "由运行时绘制",
@@ -76,7 +76,7 @@ export const characters = {
             describeOk: "已从模型读取",
             describeNoModel: "没有可读取的模型",
             describeNoBackend: "未选择运行时",
-            describeBackendMissing: "本机未安装该运行时",
+            describeBackendMissing: "本项目未安装该运行时",
             describeDistrusted: "项目未受信任",
             describeNotSupported: "该运行时不提供清单",
             describeFailed: "无法读取该模型",
@@ -232,12 +232,12 @@ export const characters = {
         editorTitle: "角色属性",
         thumbnail: "缩略图",
         preview: "预览",
-        defaultAvatar: "对白头像",
-        // 该角色语音所在的总线。只提供语音总线及其之下的总线——引擎不接受挂在别处的语音片段
-        voiceTrack: "语音总线",
-        voiceTrackMissing: "总线已不存在",
-        // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
-        voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
+        defaultAvatar: "默认对白头像",
+        // 该角色语音所在的音轨。只提供语音音轨及其之下的音轨：引擎不接受挂在别处的语音片段
+        voiceTrack: "语音音轨",
+        voiceTrackMissing: "音轨已不存在",
+        // 仅当语音音轨下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条音轨的那一刻
+        voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条音轨，即可为该角色单独控制音量",
         // 登场行未写明的每一项都回落到这里。用的是行上那个动词（`charOp.enter`）的说法
         entrance: "登场默认值",
         entranceEmpty: "未设置时，登场行使用舞台的默认值",

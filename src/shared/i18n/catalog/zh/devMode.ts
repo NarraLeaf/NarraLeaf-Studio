@@ -120,7 +120,7 @@ export const devMode = {
         visitedOptions: "选项",
         loaded: "已读取",
         loadedWithLosses: "已读取，但有内容丢失",
-        droppedBacklog: "丢弃的回顾记录：{count} / {total}；它们对应的行已不存在",
+        droppedBacklog: "丢弃的对话记录：{count} / {total}；它们对应的行已不存在",
         unclaimedOnLoad: "没有对应变量声明的键：{count}",
         missingElement: "该存档引用了故事中已不存在的元素：{id}",
         unresolvedIds: "编译 id：{ids}",

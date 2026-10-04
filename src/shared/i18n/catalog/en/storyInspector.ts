@@ -595,8 +595,8 @@ export const storyInspector = {
         conditionContainer: "Condition container. Add condition branches as children.",
         control: "Control",
         sequence: "Sequence",
-        parallel: "Parallel all",
-        race: "Race any",
+        parallel: "Parallel",
+        race: "Race",
         repeat: "Repeat",
         mode: {
             do: "Do",

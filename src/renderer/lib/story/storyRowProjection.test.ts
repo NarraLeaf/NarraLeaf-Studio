@@ -170,7 +170,7 @@ describe("storyRowSentence — the sentence the editor shows", () => {
 
     it("leads a container with its plain-language pill, not the raw control enum", () => {
         expect(storyRowSentence(control({ control: "repeat", times: 3 }), bare)).toBe("Repeat 3 times");
-        expect(storyRowSentence(control({ control: "parallel", mode: "all" }), bare)).toBe("Run at the same time");
+        expect(storyRowSentence(control({ control: "parallel", mode: "all" }), bare)).toBe("Parallel");
         const option: StoryBlock = {
             id: "o", kind: "nodeAction", parentId: null, childrenIds: [],
             payload: { action: "choiceOption", text: { textId: "t", role: "choiceText", value: "Left" } },
@@ -304,7 +304,7 @@ describe("storyContainerChain", () => {
             blocks: { outer, label, inner, leaf },
         };
         expect(storyContainerChain(scene, "leaf").map(rung => rung.info.pill))
-            .toEqual(["Repeat", "Run at the same time"]);
+            .toEqual(["Repeat", "Parallel"]);
         expect(storyContainerChain(scene, "outer")).toEqual([]);
     });
 
