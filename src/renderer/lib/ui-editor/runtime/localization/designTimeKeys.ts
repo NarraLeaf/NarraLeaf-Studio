@@ -61,12 +61,13 @@ export function setDesignTimeLocalizationKeyWriter(next: ((name: string, sourceT
 
 /**
  * The key a widget's words are drawn from on the canvas, or null when its own words are what show:
- * it has no key, or nothing is published (the project ships no keys, so its game shows the widget's
- * own words too).
+ * it has no key, nothing is published (the project ships no keys, so its game shows the widget's own
+ * words too), or the registry does not hold the key it names - the canvas draws its own words then,
+ * and typing over them has to write those, not mint a key nobody asked for.
  */
 export function designTimeKeyOf(localizationKey: string | undefined): string | null {
     const key = localizationKey?.trim();
-    return key && keys ? key : null;
+    return key && keys && Object.prototype.hasOwnProperty.call(keys, key) ? key : null;
 }
 
 /**
