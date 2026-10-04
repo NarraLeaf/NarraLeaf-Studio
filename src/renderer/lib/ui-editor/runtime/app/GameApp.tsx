@@ -158,6 +158,7 @@ import {
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
+import { buildGlobalHostAdapterBundle } from "./globalHost";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles } from "./hostAdapterBundles";
 import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
@@ -978,6 +979,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         [bundle.ui.uidoc.surfaces],
     );
     /**
+     * Whether a page or a modal layer is drawn over the stage at this instant: the cover half of
+     * `isStoryOnScreen` below, and the whole of what the global blueprint's `Is Game Overlay` answers
+     * while a game runs (see `globalHost`). One reading for both, so the keys the global blueprint
+     * gates on the story and the story's own motion cannot disagree about whether it is covered.
+     */
+    const isStageCoveredNow = useCallback((): boolean => isStageCovered({
+        pageEntries: navigation.getState().navStack,
+        pagesHiddenForGame: studioPageHiddenForGameRef.current,
+        gameHiddenKeys: gameHiddenNavKeysRef.current,
+        layers: layerStack.getSnapshot().layers,
+        drawableSurfaceIds,
+    }), [drawableSurfaceIds, layerStack, navigation]);
+    /**
      * Whether the story is the thing the player is looking at, rather than merely the thing behind
      * what they are looking at.
      *
@@ -992,18 +1006,10 @@ export function GameApp(props: GameAppProps): ReactNode {
      * reader outside React gets the answer for this instant. See `sessionGate` for why anything a
      * Game UI slot surface can reach has to be built that way.
      */
-    const isStoryOnScreen = useCallback((): boolean => {
-        if (!isInGame()) {
-            return false;
-        }
-        return !isStageCovered({
-            pageEntries: navigation.getState().navStack,
-            pagesHiddenForGame: studioPageHiddenForGameRef.current,
-            gameHiddenKeys: gameHiddenNavKeysRef.current,
-            layers: layerStack.getSnapshot().layers,
-            drawableSurfaceIds,
-        });
-    }, [drawableSurfaceIds, isInGame, layerStack, navigation]);
+    const isStoryOnScreen = useCallback(
+        (): boolean => isInGame() && !isStageCoveredNow(),
+        [isInGame, isStageCoveredNow],
+    );
     /**
      * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
      *
@@ -4808,6 +4814,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         return hostAdapterBundleFor(activeEntry, activeSurface);
     }, [activeEntry, activeSurface, hostAdapterBundleFor]);
 
+    /**
+     * The host the global blueprint runs on: the active page's, except that its `Is Game Overlay`
+     * answers whether the story is covered while a game runs, rather than how the page was opened.
+     * Every dispatch to the global blueprint below goes through this one; everything dispatched to
+     * the page itself keeps the page's host. See `globalHost`.
+     */
+    const globalHostAdapterBundle = useMemo(
+        () => (hostAdapterBundle
+            ? buildGlobalHostAdapterBundle(hostAdapterBundle, { isInGame, isStageCovered: isStageCoveredNow })
+            : null),
+        [hostAdapterBundle, isInGame, isStageCoveredNow],
+    );
+
     /*
      * The menu bar: the port the rows act through, the controller that draws them, and the seam a
      * plugin declares them from.
@@ -5564,7 +5583,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         item => renderedLayerKeys.has(item.layer.key) && prepaintReadyKeys.has(item.layer.key),
     );
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle) {
+        if (!host.ready || !core || !globalHostAdapterBundle) {
             return;
         }
         // The initial surface has prepainted, or the game stage has been revealed (a direct story
@@ -5595,12 +5614,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
         appBootFiredRef.current = sig;
-        const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+        const surfaceStore = core.scopeBridge.getSurfaceStore(globalHostAdapterBundle.runtimeScopeId);
         void dispatchGlobalBlueprintEvent({
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             eventName: "appBoot",
-            hostAdapter: hostAdapterBundle.hostAdapter,
+            hostAdapter: globalHostAdapterBundle.hostAdapter,
             debug: core.debug,
             getSurfaceState: key => surfaceStore.get(key),
             setSurfaceState: (key, value) => surfaceStore.set(key, value),
@@ -5612,8 +5631,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle,
         core,
         gameStageVisible,
+        globalHostAdapterBundle,
         host.ready,
-        hostAdapterBundle,
         layerPainted,
         nlrPreloadDone,
         prepaintReadyKeys,
@@ -5633,11 +5652,11 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
-            gameReady: Boolean(host.ready && core && hostAdapterBundle),
+            gameReady: Boolean(host.ready && core && globalHostAdapterBundle),
             // Only the page half moves while this listener is up; it is read per press below.
             surfaceKeyboardReady: true,
         });
-        if (!scope.global || !core || !hostAdapterBundle) {
+        if (!scope.global || !core || !globalHostAdapterBundle) {
             return;
         }
         // The keyboard half of the surfaces' declared actions lives in there too. Here rather than
@@ -5649,7 +5668,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistentVariables: bundle.ui.persistentVariables,
             vocabulary: bundle.ui.uidoc.actions,
             core,
-            globalHost: hostAdapterBundle,
+            globalHost: globalHostAdapterBundle,
             // An entry when one owns the keyboard; otherwise the stage, when the story is what the
             // player is looking at - the moment the skip loop and the auto-forward hold treat as the
             // story running, so the keys and the story's own motion leave the stage together.
@@ -5681,8 +5700,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         dialogueAdvanceActionIds,
         dialogueAdvances,
         drawsOwnNvlPage,
+        globalHostAdapterBundle,
         host,
-        hostAdapterBundle,
         isNvlModeInGame,
         isStoryOnScreen,
         nextInGame,
@@ -5700,12 +5719,12 @@ export function GameApp(props: GameAppProps): ReactNode {
      * into, which is also when the key listener is not installed.
      */
     const globalBlueprintDispatchRef = useRef<GlobalBlueprintDispatch | null>(null);
-    globalBlueprintDispatchRef.current = host.ready && core && hostAdapterBundle
+    globalBlueprintDispatchRef.current = host.ready && core && globalHostAdapterBundle
         ? {
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             core,
-            globalHost: hostAdapterBundle,
+            globalHost: globalHostAdapterBundle,
         }
         : null;
     const hostLogRef = useRef(host.log);
@@ -5941,12 +5960,13 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     /**
      * What the four ambient events below are dispatched with: the global blueprint on the active
-     * page's host, as it always has been, and then every live surface - read from
-     * `ambientTargetsRef` as each event arrives, so a layer opened or a stage surface drawn after a
-     * listener was registered is still reached.
+     * page's host, as it always has been (answering `Is Game Overlay` for the game - see
+     * `globalHost`), and then every live surface - read from `ambientTargetsRef` as each event
+     * arrives, so a layer opened or a stage surface drawn after a listener was registered is still
+     * reached.
      */
     const ambientDispatch = useMemo<AmbientSurfaceDispatch | null>(() => {
-        if (!host.ready || !core || !hostAdapterBundle) {
+        if (!host.ready || !core || !globalHostAdapterBundle) {
             return null;
         }
         return {
@@ -5954,10 +5974,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistentVariables: bundle.ui.persistentVariables,
             document: bundle.ui.uidoc,
             core,
-            globalHost: hostAdapterBundle,
+            globalHost: globalHostAdapterBundle,
             readTargets: () => ambientTargetsRef.current(),
         };
-    }, [bundle, core, host.ready, hostAdapterBundle]);
+    }, [bundle, core, globalHostAdapterBundle, host.ready]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
@@ -6173,7 +6193,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }),
     });
 
-    if (!host.ready || !core || !hostAdapterBundle) {
+    if (!host.ready || !core || !globalHostAdapterBundle) {
         // Keep the same root element shape as the ready branch below: switching the root type
         // (Fragment → Provider) when the host becomes ready would make React unmount and
         // remount the whole frame subtree (StageViewportFrame and everything inside it).
@@ -6364,12 +6384,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // load game settings — BEFORE the game is ever entered (no newGame yet).
                     if (gameReadyFiredRef.current !== sessionId) {
                         gameReadyFiredRef.current = sessionId;
-                        const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+                        const surfaceStore = core.scopeBridge.getSurfaceStore(globalHostAdapterBundle.runtimeScopeId);
                         await dispatchGlobalBlueprintEvent({
                             blueprintDocument: bundle.ui.localBlueprints,
                             persistentVariables: bundle.ui.persistentVariables,
                             eventName: "gameReady",
-                            hostAdapter: hostAdapterBundle.hostAdapter,
+                            hostAdapter: globalHostAdapterBundle.hostAdapter,
                             debug: core.debug,
                             getSurfaceState: key => surfaceStore.get(key),
                             setSurfaceState: (key, value) => surfaceStore.set(key, value),
