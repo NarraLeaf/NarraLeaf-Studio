@@ -8,6 +8,7 @@ import {
     describeBlueprintWireEnd,
     formatBlueprintWireEnd,
     listBlueprintPinConnections,
+    nameBlueprintWire,
     numberRepeatedNames,
     pickFarBlueprintWireEnd,
 } from "./blueprintWireEnds";
@@ -145,5 +146,51 @@ describe("describeBlueprintWireEnd", () => {
         const name = describeBlueprintWireEnd(unlabelled, { nodeId: "n", pinId: "p-7f3a", side: "input" }, en);
         expect(name.pin).toBeUndefined();
         expect(formatBlueprintWireEnd(name, en)).not.toContain("p-7f3a");
+    });
+});
+
+describe("nameBlueprintWire", () => {
+    const element = {
+        catalog: { displayName: "Element", role: "elementLiteral", pins: [{ id: "element", kind: "output", label: "Element" }] },
+        elementPreview: { name: "对白预览" },
+    };
+    const setText = {
+        catalog: {
+            displayName: "Set Text",
+            pins: [
+                { id: "in", kind: "input", label: "In" },
+                { id: "element", kind: "input", label: "Element" },
+            ],
+        },
+    };
+    const cards: Record<string, typeof element | typeof setText> = {
+        "5143dcd8-1d6c-420b-a3b4-7839eb6938e9": element,
+        "9a0b1c2d-0000-4000-8000-000000000002": setText,
+    };
+    const wire = {
+        source: "5143dcd8-1d6c-420b-a3b4-7839eb6938e9",
+        sourceHandle: "element",
+        target: "9a0b1c2d-0000-4000-8000-000000000002",
+        targetHandle: "element",
+    };
+
+    it("names the output end, then the input end, as the cards show them", () => {
+        expect(nameBlueprintWire(wire, id => cards[id], en)).toBe(
+            "Wire from Element (对白预览) · Element to Set Text · Element",
+        );
+    });
+
+    it("speaks the interface language", () => {
+        const name = nameBlueprintWire(wire, id => cards[id], zh);
+        const from = formatBlueprintWireEnd(describeBlueprintWireEnd(element, blueprintWireEnds(wire).source, zh), zh);
+        const to = formatBlueprintWireEnd(describeBlueprintWireEnd(setText, blueprintWireEnds(wire).target, zh), zh);
+        expect(name).toBe(`从 ${from} 到 ${to} 的连线`);
+        expect(name).not.toMatch(/[A-Za-z]/);
+    });
+
+    it("reads out no id, even for an end it has no card for", () => {
+        const name = nameBlueprintWire(wire, id => (id === wire.source ? undefined : cards[id]), en);
+        expect(name).toBe(`Wire from ${en("blueprint.canvas.unknownNode")} to Set Text · Element`);
+        expect(name).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
     });
 });

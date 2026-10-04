@@ -56,6 +56,7 @@ export const blueprint = {
         goTo: "跳到 {target}",
         goToNth: "跳到 {target}（{n}）",
         goToConnected: "跳到连接的节点",
+        name: "从 {from} 到 {to} 的连线",
     },
     crossProject: {
         pasted: {

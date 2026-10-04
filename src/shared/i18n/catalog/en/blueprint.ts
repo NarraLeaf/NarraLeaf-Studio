@@ -62,6 +62,8 @@ export const blueprint = {
         /** One of several rows naming cards that read alike, numbered left to right as they sit on the graph. */
         goToNth: "Go to {target} ({n})",
         goToConnected: "Go to connected node",
+        /** A wire's accessible name: its output end, then its input end, each written as `end` is. */
+        name: "Wire from {from} to {to}",
     },
     /**
      * A paste of nodes copied in another project.

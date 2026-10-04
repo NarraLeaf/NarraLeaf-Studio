@@ -30,7 +30,7 @@ import {
     type OnNodeDrag,
     type Viewport,
 } from "@xyflow/react";
-import { frameBlueprintGraph } from "./blueprintFraming";
+import { frameBlueprintGraph, frameBlueprintNode } from "./blueprintFraming";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
@@ -153,12 +153,14 @@ import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
 import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
+import { useHostVisible } from "@/lib/components/layout/hostVisibility";
 import { computeBlueprintRevealViewport } from "./blueprintZoom";
 import {
     blueprintWireEnds,
     describeBlueprintWireEnd,
     formatBlueprintWireEnd,
     listBlueprintPinConnections,
+    nameBlueprintWire,
     numberRepeatedNames,
     pickFarBlueprintWireEnd,
     readBlueprintPinAt,
@@ -421,11 +423,11 @@ type BlueprintFlowCanvasInnerProps = {
     onSelectNodeIds: (ids: string[]) => void;
     /**
      * A node to bring into view, on top of selecting it — what the diagnostics list asks for when an
-     * error is clicked. Selection alone leaves the node wherever it was, which on a graph bigger
-     * than the viewport is off screen.
+     * error is clicked, and what opening the blueprint at a node asks for. Selection alone leaves
+     * the node wherever it was, which on a graph bigger than the viewport is off screen.
      */
     focusNodeId?: string | null;
-    /** Bumped by the caller to re-centre on the same node; ignored while unchanged. */
+    /** Bumped by the caller to bring the same node into view again; ignored while unchanged. */
     focusNonce?: number;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
     /**
@@ -1013,6 +1015,8 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsSig: string;
         dynamicSelectOptionsByNodeSig: string;
         dynamicSelectOptionsSig: string;
+        /** The translator the wires were named with; a new one is a language switch. */
+        t: typeof t;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -1175,7 +1179,8 @@ function BlueprintFlowCanvasInner({
             prevStruct.elementPreviewsSig !== elementPreviewsSig ||
             prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
             prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig ||
-            prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig;
+            prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig ||
+            prevStruct.t !== t;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -1187,26 +1192,27 @@ function BlueprintFlowCanvasInner({
                 displayableTargetVariantsSig,
                 dynamicSelectOptionsByNodeSig,
                 dynamicSelectOptionsSig,
+                t,
             };
+            const base = blueprintIrToFlowNodes(
+                snap,
+                nodeCatalog,
+                stablePatchNodeParam,
+                blueprintMemberVariables,
+                blueprintPersistentVariables,
+                blueprintSavedVariables,
+                stableAddDynamicInputPin,
+                stableRemoveDynamicInputPin,
+                dynamicSelectOptions,
+                dynamicSelectOptionsByNodeId,
+                nodeDiagnosticsByNodeId,
+                elementPreviews,
+                displayableTargetVariantsByNodeId,
+                onBindElementLiteral,
+                openSaveSchemaEditor,
+                fitGroupFrame,
+            );
             setNodes(prevNodes => {
-                const base = blueprintIrToFlowNodes(
-                    snap,
-                    nodeCatalog,
-                    stablePatchNodeParam,
-                    blueprintMemberVariables,
-                    blueprintPersistentVariables,
-                    blueprintSavedVariables,
-                    stableAddDynamicInputPin,
-                    stableRemoveDynamicInputPin,
-                    dynamicSelectOptions,
-                    dynamicSelectOptionsByNodeId,
-                    nodeDiagnosticsByNodeId,
-                    elementPreviews,
-                    displayableTargetVariantsByNodeId,
-                    onBindElementLiteral,
-                    openSaveSchemaEditor,
-                    fitGroupFrame,
-                );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
                 if (pendingPlacementEntry) {
@@ -1230,7 +1236,15 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext));
+            // Each wire is named from the cards just built, so its accessible name is the one the
+            // hover tooltip would give its ends rather than React Flow's, which reads out node ids.
+            const cards = new Map(base.map(node => [node.id, node.data]));
+            setEdges(
+                blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext).map(edge => ({
+                    ...edge,
+                    ariaLabel: nameBlueprintWire(edge, nodeId => cards.get(nodeId), t),
+                })),
+            );
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
@@ -1254,10 +1268,10 @@ function BlueprintFlowCanvasInner({
             });
         }
 
-        const t = window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
             suppressSelectionEventsRef.current = false;
         }, 0);
-        return () => window.clearTimeout(t);
+        return () => window.clearTimeout(timer);
     }, [
         blueprintMemberVariables,
         blueprintPersistentVariables,
@@ -1287,6 +1301,7 @@ function BlueprintFlowCanvasInner({
         fitGroupFrame,
         setEdges,
         setNodes,
+        t,
     ]);
 
     /**
@@ -1300,6 +1315,11 @@ function BlueprintFlowCanvasInner({
     const appliedFocusKeyRef = useRef<string | null>(null);
     const focusPendingRef = useRef(false);
     focusPendingRef.current = focusRequestKey !== null && focusRequestKey !== appliedFocusKeyRef.current;
+    /** The last focus request made of this canvas, which an opening fit still waiting gives way to. */
+    const lastFocusRequestRef = useRef<string | null>(null);
+    if (focusRequestKey) {
+        lastFocusRequestRef.current = focusRequestKey;
+    }
 
     useEffect(() => {
         // Opening a graph to reveal one node in it: fitting the whole graph first would be a jump
@@ -1307,6 +1327,9 @@ function BlueprintFlowCanvasInner({
         if (initialViewport || focusPendingRef.current) {
             return undefined;
         }
+        // The same holds for a node asked for while the fit is still waiting: a blueprint opened at
+        // a node names it a render after the graph it is in, and the fit would land on top of it.
+        const focusRequestAtStart = lastFocusRequestRef.current;
         // The zoom menu's own "fit", so the two agree, and so the graph is framed in the part of the
         // canvas the layer panel leaves rather than partly behind it. Framed once every card has
         // been measured - a card not sized yet would count as a point, and the frame would overshoot -
@@ -1317,6 +1340,9 @@ function BlueprintFlowCanvasInner({
         let framesLeft = MAX_FRAMES_BEFORE_FITTING;
         let lastWidth = Number.NaN;
         const fitWhenMeasured = () => {
+            if (lastFocusRequestRef.current !== focusRequestAtStart) {
+                return;
+            }
             const state = store.getState();
             const measured = [...state.nodeLookup.values()].every(node => node.hidden || node.measured.width !== undefined);
             const settled = state.width === lastWidth;
@@ -1340,33 +1366,52 @@ function BlueprintFlowCanvasInner({
     }, [graphKey, initialViewport, setViewport, store]);
 
     /**
-     * Centre on the requested node, keeping the author's zoom: `setCenter` defaults to `maxZoom`,
-     * which would slam the canvas to full size on every error clicked.
+     * Bring the requested node into view: in the part of the pane the layer panel leaves, at the
+     * author's zoom unless the card would not fit at it (`frameBlueprintNode`). Centring on the whole
+     * pane put a node half behind the panel, and a graph opened at a node used to be fitted whole
+     * instead, which on a wide graph left the node at an edge or off the canvas altogether.
      *
-     * Waits for React Flow to have measured the node. On a graph switch it has not: the effect first
-     * runs against the previous graph's `nodes`, then against freshly built ones that carry no
-     * dimensions yet, and centring on a node of size 0 lands its top-left corner where its middle
-     * belongs — half a card off, which on a wide node reads as "it did not centre". The dimensions
-     * arrive as a node change, which puts this effect back on its feet.
+     * Waits for React Flow to have measured the node, and for the answer to hold still for a frame.
+     * On a graph switch the node has not been measured: the effect first runs against the previous
+     * graph's `nodes`, then against freshly built ones that carry no dimensions yet, and framing a
+     * node of size 0 lands its top-left corner where its middle belongs. The dimensions arrive as a
+     * node change, which puts this effect back on its feet. Holding still covers the rest, the way
+     * the opening fit waits: a tab just opened, or a canvas sliding out from beside the panel,
+     * reports a pane size that is about to change, and the seeded entry nodes share their ids
+     * across graphs, so the card read in the frame of a switch can be the previous graph's. And it
+     * waits for the tab to be on screen: a tab restored behind another one is mounted under
+     * `display: none`, where the layer panel measures no width and the node would be framed as if
+     * the panel were not there.
      */
+    const hostVisible = useHostVisible();
     useEffect(() => {
-        if (!focusRequestKey || !focusNodeId || focusRequestKey === appliedFocusKeyRef.current) {
-            return;
+        if (!focusRequestKey || !focusNodeId || focusRequestKey === appliedFocusKeyRef.current || !hostVisible) {
+            return undefined;
         }
-        const node = nodes.find(entry => entry.id === focusNodeId);
-        const width = node?.measured?.width ?? 0;
-        const height = node?.measured?.height ?? 0;
-        if (!node || width <= 0 || height <= 0) {
-            return;
-        }
-        appliedFocusKeyRef.current = focusRequestKey;
-        void setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-            zoom: getViewport().zoom,
-            duration: 220,
-        });
-    }, [focusRequestKey, focusNodeId, nodes, getViewport, setCenter]);
+        let frame = 0;
+        let framesLeft = MAX_FRAMES_BEFORE_FITTING;
+        let last: { x: number; y: number; zoom: number } | null = null;
+        const revealWhenSettled = () => {
+            const viewport = frameBlueprintNode(store.getState(), focusNodeId, getViewport());
+            const settled =
+                viewport !== null && last !== null && last.x === viewport.x && last.y === viewport.y && last.zoom === viewport.zoom;
+            last = viewport;
+            if (!viewport && framesLeft <= 0) {
+                return;
+            }
+            if (!viewport || (!settled && framesLeft > 0)) {
+                framesLeft -= 1;
+                frame = window.requestAnimationFrame(revealWhenSettled);
+                return;
+            }
+            appliedFocusKeyRef.current = focusRequestKey;
+            void setViewport(viewport, { duration: 220 });
+        };
+        revealWhenSettled();
+        return () => window.cancelAnimationFrame(frame);
+    }, [focusRequestKey, focusNodeId, hostVisible, nodes, getViewport, setViewport, store]);
 
-    /** Clicking the overview goes there, keeping the author's zoom - the same bargain as `setCenter` above. */
+    /** Clicking the overview goes there, keeping the author's zoom - the same bargain the reveal above strikes. */
     const jumpToMinimapPoint = useCallback(
         (_event: ReactMouseEvent, position: { x: number; y: number }) => {
             void setCenter(position.x, position.y, { zoom: getViewport().zoom, duration: 220 });

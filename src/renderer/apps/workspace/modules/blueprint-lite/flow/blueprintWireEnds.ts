@@ -5,7 +5,8 @@
  * it. Hovering a wire names the end the pointer is away from, and the wire's and a pin's context
  * menus offer to go there; both need the same three answers - which pins a wire joins, which of its
  * ends is the far one, and what the author calls the node and pin at that end - so they are worked
- * out here, away from the canvas, where they can be tested without one.
+ * out here, away from the canvas, where they can be tested without one. The wire's accessible name
+ * is built from the same words.
  *
  * Names are the ones the card itself shows: the node's title in the interface language, what the card
  * says under it (the element it is bound to, the value in its first field), and the pin's label.
@@ -236,4 +237,24 @@ export function numberRepeatedNames(names: readonly string[]): (number | null)[]
 export function formatBlueprintWireEnd(name: BlueprintWireEndName, t: Translate): string {
     const node = name.detail ? t("blueprint.wire.nodeDetail", { node: name.node, detail: name.detail }) : name.node;
     return name.pin ? t("blueprint.wire.end", { node, pin: name.pin }) : node;
+}
+
+/**
+ * A wire's accessible name: both of its ends, output first, in the words their cards use.
+ *
+ * Written onto the wire so a screen reader reading the canvas hears what the author sees. Left to
+ * itself React Flow names every wire `Edge from <id> to <id>`, which reads out node ids - and the
+ * ids of cards an author placed are generated ones. `cardOf` answers for the cards on the canvas;
+ * an end it has no card for is named the way the tooltip names one, as an unknown node.
+ */
+export function nameBlueprintWire(
+    wire: BlueprintFlowWire,
+    cardOf: (nodeId: string) => BlueprintWireEndCard | undefined,
+    t: Translate,
+): string {
+    const { source, target } = blueprintWireEnds(wire);
+    return t("blueprint.wire.name", {
+        from: formatBlueprintWireEnd(describeBlueprintWireEnd(cardOf(source.nodeId), source, t), t),
+        to: formatBlueprintWireEnd(describeBlueprintWireEnd(cardOf(target.nodeId), target, t), t),
+    });
 }

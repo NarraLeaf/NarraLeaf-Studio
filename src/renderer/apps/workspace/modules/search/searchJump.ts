@@ -11,7 +11,7 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
-import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import { createBlueprintEntryEditorTab, showBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { blueprintJumpOpenTarget } from "./blueprintJumpTarget";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { requestAssetSetReveal } from "../assets/assetSetReveal";
@@ -126,8 +126,12 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             // Keyed and named as every other way into the blueprint does it, so a hit lands on the
-            // tab that is already open, under the name it already has. See `blueprintJumpOpenTarget`.
-            deps.openEditorTab(createBlueprintEntryEditorTab(blueprintJumpOpenTarget(target, owner, deps.context)));
+            // tab that is already open, under the name it already has, or on the window the editor
+            // was moved out to. See `blueprintJumpOpenTarget`.
+            showBlueprintEntryEditorTab(
+                createBlueprintEntryEditorTab(blueprintJumpOpenTarget(target, owner, deps.context)),
+                deps.openEditorTab,
+            );
             return true;
         }
         case "localizationKey":
