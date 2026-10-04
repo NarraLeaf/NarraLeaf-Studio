@@ -13,6 +13,17 @@ export const EDITOR_SURFACE_LOW_OPACITY_OUTLINE =
     "1px solid var(--narraleaf-accent-strong, rgba(64, 168, 196, 0.92))";
 
 /**
+ * What a surface paints when it has stored no background colour: white for a page, nothing for a Game
+ * UI, which is drawn over the running scene.
+ *
+ * The one answer for every reader - the canvas, the game, and the Background colour swatch in the
+ * surface's properties, which shows this when the field is empty rather than a colour of its own.
+ */
+export function getSurfaceDefaultBackgroundColor(surface: Pick<UISurface, "kind">): string {
+    return surface.kind === "stageSurface" ? "transparent" : "#ffffff";
+}
+
+/**
  * The colour a surface paints behind everything on it, as CSS.
  *
  * Every reader in this module goes through here, which is why the brand link is resolved at this one
@@ -26,7 +37,7 @@ export const EDITOR_SURFACE_LOW_OPACITY_OUTLINE =
  * is the thing that explains why - rather than a colour appearing that no one chose.
  */
 export function getSurfaceBackgroundColor(surface: UISurface): string {
-    const stored = surface.settings?.backgroundColor ?? (surface.kind === "stageSurface" ? "transparent" : "#ffffff");
+    const stored = surface.settings?.backgroundColor ?? getSurfaceDefaultBackgroundColor(surface);
     return getActiveBrandPalette().resolveValueCss(stored) ?? stored;
 }
 
