@@ -146,7 +146,24 @@ function textSiteNotes(type: string): string[] {
     if (site.keyProp && site.canvasDrawsKey) {
         notes.push(keyedWordsNote(TEXT_SITE_NOUNS[type] ?? type, site, site.keyProp));
     }
+    if (site.valueBinding === "offered") {
+        notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+    }
     return notes;
+}
+
+/**
+ * How a widget inside a component shows words each placement gives it: a text parameter, bound the
+ * way a list row's field is, translated per placement.
+ */
+function componentParamWordsNote(widget: string, stringProp: string): string {
+    return `Inside a component definition, \`bind ${stringProp} = param <paramId>\` shows one of the `
+        + "component's text parameters (`param <paramId> <name> type=text = <default>`): every placement "
+        + "draws the value it gives - written directly, `component <id> <paramId>=\"…\"`, or as a key, "
+        + "`<paramId>.key=<key>` - on the canvas and in the game, and no graph is involved. Words written "
+        + "directly are translated through the placement's own unit (`ui:<placementId>.param.<paramId>`), "
+        + "a default through the component's (`ui:<componentId>.param.<paramId>`). The "
+        + `${widget}'s own \`${stringProp}\` is then sample text, drawn only while the component itself is edited.`;
 }
 
 /**

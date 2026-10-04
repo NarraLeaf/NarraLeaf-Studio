@@ -24,6 +24,12 @@ import { getUISwitchChildSlot } from "./switch";
  * words as blank in a project without a source language. The step from v12 needs the key registry
  * and the translation files, so it is not run in `migrateSchemaVersion` with the others: every
  * reader that meets an older document runs `migrateUITextSourcesV13` itself, with the project's.
+ *
+ * A component's text parameters arrived in the same version (`componentTextParams.ts`): a parameter
+ * of `type: "text"`, the key an instance may name for one (`UIComponentLink.paramKeys`), and the
+ * `componentParam` value binding a text or a button inside the definition shows it through. A Studio
+ * that reads v12 would draw every placement with the definition's sample words and translate none of
+ * them, and it refuses v13 already, so they carry no version of their own.
  */
 export const UI_DOCUMENT_SCHEMA_VERSION = 13 as const;
 
@@ -194,25 +200,49 @@ export type UIComponentDefinition = {
  * one literal baked into it and every slot would show the same save. The repeated thing is exactly
  * the thing worth making a component of, so the difference has to live on the instance.
  *
- * `string` is the only type: it is what a text field gives back, and every other kind an author
- * needs so far (an index, an id, a label) is written as one anyway. Adding a type later is additive
- * as long as `type` stays required.
+ * Two types (`UIComponentParamType`). A `string` is what a text field gives back - an index, an id, a
+ * mode - and reaches the definition only through a blueprint's `Get Component Param`. A `text` is
+ * words a player reads: an instance gives them the way a text's words are given, written directly or
+ * as a translation key, and a text or a button inside the definition shows them through a
+ * `componentParam` value binding, translated per placement (`componentTextParams.ts`). Adding a type
+ * later is additive as long as `type` stays required.
  */
 export type UIComponentParam = {
     /** Stable identity. Blueprints and instance values reference this, so renaming `name` is free. */
     id: string;
     /** What the author called it, shown in the instance's inspector. */
     name: string;
-    type: "string";
-    /** Used by an instance that has not overridden it, and by the definition's own preview. */
+    type: UIComponentParamType;
+    /**
+     * Used by an instance that has not overridden it, and by the definition's own preview. For a
+     * `text` parameter these are words written directly, translated through the definition's own unit
+     * (`uiComponentParamUnitId(componentId, paramId)`).
+     */
     defaultValue: string;
 };
+
+/** What a component parameter holds: a plain string, or words a player reads. See {@link UIComponentParam}. */
+export type UIComponentParamType = "string" | "text";
+
+/** Whether a parameter holds words a player reads, which a text inside the definition may be bound to. */
+export function isUIComponentTextParam(param: { type?: string } | null | undefined): boolean {
+    return param?.type === "text";
+}
 
 export type UIComponentLink = {
     componentId: UIComponentId;
     linked: true;
     /** Values by param id. Absent ids fall back to the definition's `defaultValue`. */
     params?: Record<string, string>;
+    /**
+     * The translation key a text parameter's value is read from, by param id.
+     *
+     * The same choice a text's words make: a value names a key or holds words of its own, and stores
+     * only that one - naming a key removes the words from `params`, and writing words removes the key.
+     * Read only for a `text` parameter; a key here wins over words in `params`, as it does on an
+     * element.
+     */
+    paramKeys?: Record<string, string>;
 };
 
 export type UIElementExtraComponentLink = {
@@ -310,10 +340,19 @@ export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | un
             }
         }
     }
+    const paramKeys: Record<string, string> = {};
+    if (link.paramKeys && typeof link.paramKeys === "object" && !Array.isArray(link.paramKeys)) {
+        for (const [id, value] of Object.entries(link.paramKeys as Record<string, unknown>)) {
+            if (typeof value === "string" && value.trim()) {
+                paramKeys[id] = value.trim();
+            }
+        }
+    }
     return {
         componentId: link.componentId,
         linked: true,
         ...(Object.keys(params).length > 0 ? { params } : {}),
+        ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
     };
 }
 
@@ -337,6 +376,11 @@ export function getUIComponentParams(component: Pick<UIComponentDefinition, "par
  *
  * An undeclared id resolves to the empty string rather than undefined - blueprints have one empty
  * value, and a param that was renamed out from under an instance should read as blank, not crash.
+ *
+ * This is the value a blueprint reads (`Get Component Param`): the string as the instance stores it.
+ * A text parameter that names a translation key reads as the key's name, which a `Translation Key
+ * Text` node turns into the key's words; the words a placement shows are resolved per placement by
+ * `resolveUIComponentTextParams`, translated.
  */
 export function resolveUIComponentParams(
     component: Pick<UIComponentDefinition, "params"> | null | undefined,
@@ -344,6 +388,11 @@ export function resolveUIComponentParams(
 ): Record<string, string> {
     const out: Record<string, string> = {};
     for (const param of getUIComponentParams(component)) {
+        const key = isUIComponentTextParam(param) ? link?.paramKeys?.[param.id] : undefined;
+        if (key) {
+            out[param.id] = key;
+            continue;
+        }
         const supplied = link?.params?.[param.id];
         out[param.id] = typeof supplied === "string" ? supplied : (param.defaultValue ?? "");
     }
@@ -378,6 +427,20 @@ export type UIElementValueBinding =
     | {
           kind: "listItemField";
           fieldId: string;
+      }
+    /**
+     * Show the value one placement gives a text parameter of the component this element is part of.
+     *
+     * The component's counterpart of `listItemField`, and the same kind of read: no graph, nothing
+     * kept alive - the value is taken from the placement being drawn (`resolveUIComponentTextParams`),
+     * so the editing canvas draws each placement with its own words, and the game translates each
+     * through the placement's own unit or reads the key it names. Only a text parameter answers one,
+     * and only a widget's words take one; outside a placement (the component's own editor) the
+     * element's own words are drawn, as sample text.
+     */
+    | {
+          kind: "componentParam";
+          paramId: string;
       };
 
 export type UILayout = {

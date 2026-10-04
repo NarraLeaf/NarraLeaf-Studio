@@ -69,6 +69,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "ui/frame-target-missing",
     "ui/frame-loop",
     "ui/list-item-field-missing",
+    "ui/component-param-missing",
     "ui/gesture-answered-twice",
     "ui/list-text-untranslated",
     "ui/localization-key-missing",
@@ -101,7 +102,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(73);
+        expect(LINT_RULES).toHaveLength(74);
     });
 
     it("gives every rule a unique id", () => {

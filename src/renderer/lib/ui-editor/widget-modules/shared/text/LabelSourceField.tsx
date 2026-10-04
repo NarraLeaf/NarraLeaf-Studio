@@ -25,6 +25,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import {
     BlueprintValueBoundCard,
+    ComponentParamBindingRow,
     ListItemFieldBindingRow,
     useBlueprintValueBinding,
     type BlueprintValueFieldConfig,
@@ -67,8 +68,12 @@ function liveElementOf(data: UIInspectorData): UIElement {
  * source language and what the canvas draws. A key is shared, so the words change everywhere it is
  * used, as they do in the game.
  *
- * Where a Blueprint Value answers the words, or a blueprint writes over them while the game runs, the
- * element's own words are sample text (`textSample.ts`): edited here, drawn on the canvas, and stated
+ * Inside a component's definition the words can also show one of the component's text parameters
+ * (`ComponentParamBindingRow`), each placement giving its own - the component's counterpart of a list
+ * row's field, picked the same way above the choice.
+ *
+ * Where a Blueprint Value or a component parameter answers the words, or a blueprint writes over them
+ * while the game runs, the element's own words are sample text (`textSample.ts`): edited here, drawn on the canvas, and stated
  * to be shown in the editor only - a package carries none of them, and nothing translates them. The
  * blueprints that write the words are listed under the field, each opening at its node
  * (`TextWritersList`), whatever the words' source.
@@ -111,6 +116,8 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             data.documentService.clearElementBlueprintValueBinding(live.id, propPath);
         } else if (binding?.kind === "listItemField") {
             data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
+        } else if (binding?.kind === "componentParam") {
+            data.documentService.setElementComponentParamBinding(live.id, propPath, null);
         }
         data.documentService.updateElementProps(live.id, { [keyProp]: name });
     }
@@ -165,17 +172,21 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             />
         ) : null;
 
-        if (shown === null) {
-            // Bound to a field of its list row, which answers the words; the picker is the whole control.
-            // The canvas draws the list's own rows there, which are the sample, so the element's own
-            // words are offered nowhere.
-            return (
-                <div className="space-y-2">
-                    {fieldRow}
-                    {writersList}
-                </div>
-            );
-        }
+        // One of the component's text parameters answers the words, a placement at a time.
+        const paramRow = config.blueprint ? (
+            <ComponentParamBindingRow
+                data={data}
+                liveElement={live}
+                propPath={propPath}
+                disabled={readOnly}
+                onBound={paramId => {
+                    if (paramId) {
+                        setPickingKey(false);
+                        data.documentService.updateElementProps(live.id, leaveKeyPatch(data));
+                    }
+                }}
+            />
+        ) : null;
 
         const choose = (next: UITextSource) => {
             if (next === shown) {
@@ -236,8 +247,35 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             </div>
         );
 
+        if (shown === null && sampleCause === "componentParam") {
+            // Each placement draws the value it gives the parameter. The element's own words are what
+            // this editor draws, where there is no placement, so they are edited as sample text.
+            return (
+                <div className="space-y-2">
+                    {paramRow}
+                    {fieldRow}
+                    {sampleBlock("widgets.sampleText.hintComponentParam")}
+                    {writersList}
+                </div>
+            );
+        }
+
+        if (shown === null) {
+            // Bound to a field of its list row, which answers the words; the picker is the whole control.
+            // The canvas draws the list's own rows there, which are the sample, so the element's own
+            // words are offered nowhere.
+            return (
+                <div className="space-y-2">
+                    {paramRow}
+                    {fieldRow}
+                    {writersList}
+                </div>
+            );
+        }
+
         return (
             <div className="space-y-2">
+                {paramRow}
                 {fieldRow}
                 {/* Words without icons: up to three worded segments have to share the inspector's column
                     in every interface language, and "Translation key" with an icon beside it wraps. */}

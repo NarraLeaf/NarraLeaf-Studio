@@ -15,10 +15,10 @@ import type {
     UIElementId,
     UISurface,
 } from "@shared/types/ui-editor/document";
-import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, isUIComponentTextParam } from "@shared/types/ui-editor/document";
 import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
-import { propAssignmentKey } from "./parse";
+import { PARAM_KEY_SUFFIX, propAssignmentKey } from "./parse";
 
 const INDENT = "    ";
 
@@ -131,7 +131,11 @@ export function printComponent(component: UIComponentDefinition, options: PrintO
     ].filter(Boolean).join(" ");
     const lines = [header];
     for (const param of component.params ?? []) {
-        lines.push(`${INDENT}param ${param.id} ${printValue(param.name)} = ${printValue(param.defaultValue)}`);
+        lines.push(
+            `${INDENT}param ${param.id} ${printValue(param.name)}`
+                + (isUIComponentTextParam(param) ? " type=text" : "")
+                + ` = ${printValue(param.defaultValue)}`,
+        );
     }
     lines.push(...printElementTree(component.elements ?? {}, component.rootElementId, 1, options));
     return lines.join("\n");
@@ -190,7 +194,9 @@ export function printElementTree(
         lines.push(
             binding.kind === "blueprintValue"
                 ? `${inner}bind ${propPath} = blueprint ${printValue(binding.blueprintId)} valueType=${binding.valueType}`
-                : `${inner}bind ${propPath} = field ${printValue(binding.fieldId)}`,
+                : binding.kind === "componentParam"
+                    ? `${inner}bind ${propPath} = param ${printValue(binding.paramId)}`
+                    : `${inner}bind ${propPath} = field ${printValue(binding.fieldId)}`,
         );
     }
     if (element.animation !== undefined) {
@@ -198,8 +204,22 @@ export function printElementTree(
     }
     const link = getUIComponentLink(element);
     if (link) {
-        const params = Object.entries(link.params ?? {}).map(([key, value]) => `${key}=${printValue(value)}`);
+        const params = [
+            ...Object.entries(link.params ?? {}).map(([key, value]) => `${key}=${printValue(value)}`),
+            ...Object.entries(link.paramKeys ?? {}).map(([key, value]) => `${key}${PARAM_KEY_SUFFIX}=${printValue(value)}`),
+        ];
         lines.push(`${inner}component ${printValue(link.componentId)}${params.length > 0 ? ` ${params.join(" ")}` : ""}`);
+        // A value read from a key holds no words of its own; the comment says what it shows, as a
+        // keyed widget's does.
+        for (const [paramId, keyName] of Object.entries(link.paramKeys ?? {})) {
+            if (!options.keyWords) {
+                break;
+            }
+            const words = options.keyWords.get(keyName);
+            lines.push(words === undefined
+                ? `${inner}# ${paramId} words: ${keyName} (the project has no such key, so the placement shows its name)`
+                : `${inner}# ${paramId} words: ${printValue(words)}`);
+        }
     }
     for (const [key, value] of Object.entries(element.extra ?? {})) {
         if (key === "componentLink" && link) {

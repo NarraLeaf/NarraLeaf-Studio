@@ -24,6 +24,7 @@ import {
     isUIElementFlowLayoutChild,
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
+import { resolveUIComponentTextParams, type UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
 import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
@@ -75,6 +76,7 @@ import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runt
 import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import {
     componentParamsKey,
+    componentTextsKey,
     isReusableElementType,
     resolveElementReuseCache,
     sameChildren,
@@ -466,6 +468,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         valueRuntime,
         [],
         props.blueprintLifecycleReady ?? true,
+        null,
         null,
         props.animationPlan ?? null,
         reuse,
@@ -1287,6 +1290,9 @@ function renderLinkedComponentInstanceContent(input: {
     // map, so the dispatch options of content without params are byte-for-byte what they were.
     const resolvedParams = resolveUIComponentParams(component, link);
     const componentParams = Object.keys(resolvedParams).length > 0 ? resolvedParams : null;
+    // The words this placement gives the definition's text parameters, which a text inside it shows
+    // through a `componentParam` binding - per placement, on the canvas as in the game, with no graph.
+    const componentTexts = resolveUIComponentTextParams(component, link, input.instanceElement.id);
     /**
      * A definition is authored on its own, so its animations are timed from its own root rather than
      * from the Surface the instance sits on: an instance placed under a staggering container still
@@ -1372,6 +1378,7 @@ function renderLinkedComponentInstanceContent(input: {
                     [...input.componentPath, component.id],
                     input.blueprintLifecycleReady ?? true,
                     componentParams,
+                    componentTexts,
                     componentAnimationPlan,
                     null,
                     input.pageDocument,
@@ -1406,6 +1413,8 @@ function renderElementTree(
     blueprintLifecycleReady = true,
     /** Resolved params of the component instance this subtree belongs to; null outside one. */
     componentParams: Record<string, string> | null = null,
+    /** What that placement gives its component's text parameters (`resolveUIComponentTextParams`); null outside one. */
+    componentTexts: UIComponentTextValues | null = null,
     /** Enter/exit timings for this Surface, or null when the host wants a static tree. */
     animationPlan: SurfaceAnimationPlan | null = null,
     /** Last pass's nodes, when this tree may reuse them - see `elementReuse`. */
@@ -1432,7 +1441,14 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
-    const merged = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey);
+    const merged = mergeElementWithBlueprintValues(
+        bound,
+        surface.id,
+        valueRuntime,
+        listItemScope ?? null,
+        instanceKey,
+        componentTexts,
+    );
     const renderer = rendererRegistry.get(merged.type);
     // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
     // instance key and (for the switch) per-part variant overrides - so the tree must not also
@@ -1521,6 +1537,7 @@ function renderElementTree(
                 componentPath,
                 blueprintLifecycleReady,
                 componentParams,
+                componentTexts,
                 animationPlan,
                 // A widget placing its own children does it from inside its own render, later than
                 // this walk and from data this walk cannot see - so what it places is never reused.
@@ -1568,6 +1585,7 @@ function renderElementTree(
               valueRuntime,
               blueprintLifecycleReady,
               componentParamsKey(componentParams),
+              componentTextsKey(componentTexts),
               animationPlan,
               pageDocument,
           ]

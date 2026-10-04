@@ -4,6 +4,7 @@ import type { LocalizationUnit } from "../localization";
 import { UI_DOCUMENT_MIN_SUPPORTED_VERSION, UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "./document";
 import {
     applyUITextLocaleEdits,
+    listUITextKeysNamed,
     migrateUITextSourcesV13,
     settleIncomingUITextSources,
     UI_TEXT_SOURCES_SCHEMA_VERSION,
@@ -333,6 +334,34 @@ describe("migrateUITextSourcesV13", () => {
         // Nothing to settle hands the table back as it came.
         const settled = { plain: element("plain", "nl.text", { text: "Hi" }) };
         expect(settleIncomingUITextSources(settled, { hasKey: () => true }).table).toBe(settled);
+    });
+
+    it("gives an arriving placement the words of a key the project lacks for its text parameter, under its own unit", () => {
+        const placement = (id: string, paramKeys: Record<string, string>): UIElement => ({
+            id,
+            type: "nl.container",
+            parentId: "root",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+            extra: { componentLink: { componentId: "nav", linked: true, paramKeys } },
+        });
+        const arriving = {
+            kept: placement("kept", { label: "menu.start" }),
+            carried: placement("carried", { label: "menu.extra" }),
+            bare: placement("bare", { label: "menu.bare" }),
+        };
+        expect(listUITextKeysNamed(arriving).sort()).toEqual(["menu.bare", "menu.extra", "menu.start"]);
+        const { table, converted } = settleIncomingUITextSources(arriving, {
+            hasKey: name => name === "menu.start",
+            carried: { "menu.extra": { words: "Extra" } },
+        });
+        expect(table.kept).toBe(arriving.kept);
+        expect(table.carried.extra).toEqual({ componentLink: { componentId: "nav", linked: true, params: { label: "Extra" } } });
+        expect(table.bare.extra).toEqual({ componentLink: { componentId: "nav", linked: true, params: { label: "menu.bare" } } });
+        expect(converted.map(site => `${site.elementId}:${site.prop}:${site.keyName}`)).toEqual([
+            "carried:param.label:menu.extra",
+            "bare:param.label:menu.bare",
+        ]);
     });
 
     it("applies its edits to translation files held in memory", () => {

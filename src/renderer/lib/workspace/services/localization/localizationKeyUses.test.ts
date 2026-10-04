@@ -13,18 +13,21 @@ function element(input: Partial<UIElement> & { id: string; type: string }): UIEl
 const DOCUMENT = {
     surfaces: [{ id: "title", name: "Title", kind: "appSurface", rootElementId: "root" }],
     elements: {
-        root: element({ id: "root", type: "nl.root", childrenIds: ["start", "name", "plain", "card"] }),
+        root: element({ id: "root", type: "nl.root", childrenIds: ["start", "name", "plain", "card", "item"] }),
         start: element({ id: "start", type: "nl.button", name: "Start", parentId: "root", props: { label: "Start", localizationKey: "menu.start" } }),
         name: element({ id: "name", type: "nl.textInput", parentId: "root", props: { placeholder: "Name", placeholderLocalizationKey: "menu.start" } }),
         plain: element({ id: "plain", type: "nl.text", name: "Plain", parentId: "root", props: { text: "Start" } }),
         // A placed component carries none of its definition's words.
         card: element({ id: "card", type: "nl.button", name: "Card", parentId: "root", props: { label: "x", localizationKey: "menu.start" }, extra: { componentLink: { componentId: "nav", linked: true } } }),
+        // What a placement gives a text parameter is its own, and may name the key.
+        item: element({ id: "item", type: "nl.text", name: "Item", parentId: "root", extra: { componentLink: { componentId: "nav", linked: true, paramKeys: { label: "menu.start" } } } }),
     },
     components: [
         {
             id: "nav",
             name: "Nav entry",
             rootElementId: "nav-root",
+            params: [{ id: "label", name: "Caption", type: "text", defaultValue: "" }],
             elements: {
                 "nav-root": element({ id: "nav-root", type: "nl.text", name: "Label", props: { text: "Start", localizationKey: "menu.start" } }),
             },
@@ -69,6 +72,7 @@ describe("listLocalizationKeyUses", () => {
         expect(uses.elements).toEqual([
             { ownerName: "Title", elementName: "Start" },
             { ownerName: "Title", elementName: "(nl.textInput)" },
+            { ownerName: "Title", elementName: "Item › Caption" },
             { ownerName: "Nav entry", elementName: "Label" },
         ]);
         expect(uses.blueprints).toEqual(["Title"]);

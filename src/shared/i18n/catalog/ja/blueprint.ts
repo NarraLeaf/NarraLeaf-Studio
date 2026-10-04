@@ -1505,6 +1505,7 @@ export const blueprint = {
         getTotalPlaytime: "累計プレイ時間を取得",
     },
     nodeDescription: {
+        getComponentParam: "この置いたものが選んだパラメータに設定した値。設定がなければパラメータの初期値。翻訳キーを使う「テキスト」パラメータではキー名になり、その文字は「翻訳キーのテキスト」で得られる",
         compareEqual: "A と B が型も値も同じとき真。数値の 1 と文字列の \"1\" は等しくない",
         compareNotEqual: "A と B の値か型が異なるとき真。数値の 1 と文字列の \"1\" は異なるものとして扱う",
         compareGreaterThan: "A が B より大きいとき真。両辺を数値として比べ、どちらかが数値として読めないときは偽",

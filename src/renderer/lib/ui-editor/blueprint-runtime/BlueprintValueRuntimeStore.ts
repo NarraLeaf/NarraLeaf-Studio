@@ -13,8 +13,10 @@ import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
+import { withUIComponentTextValue, type UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
 import {
     UI_TEXT_SITES,
+    readUITextSite,
     uiTextRuntimeOriginOf,
     uiTextSiteOf,
     withUITextRuntimeWords,
@@ -681,12 +683,18 @@ function resolveListItemFieldValue(
  */
 const LAYOUT_VISIBLE_BINDING_PATH = "layout.visible";
 
+/**
+ * `componentTexts` is what the placement being drawn gives its component's text parameters
+ * (`resolveUIComponentTextParams`), or null where the element is not drawn inside a placement - the
+ * component's own editor, a page.
+ */
 export function mergeElementWithBlueprintValues(
     element: UIElement,
     surfaceId: string,
     valueRuntime: BlueprintValueRuntimeStore | null,
     listItemScope: UIListItemScope | null = null,
     instanceKey = "",
+    componentTexts: UIComponentTextValues | null = null,
 ): UIElement {
     const bindings = element.valueBindings;
     if (!bindings) {
@@ -720,6 +728,19 @@ export function mergeElementWithBlueprintValues(
             if (field.resolved) {
                 out = writeTargetValue(out, target, target.normalize ? target.normalize(field.value, out) : field.value);
             }
+            continue;
+        }
+        if (binding.kind === "componentParam") {
+            // Read off the placement, like a row's field: no graph, so the editing canvas draws each
+            // placement with its own words. Only a player's words take one, and a key the element
+            // names itself wins, as it does over every binding. Inside a placement the placement
+            // answers even for a parameter it does not have - with nothing - so the canvas never shows
+            // sample words the game does not; outside one (the component's own editor) the element's
+            // own words are drawn, as sample text.
+            if (!target.site || target.site.role !== "words" || !componentTexts || readUITextSite(element, target.site).key) {
+                continue;
+            }
+            out = withUIComponentTextValue(out, target.site, componentTexts[binding.paramId]);
             continue;
         }
         if (!valueRuntime || binding.valueType !== target.valueType) {

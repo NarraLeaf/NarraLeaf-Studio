@@ -1,8 +1,9 @@
 /**
  * Sample text: the words an element holds where something else decides what the game shows.
  *
- * A text or a button whose words a value binding answers - a value blueprint, a list row's field - or
- * that a blueprint writes over while the game runs, still holds words of its own. No player reads
+ * A text or a button whose words a value binding answers - a value blueprint, a list row's field, a
+ * text parameter of its component - or that a blueprint writes over while the game runs, still holds
+ * words of its own. No player reads
  * them. They are what the canvas draws while the page is laid out, so they are edited as sample text,
  * kept out of every translation table, and left out of every package (`withoutUITextSamples`).
  *
@@ -27,9 +28,11 @@ import type { UITextWriter, UITextWriterIndex } from "./textWriters";
  *
  * - `blueprintValue`: a value blueprint answers them.
  * - `listItemField`: a field of the list row answers them; the canvas draws the list's own rows there.
+ * - `componentParam`: a text parameter of the component answers them; each placement draws its own
+ *   value, and the element's own words are drawn only in the component's own editor.
  * - `written`: a blueprint replaces them while the game runs (`Set Text`, `Clear Text`, `Set Label`).
  */
-export type UITextSampleCause = "blueprintValue" | "listItemField" | "written";
+export type UITextSampleCause = "blueprintValue" | "listItemField" | "componentParam" | "written";
 
 /**
  * Why an element's words on a site are sample text, or null when they are what a player reads.
@@ -58,6 +61,9 @@ export function uiTextSampleCauseOf(
         }
         if (reading.binding?.kind === "listItemField") {
             return "listItemField";
+        }
+        if (reading.binding?.kind === "componentParam") {
+            return "componentParam";
         }
     }
     if (writers?.some(writer => writer.textProp === site.textProp && writer.effect === "replace")) {

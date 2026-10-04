@@ -12,7 +12,7 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
 } from "@shared/types/blueprint/graph";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
-import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, getUIComponentParams, isUIComponentTextParam } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
     resolveSurfaceActionBindings,
@@ -39,6 +39,11 @@ import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemCont
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import {
+    listUIPlacementTextValues,
+    uiComponentTextValueUnitBinding,
+    uiTextComponentParamOf,
+} from "@shared/types/ui-editor/componentTextParams";
 import { indexUITextWriters, type UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
@@ -223,10 +228,30 @@ export type SurfaceTextSite = {
  * The literal is reported whether or not the widget is bound to a key, because a binding decides
  * which *words* render, not whether the widget shows any: an unresolved key falls back to exactly
  * this text.
+ *
+ * A component placement on the page puts on screen the words it gives its component's text
+ * parameters, drawn in the face of each widget inside the definition that shows them; each of those
+ * is a site too, under the placement's unit (`listUIPlacementTextValues`). A value that names a key
+ * is the key's words, which are checked as keys.
  */
 export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     const sites: SurfaceTextSite[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
+        for (const { value, shownBy } of listUIPlacementTextValues(document, element)) {
+            if (value.key || !value.text.trim()) {
+                continue;
+            }
+            const faces = new Set(shownBy.map(shower => readStringProp(elementProps(shower), "fontAssetId").trim()));
+            for (const fontAssetId of faces) {
+                sites.push({
+                    surface,
+                    element,
+                    unitId: value.unitId,
+                    text: value.text,
+                    ...(fontAssetId ? { fontAssetId } : {}),
+                });
+            }
+        }
         const site = playerWordsSiteOf(element);
         if (!site) {
             continue;
@@ -273,10 +298,20 @@ export type InterfaceTextUnitSite = {
  * A widget's own unit is not read where its words are sample text (`textSample.ts`) - a value binding
  * or a blueprint decides what the game shows there, and the translation table has no row for them -
  * so `writers` (`indexUITextWriters`) are required.
+ *
+ * What an instance does carry is the words it gives its component's text parameters, which a widget
+ * inside the definition shows: each is read through the key it names or through the placement's own
+ * unit (the definition's, for a default it falls back to), and listed under the placement.
  */
 export function listInterfaceTextUnitSites(document: UIDocument, writers: UITextWriterIndex): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
+        for (const { value } of listUIPlacementTextValues(document, element)) {
+            const binding = uiComponentTextValueUnitBinding(value);
+            if (binding) {
+                sites.push({ element, location, target, literal: value.text, binding });
+            }
+        }
         const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
             return;
@@ -800,6 +835,56 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/component-param-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A widget inside a component definition whose words show a parameter the component does not
+ * declare as a text parameter.
+ *
+ * Every placement then shows nothing there - a placement answers the binding, and has no words to
+ * give it - while the component's own editor goes on drawing the widget's sample words, so the
+ * definition looks whole. It arises from removing a parameter, from making it a string parameter, and
+ * from pasting the widget out of another component. A widget on a page bound to a parameter - pasted
+ * out of a component - is the same finding: no placement gives it words, and the game shows none.
+ */
+function runComponentParamMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        const site = uiTextSiteOf(element.type);
+        if (site && uiTextComponentParamOf(element, site) !== null) {
+            findings.push({
+                ruleId: "ui/component-param-missing",
+                messageKey: "lint.rule.uiComponentParamMissing.messageOutside",
+                location: surfaceLocation(surface, element),
+                target: surfaceTarget(surface),
+            });
+        }
+    }
+    for (const component of document.components ?? []) {
+        const textParams = new Set(getUIComponentParams(component).filter(isUIComponentTextParam).map(param => param.id));
+        for (const element of Object.values(component.elements ?? {})) {
+            const site = uiTextSiteOf(element.type);
+            const paramId = site ? uiTextComponentParamOf(element, site) : null;
+            if (paramId === null || textParams.has(paramId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/component-param-missing",
+                messageKey: "lint.rule.uiComponentParamMissing.message",
+                location: componentLocation(component, element),
+                target: componentTarget(component),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/list-text-untranslated
 // ---------------------------------------------------------------------------
 
@@ -1163,6 +1248,16 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiListItemFieldMissing",
         run: ctx => runListItemFieldMissing(ctx),
+    },
+    {
+        id: "ui/component-param-missing",
+        category: "ui",
+        // A warning, as the missing item field is: the page is whole and every other part of the
+        // component draws; what is missing is the words one widget was meant to show, and an author
+        // half-way through reshaping a component's parameters should not have the build refused.
+        defaultSeverity: "warning",
+        slug: "uiComponentParamMissing",
+        run: ctx => runComponentParamMissing(ctx),
     },
     {
         id: "ui/gesture-answered-twice",

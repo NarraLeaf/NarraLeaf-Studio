@@ -167,6 +167,7 @@ export const uiEditor = {
         widgetRenderFailed: "ウィジェットの描画に失敗",
         wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
         wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
+        wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から来る。値は置いたものごとに設定する",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",

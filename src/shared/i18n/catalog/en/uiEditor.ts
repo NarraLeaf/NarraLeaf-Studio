@@ -180,6 +180,7 @@ export const uiEditor = {
         widgetRenderFailed: "Widget failed to draw",
         wordsFromRowField: "These words come from the list row field “{field}”.",
         wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
+        wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
     },
     editor: {
         componentNotFound: "Component not found",

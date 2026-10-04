@@ -248,15 +248,27 @@ function parseComponent(line: SourceLine, tokens: string[], body: SourceLine[]):
     for (const item of blockItems(body)) {
         const itemTokens = tokensOf(item.line);
         if (itemTokens[0] === "param") {
-            // `param slot "Slot" = "1"` - id, author-facing name, default value.
+            // `param slot "Slot" = "1"` - id, author-facing name, default value - or
+            // `param label "Label" type=text = "Item"` for words a widget inside the component shows.
             const id = readString(itemTokens[1] ?? "", item.line);
             const eq = itemTokens.indexOf("=");
-            const nameToken = itemTokens[2] && itemTokens[2] !== "=" ? itemTokens[2] : id;
+            const head = eq >= 0 ? itemTokens.slice(2, eq) : itemTokens.slice(2);
+            const isFlag = (token: string) => /^[A-Za-z]+=/.test(token);
+            const flags = readFlags(head.filter(isFlag), item.line);
+            for (const key of Object.keys(flags)) {
+                if (key !== "type") {
+                    throw new UiParseError(`a param takes type= and nothing else, got "${key}=".`, item.line.number);
+                }
+            }
+            if (flags.type !== undefined && flags.type !== "string" && flags.type !== "text") {
+                throw new UiParseError(`a param's type is string or text, got "${flags.type}".`, item.line.number);
+            }
             const defaultValue = eq >= 0 ? String(readJs(itemTokens[eq + 1] ?? '""', item.line) ?? "") : "";
             statement.params.push({
                 line: item.line.number,
                 id,
-                name: readString(nameToken, item.line),
+                name: readString(head.find(token => !isFlag(token)) ?? id, item.line),
+                type: flags.type === "text" ? "text" : "string",
                 defaultValue,
             });
             continue;
@@ -378,18 +390,28 @@ function parseElement(line: SourceLine, tokens: string[], body: SourceLine[]): U
             continue;
         }
         if (itemTokens[0] === "component") {
+            // `<paramId>=<words>` gives a value directly; `<paramId>.key=<key>` names the translation key
+            // a text parameter's value is read from instead.
             const params: Record<string, string> = {};
+            const paramKeys: Record<string, string> = {};
             for (const token of itemTokens.slice(2)) {
                 const eq = token.indexOf("=");
                 if (eq <= 0) {
                     throw new UiParseError(`component params are written key=value, got "${token}".`, item.line.number);
                 }
-                params[token.slice(0, eq)] = String(readJs(token.slice(eq + 1), item.line) ?? "");
+                const name = token.slice(0, eq);
+                const value = String(readJs(token.slice(eq + 1), item.line) ?? "");
+                if (name.endsWith(PARAM_KEY_SUFFIX) && name.length > PARAM_KEY_SUFFIX.length) {
+                    paramKeys[name.slice(0, -PARAM_KEY_SUFFIX.length)] = value;
+                } else {
+                    params[name] = value;
+                }
             }
             node.componentLink = {
                 line: item.line.number,
                 componentId: readString(itemTokens[1] ?? "", item.line),
                 params,
+                paramKeys,
             };
             continue;
         }
@@ -416,11 +438,15 @@ function readAssignment(line: SourceLine, tokens: string[]): UiAssignment {
     return assign(line, "props", parts, value);
 }
 
+/** What follows a param id on a component line when the value names a translation key. */
+export const PARAM_KEY_SUFFIX = ".key";
+
 function readBinding(line: SourceLine, tokens: string[]): UiBindingLine {
-    // `bind text = blueprint <id> [valueType=string]` or `bind text = field <fieldId>`
+    // `bind text = blueprint <id> [valueType=string]`, `bind text = field <fieldId>` or
+    // `bind text = param <paramId>`
     const propPath = readString(tokens[1] ?? "", line);
     if (tokens[2] !== "=") {
-        throw new UiParseError("a bind line reads `bind <prop> = blueprint <id>` or `= field <id>`.", line.number);
+        throw new UiParseError("a bind line reads `bind <prop> = blueprint <id>`, `= field <id>` or `= param <id>`.", line.number);
     }
     const source = tokens[3];
     if (source === "blueprint") {
@@ -442,7 +468,14 @@ function readBinding(line: SourceLine, tokens: string[]): UiBindingLine {
             source: { kind: "listItemField", fieldId: readString(tokens[4] ?? "", line) },
         };
     }
-    throw new UiParseError(`a binding source is "blueprint" or "field", got "${source ?? ""}".`, line.number);
+    if (source === "param") {
+        return {
+            line: line.number,
+            propPath,
+            source: { kind: "componentParam", paramId: readString(tokens[4] ?? "", line) },
+        };
+    }
+    throw new UiParseError(`a binding source is "blueprint", "field" or "param", got "${source ?? ""}".`, line.number);
 }
 
 function assign(line: SourceLine, target: UiAssignTarget, path: string[], value: unknown): UiAssignment {

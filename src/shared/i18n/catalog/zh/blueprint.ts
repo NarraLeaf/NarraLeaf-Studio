@@ -1503,6 +1503,7 @@ export const blueprint = {
         getTotalPlaytime: "获取累计游玩时长",
     },
     nodeDescription: {
+        getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「文字」参数得到键名，其文字由「翻译键文本」取得",
         compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
         compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
         compareGreaterThan: "A 大于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",

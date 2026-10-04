@@ -8,7 +8,7 @@
 
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, getUIComponentParams } from "@shared/types/ui-editor/document";
 import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { listBlueprintGraphSites } from "@/lib/lint/blueprintSites";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "@/lib/lint/rules/blueprint";
@@ -27,7 +27,8 @@ export type LocalizationKeyUses = {
  *
  * Widgets are read through the text-site table (`textSites.ts`), so a placeholder's key counts as a
  * text's does; a component instance carries none of its definition's words and is skipped, while the
- * definition itself is listed under its own name. A blueprint node counts when one of its dropdowns
+ * definition itself is listed under its own name. An instance that reads a text parameter's value
+ * from the key is listed as "widget › parameter". A blueprint node counts when one of its dropdowns
  * picks from the project's keys and holds this name.
  *
  * @param widgetName what to call a widget the author never named
@@ -46,6 +47,18 @@ export function listLocalizationKeyUses(input: {
             && readUITextSite(element, site).key === keyName);
     };
     const nameOf = (element: UIElement) => element.name?.trim() || input.widgetName(element);
+    /** The text parameters an instance reads from the key, as "widget › parameter". */
+    const paramUses = (element: UIElement): string[] => {
+        const link = getUIComponentLink(element);
+        if (!link?.paramKeys) {
+            return [];
+        }
+        const component = uiDocument?.components?.find(candidate => candidate.id === link.componentId);
+        const params = getUIComponentParams(component);
+        return Object.entries(link.paramKeys)
+            .filter(([, name]) => name === keyName)
+            .map(([paramId]) => `${nameOf(element)} › ${params.find(param => param.id === paramId)?.name.trim() || paramId}`);
+    };
     for (const surface of uiDocument?.surfaces ?? []) {
         const seen = new Set<string>();
         const visit = (elementId: string): void => {
@@ -57,6 +70,9 @@ export function listLocalizationKeyUses(input: {
             if (usesKey(element)) {
                 elements.push({ ownerName: surface.name, elementName: nameOf(element) });
             }
+            for (const elementName of paramUses(element)) {
+                elements.push({ ownerName: surface.name, elementName });
+            }
             for (const childId of element.childrenIds ?? []) {
                 visit(childId);
             }
@@ -67,6 +83,9 @@ export function listLocalizationKeyUses(input: {
         for (const element of Object.values(component.elements ?? {})) {
             if (usesKey(element)) {
                 elements.push({ ownerName: component.name, elementName: nameOf(element) });
+            }
+            for (const elementName of paramUses(element)) {
+                elements.push({ ownerName: component.name, elementName });
             }
         }
     }

@@ -333,6 +333,12 @@ export const lint = {
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
         },
+        uiComponentParamMissing: {
+            title: "Missing text parameter",
+            description: "A widget in a component showing a parameter the component does not declare as text",
+            message: "This shows a parameter the component does not declare as text, so every placement shows no words here",
+            messageOutside: "This shows a component parameter but is not inside a component, so the game shows no words here",
+        },
         uiListTextUntranslated: {
             title: "Untranslated list content",
             description: "Words written into a list's content in a project that has a second language",

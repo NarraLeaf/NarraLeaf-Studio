@@ -1566,6 +1566,7 @@ export const blueprint = {
      * can mistake for one another.
      */
     nodeDescription: {
+        getComponentParam: "The value this placement sets for the chosen parameter, or the parameter's default when it sets none. A Text parameter that reads from a translation key gives the key's name; Translation Key Text gives its words.",
         compareEqual: "True when A and B are the same value of the same type. The number 1 and the text \"1\" are not equal.",
         compareNotEqual: "True when A and B differ in value or in type. The number 1 and the text \"1\" count as different.",
         compareGreaterThan: "True when A is greater than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
