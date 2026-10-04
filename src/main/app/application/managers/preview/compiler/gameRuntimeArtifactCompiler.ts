@@ -479,6 +479,19 @@ export type GameRuntimeArtifactCompileResult = {
      */
     codecHostImage: string | null;
     /**
+     * The scratch directory the codec images were produced in, beside the app dir under the output
+     * root.
+     *
+     * Named whether or not this compile needed any, because it is the place a compile under this
+     * output root uses, and an earlier compile that stopped part way may have left one there. What
+     * it holds is only ever an intermediate: each image is copied into the app dir once it carries
+     * this build's material, a later compile overwrites rather than reads it, and the copies carry
+     * the title's material. So once the run that made it has finished, nothing needs it; whether to
+     * keep it for diagnosis is the caller's decision, because only the caller knows how the run
+     * ended.
+     */
+    codecImageDir: string;
+    /**
      * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
      * the library out.
      *
@@ -507,6 +520,12 @@ export type GameRuntimeArtifactCompileResult = {
  * that names it cannot disagree.
  */
 const COMPILED_SCRIPTS_DIR = "scripts";
+
+/**
+ * Where, under a compile's output root, the codec images are produced before they are placed into
+ * the app dir. See `codecImageDir` on the result.
+ */
+export const CODEC_IMAGES_DIR_NAME = "codec-images";
 
 /**
  * Where packaged game payload goes. "loose" writes each item as its own plain
@@ -653,7 +672,7 @@ export async function compileGameRuntimeArtifact(
      * either writes this build's material into each or compiles each for this
      * title; the placements are assembled from the result afterwards.
      */
-    const imageDir = path.join(outputRoot, "codec-images");
+    const imageDir = path.join(outputRoot, CODEC_IMAGES_DIR_NAME);
     const images: Record<string, string> = {};
     /*
      * One image for this machine as well, whether or not this machine is a target.
@@ -1088,6 +1107,7 @@ export async function compileGameRuntimeArtifact(
                 ? titleCompile !== null
                 : null,
             codecHostImage: images[hostCodecTarget()] ?? null,
+            codecImageDir: imageDir,
             collapsedBuildAxis,
             ...(shipped ? { assetReport: shipped.report } : {}),
         };
