@@ -22,6 +22,7 @@ import type { UIComponentId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "./types";
+import type { UIElementPointerPositions } from "./elementPointerPosition";
 
 /** Which drawing of an element is on screen: everything an event it raises has to carry. */
 export type UIWidgetDrawing = {
@@ -72,6 +73,8 @@ export type UIWidgetEventRedirect = {
     elementId?: string;
     /** The DOM half of a pointer event, so a graph that stops it stops the walk as well. */
     eventControl?: BehaviorGraphEventControl;
+    /** Where a pointer event landed, so each element it bubbles to reads the press in its own box. */
+    pointerPositions?: UIElementPointerPositions;
 };
 
 /** Raise `eventName` with `payload` on this element's blueprint, in the drawing it is in. */
@@ -90,7 +93,14 @@ function redirectedOptions(
         ...("listItemScope" in redirect ? { listItemScope: redirect.listItemScope } : {}),
         ...(redirect.instanceKey !== undefined ? { instanceKey: redirect.instanceKey } : {}),
     });
-    return redirect.eventControl ? { ...(options ?? {}), eventControl: redirect.eventControl } : options;
+    if (!redirect.eventControl && !redirect.pointerPositions) {
+        return options;
+    }
+    return {
+        ...(options ?? {}),
+        ...(redirect.eventControl ? { eventControl: redirect.eventControl } : {}),
+        ...(redirect.pointerPositions ? { pointerPositions: redirect.pointerPositions } : {}),
+    };
 }
 
 /**

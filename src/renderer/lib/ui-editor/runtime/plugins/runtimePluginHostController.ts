@@ -307,9 +307,23 @@ export class RuntimePluginHostController {
      *
      * Read from the action stream rather than from the dialog on screen: only a line-bearing action
      * writes here, so an async branch stepping the play head in between cannot replace the answer
-     * with an unrelated action's.
+     * with an unrelated action's. This is the answer for an NVL line, which ends before the play
+     * head moves on; an ADV line ends after it has, and is named by the two fields below instead.
      */
     private pendingDialogueTextId: string | null = null;
+    /** The text id of the ADV line on screen, from the engine's own record of its dialog. */
+    private shownDialogueTextId: string | null = null;
+    /**
+     * The text id of the ADV line just advanced past, for the `lineEnd` that follows it.
+     *
+     * An advance in ADV settles the dialog and lets the story run on before the engine says the line
+     * ended - so by `lineEnd` the play head already stands on the next line, and the action stream
+     * names that one. The line that ended is the one whose dialog was settled. That settle and its
+     * `lineEnd` happen in one synchronous turn, so the value only lives for the rest of that turn: a
+     * dialog settled by a rollback, with no `lineEnd` after it, cannot name some later line.
+     */
+    private settledDialogueTextId: string | null = null;
+    private settleGeneration = 0;
 
     private engineSnapshot: { scene: RuntimePluginStateSnapshot; saved: RuntimePluginStateSnapshot } = {
         scene: new Map(),
@@ -386,7 +400,7 @@ export class RuntimePluginHostController {
             }
         }
         this.sceneMusicAssetIdBySceneId = compiled.sceneBackgroundMusicAssetIds ?? {};
-        this.pendingDialogueTextId = null;
+        this.forgetDialogue();
         this.bindEngineEvents(liveGame);
         this.engineSnapshot = snapshotEngineScopes(this.session);
         this.persistentSnapshot = snapshotPersistentScope(this.session, this.attachment?.scope ?? null);
@@ -405,7 +419,7 @@ export class RuntimePluginHostController {
         this.audioAssetByActionId = new Map();
         this.textIdByActionId = new Map();
         this.sceneMusicAssetIdBySceneId = {};
-        this.pendingDialogueTextId = null;
+        this.forgetDialogue();
         this.engineSnapshot = { scene: new Map(), saved: new Map() };
     }
 
@@ -561,10 +575,14 @@ export class RuntimePluginHostController {
                 this.engineSnapshot = snapshotEngineScopes(this.session);
             }
         }));
+        push(gameState.events.on("event:state.dialog.change", () => {
+            this.readAdvDialog(gameState.getAdvDialogState());
+        }));
         push(gameState.events.on("event:state.player.lineEnd", () => {
-            const textId = this.pendingDialogueTextId;
+            const textId = this.settledDialogueTextId ?? this.pendingDialogueTextId;
             // Consumed, not kept: a line the compile never named must report null rather than
             // inherit the id of whichever line ran before it.
+            this.settledDialogueTextId = null;
             this.pendingDialogueTextId = null;
             this.hub.emit("dialogueEnd", { textId });
             this.pumpEngineState();
@@ -590,6 +608,35 @@ export class RuntimePluginHostController {
         if (textId) {
             this.pendingDialogueTextId = textId;
         }
+    }
+
+    /**
+     * Follow the engine's record of the ADV dialog on screen: which line it is while it shows, and
+     * which line it was once it is settled (see {@link settledDialogueTextId}).
+     */
+    private readAdvDialog(state: { actionId: string | null } | null): void {
+        if (state) {
+            this.shownDialogueTextId = state.actionId ? this.textIdByActionId.get(state.actionId) ?? null : null;
+            return;
+        }
+        if (this.shownDialogueTextId === null) {
+            return;
+        }
+        this.settledDialogueTextId = this.shownDialogueTextId;
+        this.shownDialogueTextId = null;
+        const generation = ++this.settleGeneration;
+        queueMicrotask(() => {
+            if (this.settleGeneration === generation) {
+                this.settledDialogueTextId = null;
+            }
+        });
+    }
+
+    private forgetDialogue(): void {
+        this.pendingDialogueTextId = null;
+        this.shownDialogueTextId = null;
+        this.settledDialogueTextId = null;
+        this.settleGeneration += 1;
     }
 
     // ------------------------------------------------------------------- state

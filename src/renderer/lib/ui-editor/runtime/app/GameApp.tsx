@@ -172,7 +172,7 @@ import {
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
-import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { attachPlayerPreferences, startPlaythroughPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
@@ -1290,6 +1290,22 @@ export function GameApp(props: GameAppProps): ReactNode {
             preferenceListenersRef.current.delete(listener);
         };
     }, []);
+    /**
+     * Whether the player has put the dialogue box away (`showDialog` off), for a host that draws
+     * overlays: the Layers panel lists the dialogue surface, and nothing else this component draws
+     * changes when the box is hidden - the engine only makes it transparent, so it stays mounted and
+     * registered. Read off the preference snapshot the change stream keeps, which is the value the
+     * engine's box draws by. Without overlays it is a constant, and nothing renders for it.
+     */
+    const subscribeDialogHidden = useCallback(
+        (listener: () => void): (() => void) => (drawsOverlays ? subscribeGamePreferences(listener) : () => undefined),
+        [drawsOverlays, subscribeGamePreferences],
+    );
+    const readDialogHidden = useCallback(
+        () => drawsOverlays && preferenceSnapshotRef.current.showDialog === false,
+        [drawsOverlays],
+    );
+    const dialogHidden = useSyncExternalStore(subscribeDialogHidden, readDialogHidden);
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const prefersReducedMotion = useReducedMotion();
@@ -1653,6 +1669,11 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
+     *
+     * Stamped the way `Go Page` stamps a page (`openSurface`): a layer shown while a game holds the
+     * screen is drawn over the playthrough, so it is a game overlay - what `Is Game Overlay` answers
+     * inside it, and what thins its background so the scene shows through. Fixed for the life of
+     * the layer, as a page's is.
      */
     const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
         const key = mountSurfaceLayer(layerStack, {
@@ -1662,6 +1683,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             dismissible: request.dismissible,
             group: request.group,
             ownerScopeId: request.ownerScopeId,
+            presentation: studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage",
         });
         noteSurfaceMountStart(surfaceMountStartsRef.current, key, request.surfaceId, "layer");
         return key;
@@ -3087,6 +3109,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 apply: savedGame => {
                     const game = activeLiveGame();
                     game.game.router.clear().cleanHistory();
+                    // A loaded save is a playthrough of its own: the box opens the author's way,
+                    // not the way the game it replaced last left it.
+                    startPlaythroughPreferences(
+                        (game.game as { preference?: PreferenceStoreLike }).preference,
+                        currentBundleRef.current.preferences,
+                    );
                     game.newGame().deserialize(savedGame);
                 },
                 /**
@@ -4557,6 +4585,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         const sceneReady = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
+        // A box the player put away in the last playthrough is not away in this one. Before
+        // `newGame()`, so the first line mounts with the box the author's way.
+        startPlaythroughPreferences(
+            (liveGame.game as { preference?: PreferenceStoreLike }).preference,
+            currentBundleRef.current.preferences,
+        );
         liveGame.newGame();
         // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
         // later with the reading it inherited; nothing else in the file resets it.
@@ -6077,6 +6111,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     coveredByPage: stageCoveredByPage,
                     // What the stage layer below is handed as `interactive`.
                     pointerLive: gameStageVisible,
+                    dialogHidden,
                     surfaces: listStageSurfaces({
                         live: ambientSurfaces.list(),
                         takingInput: stageKeyboardSurfaces.list(),
