@@ -222,8 +222,8 @@ export function findWidgetModule(type: string): UIWidgetModule | undefined {
  *
  * Read from the element the module builds rather than from a type declaration, because the defaults
  * are the only machine-readable statement of what a widget's prop bag holds - the types are erased
- * before anything can ask. A widget may also carry keys no default declares (`localizationKey` is
- * the common one), so this is the shape of a new widget, not a closed set.
+ * before anything can ask. A widget may also carry keys no default declares (the props naming where
+ * its words come from - see `textSites.ts`), so this is the shape of a new widget, not a closed set.
  */
 function readProps(module: UIWidgetModule): Record<string, unknown> {
     try {

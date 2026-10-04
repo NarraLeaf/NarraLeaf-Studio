@@ -29,6 +29,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { normalizeLocalizationConfiguration, normalizeLocalizationKeysDocument } from "@shared/types/localization";
+import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { resolveBlueprintFile } from "../blueprint-cli/project";
 import {
     UI_DOCUMENT_SCHEMA_VERSION,
@@ -110,6 +112,59 @@ export function writeUiDocument(file: UiDocumentFile): void {
         meta: { ...file.document.meta, updatedAt: new Date().toISOString() },
     };
     fs.writeFileSync(file.filePath, JSON.stringify(updated, null, 2), "utf8");
+}
+
+// ---------------------------------------------------------------------------
+// The translation keys, read only
+// ---------------------------------------------------------------------------
+
+/** The project's named translation keys, and whether its game reads them at all. */
+export type TextKeys = {
+    /**
+     * True when the project has a source language. Without one a build carries no keys and every
+     * keyed widget shows its own words, so a key is not yet what a player reads.
+     */
+    keysApply: boolean;
+    /** Key name to source-language text, from `editor/localization/keys.json`. */
+    keys: ReadonlyMap<string, string>;
+};
+
+/**
+ * Read the key registry and the project's source language, the two things that decide whether a
+ * keyed widget's own words are ever shown. Null when the project config cannot be read, which is not
+ * the same as a project with no keys.
+ */
+export function readTextKeys(projectDir: string): TextKeys | null {
+    let config: Record<string, unknown>;
+    try {
+        const entries = fs.readdirSync(projectDir, { withFileTypes: true }).map(entry => ({
+            name: path.parse(entry.name).name,
+            ext: path.extname(entry.name) || null,
+            type: entry.isFile() ? ("file" as const) : entry.isDirectory() ? ("directory" as const) : ("other" as const),
+        }));
+        const configFileName = findProjectConfigFileName(entries);
+        if (!configFileName) {
+            return null;
+        }
+        config = decodeProjectConfig(fs.readFileSync(path.join(projectDir, configFileName))) as unknown as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+    const app = config.app && typeof config.app === "object" ? (config.app as Record<string, unknown>) : undefined;
+    const localization = normalizeLocalizationConfiguration(app?.localization);
+    const keys = new Map<string, string>();
+    const keysPath = path.join(projectDir, "editor", "localization", "keys.json");
+    if (fs.existsSync(keysPath)) {
+        try {
+            const document = normalizeLocalizationKeysDocument(JSON.parse(fs.readFileSync(keysPath, "utf8")));
+            for (const [name, definition] of Object.entries(document.keys)) {
+                keys.set(name, definition.sourceText);
+            }
+        } catch {
+            return null;
+        }
+    }
+    return { keysApply: Boolean(localization.sourceLocale) && localization.locales.length > 0, keys };
 }
 
 // ---------------------------------------------------------------------------
