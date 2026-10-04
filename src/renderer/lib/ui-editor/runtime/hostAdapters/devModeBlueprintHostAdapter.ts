@@ -566,7 +566,9 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             callerListItemScope: input.callerListItemScope,
             document,
             runtimeScopeId: effectiveRuntimeScopeId,
-            hostAdapter: adapter,
+            // The caller's host when it stands in front of this one (the global blueprint's), so the
+            // body reads what the calling graph reads.
+            hostAdapter: input.hostAdapter ?? adapter,
             debug,
             fnRef: input.fnRef,
             args: input.args,

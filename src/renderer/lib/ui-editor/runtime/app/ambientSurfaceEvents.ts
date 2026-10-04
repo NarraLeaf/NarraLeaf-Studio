@@ -174,7 +174,7 @@ export type AmbientSurfaceDispatch = {
     persistentVariables: PersistentVariableRuntimeTable;
     document: UIDocument;
     core: BlueprintRuntimeCore;
-    /** The host the global blueprint runs on. */
+    /** The host the global blueprint runs on (see `globalHost`). */
     globalHost: { hostAdapter: UIHostAdapter; runtimeScopeId: string };
     /** Every live surface, in the order the event reaches them; read once, as the event arrives. */
     readTargets: () => readonly AmbientSurfaceTarget[];
