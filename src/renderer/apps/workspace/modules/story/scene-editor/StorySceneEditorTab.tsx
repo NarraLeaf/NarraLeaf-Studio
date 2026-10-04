@@ -38,6 +38,7 @@ import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEdit
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
     isSameStoryBlockSelection,
@@ -108,6 +109,17 @@ import {
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+
+/**
+ * The catalog id of the command each row-menu entry runs, so the menu prints the chord beside it.
+ * Insert below is Shift+Enter's insert after the selection; right-clicking a row outside the
+ * selection selects it first.
+ */
+const STORY_ROW_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    "insert-below": "story.insert-blank-after-selection",
+    duplicate: "story.duplicate",
+    delete: "story.delete",
+};
 
 /**
  * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
@@ -2553,7 +2565,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </span>
                 </div>
             ) : null}
-            <ContextMenu
+            <ShortcutContextMenu
+                shortcuts={STORY_ROW_MENU_SHORTCUTS}
                 items={rowMenuItemsWithDeveloperRows}
                 position={rowMenu.menuState.position}
                 visible={rowMenu.menuState.visible}

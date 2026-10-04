@@ -104,12 +104,14 @@ export const help = {
                 + "while an old version is open it runs that version.",
         },
         keyboard: {
-            title: "Keyboard",
+            title: "Keyboard and Mouse",
             body:
-                "The shortcut sheet lists every shortcut in Studio, including those that apply only while a "
-                + "particular editor is open.\n"
+                "Shortcuts and Mouse Actions lists every shortcut and mouse action in Studio, grouped by editor, "
+                + "including those that apply only while a particular editor is open. Opened from an editor, it "
+                + "starts at that editor's group.\n"
                 + "\n"
-                + "- Every shortcut can be changed in Settings, under Shortcuts.\n"
+                + "- Every shortcut can be changed in Settings, under Shortcuts. Mouse actions, and the few keys "
+                + "that Settings does not list, are fixed.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
         },
         search: {

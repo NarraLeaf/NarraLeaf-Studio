@@ -35,6 +35,7 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { useTranslation } from "@/lib/i18n";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -168,6 +169,11 @@ import {
     BlueprintWireEmphasis,
     type BlueprintWireEmphasisHandle,
 } from "./components/BlueprintWireEmphasis";
+
+/** The node menu's Delete runs what the canvas's Delete key runs (a fixed key: React Flow owns it). */
+const BLUEPRINT_NODE_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    "blueprint.node.delete": "blueprint.delete",
+};
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -2656,7 +2662,8 @@ function BlueprintFlowCanvasInner({
             <BlueprintWireEmphasis ref={wireEmphasisRef} canvasId={flowId} />
             <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
-                <ContextMenu
+                <ShortcutContextMenu
+                    shortcuts={BLUEPRINT_NODE_MENU_SHORTCUTS}
                     items={nodeMenuItems}
                     position={{ x: nodeMenu.x, y: nodeMenu.y }}
                     visible

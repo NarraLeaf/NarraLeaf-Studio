@@ -45,7 +45,7 @@ import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
-import { MenuShortcut } from "../../components/ui/MenuShortcut";
+import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
 import { useFloatingLayer } from "@/lib/components/layout";
 import { WorkspaceMenuAction, WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
