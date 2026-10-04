@@ -322,6 +322,7 @@ export const blueprint = {
             keys: "按键",
             window: "窗口",
             display: "显示内容",
+            conditions: "显示条件",
         },
     },
     // 蓝图挂在什么东西上——搜索结果要靠它说明节点在哪。
