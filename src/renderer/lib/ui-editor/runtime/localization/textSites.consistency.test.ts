@@ -5,6 +5,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
 import { keepWordsOnWidgets } from "@/apps/workspace/modules/ui-editor/panel/templates/starterTitlePage";
 import { createTestLintContext } from "@/lib/lint/testContext";
@@ -146,7 +147,7 @@ describe("interface text sites", () => {
     });
 
     it("lint reads each site's key from the table's key prop (listInterfaceTextUnitSites)", () => {
-        const found = listInterfaceTextUnitSites(KEYED).map(site => {
+        const found = listInterfaceTextUnitSites(KEYED, EMPTY_UI_TEXT_WRITER_INDEX).map(site => {
             if (site.binding.kind !== "key") {
                 return `${site.element.type}.(not a key)`;
             }
@@ -156,7 +157,7 @@ describe("interface text sites", () => {
     });
 
     it("lint reads an element's own unit only where the table gives the site one", () => {
-        const found = listInterfaceTextUnitSites(OPTED_IN).map(site =>
+        const found = listInterfaceTextUnitSites(OPTED_IN, EMPTY_UI_TEXT_WRITER_INDEX).map(site =>
             site.binding.kind === "implicit"
                 ? `${site.element.type}.${site.binding.unitId.split(".").pop()}`
                 : `${site.element.type}.(not a unit)`,
@@ -182,7 +183,7 @@ describe("interface text sites", () => {
     });
 
     it("the localization panel lists an element's own unit only where the table gives the site one", () => {
-        const found = extractUiTranslationRows(OPTED_IN).map(row => `${typeOf(OPTED_IN, row.elementId)}.${row.prop}`);
+        const found = extractUiTranslationRows(OPTED_IN, EMPTY_UI_TEXT_WRITER_INDEX).map(row => `${typeOf(OPTED_IN, row.elementId)}.${row.prop}`);
         expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" && site.unitProp ? site.textProp : undefined)));
     });
 

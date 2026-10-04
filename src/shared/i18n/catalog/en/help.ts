@@ -681,7 +681,14 @@ export const help = {
                 + "- A Blueprint Value reads the variables of its page and of App logic directly. Other variables "
                 + "are read through Call Fn.\n"
                 + "- When a variable the Blueprint Value read is written, the widget shows the new value.\n"
-                + "- A widget inside a list row can also show one field of that row, chosen under Field.",
+                + "- A widget inside a list row can also show one field of that row, chosen under Field.\n"
+                + "- Under a Blueprint Value, the widget's own words are sample text. They are drawn in the editor "
+                + "only, are not part of the built game and are not translated.\n"
+                + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
+                + "Label, lists those blueprints under its text, and its own words are sample text as well. Append "
+                + "Text adds to the widget's own words, which therefore stay in the game.\n"
+                + "- Writes made by a script layer are not listed. The words of a widget that only a script writes "
+                + "are built and translated as written.",
         },
         networkNodes: {
             title: "Network requests",

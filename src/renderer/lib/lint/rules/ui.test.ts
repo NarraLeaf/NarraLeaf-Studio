@@ -158,6 +158,34 @@ describe("ui/unlocalized-text", () => {
         expect(await run("ui/unlocalized-text", unlocalizedContext(valueBlueprint))).toEqual([]);
     });
 
+    it("says nothing about words a blueprint writes over, and still reports words it only appends to", async () => {
+        // The save slot's place name, written by the slot's own graph: the literal is sample text,
+        // which no package carries. An append keeps the literal on screen as the start of the line.
+        const document = onePage(textWidget({ text: "The corridor" }));
+        const writtenBy = (nodeType: string): BlueprintDocument => blueprintDocument({
+            [encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID })]: {
+                nodes: {
+                    ref: {
+                        id: "ref",
+                        type: "blueprint.element.ref",
+                        params: { surfaceId: MAIN_APP_SURFACE_ID, elementId: "label", elementType: "nl.text" },
+                    },
+                    write: { id: "write", type: nodeType },
+                },
+                edges: [{ from: { nodeId: "ref", port: "element" }, to: { nodeId: "write", port: "element" } }],
+            },
+        });
+        const context = (nodeType: string) => createTestLintContext({
+            uiDocument: document,
+            localization: localization(["zh"]),
+            blueprintDocument: writtenBy(nodeType),
+        });
+
+        expect(await run("ui/unlocalized-text", context("blueprint.element.text.setText"))).toEqual([]);
+        const appended = await run("ui/unlocalized-text", context("blueprint.element.text.appendText"));
+        expect(appended.map(finding => finding.messageParams?.text)).toEqual(["The corridor"]);
+    });
+
     it("still reports a literal when only some other prop of the widget is bound", async () => {
         // Binding whether a row shows the text is not binding what it says.
         const document = onePage(textWidget({ text: "Locked" }));

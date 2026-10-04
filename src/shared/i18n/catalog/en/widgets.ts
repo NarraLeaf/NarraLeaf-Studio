@@ -72,6 +72,13 @@ export const widgets = {
         hint: "Shown in the editor only. The game shows the story's current line.",
         bindingNoEffect: "This binding has no effect in the {slot} slot.",
         removeBinding: "Remove",
+        hintBlueprintValue: "Shown in the editor only. The game shows the Blueprint Value's result.",
+        hintWritten: "Shown in the editor only. The game shows what the blueprints below write.",
+    },
+    textWriters: {
+        title: "Written in the game by",
+        entry: "{blueprint} › {node}",
+        count: "×{count}",
     },
     localization: {
         direct: "Direct",
