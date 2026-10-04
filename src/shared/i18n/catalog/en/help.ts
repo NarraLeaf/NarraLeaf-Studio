@@ -118,10 +118,12 @@ export const help = {
             title: "Search",
             body:
                 "The Search panel and the search box in the title bar search the whole project: the names of "
-                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, UI text "
-                + "keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
+                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, interface "
+                + "text, UI text keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
+                + "- Interface text is searched in the project's source language. Selecting it opens the page or "
+                + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",

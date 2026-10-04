@@ -1477,7 +1477,7 @@ export const workspace = {
             titleBarPlaceholder: "{name} 内を検索",
             building: "検索の索引を作っている…",
             // 何も打つ前に出る。
-            idle: "シーン、キャラクター、ストーリーの文、アセット、ブループリントを検索する",
+            idle: "シーン、キャラクター、ストーリーの文、画面のテキスト、アセット、ブループリントを検索する",
             empty: "結果なし",
             more: "ほか {count} 件",
             // 絞り込みの条件。シーン内の検索バーと共通で、同じ問いが同じ意味になる。
@@ -1504,6 +1504,7 @@ export const workspace = {
                 blueprint: "ブループリント",
                 asset: "アセット",
                 storyText: "ストーリーの文",
+                uiText: "画面のテキスト",
                 variable: "変数",
                 uiTextKey: "UI のテキストキー",
                 blueprintNode: "ブループリントのノード",

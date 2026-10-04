@@ -45,6 +45,8 @@ export type SearchGroup =
     | "asset"
     // Content - "find the line I wrote".
     | "storyText"
+    /** Words on the interface: a widget's own, a key's a widget names, a placement's text parameters. */
+    | "uiText"
     | "variable"
     | "uiTextKey"
     | "blueprintNode";
@@ -58,6 +60,7 @@ export const SEARCH_GROUP_ORDER: readonly SearchGroup[] = [
     "blueprint",
     "asset",
     "storyText",
+    "uiText",
     "variable",
     "uiTextKey",
     "blueprintNode",
