@@ -229,10 +229,18 @@ describe("where a widget's words come from", () => {
         return compileUiFile(parseUiFile(text), options).diagnostics;
     }
 
-    it("takes a widget's key, own-unit switch and marks as props it has", () => {
+    function compiled(text: string, options: Parameters<typeof compileUiFile>[1]) {
+        return compileUiFile(parseUiFile(text), options);
+    }
+
+    it("takes a widget's key and marks as props it has, and leaves out the switch an older file carries", () => {
         const text = `${MINIMAL}        Title: nl.text id=t @0,0 10x10\n            text = "Hello"\n            localizable = true\n`
-            + "            localizationKey = menu.start\n            rich = []\n";
-        expect(codes(text)).not.toContain("ui.unknown_prop");
+            + "            rich = []\n";
+        const result = compiled(text, {});
+        expect(result.diagnostics.map(item => item.code)).not.toContain("ui.unknown_prop");
+        expect(result.diagnostics.filter(item => item.code === "ui.legacy_prop").map(item => item.severity)).toEqual(["info"]);
+        const title = Object.values(result.surfaces[0].elements).find(element => element.id === "t");
+        expect(title?.props).toEqual({ text: "Hello", rich: [] });
         expect(codes(`${MINIMAL}        Art: nl.image id=a @0,0 10x10\n            localizationKey = menu.start\n`)).toContain("ui.unknown_prop");
     });
 
@@ -243,16 +251,12 @@ describe("where a widget's words come from", () => {
         expect(found[0].message).toContain("menu.start");
     });
 
-    it("passes the words a show prints: the key's own, or what the element already stores", () => {
-        expect(diagnostics(keyed("Start"), { textKeys: KEYS }).map(item => item.code)).not.toContain("ui.words_two_sources");
-        const existing = {
-            schemaVersion: 12,
-            id: "d",
-            name: "D",
-            surfaces: [],
-            elements: { start: { id: "start", type: "nl.button", parentId: null, childrenIds: [], layout: { x: 0, y: 0, width: 1, height: 1 }, props: { label: "Old words", localizationKey: "menu.start" } } },
-        } as unknown as NonNullable<Parameters<typeof compileUiFile>[1]>["existing"];
-        expect(diagnostics(keyed("Old words"), { textKeys: KEYS, existing }).map(item => item.code)).not.toContain("ui.words_two_sources");
+    it("leaves out words that are the key's, as a keyed widget holds none of its own", () => {
+        const result = compiled(keyed("Start"), { textKeys: KEYS });
+        expect(result.diagnostics.filter(item => item.code === "ui.words_dropped").map(item => item.severity)).toEqual(["info"]);
+        expect(result.diagnostics.map(item => item.code)).not.toContain("ui.words_two_sources");
+        const start = Object.values(result.surfaces[0].elements).find(element => element.id === "start");
+        expect(start?.props).toEqual({ localizationKey: "menu.start" });
     });
 
     it("refuses them without a source language too, where keys are read as well", () => {
@@ -261,9 +265,10 @@ describe("where a widget's words come from", () => {
         expect(found.map(item => item.severity)).toEqual(["error"]);
     });
 
-    it("says nothing without the project's keys, or for a key the project does not have", () => {
+    it("says nothing without the project's keys, and names a key the project does not have", () => {
         expect(codes(keyed("Begin"))).not.toContain("ui.words_two_sources");
-        expect(diagnostics(keyed("Begin"), { textKeys: { sourceLocale: "en", keys: new Map() } }).map(item => item.code))
-            .not.toContain("ui.words_two_sources");
+        const missing = diagnostics(keyed("Begin"), { textKeys: { sourceLocale: "en", keys: new Map() } });
+        expect(missing.map(item => item.code)).not.toContain("ui.words_two_sources");
+        expect(missing.filter(item => item.code === "ui.key_missing").map(item => item.severity)).toEqual(["warning"]);
     });
 });

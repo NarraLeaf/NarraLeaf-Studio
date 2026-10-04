@@ -129,9 +129,11 @@ nl.switch
 The prop table is what a **new** widget of that type carries, not a closed set: a
 widget may hold keys its defaults do not name, which is why writing one is a note
 rather than a refusal. The props that say where a widget's words come from - its
-translation key (`localizationKey`, a text input's `placeholderLocalizationKey`),
-the switch that translates its own words (`localizable`) and its marks (`rich`) -
-are known for each widget that has them and are never reported.
+translation key (`localizationKey`, a text input's `placeholderLocalizationKey`)
+and its marks (`rich`) - are known for each widget that has them and are never
+reported. A file written before v13 may carry `localizable = true`: it is left out,
+with a note (**`ui.legacy_prop`**), because a widget's own words are translated
+whenever the project has a second language.
 
 `hoverSound` and `clickSound` are on every type but `nl.root`, and are what the
 inspector's Sound section writes. Each holds an audio asset id or an asset set id,
@@ -146,10 +148,14 @@ that depends on something - a locked scene card that stays silent.
 
 A text widget's words and a button's label come from one of three places, which
 the inspector offers as one choice: the element's own `text` (a button's
-`label`), a translation key, or a Blueprint Value. In a file the key is
-`localizationKey`, and it wins over the other two - the game and the canvas both
-show the key's source text, so a keyed element's own `text` or `label` is never
-seen. Change the words of a keyed element by changing the key, not the prop.
+`label`), a translation key, or a Blueprint Value - one source, stored once. In a
+file the key is `localizationKey`, and a keyed element holds no `text` or `label`
+of its own: the game and the canvas show the key's source text, which `show`
+prints as a comment under the key (`# words: Start`). Change the words of a keyed
+element by changing the key. Keys are read whether or not the project has a
+source language; a key the project does not have shows its name. The element's
+own words are translated through its own unit (`ui:<elementId>.text`) whenever
+the project has a second language - there is no switch for it.
 A text input's `placeholder` is the same choice without the Blueprint Value: its
 own words, or the key in `placeholderLocalizationKey`, whose text the canvas and
 the game both show. A dialogue line's or NVL line's `text` is sample words the
@@ -384,16 +390,16 @@ document no longer has (the game starts on the fallback page, and Studio drops
 the pointer the next time it opens the project), and **`ui.no_entry_page`** when
 there is no page at all.
 
-One more is about words:
+Two more are about words, and need `--project` (the keys are read from it):
 
 - **`ui.words_two_sources`** - a block writes `text` or `label` on an element
-  that also names a translation key, with words that are neither the key's text
-  nor what the element already stores: an edit that cannot show, since the key's
-  text is what the game and the canvas draw. An error when the project has a
-  source language; a warning when it has none, because a project without one
-  ships no keys and the element's own words show until it gets one. What `show`
-  prints for a keyed element passes. Needs `--project` (the keys and the source
-  language are read from it).
+  that also names a translation key, with words that are not the key's text: an
+  edit that cannot show, since the key's text is what the game and the canvas
+  draw. An error, with or without a source language. Words that *are* the key's -
+  what `show` printed before v13 - are left out with a note
+  (**`ui.words_dropped`**), since a keyed element holds no words of its own.
+- **`ui.key_missing`** - a block names a key the project does not have. A warning:
+  the widget shows the key's name until the key exists.
 
 Three findings are notes rather than refusals, deliberately:
 
@@ -449,9 +455,11 @@ Four things to know before using it:
 - **Close the project in Studio first.** Nothing reloads this file on its own,
   and a running Studio will write its own copy over yours on the next save.
 - **The document must already be at the current interface schema version.**
-  Eleven versions' worth of migration live on the renderer's `UIDocumentService`
-  and need a service to run, so `apply` refuses and says to open the project in
-  Studio once. Same refusal as `blueprint apply`, same reason.
+  The migration lives on the renderer's `UIDocumentService` and needs a service to
+  run, so `apply` refuses and says to open the project in Studio once. Same refusal
+  as `blueprint apply`, same reason. A v12 document is still *read* as v13 by
+  `show`, `check` and `surfaces` - through the same step Studio runs on opening it -
+  because that step also edits the translation files, which only Studio writes.
 - **The first apply reorders the JSON.** The flat `elements` map comes out in
   tree order, surface by surface, rather than in whatever order a project's
   editing history left it. Nothing reads that order - every element is addressed

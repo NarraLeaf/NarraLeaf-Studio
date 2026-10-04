@@ -30,6 +30,26 @@ function loadSkeleton(): UIDocument {
 }
 
 describe("the .ui text format", () => {
+    it("prints a keyed widget with its key and the key's words as a comment, and reads it back the same", () => {
+        const document = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "d",
+            name: "D",
+            surfaces: [{ id: "home", name: "Home", host: "app", kind: "appSurface", designSize: { width: 64, height: 36 }, rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", name: "Root", parentId: null, childrenIds: ["start", "gone"], layout: { x: 0, y: 0, width: 64, height: 36 } },
+                start: { id: "start", type: "nl.button", name: "Start", parentId: "root", childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 }, props: { localizationKey: "menu.start" } },
+                gone: { id: "gone", type: "nl.text", name: "Gone", parentId: "root", childrenIds: [], layout: { x: 0, y: 0, width: 10, height: 10 }, props: { localizationKey: "menu.gone" } },
+            },
+        } as unknown as UIDocument;
+        const text = printUiDocument(document, { keyWords: new Map([["menu.start", "Start"]]) });
+        expect(text).toContain("localizationKey = menu.start\n            # words: Start");
+        expect(text).toContain("# words: menu.gone (the project has no such key, so the widget shows its name)");
+        expect(text).not.toContain("label =");
+        const { elements } = compileUiFile(parseUiFile(text), { existing: document }).surfaces[0];
+        expect(elements.start.props).toEqual({ localizationKey: "menu.start" });
+    });
+
     it("prints the shipped skeleton and compiles the result back into the same document", () => {
         const document = loadSkeleton();
         const text = printUiDocument(document);
