@@ -126,7 +126,7 @@
 
 `blueprint.event.head.mouseClick` - 鼠标点击事件
 
-当鼠标在元素上完成一次点击时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标点击，并输出 Surface 设计坐标。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
+当鼠标在元素上完成一次点击时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标点击，并输出 Surface 设计坐标。Page 控件（`nl.frame`）里显示的页面同样会收到自己的 Surface 点击：点击落在该页面的元素上时，该页面先收到，坐标是它自己的设计坐标，随后放置 Page 控件的 Surface 照常收到这次点击；点击落在该页面的空白处时，只算 Page 控件和外层 Surface 的点击。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标
@@ -202,7 +202,7 @@
 
 `blueprint.event.head.rightClick` - 鼠标右键点击事件
 
-当鼠标在元素上触发右键菜单事件时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标右键点击，并输出 Surface 设计坐标。事件成功派发时，默认上下文菜单会被阻止。
+当鼠标在元素上触发右键菜单事件时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标右键点击，并输出 Surface 设计坐标；Page 控件里显示的页面与 `Mouse Click` 相同，先于外层 Surface 收到自己的右键点击。事件成功派发时，默认上下文菜单会被阻止。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标
