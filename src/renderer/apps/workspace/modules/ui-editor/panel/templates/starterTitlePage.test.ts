@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { collectBrandLinkReferences } from "@shared/brand/brandReferences";
 import { BrandPalette } from "@shared/brand/brandRegistry";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { anchorElementId } from "@shared/blueprint/ownerShape";
 import { BUILTIN_BRAND_COLORS, normalizeProjectBrandColors, type BrandColor } from "@shared/types/brand";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
@@ -367,8 +368,8 @@ describe("a title page that places library components", () => {
                 )),
             },
             ownerRecords: {
-                [`widgetMain:${pageId}:start`]: { blueprintId: "bpStart" },
-                [`widgetMain:${pageId}:continue`]: { blueprintId: "bpContinue" },
+                [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: pageId, elementId: "start" })]: { blueprintId: "bpStart" },
+                [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: pageId, elementId: "continue" })]: { blueprintId: "bpContinue" },
                 "componentWidgetMain:comp-logs:c1": { blueprintId: "bpLogs" },
                 "componentWidgetMain:comp-leaves:c2": { blueprintId: "bpLeaves" },
             },
