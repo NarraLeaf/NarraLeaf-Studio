@@ -1,6 +1,15 @@
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_CLEAR,
+    BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
 } from "@shared/types/blueprint/graph";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
@@ -24,7 +33,7 @@ import {
     UI_FRAME_ELEMENT_TYPE,
     type UIFrameSite,
 } from "@shared/types/ui-editor/frame";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
@@ -34,7 +43,7 @@ import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/Blueprint
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
-import { listBlueprintGraphSites } from "../blueprintSites";
+import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
@@ -857,6 +866,163 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/list-text-untranslated
+// ---------------------------------------------------------------------------
+
+/**
+ * Nodes in a list's own blueprint that write its rows. A list whose own graph writes them shows the
+ * graph's rows, not the ones written into its content.
+ */
+const LIST_ROW_WRITER_NODE_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_CLEAR,
+    BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS,
+]);
+
+/**
+ * Lists whose rows something other than their written content may decide: every list a graph names
+ * by id anywhere in the project, every list whose own graph writes rows, and every list whose own
+ * blueprint has a script layer (a script cannot be read, so it is credited with writing them).
+ *
+ * Over-counting here only keeps the rule quiet about a list it could have reported; under-counting
+ * would report a list whose rows a graph replaces, telling the author words no player reads are not
+ * translated.
+ */
+function listsWithRowsFromElsewhere(ctx: LintContext): Set<string> {
+    const ids = new Set<string>();
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const owner = site.owner as BlueprintGraphSite["owner"] | undefined;
+        const ownElementId = owner?.kind === "widgetMain" || owner?.kind === "componentWidgetMain" ? owner.elementId : null;
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (ownElementId && LIST_ROW_WRITER_NODE_TYPES.has(node.type)) {
+                ids.add(ownElementId);
+            }
+            for (const value of Object.values(node.params ?? {})) {
+                if (typeof value === "string" && value.trim()) {
+                    ids.add(value.trim());
+                }
+            }
+        }
+    }
+    for (const blueprint of Object.values(ctx.blueprintDocument?.blueprints ?? {})) {
+        const owner = blueprint.owner;
+        if (owner && (owner.kind === "widgetMain" || owner.kind === "componentWidgetMain")) {
+            const layers = Object.values(blueprint.graphs?.events ?? {});
+            if (layers.some(layer => Boolean((layer as { script?: unknown }).script))) {
+                ids.add(owner.elementId);
+            }
+        }
+    }
+    return ids;
+}
+
+/**
+ * The first word-bearing string the list's rows put on screen: a value in its written content of a
+ * field that a text in its row template is bound to. Undefined when the rows show none.
+ */
+function firstShownListWords(document: UIDocument, list: UIElement): string | undefined {
+    const props = elementProps(list);
+    const items = Array.isArray(props.items) ? (props.items as unknown[]) : [];
+    if (items.length === 0) {
+        return undefined;
+    }
+    const struct = resolveUIStruct(document, typeof props.itemStructId === "string" ? props.itemStructId : null);
+    const shownKeys: string[] = [];
+    const visit = (elementId: string): void => {
+        const element = document.elements[elementId];
+        if (!element) {
+            return;
+        }
+        const site = playerWordsSiteOf(element);
+        const binding = site ? element.valueBindings?.[site.textProp] : undefined;
+        if (binding?.kind === "listItemField") {
+            const field = findUIStructField(struct, binding.fieldId);
+            if (field) {
+                shownKeys.push(field.key);
+            }
+        }
+        // A list inside the row reads its own rows, from its own shape.
+        if (isListLikeWidgetType(element.type)) {
+            return;
+        }
+        for (const childId of element.childrenIds ?? []) {
+            visit(childId);
+        }
+    };
+    for (const childId of list.childrenIds ?? []) {
+        if (isUIListItemTemplateChild(document.elements[childId])) {
+            visit(childId);
+        }
+    }
+    for (const item of items) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        for (const key of shownKeys) {
+            const value = (item as Record<string, unknown>)[key];
+            if (typeof value === "string" && hasTranslatableWord(value)) {
+                return value;
+            }
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Words written into a list's content, in a project that has a second language.
+ *
+ * A list that no data source and no graph fills draws its written content in the game, row for row,
+ * and those words have no translation unit: they read the same in every language. Reported once per
+ * list, with the first such word, at info severity - the words are shown as written, which is what
+ * the author wrote; what the note adds is that no locale changes them.
+ *
+ * Silent until the project has a second language, for the reason `ui/unlocalized-text` is. A list
+ * fed by the engine in its stage slot (the choice, notification and NVL lists), bound to a data
+ * source, or named by any graph is left out: its written content is a layout placeholder there.
+ */
+function runListTextUntranslated(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    const localization = ctx.localization;
+    if (!document || !localization) {
+        return [];
+    }
+    const secondLanguages = localization.targetLocales.filter(
+        locale => locale && locale !== localization.sourceLocale,
+    );
+    if (secondLanguages.length === 0) {
+        return [];
+    }
+    const fedElsewhere = listsWithRowsFromElsewhere(ctx);
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        if (element.type !== "nl.list" || getUIComponentLink(element) || fedElsewhere.has(element.id)) {
+            continue;
+        }
+        if (elementProps(element).itemsBinding) {
+            continue;
+        }
+        const words = firstShownListWords(document, element);
+        if (words === undefined) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/list-text-untranslated",
+            messageKey: "lint.rule.uiListTextUntranslated.message",
+            messageParams: { text: clipLiteral(words) },
+            location: surfaceLocation(surface, element),
+            target: surfaceTarget(surface),
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/gesture-answered-twice
 // ---------------------------------------------------------------------------
 
@@ -1046,5 +1212,14 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "uiGestureAnsweredTwice",
         run: ctx => runGestureAnsweredTwice(ctx),
+    },
+    {
+        id: "ui/list-text-untranslated",
+        category: "ui",
+        // Info: the words are shown exactly as written, so nothing deviates from what the author
+        // wrote; the note is that no locale changes them.
+        defaultSeverity: "info",
+        slug: "uiListTextUntranslated",
+        run: ctx => runListTextUntranslated(ctx),
     },
 ];

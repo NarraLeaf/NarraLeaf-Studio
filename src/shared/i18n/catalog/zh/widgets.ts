@@ -90,7 +90,7 @@ export const widgets = {
         title: "列表",
         sectionContent: "内容",
         runtimeItems: "运行时项",
-        runtimePreviewOnly: "仅预览",
+        runtimeListContent: "列表内容",
         runtimePageState: "页面状态数组",
         runtimeAppState: "应用状态数组",
         runtimePageProps: "页面属性数组",

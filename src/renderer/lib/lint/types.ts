@@ -150,6 +150,7 @@ export type LintRuleId =
     | "ui/frame-loop"
     | "ui/list-item-field-missing"
     | "ui/gesture-answered-twice"
+    | "ui/list-text-untranslated"
     | "blueprint/save-field-empty"
     | "blueprint/start-scene-foreign"
     | "blueprint/required-input-unwired"

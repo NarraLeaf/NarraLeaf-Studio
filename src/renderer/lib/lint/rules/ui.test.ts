@@ -1076,3 +1076,92 @@ describe("ui/gesture-answered-twice", () => {
         ).toEqual([]);
     });
 });
+
+// ---------------------------------------------------------------------------
+// ui/list-text-untranslated
+// ---------------------------------------------------------------------------
+
+describe("ui/list-text-untranslated", () => {
+    const STRUCT = { id: "chapter", fields: [{ id: "f-title", key: "title", type: "string" as const }] };
+
+    function chapterList(options: { type?: string; items?: unknown[]; itemsBinding?: unknown } = {}): UIDocument {
+        return {
+            schemaVersion: 12,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                { id: "page", name: "Page", host: "app", kind: "appSurface", designSize: { width: 100, height: 100 }, rootElementId: "root" },
+            ],
+            structs: { [STRUCT.id]: STRUCT },
+            elements: {
+                root: { id: "root", type: "nl.root", parentId: null, childrenIds: ["list"], layout: LAYOUT },
+                list: {
+                    id: "list",
+                    type: options.type ?? "nl.list",
+                    name: "Chapters",
+                    parentId: "root",
+                    childrenIds: ["row"],
+                    layout: LAYOUT,
+                    props: {
+                        itemStructId: STRUCT.id,
+                        items: options.items ?? [{ title: "Chapter one" }, { title: "Chapter two" }],
+                        ...(options.itemsBinding !== undefined ? { itemsBinding: options.itemsBinding } : {}),
+                    },
+                },
+                row: {
+                    id: "row",
+                    type: "nl.text",
+                    parentId: "list",
+                    childrenIds: [],
+                    layout: LAYOUT,
+                    extra: { listSlot: "itemTemplate" },
+                    props: { text: "Title" },
+                    valueBindings: { text: { kind: "listItemField", fieldId: "f-title" } },
+                },
+            },
+        } as unknown as UIDocument;
+    }
+
+    function context(document: UIDocument, locales = ["zh"], blueprints: BlueprintDocument = NO_GRAPHS): LintContext {
+        return createTestLintContext({ uiDocument: document, blueprintDocument: blueprints, localization: localization(locales) });
+    }
+
+    it("notes a list whose written rows the game draws, in a project with a second language", async () => {
+        const findings = await run("ui/list-text-untranslated", context(chapterList()));
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "ui/list-text-untranslated",
+            messageKey: "lint.rule.uiListTextUntranslated.message",
+            messageParams: { text: "Chapter one" },
+            location: { kind: "surface", surfaceId: "page", elementId: "list", elementName: "Chapters" },
+        });
+    });
+
+    it("is silent in a project with one language", async () => {
+        expect(await run("ui/list-text-untranslated", context(chapterList(), []))).toEqual([]);
+        expect(await run("ui/list-text-untranslated", context(chapterList(), ["en"]))).toEqual([]);
+    });
+
+    it("is silent for rows with no words, or rows nothing in the template shows", async () => {
+        expect(await run("ui/list-text-untranslated", context(chapterList({ items: [{ title: "01" }, { title: "→" }] })))).toEqual([]);
+        expect(await run("ui/list-text-untranslated", context(chapterList({ items: [{ other: "Words" }] })))).toEqual([]);
+    });
+
+    it("leaves out a list a data source fills", async () => {
+        expect(
+            await run("ui/list-text-untranslated", context(chapterList({ itemsBinding: { kind: "surfaceState", key: "rows" } }))),
+        ).toEqual([]);
+    });
+
+    it("leaves out a list a graph names, and a list the engine feeds in its slot", async () => {
+        const named = blueprintDocument({
+            [SURFACE_OWNER_KEY]: {
+                nodes: { set: { id: "set", type: "blueprint.element.list.setItems", params: { elementId: "list" } } },
+                edges: [],
+            } as unknown as BlueprintGraphIr,
+        });
+        expect(await run("ui/list-text-untranslated", context(chapterList(), ["zh"], named))).toEqual([]);
+        expect(await run("ui/list-text-untranslated", context(chapterList({ type: "nl.choice.list" })))).toEqual([]);
+    });
+});
+

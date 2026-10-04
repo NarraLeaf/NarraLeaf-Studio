@@ -91,7 +91,7 @@ export const widgets = {
         title: "リスト",
         sectionContent: "内容",
         runtimeItems: "実行時の項目",
-        runtimePreviewOnly: "プレビューのみ",
+        runtimeListContent: "リストの内容",
         runtimePageState: "ページ状態の配列",
         runtimeAppState: "アプリ状態の配列",
         runtimePageProps: "ページのプロパティの配列",

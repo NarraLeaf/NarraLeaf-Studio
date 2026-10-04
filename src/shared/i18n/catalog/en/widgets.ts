@@ -93,7 +93,7 @@ export const widgets = {
         title: "List",
         sectionContent: "Content",
         runtimeItems: "Runtime items",
-        runtimePreviewOnly: "Preview only",
+        runtimeListContent: "List content",
         runtimePageState: "Page state array",
         runtimeAppState: "App state array",
         runtimePageProps: "Page props array",
