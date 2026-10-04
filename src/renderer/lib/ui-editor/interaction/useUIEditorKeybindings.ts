@@ -214,6 +214,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             { suffix: "paste", key: "v", handler: whenWritable(paste) },
             { suffix: "dup", key: "d", handler: whenWritable(duplicate) },
             { suffix: "group", key: "g", handler: whenWritable(group) },
+            { suffix: "ungroup", key: "shift+g", handler: whenWritable(ungroup) },
             { suffix: "selall", key: "a", handler: selectAll },
         ]).concat(
             bindMod("meta", [
