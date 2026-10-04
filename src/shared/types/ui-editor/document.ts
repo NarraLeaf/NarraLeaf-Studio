@@ -13,17 +13,30 @@ import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 12 as const;
+/**
+ * The interface document version this build writes.
+ *
+ * v13: every text site has one source of words and stores only that one (`textSourceMigration.ts`).
+ * A keyed element holds its key's name and no words of its own, an element's own words are
+ * translated whenever the project has a second language - the switch that opted them in is gone -
+ * and keys are read whether or not the project has a source language. An older Studio must refuse
+ * it: it would leave the words of a v13 document untranslated, and draw a keyed element's missing
+ * words as blank in a project without a source language. The step from v12 needs the key registry
+ * and the translation files, so it is not run in `migrateSchemaVersion` with the others: every
+ * reader that meets an older document runs `migrateUITextSourcesV13` itself, with the project's.
+ */
+export const UI_DOCUMENT_SCHEMA_VERSION = 13 as const;
 
 /**
  * The oldest UI document version this build can read.
  *
- * The versions from v2 up were bumps and nothing more: each one recorded that an older Studio must
- * refuse a newer document (a list slot, a value binding, a stage slot it has no reading for), and
- * none of them converted a document, so a v10 document differs from a v11 one by nothing a reader
- * has to reconstruct. Only v1 ever needed real work - surfaces named `playerStageSurface` before a
- * stage surface named the slot it mounts into - and that step is gone, so v1 is refused with the
- * rest of what is under the floor. See `UIDocumentService.migrateSchemaVersion`.
+ * The versions from v2 up to v11 were bumps and nothing more: each one recorded that an older Studio
+ * must refuse a newer document (a list slot, a value binding, a stage slot it has no reading for),
+ * and none of them converted a document, so a v10 document differs from a v11 one by nothing a
+ * reader has to reconstruct. Only v1 ever needed real work - surfaces named `playerStageSurface`
+ * before a stage surface named the slot it mounts into - and that step is gone, so v1 is refused with
+ * the rest of what is under the floor. See `UIDocumentService.migrateSchemaVersion`. The steps to
+ * v12 and v13 are real, and neither moved the floor.
  */
 export const UI_DOCUMENT_MIN_SUPPORTED_VERSION = 10;
 

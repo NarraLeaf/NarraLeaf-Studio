@@ -22,7 +22,12 @@ import {
     migrateVariableRegistryToLatest,
 } from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
-import type { GameLocalizationBundle, LanguageChangeConfiguration } from "@shared/types/localization";
+import type {
+    GameLocalizationBundle,
+    LanguageChangeConfiguration,
+    LocalizationConfiguration,
+    LocalizationUnit,
+} from "@shared/types/localization";
 import {
     normalizeLanguageChangeConfiguration,
     normalizeLocalizationConfiguration,
@@ -97,6 +102,11 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { withoutUITextSamples, withoutUITextSampleUnits } from "@shared/types/ui-editor/textSample";
 import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
+import {
+    applyUITextLocaleEdits,
+    migrateUITextSourcesV13,
+    UI_TEXT_SOURCES_SCHEMA_VERSION,
+} from "@shared/types/ui-editor/textSourceMigration";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { Fs } from "@shared/utils/fs";
@@ -156,11 +166,18 @@ function describeScriptCompileRefusal(failures: readonly string[], locale?: Loca
 async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
     const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
-    const authoredUidoc = await readJsonFile<UIDocument>(uidocPath, {
-        kind: "uiDocument",
-        subject: relativeSubject(context.projectPath, uidocPath),
-        supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
-    });
+    // The interface document and the localization files are read together: a document older than v13
+    // is brought to v13 against the keys and the translation tables, and the tables the package
+    // carries are the ones that step leaves. See `settleInterfaceTextSources`.
+    const textSources = settleInterfaceTextSources(
+        await readJsonFile<UIDocument>(uidocPath, {
+            kind: "uiDocument",
+            subject: relativeSubject(context.projectPath, uidocPath),
+            supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        }),
+        await readProjectLocalizationFiles(context.projectPath),
+    );
+    const authoredUidoc = textSources.document;
     const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath, {
         kind: "uiGraphs",
         subject: relativeSubject(context.projectPath, uigraphsPath),
@@ -245,7 +262,7 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
             // The scene-name table is attached before the narrowing, not after: it is read as the set
             // of scenes this build still has, which is exactly what decides whether a `scene:` unit
             // ships.
-            withSceneNames(await loadGameLocalization(context.projectPath), storyLibrary?.documents),
+            withSceneNames(gameLocalizationFrom(textSources.files), storyLibrary?.documents),
             shippedTextIds,
             context.onNotice,
         ),
@@ -1164,14 +1181,94 @@ async function readProjectIdentifier(projectPath: string): Promise<string | unde
  * Exported for tests.
  */
 export async function loadGameLocalization(projectPath: string): Promise<GameLocalizationBundle | undefined> {
-    const config = await readProjectConfigRecord(projectPath);
-    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
-    const localization = normalizeLocalizationConfiguration(app?.localization);
+    return gameLocalizationFrom(await readProjectLocalizationFiles(projectPath));
+}
+
+/**
+ * What a project's localization files say, read once for the whole assembly: the configuration from
+ * `.nlproj`, every translation table but the source language's (only when there is a source language
+ * - without one no table is ever read), and the named keys whether or not there is one.
+ *
+ * Read ahead of the interface document's own processing, because a document older than v13 is
+ * brought to v13 in memory against the keys and the tables (`settleInterfaceTextSources`), and the
+ * tables the package carries are the ones that step leaves.
+ */
+export type ProjectLocalizationFiles = {
+    configuration: LocalizationConfiguration;
+    tables: Record<string, Record<string, string>>;
+    /** Named-key source texts, or undefined when the project has none (or the file is unreadable). */
+    keys?: Record<string, string>;
+};
+
+/** The payload a game carries, from what the files say. */
+function gameLocalizationFrom(files: ProjectLocalizationFiles): GameLocalizationBundle | undefined {
+    const localization = files.configuration;
     if (!localization.sourceLocale || localization.locales.length === 0) {
         return undefined;
     }
+    return {
+        sourceLocale: localization.sourceLocale,
+        locales: localization.locales,
+        tables: files.tables,
+        ...(files.keys ? { keys: files.keys } : {}),
+    };
+}
+
+/**
+ * The interface document as v13 reads it, with the tables its step leaves.
+ *
+ * A project nobody has opened since Studio started writing v13 - built from the command line, or by
+ * a build machine - still has a v12 document on disk. It is brought to v13 here exactly as opening it
+ * would (`migrateUITextSourcesV13`), in memory: the translation edits are applied to the tables this
+ * package carries and nothing is written back, so the package is the one the project would build
+ * after it was opened and saved. A v13 document passes through untouched.
+ */
+export function settleInterfaceTextSources(
+    document: UIDocument,
+    files: ProjectLocalizationFiles,
+): { document: UIDocument; files: ProjectLocalizationFiles } {
+    if ((document.schemaVersion ?? 0) >= UI_TEXT_SOURCES_SCHEMA_VERSION) {
+        return { document, files };
+    }
+    // The tables hold translations only, which is all the step reads of a unit: whether one is there,
+    // and what it says.
+    const translations: Record<string, Record<string, LocalizationUnit>> = {};
+    for (const [locale, table] of Object.entries(files.tables)) {
+        translations[locale] = Object.fromEntries(
+            Object.entries(table).map(([unitId, target]) => [unitId, { target, sourceHash: "", status: "translated" as const }]),
+        );
+    }
+    const result = migrateUITextSourcesV13(document, {
+        keys: files.keys ?? {},
+        sourceLocale: files.configuration.sourceLocale,
+        translations,
+    });
+    if (Object.keys(result.localeEdits).length === 0) {
+        return { document: result.document, files };
+    }
+    const settled = applyUITextLocaleEdits(translations, result.localeEdits);
     const tables: Record<string, Record<string, string>> = {};
-    for (const locale of localization.locales) {
+    for (const [locale, units] of Object.entries(settled)) {
+        const table: Record<string, string> = {};
+        for (const [unitId, unit] of Object.entries(units)) {
+            if (unit.target) {
+                table[unitId] = unit.target;
+            }
+        }
+        if (Object.keys(table).length > 0) {
+            tables[locale] = table;
+        }
+    }
+    return { document: result.document, files: { ...files, tables } };
+}
+
+/** Read a project's localization files. Broken or missing files degrade silently, as the payload does. */
+export async function readProjectLocalizationFiles(projectPath: string): Promise<ProjectLocalizationFiles> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    const localization = normalizeLocalizationConfiguration(app?.localization);
+    const tables: Record<string, Record<string, string>> = {};
+    for (const locale of localization.sourceLocale ? localization.locales : []) {
         if (locale.code === localization.sourceLocale) {
             continue;
         }
@@ -1220,12 +1317,7 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
         rethrowIfTooNew(error);
         // Broken keys file degrades to no named keys.
     }
-    return {
-        sourceLocale: localization.sourceLocale,
-        locales: localization.locales,
-        tables,
-        ...(keys ? { keys } : {}),
-    };
+    return { configuration: localization, tables, ...(keys ? { keys } : {}) };
 }
 
 /**

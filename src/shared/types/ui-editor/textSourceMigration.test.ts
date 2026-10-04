@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ProjectDocumentTooNewError, refuseNewerProjectDocument } from "../../documents/newerSchema";
 import type { LocalizationUnit } from "../localization";
-import type { UIDocument, UIElement, UISurface } from "./document";
+import { UI_DOCUMENT_MIN_SUPPORTED_VERSION, UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "./document";
 import {
     applyUITextLocaleEdits,
     migrateUITextSourcesV13,
@@ -77,6 +78,31 @@ function input(overrides: Partial<UITextMigrationInput> = {}): UITextMigrationIn
 }
 
 const BOUND = { kind: "blueprintValue" as const, blueprintId: "bp", valueType: "string" as const };
+
+describe("the v13 document version", () => {
+    it("is what this build writes, over the same floor", () => {
+        expect(UI_DOCUMENT_SCHEMA_VERSION).toBe(UI_TEXT_SOURCES_SCHEMA_VERSION);
+        expect(UI_DOCUMENT_MIN_SUPPORTED_VERSION).toBe(10);
+    });
+
+    it("is refused by a Studio that writes v12, through the newer-document refusal every reader shares", () => {
+        // The gate a v12 build runs on every read of `uidoc.json` - the bundle assembler and the
+        // document spec call it directly, and `UIDocumentService` throws the same error value.
+        let thrown: unknown;
+        try {
+            refuseNewerProjectDocument({ schemaVersion: UI_TEXT_SOURCES_SCHEMA_VERSION }, {
+                kind: "uiDocument",
+                subject: "editor/ui/uidoc.json",
+                supportedVersion: 12,
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ProjectDocumentTooNewError);
+        expect((thrown as ProjectDocumentTooNewError).version).toBe(13);
+        expect((thrown as ProjectDocumentTooNewError).supportedVersion).toBe(12);
+    });
+});
 
 describe("migrateUITextSourcesV13", () => {
     it("stamps v13 and leaves a document already there alone", () => {

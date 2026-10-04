@@ -29,6 +29,9 @@ import {
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
+import { migrateUITextSourcesV13, UI_TEXT_SOURCES_SCHEMA_VERSION } from "@shared/types/ui-editor/textSourceMigration";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationService } from "../localization/LocalizationService";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
@@ -730,7 +733,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
-        await depend([filesystemService, projectService, uuidService]);
+        // The translation library, because opening a document older than v13 writes the translation
+        // edits its step makes there (see `migrateTextSources`).
+        const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+        await depend([filesystemService, projectService, uuidService, localizationService]);
         await registerAutoSaver(ctx, depend, "uiDocument", "workspace.shell.save.stores.uiDocument", this.autoSaver);
 
         await this.ensureDocumentDir();
@@ -792,7 +798,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         const loadedSnapshot = JSON.stringify(result.data);
-        const migrated = this.migrateIfNeeded(result.data);
+        const migrated = this.migrateIfNeeded(await this.migrateTextSources(result.data));
         this.document = migrated;
         const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
         const normalizedChanged = loadedSnapshot !== JSON.stringify(migrated);
@@ -1768,6 +1774,55 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
         return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+    }
+
+    /**
+     * The v13 step, for the project's own document as it is opened (`textSourceMigration.ts`).
+     *
+     * Not part of {@link migrateIfNeeded}, which is also how a template or a page copied from another
+     * project comes in: this step reads the project's key registry and translation files, and the
+     * translation edits it makes are written here, through the localization service, before the
+     * document itself is saved by `load`. Written first so that a document still at v12 on disk -
+     * its own save failed - is migrated again on the next open, and the edits are such that applying
+     * them twice changes nothing.
+     *
+     * A key registry or a language file that cannot be read stops the open rather than being read
+     * as empty: an element whose key could not be found is turned into one that holds its own words,
+     * and a registry that is merely unreadable today would turn every keyed element in the project
+     * into one, for good.
+     */
+    private async migrateTextSources(document: UIDocument): Promise<UIDocument> {
+        const version = document.schemaVersion;
+        if (
+            typeof version !== "number"
+            || version >= UI_TEXT_SOURCES_SCHEMA_VERSION
+            || version < UI_DOCUMENT_MIN_SUPPORTED_VERSION
+        ) {
+            // Current, or one `migrateSchemaVersion` is about to refuse.
+            return document;
+        }
+        const localization = this.getContext().services.get<LocalizationService>(Services.Localization);
+        const config = localization.getConfiguration();
+        const keys = await localization.loadKeys();
+        const translations: Record<string, Record<string, LocalizationUnit>> = {};
+        for (const { code } of config.locales) {
+            if (code !== config.sourceLocale) {
+                translations[code] = (await localization.loadDocument(code)).units;
+            }
+        }
+        const result = migrateUITextSourcesV13(document, {
+            keys: Object.fromEntries(Object.entries(keys.keys).map(([name, key]) => [name, key.sourceText])),
+            sourceLocale: config.sourceLocale,
+            translations,
+        });
+        const edits = Object.entries(result.localeEdits);
+        if (edits.length > 0) {
+            for (const [locale, edit] of edits) {
+                localization.applyUnitEdits(locale, edit);
+            }
+            await localization.flushPendingChanges();
+        }
+        return result.document;
     }
 
     /**

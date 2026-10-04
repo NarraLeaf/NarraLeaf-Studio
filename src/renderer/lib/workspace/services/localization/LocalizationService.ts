@@ -521,6 +521,27 @@ export class LocalizationService extends Service<LocalizationService> implements
         return updated;
     }
 
+    /**
+     * Write and remove whole units in one language's library, as they arrive.
+     *
+     * For the edits a change to the interface document carries with it - the translations an
+     * element's words keep when they stop coming from a key, the leftover translation of words that
+     * were never translated - which are part of that change rather than an edit anybody made in the
+     * table. Each unit is stored exactly as it arrives, `sourceHash` included, like
+     * {@link adoptUnits}; unlike it, an existing unit is replaced. The language has to be loaded.
+     */
+    public applyUnitEdits(locale: string, edit: { set: Readonly<Record<string, LocalizationUnit>>; remove: readonly string[] }): void {
+        const document = this.requireLoadedDocument(locale);
+        const entries: { unitId: string; unit: LocalizationUnit | null }[] = [
+            ...edit.remove.filter(unitId => document.units[unitId] && !(unitId in edit.set)).map(unitId => ({ unitId, unit: null })),
+            ...Object.entries(edit.set).map(([unitId, unit]) => ({ unitId, unit: { ...unit } })),
+        ];
+        if (entries.length === 0) {
+            return;
+        }
+        this.writeUnits(locale, document, entries);
+    }
+
     public async flushPendingChanges(): Promise<void> {
         await this.autoSaver.flush();
     }

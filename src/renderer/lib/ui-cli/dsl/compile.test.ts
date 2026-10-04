@@ -223,7 +223,7 @@ describe("compiling a .ui file", () => {
 describe("where a widget's words come from", () => {
     const keyed = (label: string) =>
         `${MINIMAL}        Start: nl.button id=start @0,0 10x10\n            label = ${JSON.stringify(label)}\n            localizationKey = menu.start\n`;
-    const KEYS = { keysApply: true, keys: new Map([["menu.start", "Start"]]) };
+    const KEYS = { keysApply: true, sourceLocale: "en", keys: new Map([["menu.start", "Start"]]) };
 
     function diagnostics(text: string, options: Parameters<typeof compileUiFile>[1]) {
         return compileUiFile(parseUiFile(text), options).diagnostics;
@@ -256,14 +256,14 @@ describe("where a widget's words come from", () => {
     });
 
     it("only warns while the project has no source language, where the widget's own words still show", () => {
-        const found = diagnostics(keyed("Begin"), { textKeys: { ...KEYS, keysApply: false } })
+        const found = diagnostics(keyed("Begin"), { textKeys: { ...KEYS, keysApply: false, sourceLocale: "" } })
             .filter(item => item.code === "ui.words_two_sources");
         expect(found.map(item => item.severity)).toEqual(["warning"]);
     });
 
     it("says nothing without the project's keys, or for a key the project does not have", () => {
         expect(codes(keyed("Begin"))).not.toContain("ui.words_two_sources");
-        expect(diagnostics(keyed("Begin"), { textKeys: { keysApply: true, keys: new Map() } }).map(item => item.code))
+        expect(diagnostics(keyed("Begin"), { textKeys: { keysApply: true, sourceLocale: "en", keys: new Map() } }).map(item => item.code))
             .not.toContain("ui.words_two_sources");
     });
 });
