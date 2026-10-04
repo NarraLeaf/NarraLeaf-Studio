@@ -37,6 +37,8 @@ import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/u
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
+import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import { indexUITextWriters, type UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -267,8 +269,12 @@ export type InterfaceTextUnitSite = {
  * the localization panel leaves it out - there is no row for it to be translated in. Component
  * definitions are walked once each, under the definition, for the reason the Page widget rules give;
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
+ *
+ * A widget's own unit is not read where its words are sample text (`textSample.ts`) - a value binding
+ * or a blueprint decides what the game shows there, and the translation table has no row for them -
+ * so `writers` (`indexUITextWriters`) are required.
  */
-export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
+export function listInterfaceTextUnitSites(document: UIDocument, writers: UITextWriterIndex): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
         const site = playerWordsSiteOf(element);
@@ -276,6 +282,9 @@ export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextU
             return;
         }
         const binding = uiTextUnitBindingOf(element, site);
+        if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site, writers.get(element.id))) {
+            return;
+        }
         if (binding) {
             sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
         }
@@ -336,6 +345,10 @@ export function clipLiteral(text: string): string {
  * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
  * no list draws the element, or the list no longer declares the field - leaves the literal on
  * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
+ *
+ * **Nor is a widget a blueprint writes over** (`Set Text`, `Set Label`, `Clear Text`): its literal is
+ * sample text, which no package carries (`textSample.ts`), and the words the game shows are the ones
+ * the blueprint writes.
  */
 function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -350,6 +363,7 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
         return [];
     }
     const findings: LintFinding[] = [];
+    const writers = indexUITextWriters(ctx.blueprintDocument);
     for (const { surface, element } of listSurfaceElements(document)) {
         const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
@@ -360,6 +374,9 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
             continue;
         }
         if (reading.key || reading.localizable || reading.binding !== undefined) {
+            continue;
+        }
+        if (uiTextSampleCauseOf(element, site, writers.get(element.id))) {
             continue;
         }
         const text = reading.text;
@@ -1044,7 +1061,7 @@ function runLocalizationKeyMissing(ctx: LintContext): LintFinding[] {
         return [];
     }
     const findings: LintFinding[] = [];
-    for (const site of listInterfaceTextUnitSites(document)) {
+    for (const site of listInterfaceTextUnitSites(document, indexUITextWriters(ctx.blueprintDocument))) {
         if (site.binding.kind !== "key" || keys.has(site.binding.keyName)) {
             continue;
         }

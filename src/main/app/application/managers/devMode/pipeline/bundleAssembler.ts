@@ -95,6 +95,8 @@ import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@
 import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import { withoutUITextSamples, withoutUITextSampleUnits } from "@shared/types/ui-editor/textSample";
+import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
 import { Fs } from "@shared/utils/fs";
@@ -154,7 +156,7 @@ function describeScriptCompileRefusal(failures: readonly string[], locale?: Loca
 async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
     const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
-    const uidoc = await readJsonFile<UIDocument>(uidocPath, {
+    const authoredUidoc = await readJsonFile<UIDocument>(uidocPath, {
         kind: "uiDocument",
         subject: relativeSubject(context.projectPath, uidocPath),
         supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
@@ -188,6 +190,13 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         ),
     };
     const localBlueprints = uigraphs.blueprintDocument;
+    // Sample words - what a text or a button holds where a value binding answers it or a blueprint
+    // writes over it - are what the canvas draws while a page is laid out, and no player reads them.
+    // They are taken out here, against the graphs this edition actually ships, so a package never
+    // carries them, and with them the switch and the translations that would put their translation
+    // in place of what the binding or the blueprint shows. See `@shared/types/ui-editor/textSample`.
+    const sampleStrip = withoutUITextSamples(authoredUidoc, indexUITextWriters(localBlueprints));
+    const uidoc = sampleStrip.document;
     const variableTables = await loadVariableRuntimeTables(context.projectPath);
     reportLiveVariantReads(context, fold, localBlueprints);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
@@ -231,12 +240,16 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     // every translation table the package carries. They are narrowed against the documents as this
     // build actually holds them, which is why this happens here rather than in either loader.
     const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
-    const localization = restrictLocalization(
-        // The scene-name table is attached before the narrowing, not after: it is read as the set of
-        // scenes this build still has, which is exactly what decides whether a `scene:` unit ships.
-        withSceneNames(await loadGameLocalization(context.projectPath), storyLibrary?.documents),
-        shippedTextIds,
-        context.onNotice,
+    const localization = withoutUITextSampleUnits(
+        restrictLocalization(
+            // The scene-name table is attached before the narrowing, not after: it is read as the set
+            // of scenes this build still has, which is exactly what decides whether a `scene:` unit
+            // ships.
+            withSceneNames(await loadGameLocalization(context.projectPath), storyLibrary?.documents),
+            shippedTextIds,
+            context.onNotice,
+        ),
+        sampleStrip.unitIds,
     );
     // After `localization`, because filling a set is a question about the project's languages and
     // their declared fallbacks; before everything else, because what it rewrites is the story the
