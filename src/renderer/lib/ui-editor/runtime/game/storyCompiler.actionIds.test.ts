@@ -23,10 +23,7 @@ const LAST_LIGHT = "c083e0f3-8665-451a-800a-6d2cd5650d33";
 const MENU = "195fa305-150f-44dd-a8a9-94e8a2ceefe7";
 const LAST_LIGHT_CONDITION = "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1";
 
-/** What the engine builds for a scene itself, the one kind of action only the engine can name. */
-const SCENE_OWN_STEPS = new Set(["scene:action", "scene:init", "layer:action", "displayable:init"]);
-
-type WalkedAction = { type: string; getId(): string; callee?: { getId(): string } };
+type WalkedAction = { type: string; getId(): string };
 
 function skeleton(): StoryDocument {
     const [dir] = fs.readdirSync(STORIES);
@@ -87,12 +84,13 @@ describe("action ids", () => {
         expect(compiled.actionIdBindings.find(binding => binding.staticId === menus[0])?.blockId).toBe(MENU);
     });
 
-    it("leaves nothing to be numbered but the steps the engine builds for a scene itself", async () => {
+    it("leaves nothing to be numbered", async () => {
         for (const sceneId of [CORRIDOR, CLUB, LAST_LIGHT]) {
             const { actions } = await compile(skeleton(), sceneId);
-            const positional = actions.filter(action => isPositional(action.getId()));
-            expect(positional.filter(action => !SCENE_OWN_STEPS.has(action.type)).map(action => action.type)).toEqual([]);
-            expect(positional.filter(action => !action.callee?.getId().startsWith("nl:scene:"))).toEqual([]);
+            expect(actions.filter(action => isPositional(action.getId())).map(action => action.type)).toEqual([]);
+            // What a scene builds for itself - its root and the steps that put it on the stage - only
+            // the engine can reach, and it names them after the scene the compiler named.
+            expect(actions.some(action => action.getId() === `nl:scene:${sceneId}:root`)).toBe(true);
             // A condition, a script and a jump's own steps are among what is named now.
             const types = new Set(actions.filter(action => action.getId().startsWith("nl:action:")).map(action => action.type));
             expect(types.has("condition:action")).toBe(true);
@@ -126,7 +124,7 @@ describe("action ids", () => {
         const listed = new Set(compiled.actionIdBindings.map(binding => binding.staticId).filter(id => id.startsWith("studio:")));
         for (const action of actions) {
             const id = action.getId();
-            expect(id.startsWith("studio:") ? listed.has(id) : id.startsWith("nl:action:") || isPositional(id) || id.startsWith("nl:scene:")).toBe(true);
+            expect(id.startsWith("studio:") ? listed.has(id) : id.startsWith("nl:action:") || id.startsWith("nl:scene:")).toBe(true);
         }
     });
 });

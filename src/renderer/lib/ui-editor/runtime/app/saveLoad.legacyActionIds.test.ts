@@ -47,8 +47,8 @@ function load(options: { save: SavedGame; documentHash: string }) {
     const applied: SavedGame[] = [];
     const reports: string[] = [];
     const game: SaveLoadGameSeam = {
-        // `a-11` still answers: the running story numbers a scene's own steps, so the number exists
-        // today and names something else. That is what makes resuming on it wrong rather than missing.
+        // `a-11` still answers, as a number does in any story the engine still numbers part of: it
+        // exists today and names something else. The refusal cannot lean on the number being missing.
         resolveStoryMaps: () => ({ hasAction: id => id === MENU_ID || id === "a-11", hasElement: () => true }),
         readStoryHash: () => LIVE_HASH,
         snapshot: () => null,
