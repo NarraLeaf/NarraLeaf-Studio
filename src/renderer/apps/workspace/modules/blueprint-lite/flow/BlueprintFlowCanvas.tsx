@@ -104,6 +104,7 @@ import {
     type BlueprintMinimapSize,
 } from "./blueprintMinimapPreference";
 import {
+    BLUEPRINT_LAYOUT_LOOP_NODE_TYPES,
     layoutBlueprintGraph,
     type BlueprintLayoutCard,
     type BlueprintLayoutComment,
@@ -309,7 +310,15 @@ function readBlueprintLayoutGraph(
                 });
             }
         }
-        cards.push({ id: node.id, x: node.position.x, y: node.position.y, width, height, pins });
+        cards.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width,
+            height,
+            pins,
+            loop: BLUEPRINT_LAYOUT_LOOP_NODE_TYPES.has(node.data.catalog.type),
+        });
     }
     const wires = (ir.edges ?? []).map(edge => ({
         from: edge.from.nodeId,

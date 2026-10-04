@@ -199,7 +199,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * Resolve which event-head node type(s) may run for a widget private event slot id.
- * Unknown slots fall back to all registered dispatch heads (forward-compatible).
+ * A slot the widget does not declare resolves to none. A declared event that names no head falls
+ * back to every dispatch head; no built-in event does that, and a plugin's is refused one at
+ * registration (`sanitizeContributedWidgetLogicApi`).
  */
 export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetElementType?: string): readonly string[] {
     const eventDef = getWidgetLogicEvent(widgetElementType, slotId);

@@ -27,12 +27,14 @@
  * `image`, `name`), so an item template never needs a per-cell gallery lookup.
  *
  * The unlock record is read and written through `app.game.store`, the
- * capability-gated plugin storage declared as `store` in the manifest. No other
- * host power is touched.
+ * capability-gated plugin storage declared as `store` in the manifest, and only
+ * ever through `unlockRecord.ts`, which runs one change at a time against the
+ * runtime's own collecting. No other host power is touched.
  */
 
 import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
 import {
+    artworkUnlockIds,
     computeGalleryStats,
     findArtwork,
     isArtworkUnlocked,
@@ -41,15 +43,14 @@ import {
     type GalleryEntryKind,
     projectGalleryEntries,
     projectGalleryVariants,
-    readUnlockedVariantIds,
     resolveCoverVariant,
+    shownGalleryName,
     toImageAssetValue,
     type GalleryArtwork,
     type GalleryStoreData,
-    type GalleryVariant,
     PLUGIN_ID,
-    RUNTIME_UNLOCKED_KEY,
 } from "./catalog";
+import { readUnlockRecord, replaceUnlockRecord, updateUnlockRecord } from "./unlockRecord";
 
 export { PLUGIN_ID, RUNTIME_UNLOCKED_KEY, GALLERY_STORE_NAMESPACE } from "./catalog";
 
@@ -329,25 +330,21 @@ function readIndex(value: unknown): number {
 }
 
 /**
- * Read the persisted unlock record.
+ * The plugin storage the unlock record lives in, or null.
  *
  * `app.game.store` is the plugin's own persistent area beside the player's saves
  * - it survives starting a new game, which is exactly what unlocked CGs need. It
  * is absent wherever the environment cannot back the `store` capability, notably
  * the editor, where there is no player at all. Reading then degrades to "nothing
- * unlocked" so a gallery previews as a locked grid instead of throwing.
+ * unlocked" so a gallery previews as a locked grid instead of throwing, and a
+ * write is dropped with a warning.
  */
-async function readStoredUnlocked(ctx: ExecuteCtx): Promise<unknown> {
-    return ctx.game.store ? await ctx.game.store.get(RUNTIME_UNLOCKED_KEY) : null;
+function unlockStore(ctx: ExecuteCtx) {
+    return ctx.game.store ?? null;
 }
 
-/** Writes are dropped with a warning when the store is absent; see readStoredUnlocked. */
-async function writeStoredUnlocked(ctx: ExecuteCtx, variantIds: string[]): Promise<void> {
-    if (!ctx.game.store) {
-        ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
-        return;
-    }
-    await ctx.game.store.set(RUNTIME_UNLOCKED_KEY, variantIds);
+function warnUnpersisted(ctx: ExecuteCtx): void {
+    ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
 }
 
 /**
@@ -389,18 +386,18 @@ function requireArtwork(ctx: ExecuteCtx, artworks: GalleryArtwork[]): GalleryArt
 }
 
 /**
- * Variants targeted by a lock/unlock node: the chosen one, or every variant of
- * the artwork when neither the pin nor the picker names one. The empty case
+ * Unlock-record ids targeted by a lock/unlock node: the chosen variant, or the
+ * whole artwork when neither the pin nor the picker names one. The empty case
  * preserves the pre-split behaviour of these nodes, whose param used to mean
- * "the artwork".
+ * "the artwork" - and reaches an entry with no variants yet, which is recorded
+ * by its own id (see `artworkUnlockIds`).
  */
-function resolveTargetVariants(ctx: ExecuteCtx, artwork: GalleryArtwork): GalleryVariant[] {
+function resolveTargetIds(ctx: ExecuteCtx, artwork: GalleryArtwork): string[] {
     const variantId = resolveVariantId(ctx);
     if (!variantId) {
-        return artwork.variants;
+        return artworkUnlockIds(artwork);
     }
-    const variant = artwork.variants.find(candidate => candidate.id === variantId);
-    return variant ? [variant] : [];
+    return artwork.variants.some(candidate => candidate.id === variantId) ? [variantId] : [];
 }
 
 function countUnlockedRows(rows: readonly { unlocked: boolean }[]): number {
@@ -419,26 +416,37 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
     const readUnlocked = async (ctx: ExecuteCtx, artworks: GalleryArtwork[]): Promise<Set<string>> => {
-        return readUnlockedVariantIds(await readStoredUnlocked(ctx), artworks);
-    };
-
-    const writeUnlocked = async (ctx: ExecuteCtx, unlocked: Set<string>): Promise<void> => {
-        await writeStoredUnlocked(ctx, Array.from(unlocked));
+        const backing = unlockStore(ctx);
+        return backing ? await readUnlockRecord(backing, artworks) : new Set();
     };
 
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
         const data = store();
         const artwork = requireArtwork(ctx, data.items);
-        const targets = resolveTargetVariants(ctx, artwork);
-        const unlocked = await readUnlocked(ctx, data.items);
-        for (const variant of targets) {
-            if (mode === "add") {
-                unlocked.add(variant.id);
-            } else {
-                unlocked.delete(variant.id);
-            }
+        const targets = resolveTargetIds(ctx, artwork);
+        const backing = unlockStore(ctx);
+        if (!backing) {
+            warnUnpersisted(ctx);
+            return;
         }
-        await writeUnlocked(ctx, unlocked);
+        await updateUnlockRecord(backing, data.items, unlocked => {
+            for (const id of targets) {
+                if (mode === "add") {
+                    unlocked.add(id);
+                } else {
+                    unlocked.delete(id);
+                }
+            }
+        });
+    };
+
+    const replaceUnlocked = async (ctx: ExecuteCtx, ids: string[]) => {
+        const backing = unlockStore(ctx);
+        if (!backing) {
+            warnUnpersisted(ctx);
+            return;
+        }
+        await replaceUnlockRecord(backing, ids);
     };
 
     return [
@@ -631,11 +639,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // The "you cleared the game, here is everything" reward, and the
             // fastest way to eyeball a gallery screen while building it.
             execute: async ctx => {
-                const data = store();
-                await writeStoredUnlocked(
-                    ctx,
-                    data.items.flatMap(artwork => artwork.variants.map(variant => variant.id)),
-                );
+                await replaceUnlocked(ctx, store().items.flatMap(artworkUnlockIds));
                 return { nextPort: "next" };
             },
         },
@@ -649,7 +653,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             isLatent: true,
             pins: [execIn, execNext],
             execute: async ctx => {
-                await writeStoredUnlocked(ctx, []);
+                await replaceUnlocked(ctx, []);
                 return { nextPort: "next" };
             },
         },
@@ -736,7 +740,9 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                         // silhouette without needing a separate check.
                         image: isUnlocked ? toImageAssetValue(variant.imageAssetId) : null,
                         unlocked: isUnlocked,
-                        name: variant.name,
+                        // Masked like the rows of Get Gallery Variants: a viewer stepping
+                        // through differentials must not spell out the one still locked.
+                        name: shownGalleryName(variant.name, isUnlocked, data.settings),
                         variantId: variant.id,
                     },
                 };
@@ -800,7 +806,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                     outputValues: {
                         image: isUnlocked ? toImageAssetValue(cover?.imageAssetId) : null,
                         unlocked: isUnlocked,
-                        name: artwork.name,
+                        name: shownGalleryName(artwork.name, isUnlocked, data.settings),
                     },
                 };
             },
@@ -848,12 +854,13 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                     };
                 }
                 const unlocked = await readUnlocked(ctx, data.items);
+                const isUnlocked = isArtworkUnlocked(artwork, unlocked);
                 return {
                     nextPort: "next",
                     outputValues: {
                         artworkId: artwork.id,
-                        name: artwork.name,
-                        unlocked: isArtworkUnlocked(artwork, unlocked),
+                        name: shownGalleryName(artwork.name, isUnlocked, data.settings),
+                        unlocked: isUnlocked,
                         variantCount: artwork.variants.length,
                     },
                 };
