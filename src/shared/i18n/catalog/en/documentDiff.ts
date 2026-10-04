@@ -450,7 +450,7 @@ export const documentDiff = {
         added: "Track added",
         removed: "Track removed",
         renamed: "Renamed",
-        rerouted: "Routes into a different bus",
+        rerouted: "Routes into a different track",
         reroutedToMaster: "Routes into the master output",
         /** The value pair is the fader's own number, out of 100, not the stored 0 to 1. */
         volume: "Volume changed",
@@ -462,12 +462,12 @@ export const documentDiff = {
         changed: "Track changed",
     },
     /**
-     * Tier 1, the project's saved and global variables.
+     * Tier 1, the project's saved and persistent variables.
      *
      * `defaultValue` is the row this tier exists for: it is what every playthrough starts from and
      * what a save written before the variable existed reads as, so it changes the shipped game
      * while moving no count at all. The scope lines state what the variable now is rather than
-     * pairing two stored words, one of which ("persistent") is not what the panel calls that scope.
+     * pairing two stored words.
      */
     variables: {
         added: "Variable added",
@@ -476,7 +476,7 @@ export const documentDiff = {
         defaultValue: "Default value changed",
         valueType: "Type changed",
         scopeSaved: "Now a saved variable",
-        scopeGlobal: "Now a global variable",
+        scopeGlobal: "Now a persistent variable",
         /** The key the value is kept under, which a rename is designed never to touch. */
         storageKey: "Values already saved are no longer found",
         description: "Note changed",

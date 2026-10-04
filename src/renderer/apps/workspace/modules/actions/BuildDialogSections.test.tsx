@@ -318,7 +318,7 @@ describe("ContentSection", () => {
         expect(markup).toContain('aria-label="Asset protection"');
         expect(markup).toContain('aria-label="Network policy"');
         // The consequence line follows the control, so the two never disagree.
-        expect(markup).toContain("Assets and saves are encrypted in the packaged game.");
+        expect(markup).toContain("Assets are encrypted in the packaged game.");
         expect(markup).toContain("The packaged game refuses every HTTP and HTTPS request.");
     });
 

@@ -448,16 +448,16 @@ export const assets = {
             release: "Variant",
         },
         /** A variant a set still names after it was deleted from the project. Its id is never shown. */
-        deletedVariant: "Deleted variant",
+        deletedVariant: "Deleted value",
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
-            one: "{count} variant",
-            other: "{count} variants",
+            one: "{count} value",
+            other: "{count} values",
         },
         /** Some do not. The two numbers are the whole message; no word for "incomplete" is needed. */
-        variantsResolved: "{resolved} of {total} variants",
+        variantsResolved: "{resolved} of {total} values",
         /** The set does not describe any variants yet, so there is nothing to count. */
-        unfinished: "No variants declared",
+        unfinished: "No values declared",
         /**
          * Asked before a set stops existing, either way it goes. The rows below name the set itself,
          * so they break whether or not the files survive - which is why this is separate from the
@@ -484,7 +484,7 @@ export const assets = {
         },
         create: {
             title: "New asset set",
-            subTitle: "New set under this variant",
+            subTitle: "New set under this value",
             /** Neither list has anything to vary along yet. */
             no: {
                 locale: "This project declares one language.",
@@ -504,8 +504,8 @@ export const assets = {
             /** The one thing a set requires: which value the others take when they have no file. */
             fallback: "Falls back to",
             /** Said next to the control that fixes it: nothing in the set resolves without this. */
-            fallbackMissing: "This variant has no file, so nothing in this set resolves.",
-            variants: "Variants",
+            fallbackMissing: "This value has no file, so nothing in this set resolves.",
+            variants: "Values",
             /** This value has no file of its own and is showing the fallback's. */
             variantInherited: "fallback",
             /** One cell of the matrix with nothing in it, and no fallback to answer it either. */

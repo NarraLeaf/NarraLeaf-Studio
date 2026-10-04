@@ -9,7 +9,7 @@ export const widgets = {
          * The section holding this control's logic, which may be a blueprint or a script. Worded
          * like `uiEditor.ownerLabel.widgetMain`, because it is the same thing under another panel.
          */
-        controlLabel: "Component logic",
+        controlLabel: "Widget logic",
     },
     appearance: {
         title: "Appearance",

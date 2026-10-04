@@ -7,6 +7,7 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
+import { i18nStore } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -1132,6 +1133,22 @@ describe("logic and effects", () => {
         expect(build("/transform hero motion")).toMatchObject({
             payload: { action: "displayable", transform: { mode: "animation" } },
         });
+    });
+
+    it("/transform takes 运镜 for the Story Motion flag in Chinese, as well as the slot's current word 动效", () => {
+        // 运镜 is what a Chinese author typed for this flag before the slot was named after the Story
+        // Motion it binds. Lines typed that way have to keep building the same row, in every locale.
+        const canonicalCamera = build("/transform camera motion").payload;
+        const canonicalHero = build("/transform hero motion").payload;
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
+            expect(build("/transform camera 动效").payload).toEqual(canonicalCamera);
+            expect(build("/transform hero 运镜").payload).toEqual(canonicalHero);
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
     it("/vfx declares a looping overlay and names it off the clip", () => {

@@ -97,7 +97,7 @@ export const build = {
         appId: "App ID",
         copyright: "Copyright",
         icons: "Icons",
-        iconsHint: "Click an icon to change it in project settings",
+        iconsHint: "Click an icon to change it in Project ▸ App",
         iconUnset: "Not set",
         // What an empty version or copyright reads as. The section only reports these now, so a blank
         // field has to say it is blank rather than look like a control waiting for input.
@@ -106,8 +106,8 @@ export const build = {
     },
     content: {
         protection: "Asset protection",
-        protectionOn: "Assets and saves are encrypted in the packaged game.",
-        protectionOff: "Assets and saves ship unencrypted.",
+        protectionOn: "Assets are encrypted in the packaged game.",
+        protectionOff: "Assets ship unencrypted.",
         plugins: "Bundled plugins",
         pluginsNone: "No plugins are bundled with this game.",
         pluginsRescanUnavailable: "The plugin list cannot be rescanned in this window.",

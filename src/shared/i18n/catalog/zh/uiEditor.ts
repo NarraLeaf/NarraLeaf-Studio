@@ -5,7 +5,7 @@ export const uiEditor = {
         page: "页面",
         gameUi: "游戏 UI",
         mainPage: "入口页面",
-        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、回想或画廊",
+        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、记录或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
     },
     // 蓝图归谁所有——蓝图面板、标签标题、控件旁的只读区说的是同一批词，所以在这里定一次。
@@ -14,7 +14,7 @@ export const uiEditor = {
         surfaceMain: "页面逻辑",
         widgetMain: "控件逻辑",
         widgetValue: "控件取值",
-        storyAction: "剧情动作",
+        storyAction: "故事动作",
     },
     stageSlot: {
         onStage: "舞台",
@@ -61,7 +61,7 @@ export const uiEditor = {
         page: "页面 {index}",
         gameUi: "{slot} UI",
         component: "组件 {index}",
-        inputAction: "操作 {index}",
+        inputAction: "意图 {index}",
     },
     // 这个面板留下的撤销步骤叫什么（"撤销 移动界面 标题"）。
     history: {
