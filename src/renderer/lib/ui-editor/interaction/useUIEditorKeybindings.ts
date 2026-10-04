@@ -18,7 +18,7 @@ import {
     uiEditorCutSelection,
     uiEditorDeleteSelection,
     uiEditorDuplicateSelection,
-    uiEditorGroupIntoLeaderContainer,
+    uiEditorGroupSelection,
     uiEditorPasteAfterSelection,
     uiEditorSelectAllInSurface,
     uiEditorUngroupSelection,
@@ -149,7 +149,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 return;
             }
             const s = getUiSelection(stateService, surfaceId);
-            uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, s);
+            uiEditorGroupSelection(documentService, stateService, surfaceId, s);
         };
         const ungroup = () => {
             if (!documentService || !stateService || isTypingInField()) {

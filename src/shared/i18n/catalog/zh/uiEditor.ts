@@ -213,7 +213,7 @@ export const uiEditor = {
         showSelected: "显示所选",
         hideSelected: "隐藏所选",
         addToComponentLibrary: "添加到组件库",
-        addToGroup: "添加到分组",
+        group: "编组",
         ungroup: "取消编组",
         addState: "添加状态",
         arrange: {

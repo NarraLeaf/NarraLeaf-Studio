@@ -375,6 +375,7 @@ export const widgets = {
         button: { name: "ボタン", label: "ボタン" },
         choiceList: { name: "選択肢リスト", choiceA: "選択肢 A", choiceB: "選択肢 B", choiceC: "選択肢 C" },
         container: { name: "コンテナ" },
+        group: { name: "グループ" },
         dialog: { name: "本文", text: "現在の行がここに表示される" },
         frame: { name: "ページ" },
         image: { name: "画像" },

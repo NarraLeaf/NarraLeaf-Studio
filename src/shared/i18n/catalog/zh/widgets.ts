@@ -374,6 +374,9 @@ export const widgets = {
         container: {
             name: "容器",
         },
+        group: {
+            name: "编组",
+        },
         dialog: {
             name: "句子",
             text: "当前对白将显示在此处",

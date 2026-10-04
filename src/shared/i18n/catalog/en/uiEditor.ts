@@ -228,7 +228,7 @@ export const uiEditor = {
         showSelected: "Show selected",
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
-        addToGroup: "Add to group",
+        group: "Group",
         ungroup: "Ungroup",
         addState: "Add state",
         arrange: {

@@ -215,7 +215,7 @@ export const uiEditor = {
         showSelected: "選択中のものを表示",
         hideSelected: "選択中のものを隠す",
         addToComponentLibrary: "コンポーネントライブラリに追加",
-        addToGroup: "グループに追加",
+        group: "グループにする",
         ungroup: "グループを解除",
         addState: "状態を追加",
         arrange: {

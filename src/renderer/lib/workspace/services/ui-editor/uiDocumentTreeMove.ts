@@ -2,6 +2,7 @@ import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types
 import {
     isLinkedUIComponentElement,
     isUIElementFlowLayoutChild,
+    isUIFlowLayoutParentElement,
     isUIStructuralWidgetPart,
     uiElementTypeAcceptsUserChildren,
 } from "@shared/types/ui-editor/document";
@@ -10,6 +11,8 @@ import { getElementSurfaceTopLeftEx, surfaceRectToParentLocalLayout } from "@/li
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
+import type { GroupFlowLayout } from "@/lib/ui-editor/widget-modules/builtin/container/groupProps";
 
 export type MoveRejectReason = "invalid_surface" | "invalid_target" | "invalid_movers" | "cycle" | "root_locked";
 
@@ -370,4 +373,152 @@ export function applyUngroupContainer(
     }
     delete document.elements[containerId];
     return children;
+}
+
+/** What wrapping a selection in a new group does to the tree, worked out before anything is written. */
+export type PlannedGroup = {
+    /** The parent every wrapped element shares, which the group goes into. */
+    parentId: UIElementId;
+    /** The wrapped elements, in the order the parent held them. */
+    movers: UIElementId[];
+    /** Where the group goes among the parent's children once the movers have left. */
+    insertAt: number;
+    /** The group's box in the parent. */
+    groupLayout: Pick<UILayout, "x" | "y" | "width" | "height">;
+    /** Each wrapped element's new position, now inside the group. */
+    moverLayouts: Record<UIElementId, Pick<UILayout, "x" | "y">>;
+    /** The stack layout the group takes over from a stack parent, or null in a free parent. */
+    flow: GroupFlowLayout | null;
+};
+
+/**
+ * Plan Group: wrap the selected elements in a new container that takes their place.
+ *
+ * The elements must share a parent - the group goes there - and the parent must be one that takes an
+ * author's children and lays them out itself rather than by slot (a list repeats one template, so it
+ * is not offered). Surface roots, a component's frame and a widget's own parts are not wrapped. Null
+ * when there is nothing to wrap, which is also what greys the command out.
+ *
+ * Nothing on screen moves:
+ * - In a free parent the group is a free container exactly covering the elements' boxes, and each one
+ *   is moved by the group's corner so it lands where it was.
+ * - In a stack the group is itself a stack with the parent's direction, gap and alignment, sized to
+ *   hold the elements on one line, so they keep laying out as they did.
+ *
+ * The group takes the place of the wrapped element the outline lists first: the front-most one in a
+ * free parent, the first one in a stack.
+ */
+export function planGroupElements(
+    document: UIDocument,
+    surfaceId: string,
+    rawElementIds: readonly UIElementId[],
+): PlannedGroup | null {
+    const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!effectiveRootId) {
+        return null;
+    }
+    const allowed = collectSubtreeElementIds(document, effectiveRootId);
+    const candidates = rawElementIds.filter(id => {
+        const element = document.elements[id];
+        return (
+            element != null &&
+            allowed.has(id) &&
+            id !== effectiveRootId &&
+            element.type !== ROOT_WIDGET_TYPE &&
+            !isComponentEditorRootElement(element) &&
+            !isUIStructuralWidgetPart(document, element)
+        );
+    });
+    const tops = filterToTopLevelMovers(document, candidates);
+    const parentId = tops.length > 0 ? document.elements[tops[0]]?.parentId : null;
+    if (!parentId || tops.some(id => document.elements[id]?.parentId !== parentId)) {
+        return null;
+    }
+    const parent = document.elements[parentId];
+    if (
+        !parent ||
+        !allowed.has(parentId) ||
+        !uiElementTypeAcceptsUserChildren(parent.type) ||
+        isListLikeWidgetType(parent.type) ||
+        isLinkedUIComponentElement(parent)
+    ) {
+        return null;
+    }
+
+    const moverSet = new Set(tops);
+    const movers = parent.childrenIds.filter(id => moverSet.has(id));
+    const flowParent = isUIFlowLayoutParentElement(parent);
+    const anchorId = flowParent ? movers[0] : movers[movers.length - 1];
+    const insertAt = parent.childrenIds
+        .slice(0, parent.childrenIds.indexOf(anchorId))
+        .filter(id => !moverSet.has(id)).length;
+    const layouts = movers.map(id => document.elements[id].layout);
+
+    if (flowParent) {
+        const stack = getContainerProps(parent);
+        const horizontal = stack.stackDirection === "horizontal";
+        const mainSizes = layouts.map(layout => Math.abs(horizontal ? layout.width : layout.height));
+        const crossSizes = layouts.map(layout => Math.abs(horizontal ? layout.height : layout.width));
+        const main = Math.max(0, mainSizes.reduce((sum, size) => sum + size, 0) + stack.stackGap * (movers.length - 1));
+        const cross = Math.max(0, ...crossSizes);
+        return {
+            parentId,
+            movers,
+            insertAt,
+            groupLayout: { x: 0, y: 0, width: horizontal ? main : cross, height: horizontal ? cross : main },
+            moverLayouts: Object.fromEntries(movers.map(id => [id, { x: 0, y: 0 }])),
+            flow: {
+                stackDirection: stack.stackDirection,
+                stackGap: stack.stackGap,
+                stackAlignItems: stack.stackAlignItems,
+            },
+        };
+    }
+
+    // A negative width or height draws from x + width; the box is what is covered.
+    const left = Math.min(...layouts.map(layout => layout.x + Math.min(0, layout.width)));
+    const top = Math.min(...layouts.map(layout => layout.y + Math.min(0, layout.height)));
+    const right = Math.max(...layouts.map(layout => layout.x + Math.min(0, layout.width) + Math.abs(layout.width)));
+    const bottom = Math.max(...layouts.map(layout => layout.y + Math.min(0, layout.height) + Math.abs(layout.height)));
+    return {
+        parentId,
+        movers,
+        insertAt,
+        groupLayout: { x: left, y: top, width: right - left, height: bottom - top },
+        moverLayouts: Object.fromEntries(
+            movers.map((id, index) => [id, { x: layouts[index].x - left, y: layouts[index].y - top }]),
+        ),
+        flow: null,
+    };
+}
+
+/**
+ * Carry out a planned Group with `group` as the new container: it takes its place in the parent and
+ * the wrapped elements move into it, in their order, at the positions the plan worked out.
+ */
+export function applyGroupElements(document: UIDocument, plan: PlannedGroup, group: UIElement): void {
+    const parent = document.elements[plan.parentId];
+    if (!parent) {
+        return;
+    }
+    const moverSet = new Set(plan.movers);
+    document.elements[group.id] = {
+        ...group,
+        parentId: plan.parentId,
+        childrenIds: [...plan.movers],
+        layout: roundUILayoutGeometryFields({ ...group.layout, ...plan.groupLayout }),
+    };
+    const siblings = parent.childrenIds.filter(id => !moverSet.has(id));
+    siblings.splice(Math.min(plan.insertAt, siblings.length), 0, group.id);
+    parent.childrenIds = siblings;
+    for (const id of plan.movers) {
+        const element = document.elements[id];
+        if (!element) {
+            continue;
+        }
+        element.parentId = group.id;
+        element.layout = roundUILayoutGeometryFields({ ...element.layout, ...plan.moverLayouts[id] });
+        normalizeFlowChildLayout(document, element);
+    }
+    normalizeFlowChildLayout(document, document.elements[group.id]);
 }

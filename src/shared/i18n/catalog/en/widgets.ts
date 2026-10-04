@@ -378,6 +378,7 @@ export const widgets = {
         button: { name: "Button", label: "Button" },
         choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
         container: { name: "Container" },
+        group: { name: "Group" },
         dialog: { name: "Sentence", text: "The current line will appear here." },
         frame: { name: "Page" },
         image: { name: "Image" },
