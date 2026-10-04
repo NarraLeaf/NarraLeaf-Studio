@@ -8,7 +8,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "../ui/ShortcutContextMenu";
 import { HostVisibility } from "@/lib/components/layout";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { openNewTab } from "../../modules/new-tab/openNewTab";
@@ -26,6 +27,14 @@ import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
 import { useTranslation } from "@/lib/i18n";
 import { EDITOR_TAB_BODY_ATTRIBUTE } from "../../hooks/previewTabPromotion";
+
+/** The tab menu's rows that a key also runs, by row id, so each row prints its chord. */
+const TAB_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    close: "editor.close-tab",
+    "split-right": "editor-split-right",
+    "split-down": "editor-split-down",
+    "reopen-closed": "workspace-reopen-closed-tab",
+};
 
 /** px of breathing room left beside the active tab when it is scrolled into view. */
 const TAB_REVEAL_MARGIN = 12;
@@ -638,7 +647,8 @@ export function EditorGroup({ group }: EditorGroupProps) {
                             aria-hidden
                         />
                     )}
-                    <ContextMenu
+                    <ShortcutContextMenu
+                        shortcuts={TAB_MENU_SHORTCUTS}
                         items={tabMenuItems}
                         position={menuState.position}
                         visible={menuState.visible}

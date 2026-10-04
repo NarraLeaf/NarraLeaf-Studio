@@ -116,7 +116,12 @@ export interface KeybindingCatalogEntry {
     icon: LucideIcon;
 }
 
-const CATEGORY = {
+/**
+ * The groups the settings table and the cheat sheet file shortcuts under - one per editor, plus the
+ * workspace-wide ones. Exported because the fixed-input catalog files its mouse gestures under the
+ * same groups, so an editor's keys and its gestures read as one section.
+ */
+export const KEYBINDING_CATEGORY = {
     general: "workspace.shell.keybindings.categories.general" as TranslationKey,
     run: "workspace.shell.keybindings.categories.run" as TranslationKey,
     view: "workspace.shell.keybindings.categories.view" as TranslationKey,
@@ -129,6 +134,8 @@ const CATEGORY = {
     voice: "workspace.shell.keybindings.categories.voice" as TranslationKey,
     lint: "workspace.shell.keybindings.categories.lint" as TranslationKey,
 } as const;
+
+const CATEGORY = KEYBINDING_CATEGORY;
 
 function entry(
     id: string,

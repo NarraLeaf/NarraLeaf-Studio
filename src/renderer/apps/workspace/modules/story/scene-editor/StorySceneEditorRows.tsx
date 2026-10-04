@@ -19,8 +19,7 @@ import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
 import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
-import { isMacPlatform } from "@/lib/app/platform";
-import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useBadgeImageUrl, useStoryImageAsset } from "./storyBadgeImageCache";
@@ -1184,11 +1183,11 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
     // Scoped: inserting and deleting a row write the story document and nothing else.
     const freeze = useFreezeGuard(useStoryDocumentScope());
-    // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
-    // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
-    const isMac = isMacPlatform();
-    const insertKeys = formatKeybinding("shift+enter", isMac);
-    const deleteKeys = formatKeybinding("delete", isMac);
+    // Rendered from the catalog entries the two keys are bound under, so a key rebound in Settings
+    // shows rebound here too; a hint that prints the default is how it drifts from the key it names.
+    const shortcuts = useShortcutLabels();
+    const insertKeys = shortcuts.forBinding("story.insert-blank-after-selection") ?? "";
+    const deleteKeys = shortcuts.forBinding("story.delete") ?? "";
     return (
         <div
             className={[
