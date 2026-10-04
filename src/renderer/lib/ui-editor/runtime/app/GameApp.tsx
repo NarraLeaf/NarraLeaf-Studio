@@ -217,7 +217,12 @@ import {
     resolveKeyboardOwnerLane,
     type KeyboardOwner,
 } from "./keyboardOwner";
-import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
+import {
+    createDialogueAdvanceRecord,
+    projectDrawsNvlPage,
+    resolveDialogueAdvanceActionIds,
+    resolveEngineNvlKeys,
+} from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
@@ -2368,6 +2373,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [requireActiveLiveGame]);
 
     /**
+     * Which actions the dialogue box reads on with, as far as playing has shown - the half of
+     * `engineNvlKeys` a script layer needs. Held in state rather than a memo so a StrictMode remount
+     * keeps the one record, and it has nothing to tear down.
+     */
+    const [dialogueAdvances] = useState(createDialogueAdvanceRecord);
+    /** The host's `Next`: every graph node and script call that asks the game to read on comes here. */
+    const nextFromGraph = useCallback(async () => {
+        dialogueAdvances.noteNext();
+        await nextInGame();
+    }, [dialogueAdvances, nextInGame]);
+
+    /**
      * Backs the blueprint `sound` family. Built once per host and ref-backed, so
      * its identity is stable across relaunches; it reads the live game through
      * the ref and degrades to a warned no-op when there is none.
@@ -4165,7 +4182,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onClearEndingState: clearEndingStateInGame,
             onClearEndings: clearEndingsInGame,
             onSelectChoice: selectChoiceInGame,
-            onNext: nextInGame,
+            onNext: nextFromGraph,
             onSkip: skipInGame,
             onShowDialog: showDialogInGame,
             onHideDialog: hideDialogInGame,
@@ -4254,7 +4271,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        nextInGame,
+        nextFromGraph,
         openSurface,
         quitGame,
         replaceSurface,
@@ -5585,9 +5602,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         nvlActive: isNvlModeInGame(),
                         projectDrawsNvlPage: drawsOwnNvlPage,
                         stage,
-                        actionIds: dialogueAdvanceActionIds,
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
                         advance: nextInGame,
                     }),
+                    dialogueAdvance: dialogueAdvances,
                 };
             },
             onError: err => host.log("error", normalizeError(err)),
@@ -5596,6 +5614,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle,
         core,
         dialogueAdvanceActionIds,
+        dialogueAdvances,
         drawsOwnNvlPage,
         host,
         hostAdapterBundle,
