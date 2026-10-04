@@ -618,6 +618,53 @@ describe("v4 kinds", () => {
     });
 });
 
+describe("an entry with no members yet", () => {
+    // What "Add Recollection" creates: a scene to point at and nothing to import.
+    const empty = artwork({
+        id: "recall",
+        name: "The Confession",
+        kind: "scene",
+        variants: [],
+        scene: { storyId: "story-1", sceneId: "scene-7" },
+    });
+
+    it("is collected whole by reaching its scene, under its own id", () => {
+        const items = normalizeGalleryStore({ items: [empty] }).items;
+
+        expect(collectSceneVariantIds(items, "scene-7")).toEqual(["recall"]);
+    });
+
+    it("reads as unlocked by that id, and shows its scene once it is", () => {
+        const store = storeOf({ items: [empty] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect(isArtworkUnlocked(store.items[0]!, unlocked)).toBe(true);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({
+            name: "The Confession",
+            unlocked: true,
+            sceneId: "scene-7",
+            image: null,
+        });
+        expect(computeGalleryStats(store, unlocked)).toMatchObject({ total: 1, unlocked: 1 });
+    });
+
+    it("stays unlocked once its first picture is added", () => {
+        // The player got there before the art did; the art must not lock it again.
+        const withArt = { ...empty, variants: [{ id: "recall.v.1", name: "Cover", imageAssetId: "asset-shot" }] };
+        const store = storeOf({ items: [withArt] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect([...unlocked]).toEqual(["recall.v.1"]);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({ unlocked: true, assetId: "asset-shot" });
+    });
+
+    it("is locked while nothing has collected it", () => {
+        const store = storeOf({ items: [empty] });
+
+        expect(projectGalleryEntries(store, new Set())[0]).toMatchObject({ locked: true, name: "???", sceneId: "" });
+    });
+});
+
 describe("what an automatic signal collects", () => {
     const items = normalizeGalleryStore({
         items: [

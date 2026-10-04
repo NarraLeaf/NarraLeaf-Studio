@@ -428,6 +428,36 @@ describe("unlockAll", () => {
     });
 });
 
+describe("an entry with no variants yet", () => {
+    const EMPTY_RECOLLECTION = {
+        version: 4,
+        items: [{
+            id: "art.r",
+            name: "Rooftop",
+            kind: "scene",
+            variants: [],
+            scene: { storyId: "story-1", sceneId: "scene-1" },
+        }],
+    };
+
+    it("is unlocked, asked about and locked again as a whole", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.add`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
+
+        const asked = await run(EMPTY_RECOLLECTION, `${P}.isUnlocked`, { galleryItemId: "art.r" });
+        expect(asked.outputValues?.unlocked).toBe(true);
+
+        await run(EMPTY_RECOLLECTION, `${P}.remove`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual([]);
+    });
+
+    it("is included when the whole gallery is unlocked", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.unlockAll`);
+
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
+    });
+});
+
 describe("wired variant ids", () => {
     it("unlocks the variant named by the pin rather than the picker", async () => {
         // A CG viewer unlocks what the player is looking at, which is only known

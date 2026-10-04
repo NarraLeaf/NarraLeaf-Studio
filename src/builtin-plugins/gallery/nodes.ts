@@ -33,6 +33,7 @@
 
 import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
 import {
+    artworkUnlockIds,
     computeGalleryStats,
     findArtwork,
     isArtworkUnlocked,
@@ -47,7 +48,6 @@ import {
     toImageAssetValue,
     type GalleryArtwork,
     type GalleryStoreData,
-    type GalleryVariant,
     PLUGIN_ID,
     RUNTIME_UNLOCKED_KEY,
 } from "./catalog";
@@ -390,18 +390,18 @@ function requireArtwork(ctx: ExecuteCtx, artworks: GalleryArtwork[]): GalleryArt
 }
 
 /**
- * Variants targeted by a lock/unlock node: the chosen one, or every variant of
- * the artwork when neither the pin nor the picker names one. The empty case
+ * Unlock-record ids targeted by a lock/unlock node: the chosen variant, or the
+ * whole artwork when neither the pin nor the picker names one. The empty case
  * preserves the pre-split behaviour of these nodes, whose param used to mean
- * "the artwork".
+ * "the artwork" - and reaches an entry with no variants yet, which is recorded
+ * by its own id (see `artworkUnlockIds`).
  */
-function resolveTargetVariants(ctx: ExecuteCtx, artwork: GalleryArtwork): GalleryVariant[] {
+function resolveTargetIds(ctx: ExecuteCtx, artwork: GalleryArtwork): string[] {
     const variantId = resolveVariantId(ctx);
     if (!variantId) {
-        return artwork.variants;
+        return artworkUnlockIds(artwork);
     }
-    const variant = artwork.variants.find(candidate => candidate.id === variantId);
-    return variant ? [variant] : [];
+    return artwork.variants.some(candidate => candidate.id === variantId) ? [variantId] : [];
 }
 
 function countUnlockedRows(rows: readonly { unlocked: boolean }[]): number {
@@ -430,13 +430,13 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
         const data = store();
         const artwork = requireArtwork(ctx, data.items);
-        const targets = resolveTargetVariants(ctx, artwork);
+        const targets = resolveTargetIds(ctx, artwork);
         const unlocked = await readUnlocked(ctx, data.items);
-        for (const variant of targets) {
+        for (const id of targets) {
             if (mode === "add") {
-                unlocked.add(variant.id);
+                unlocked.add(id);
             } else {
-                unlocked.delete(variant.id);
+                unlocked.delete(id);
             }
         }
         await writeUnlocked(ctx, unlocked);
@@ -635,7 +635,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                 const data = store();
                 await writeStoredUnlocked(
                     ctx,
-                    data.items.flatMap(artwork => artwork.variants.map(variant => variant.id)),
+                    data.items.flatMap(artworkUnlockIds),
                 );
                 return { nextPort: "next" };
             },

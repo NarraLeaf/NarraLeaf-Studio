@@ -433,7 +433,21 @@ export function findArtwork(artworks: GalleryArtwork[], artworkId: string): Gall
 }
 
 /**
- * Every variant of a `scene` entry that replays the given scene.
+ * What the unlock record holds for an entry unlocked as a whole: every member's id, or the entry's
+ * own id while it has no members yet.
+ *
+ * The second half is what lets an entry be collected as it stands. A recollection is created empty -
+ * there is nothing to import, the author picks a scene - and with nothing but member ids to record,
+ * reaching its scene collected nothing at all until a picture was added. Recorded by its own id
+ * instead, it reads as unlocked now, and once members exist {@link readUnlockedVariantIds} expands
+ * that id to all of them, so a player who got there before the art did keeps it.
+ */
+export function artworkUnlockIds(artwork: GalleryArtwork): string[] {
+    return artwork.variants.length > 0 ? artwork.variants.map(variant => variant.id) : [artwork.id];
+}
+
+/**
+ * What reaching the given scene collects: every `scene` entry that replays it, whole.
  *
  * A recollection has nothing finer than the scene to be at, so reaching it collects the whole
  * entry - unlike the two audio matchers below, where the member is the thing the player heard.
@@ -445,7 +459,7 @@ export function collectSceneVariantIds(artworks: GalleryArtwork[], sceneId: stri
     }
     return artworks
         .filter(artwork => artwork.kind === "scene" && artwork.scene?.sceneId === id)
-        .flatMap(artwork => artwork.variants.map(variant => variant.id));
+        .flatMap(artworkUnlockIds);
 }
 
 /**
@@ -509,10 +523,12 @@ export function resolveCoverVariant(artwork: GalleryArtwork): GalleryVariant | n
 /**
  * Read the persisted unlock record as a set of variant ids.
  *
- * v1 stored artwork ids, because unlocking was per-artwork. Those entries are
- * expanded to every variant of the artwork on read, so a player who unlocked a
- * CG before the split keeps seeing it. The catalog is needed for that expansion,
- * which is why unlock reads are always catalog-aware.
+ * An artwork id in the record means the whole entry. v1 stored nothing else, because unlocking was
+ * per-artwork, and an entry with no members is recorded that way today (see
+ * {@link artworkUnlockIds}). Such an id is expanded to every variant of the artwork on read, so a
+ * player who unlocked a CG before the split keeps seeing it; on an entry that still has no members
+ * it stays as it is. The catalog is needed for that expansion, which is why unlock reads are always
+ * catalog-aware.
  */
 export function readUnlockedVariantIds(value: unknown, artworks: GalleryArtwork[]): Set<string> {
     const stored = Array.isArray(value)
@@ -523,8 +539,8 @@ export function readUnlockedVariantIds(value: unknown, artworks: GalleryArtwork[
     for (const id of stored) {
         const artwork = artworkById.get(id);
         if (artwork) {
-            for (const variant of artwork.variants) {
-                unlocked.add(variant.id);
+            for (const unlockId of artworkUnlockIds(artwork)) {
+                unlocked.add(unlockId);
             }
             continue;
         }
@@ -550,9 +566,9 @@ export function resolveShownVariant(artwork: GalleryArtwork, unlocked: Set<strin
     return artwork.variants.find(variant => unlocked.has(variant.id)) ?? cover;
 }
 
-/** True when any variant of the artwork is unlocked. */
+/** True when any variant of the artwork is unlocked, or - with no variants yet - the entry itself. */
 export function isArtworkUnlocked(artwork: GalleryArtwork, unlocked: Set<string>): boolean {
-    return artwork.variants.some(variant => unlocked.has(variant.id));
+    return artworkUnlockIds(artwork).some(id => unlocked.has(id));
 }
 
 export function countUnlockedVariants(artwork: GalleryArtwork, unlocked: Set<string>): number {
