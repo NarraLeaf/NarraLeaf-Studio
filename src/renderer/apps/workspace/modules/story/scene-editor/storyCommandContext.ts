@@ -14,7 +14,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listDisplayableTargetsInScene } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
-import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVfxSources } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVfxSources, StoryCommandVideoClips } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
@@ -163,7 +163,9 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
         if (block.kind !== "action") {
             continue;
         }
-        if (block.payload.action === "video" && block.payload.objectName) {
+        // A clip is the one kind with a single row that brings it on - its `play` - so a name only a
+        // pause or a hide spells is not a clip anything can address.
+        if (block.payload.action === "video" && block.payload.operation === "play" && block.payload.objectName) {
             video.add(block.payload.objectName);
         } else if (block.payload.action === "audio" && block.payload.objectName) {
             audio.add(block.payload.objectName);
@@ -183,6 +185,25 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
         }
     }
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
+}
+
+/**
+ * The file each clip in this scene plays, from the first play of its name that names one - the clip
+ * the compiler builds, since every later play of the name hands that one back.
+ */
+function collectVideoClips(scene: StoryScene | null): StoryCommandVideoClips {
+    const clips: Record<string, { assetId: string; muted?: boolean }> = {};
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        if (block.kind !== "action" || block.payload.action !== "video" || block.payload.operation !== "play") {
+            continue;
+        }
+        const key = block.payload.objectName.trim().toLowerCase();
+        const assetId = block.payload.assetId?.trim();
+        if (key && assetId && !(key in clips)) {
+            clips[key] = { assetId, ...(block.payload.muted !== undefined ? { muted: block.payload.muted } : {}) };
+        }
+    }
+    return clips;
 }
 
 /**
@@ -449,5 +470,6 @@ export function buildStoryCommandContext(input: {
         stageObjectSources: collectStageObjectSources(input.scene),
         characterSources: collectCharacterSources(input.scene),
         vfxSources: collectVfxSources(input.document),
+        videoClips: collectVideoClips(input.scene),
     };
 }

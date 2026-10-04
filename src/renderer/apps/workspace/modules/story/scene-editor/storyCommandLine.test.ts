@@ -45,6 +45,8 @@ const CONTEXT: StoryCommandContext = {
         c2: { motions: ["run"], expressions: ["smile"], skins: ["winter"], params: [{ id: "ParamAngleX", min: -30, max: 30, default: 0 }] },
     },
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
+    // The clip an earlier `/play` defined: `clip`, playing the file `intro`.
+    videoClips: { clip: { assetId: "v1" } },
 };
 
 /** The scene the rows live in — it holds the `gold` declaration a `/set` row's variable ref resolves against. */
@@ -158,8 +160,6 @@ describe("projectStoryCommandLine", () => {
         // The house reveal fills the slots the line left empty, the same one `/show Alice` prints.
         expect(project("/show night")).toBe("/show night name=night in=fade d=0.25s");
         expect(project("/show night name=sky pos=center")).toBe("/show night name=sky pos=center d=0.25s");
-        // A clip is neither placed nor faded, so its line is the file and the name and nothing else.
-        expect(project("/show intro")).toBe("/show intro name=intro");
 
         // The context as it is once the row exists: the picture is on stage under its own name.
         const staged: StoryCommandContext = {
@@ -178,8 +178,8 @@ describe("projectStoryCommandLine", () => {
     it("names the clip a play row creates, on the same terms as a show row", () => {
         expect(project("/play intro")).toBe("/play intro name=intro");
         expect(project("/play intro name=cutscene")).toBe("/play intro name=cutscene");
-        // A clip already on stage is addressed, and the line is the name and nothing else.
-        expect(project("/play clip")).toBe("/play clip");
+        // Playing a clip again builds a row that carries its file, so it prints as the play it is.
+        expect(project("/play clip")).toBe("/play intro name=clip");
 
         // Once the row exists the clip answers to its own name on stage, and the key is what keeps
         // the line reading back as the row that builds it.
@@ -200,12 +200,12 @@ describe("projectStoryCommandLine", () => {
             ["/play intro hide=false", "/play intro name=intro hide=false"],
             ["/play intro out=none", "/play intro name=intro out=none"],
             ["/play intro d=1.5", "/play intro name=intro out=fade d=1.5s"],
-            // A clip on stage stays unless the row asks; saying how it leaves is the asking.
-            ["/play clip", "/play clip"],
-            ["/play clip hide", "/play clip hide=true"],
-            ["/play clip out=fade", "/play clip hide=true"],
-            ["/play clip out=fade d=0.5", "/play clip out=fade d=0.5s"],
-            ["/play clip out=none", "/play clip out=none"],
+            // Every play clears its clip away by default, so only a different answer is printed.
+            ["/play intro wait=false", "/play intro name=intro wait=false"],
+            ["/play intro muted", "/play intro name=intro muted=true"],
+            ["/play clip", "/play intro name=clip"],
+            ["/play clip hide", "/play intro name=clip hide=true"],
+            ["/play clip out=fade d=0.5", "/play intro name=clip out=fade d=0.5s"],
             // `/hide` cuts unless it says otherwise, so a fade on it is always written out.
             ["/hide clip", "/hide clip"],
             ["/hide clip out=fade", "/hide clip out=fade d=0.25s"],
@@ -858,7 +858,7 @@ describe("projectStoryCommandLine — what a word points at", () => {
             },
             d_video: {
                 id: "d_video", parentId: null, childrenIds: [], kind: "action",
-                payload: { action: "video", operation: "create", objectName: "clip", assetId: "v1" },
+                payload: { action: "video", operation: "play", objectName: "clip", assetId: "v1" },
             },
             d_snd: {
                 id: "d_snd", parentId: null, childrenIds: [], kind: "action",

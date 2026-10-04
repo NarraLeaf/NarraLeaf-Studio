@@ -91,9 +91,7 @@ export type NarralangVerb =
     | "layerHide"
     | "layerTransform"
     // Video
-    | "videoCreate"
     | "videoSeek"
-    | "videoShow"
     | "videoHide"
     | "videoPlay"
     | "videoPause"

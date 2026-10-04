@@ -16,35 +16,47 @@
  *     an If's False, a Switch's later cases, a dialog's second button - starts a row of its own,
  *     below everything the first one led to, beginning just right of the card it leaves. So a branch
  *     reads top to bottom as true then false, the way every node editor draws one, and its wire runs
- *     down a clear corridor beside the true side and turns right. Every card in a row is placed so
- *     its execution pin sits on the row's line, which is what makes the row's wires straight.
+ *     down a clear corridor beside the true side and turns right. A loop - For, For Each, While -
+ *     reads the same way: its first output is the body it repeats, which continues the row straight
+ *     from the loop, and Completed is a later output with a row of its own. Every card in a row is
+ *     placed so its execution pin sits on the row's line, which is what makes the row's wires
+ *     straight.
  *  2. **Feeders.** A card that only computes a value (it has no execution pins) belongs to the input
  *     it feeds and is drawn just before and below that input. A card's feeders are stacked in the
  *     order of the card's own input pins, so no two wires into one card cross; a feeder's own feeders
  *     extend leftwards from it the same way, the first of them level with the pin it feeds, so a
  *     chain of data cards is one straight lane. A value that feeds several inputs - only a literal,
  *     an Element and a few others may - is drawn as a feeder of the first of them and wired forwards
- *     to the rest.
+ *     to the rest. Stacked feeders' wires stay apart only while each lower one leaves its card at
+ *     least as far right as the ones above it, and a card's output is its right edge; where a card's
+ *     width is not known exactly - the command line lays one template out for every interface
+ *     language, and a card is as wide as its words - each feeder is kept further left by as much as
+ *     the ones below it may turn out narrower, so the order holds whatever the language.
  *  3. **Across.** Every execution card is as far left as its constraints allow: after the card
  *     before it in its row with room between them for its feeders, after every card it takes a wire
  *     from, and - where its row branched just before it - far enough right to leave the branch's wire
  *     its corridor.
  *  4. **Down.** Rows are dropped into place one at a time, each as high as it can go without
- *     touching anything placed before it, the execution wire of the row above included. How far a
- *     branch's wire drops does not matter; that it crosses nothing and runs under no card does.
+ *     touching anything placed before it, the execution wire of the row above included, and the
+ *     whole rectangle of every frame placed before it. How far a branch's wire drops does not matter;
+ *     that it crosses nothing and runs under no card does.
  *  5. **Choices.** Two things the rules above leave open are settled by trying them. A branch can
  *     also sit directly under the card it leaves, with the rest of that card's row pushed right past
  *     it - but only where that strictly lowers what there is to untangle, counted on the curves the
  *     canvas actually draws: crossings and wires hidden under a card. As good is not good enough;
- *     the true-then-false reading wins every tie. And a value shared by several inputs can be drawn
- *     beside any of them; there, between arrangements that untangle equally well, the shorter wiring
- *     is kept. A feeder that a wire from elsewhere runs through is lowered below that wire, which
- *     turns a hidden wire into a visible crossing.
+ *     the true-then-false reading wins every tie, and a loop is never offered it: its body is what the
+ *     loop is for, and it does not move aside for what happens once the loop is done. And a value
+ *     shared by several inputs can be drawn beside any of them; there, between arrangements that
+ *     untangle equally well, the shorter wiring is kept. A feeder that a wire from elsewhere runs
+ *     through is lowered below that wire, which turns a hidden wire into a visible crossing.
  *  6. **Pieces, notes and frames.** Disconnected pieces are laid out one by one and stacked down the
  *     page in the order the author had them. A note (a comment card) goes above the piece it was
- *     written over. A frame (a comment in frame mode) holds the same cards afterwards as before:
- *     cards that do not share a frame are kept the frame's padding further apart, so the frame can be
- *     re-fitted around its members without taking anything else in.
+ *     written over. A frame (a comment in frame mode) holds the same cards afterwards as before, and
+ *     takes up its whole rectangle: a card it does not hold never ends up inside it, not even partly,
+ *     and two frames never overlap unless one holds the other. Cards that do not share a frame are
+ *     kept the frame's padding apart; a row starting below a frame starts below all of it, not only
+ *     below the cards above it; and a frame holding cards of several rows - a branch and the first
+ *     cards of its outputs - keeps what follows it along each of those rows past its right edge.
  *
  * Cycles are expected - a loop body wiring back into its own head - and the wire that closes one is
  * left out of the placement. It still draws, backwards; nothing else does.
@@ -52,14 +64,24 @@
  * A vertical layout is the same layout with the page turned: transpose the cards, run all of the
  * above, transpose the answer back. There is one layout here, and only one of them can have a bug.
  *
- * Deliberately no dependency, and pure: cards, pins and wires in, positions out. The canvas hands
- * it the cards as they measured, the blueprint command line hands it cards sized from their
- * definitions, and both get the same layout.
+ * Deliberately no dependency beyond the names of the loop nodes, and pure: cards, pins and wires in,
+ * positions out. The canvas hands it the cards as they measured, the blueprint command line hands it
+ * cards sized from their definitions, and both get the same layout.
  *
  * Comments in English per project convention.
  */
 
-import { BLUEPRINT_GROUP_FRAME_PADDING, refitBlueprintGroupFrames } from "./blueprintGroupFrame";
+import {
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
+} from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_GROUP_FRAME_PADDING,
+    BLUEPRINT_GROUP_MIN_HEIGHT,
+    BLUEPRINT_GROUP_MIN_WIDTH,
+    refitBlueprintGroupFrames,
+} from "./blueprintGroupFrame";
 
 /** An input sits on a card's left edge, an output on its right. */
 export type BlueprintLayoutPinSide = "in" | "out";
@@ -80,10 +102,30 @@ export type BlueprintLayoutCard = {
     id: string;
     x: number;
     y: number;
+    /** As wide as the card can be drawn. */
     width: number;
     height: number;
     pins: readonly BlueprintLayoutPin[];
+    /**
+     * As narrow as the card can be drawn, when that is not known exactly. A card's width follows the
+     * words on it, and so the interface language: the command line lays the shipped template out
+     * once for every language, so to it a card is anything from this to `width` wide - and its
+     * output pins anywhere across that range. Left out, the card is exactly `width` wide.
+     */
+    minWidth?: number;
+    /**
+     * A loop: its first execution output is the body it repeats, its second where it carries on once
+     * the loop is done (see `BLUEPRINT_LAYOUT_LOOP_NODE_TYPES`).
+     */
+    loop?: boolean;
 };
+
+/** The node types a card is laid out as a loop for: For, For Each and While. */
+export const BLUEPRINT_LAYOUT_LOOP_NODE_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_WHILE,
+]);
 
 /** One wire, from an output pin to an input pin. */
 export type BlueprintLayoutWire = {
@@ -170,8 +212,21 @@ const MAX_CHOICE_ROUNDS = 3;
  */
 const LENGTH_WEIGHT = 0.1;
 
+/**
+ * What a frame drawn over a card it does not hold costs - or two frames over each other: as much as
+ * two cards overlapping, because to the reader it is the same thing. The card looks like part of a
+ * group it is not in, and dragging the group would leave it behind.
+ */
+const FRAME_INTRUSION_WEIGHT = 100000;
+
 /** How often feeder trees are lowered out from under wires before the placement is taken as it is. */
 const MAX_REPAIR_PASSES = 3;
+
+/**
+ * How far inside its card a wire ends: the canvas draws a wire from the edge of its pin's handle,
+ * and a card draws its handles just inside its own left and right edges. Measured off the editor.
+ */
+const WIRE_END_INSET = 4.8;
 
 /** Points each wire is sampled at when wires are counted against each other. */
 const WIRE_SAMPLES = 24;
@@ -213,6 +268,7 @@ export function layoutBlueprintGraph(
     const frameComments = comments.filter(comment => comment.frame);
     const notes = comments.filter(comment => !comment.frame).sort(readingOrder);
     const membership = frameMembership(graph.cards, frameComments);
+    const frames = frameNesting(membership);
     const cards = prepareCards(graph.cards, membership.framesOfCard);
     const wires = prepareWires(graph.wires, cards);
     const islands = findIslands(cards, wires, membership.cardsOfFrame);
@@ -228,7 +284,7 @@ export function layoutBlueprintGraph(
             positions[note.id] = { x: Math.round(originX), y: Math.round(cursorY) };
             cursorY += note.height + settings.rowGap;
         }
-        const local = layoutIsland(island, cards, wires, settings);
+        const local = layoutIsland(island, cards, wires, frames, settings);
         for (const [id, point] of local.positions) {
             positions[id] = { x: Math.round(originX + point.x), y: Math.round(cursorY + point.y) };
         }
@@ -259,8 +315,9 @@ export type BlueprintLayoutMeasure = {
 
 /**
  * What a reader of a laid-out graph has to untangle, counted on the wires as the canvas draws them:
- * a cubic curve that leaves its output horizontally and enters its input horizontally. Two wires that
- * leave the same output, or enter the same input, are one stroke at that end and are not compared.
+ * a cubic curve that leaves its output horizontally and enters its input horizontally, each end just
+ * inside its card where the pin's handle is. Two wires that leave the same output, or enter the same
+ * input, are one stroke at that end and are not compared.
  */
 export function measureBlueprintLayout(
     graph: BlueprintLayoutGraph,
@@ -286,7 +343,10 @@ type Pin = { id: string; side: BlueprintLayoutPinSide; kind: BlueprintLayoutPinK
 
 type Card = {
     id: string;
+    /** As wide as it can be drawn: what it is given room for. */
     w: number;
+    /** How much narrower than that it may turn out to be, which moves its output pins left. */
+    slack: number;
     h: number;
     /** Where the author had it. */
     original: Rect;
@@ -296,6 +356,8 @@ type Card = {
     pins: Pin[];
     /** Whether it takes part in execution at all. A card that does not is a data card. */
     exec: boolean;
+    /** A loop, whose body continues its row the way a branch's first output does. */
+    loop: boolean;
     /** Where on the card its row's line passes: its execution input, else its first execution output. */
     line: number;
     /** Every frame holding it, nested ones included. */
@@ -340,11 +402,13 @@ function prepareCards(
         cards.set(card.id, {
             id: card.id,
             w: card.width,
+            slack: Math.max(0, card.width - (card.minWidth ?? card.width)),
             h: card.height,
             original: { x: card.x, y: card.y, w: card.width, h: card.height },
             rank,
             pins,
             exec: Boolean(execIn ?? execOut),
+            loop: card.loop === true,
             line: anchor?.offset ?? card.height / 2,
             frames: framesOfCard.get(card.id) ?? [],
         });
@@ -388,6 +452,106 @@ type Membership = {
     /** Frames inside each frame, so nested frames are re-fitted before the frames around them. */
     framesOfFrame: Map<string, string[]>;
 };
+
+/** How the frames sit in one another: what a frame's rectangle is worked out from. */
+type FrameNesting = {
+    /** Innermost first, so a frame is sized after every frame inside it. */
+    order: readonly string[];
+    /** The frames inside each frame, however deep. */
+    inside: ReadonlyMap<string, ReadonlySet<string>>;
+};
+
+function frameNesting(membership: Membership): FrameNesting {
+    const inside = new Map([...membership.framesOfFrame].map(([frame, list]) => [frame, new Set(list)]));
+    // A frame inside another holds a subset of what that one holds, so fewer frames inside it.
+    const order = [...inside.keys()].sort((a, b) => inside.get(a)!.size - inside.get(b)!.size || (a < b ? -1 : 1));
+    return { order, inside };
+}
+
+/** Whether one of two frames holds the other. */
+function nested(nesting: FrameNesting, a: string, b: string): boolean {
+    return nesting.inside.get(a)?.has(b) === true || nesting.inside.get(b)?.has(a) === true;
+}
+
+/**
+ * Each frame's rectangle as the given cards would have it drawn: re-fitted round the ones it holds,
+ * the frames inside it first - the rectangle "Format graph" ends up giving it, worked out before it
+ * does so that what is placed next can keep clear of it. A frame holding none of them has none.
+ */
+function frameBoxes(
+    placed: Iterable<{ card: Card; rect: Rect }>,
+    nesting: FrameNesting,
+    settings: Settings,
+): Map<string, Rect> {
+    const held = new Map<string, Rect[]>();
+    for (const { card, rect } of placed) {
+        for (const frame of card.frames) {
+            const list = held.get(frame) ?? [];
+            list.push(rect);
+            held.set(frame, list);
+        }
+    }
+    const pad = settings.framePadding;
+    const boxes = new Map<string, Rect>();
+    for (const frame of nesting.order) {
+        const rects = [...(held.get(frame) ?? [])];
+        for (const inner of nesting.inside.get(frame) ?? []) {
+            const box = boxes.get(inner);
+            if (box) {
+                rects.push(box);
+            }
+        }
+        if (rects.length === 0) {
+            continue;
+        }
+        const around = boundsOf(rects);
+        boxes.set(frame, {
+            x: around.x - pad.left,
+            y: around.y - pad.top,
+            w: Math.max(BLUEPRINT_GROUP_MIN_WIDTH, around.w + pad.left + pad.right),
+            h: Math.max(BLUEPRINT_GROUP_MIN_HEIGHT, around.h + pad.top + pad.bottom),
+        });
+    }
+    return boxes;
+}
+
+/**
+ * How often a frame is drawn over something it does not hold: a card partly or wholly inside a frame
+ * it is not a member of, or two frames overlapping when neither holds the other.
+ */
+function frameIntrusions(
+    rects: ReadonlyMap<string, Rect>,
+    cards: ReadonlyMap<string, Card>,
+    nesting: FrameNesting,
+    settings: Settings,
+): number {
+    const boxes = frameBoxes([...rects].map(([id, rect]) => ({ card: cards.get(id)!, rect })), nesting, settings);
+    if (boxes.size === 0) {
+        return 0;
+    }
+    let count = 0;
+    const list = [...boxes];
+    list.forEach(([frame, box], index) => {
+        for (const [id, rect] of rects) {
+            if (!cards.get(id)!.frames.includes(frame) && intersectsRect(box, rect)) {
+                count += 1;
+            }
+        }
+        for (const [other, otherBox] of list.slice(index + 1)) {
+            if (!nested(nesting, frame, other) && intersectsRect(box, otherBox)) {
+                count += 1;
+            }
+        }
+    });
+    return count;
+}
+
+function intersectsRect(a: Rect, b: Rect): boolean {
+    return (
+        Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > CONTAINMENT_EPSILON &&
+        Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > CONTAINMENT_EPSILON
+    );
+}
 
 function contains(
     frame: { x: number; y: number; width: number; height: number },
@@ -535,6 +699,9 @@ function transposeGraph(graph: BlueprintLayoutGraph): BlueprintLayoutGraph {
             // Pins stay on a card's sides however the page is turned, so across the turned card they
             // keep only their order, spread over its new height.
             pins: card.pins.map(pin => ({ ...pin, offset: (pin.offset / Math.max(1, card.height)) * card.width })),
+            // A card narrower than its width moves its outputs left; turned, that is along the row
+            // rather than across it, so only `loop` carries over.
+            loop: card.loop,
         })),
         wires: graph.wires,
         comments: graph.comments?.map(comment => ({
@@ -607,6 +774,7 @@ type Structure = {
     owner: ReadonlyMap<string, Wire>;
     /** Data wires into each card that do not come from a card it owns, top to bottom. */
     externalInputs: ReadonlyMap<string, readonly Wire[]>;
+    nesting: FrameNesting;
 };
 
 /**
@@ -630,6 +798,7 @@ function layoutIsland(
     ids: readonly string[],
     cards: ReadonlyMap<string, Card>,
     allWires: readonly Wire[],
+    nesting: FrameNesting,
     settings: Settings,
 ): { positions: Map<string, { x: number; y: number }>; width: number; height: number } {
     const member = new Set(ids);
@@ -639,15 +808,19 @@ function layoutIsland(
     // whether a branch may sit directly under its card instead of below its row, and which of its
     // inputs a value that feeds several of them is drawn beside. A branch moves under its card only
     // when that strictly untangles something, and comes back as soon as it no longer does; a shared
-    // value moves when the result is better at all, shorter wiring included.
+    // value moves when the result is better at all, shorter wiring included. A loop is not a choice:
+    // its body is what it is for, and it continues straight from the loop.
     let owners = new Map<string, Wire>();
-    let structure = analyseIsland(ids, cards, wires, settings, owners);
+    let structure = analyseIsland(ids, cards, wires, nesting, settings, owners);
     let choices = new Map<string, Choice>(structure.branchCards.map(id => [id, "belowRow"]));
     let best = placeAndRepair(structure, choices, settings);
     const shared = sharedValues(ids, cards, wires);
     for (let round = 0; round < MAX_CHOICE_ROUNDS && best.score > 0; round += 1) {
         let improved = false;
         for (const id of structure.branchCards) {
+            if (cards.get(id)!.loop) {
+                continue;
+            }
             const trial = new Map(choices);
             const next: Choice = choices.get(id) === "underCard" ? "belowRow" : "underCard";
             trial.set(id, next);
@@ -666,7 +839,7 @@ function layoutIsland(
                 }
                 const trialOwners = new Map(owners);
                 trialOwners.set(id, wire);
-                const trialStructure = analyseIsland(ids, cards, wires, settings, trialOwners);
+                const trialStructure = analyseIsland(ids, cards, wires, nesting, settings, trialOwners);
                 const trialChoices = new Map<string, Choice>(
                     trialStructure.branchCards.map(card => [card, choices.get(card) ?? "belowRow"]),
                 );
@@ -712,6 +885,7 @@ function analyseIsland(
     ids: readonly string[],
     cards: ReadonlyMap<string, Card>,
     wires: readonly Wire[],
+    nesting: FrameNesting,
     settings: Settings,
     ownerOverrides: ReadonlyMap<string, Wire>,
 ): Structure {
@@ -890,9 +1064,11 @@ function analyseIsland(
         const list: FeederTree[] = [];
         let rootLeft = 0;
         let fullLeft = 0;
-        for (const wire of ownedInputs(anchor)) {
+        const owned = ownedInputs(anchor);
+        const steps = staircase(owned.map(wire => cards.get(wire.from)!));
+        for (const [index, wire] of owned.entries()) {
             const tree = layoutFeederTree(wire.from, cards, ownedInputs, foreignInputs, settings);
-            const left = -settings.dataGap - cards.get(wire.from)!.w;
+            const left = -settings.dataGap - steps[index]! - cards.get(wire.from)!.w;
             const items = tree.items.map(item => ({ id: item.id, x: left + item.x, y: item.y }));
             for (const item of items) {
                 anchorOf.set(item.id, anchor);
@@ -953,7 +1129,25 @@ function analyseIsland(
         branchCards,
         owner,
         externalInputs,
+        nesting,
     };
+}
+
+/**
+ * How far left of the column each of a card's stacked feeders is drawn, top to bottom.
+ *
+ * Feeders of one card are stacked in the order of its inputs, and their wires stay apart only while
+ * each lower feeder's output is at least as far right as every one above it: a lower wire that
+ * starts further left is the flatter of the two, and on its way up it crosses the steeper one. A
+ * card's output is its right edge, so where a card may be drawn narrower than it was given room for,
+ * the cards above it are kept left by that much, and the order holds however wide each turns out.
+ */
+function staircase(feeders: readonly Card[]): number[] {
+    const steps = feeders.map(() => 0);
+    for (let i = feeders.length - 2; i >= 0; i -= 1) {
+        steps[i] = steps[i + 1]! + feeders[i + 1]!.slack;
+    }
+    return steps;
 }
 
 function wouldNotLoop(id: string, target: string, owner: ReadonlyMap<string, Wire>): boolean {
@@ -986,7 +1180,9 @@ function layoutFeederTree(
     let bottom = card.h;
     let cursor = Number.NEGATIVE_INFINITY;
     const foreign = foreignInputs(root);
-    for (const wire of ownedInputs(root)) {
+    const owned = ownedInputs(root);
+    const steps = staircase(owned.map(wire => cards.get(wire.from)!));
+    for (const [index, wire] of owned.entries()) {
         const tree = layoutFeederTree(wire.from, cards, ownedInputs, foreignInputs, settings);
         const levelTop = wire.toOffset - wire.fromOffset;
         // A wire from elsewhere into a lower pin has to pass this tree to get there; with the tree
@@ -996,7 +1192,7 @@ function layoutFeederTree(
             ? Math.max(...later.map(other => other.toOffset)) + settings.clearance - tree.top
             : Number.NEGATIVE_INFINITY;
         const y = Math.max(levelTop, cursor - tree.top, clear);
-        const x = -settings.dataGap - cards.get(wire.from)!.w;
+        const x = -settings.dataGap - steps[index]! - cards.get(wire.from)!.w;
         for (const item of tree.items) {
             items.push({ id: item.id, x: x + item.x, y: y + item.y });
         }
@@ -1036,6 +1232,9 @@ function framePadding(
 type Constraint = { from: string; to: string; delta: number };
 
 type Obstacle = Rect & { frames: readonly string[]; wire: boolean };
+
+/** Something of a row as it is being placed: a card, or (with no id) the wire between two of its cards. */
+type LocalItem = Obstacle & { id: string | null };
 
 function place(
     structure: Structure,
@@ -1143,10 +1342,48 @@ function place(
             });
         }
     }
+    // A frame holding cards of more than one row - a branch and some of what it leads to - is drawn
+    // round all of them, so along each of those rows the first card after it has to start past the
+    // edge its members in every row give it, not only past the one before it in its own row.
+    const membersOf = new Map<string, string[]>();
+    for (const id of anchorOf.keys()) {
+        for (const frame of card(id).frames) {
+            const list = membersOf.get(frame) ?? [];
+            list.push(id);
+            membersOf.set(frame, list);
+        }
+    }
+    for (const members of membersOf.values()) {
+        const holding = new Set(members.map(id => anchorOf.get(id)!));
+        const rowsHeld = new Set([...holding].map(id => structure.rowOf.get(id)!));
+        if (rowsHeld.size < 2) {
+            continue;
+        }
+        for (const index of rowsHeld) {
+            const row = rows[index]!;
+            const last = row.cards.reduce((at, id, i) => (holding.has(id) ? i : at), -1);
+            const next = row.cards[last + 1];
+            if (next === undefined) {
+                continue;
+            }
+            for (const id of members) {
+                constraints.push({
+                    from: anchorOf.get(id)!,
+                    to: next,
+                    delta: relX.get(id)! + card(id).w + gapBefore(next, id),
+                });
+            }
+        }
+    }
     const x = longestPaths(anchors, constraints);
 
-    // --- Down: each row's feeders settle under it, then the row drops as high as it goes.
+    // --- Down: each row's feeders settle under it, then the row drops as high as it goes. A frame
+    // takes up its whole rectangle, not only the cards it holds: whatever it does not hold keeps
+    // clear of it, and so does every other frame but one it sits in or one sitting in it.
+    const nesting = structure.nesting;
     const placed: Obstacle[] = [];
+    const placedCards: { card: Card; rect: Rect }[] = [];
+    let boxes = new Map<string, Rect>();
     const lineOfRow = new Map<number, number>();
     const treeTopOf = new Map<string, number>();
     const treeRowOf = new Map<string, number>();
@@ -1160,10 +1397,20 @@ function place(
         (other.wire ? settings.clearance : settings.rowGap) +
         framePadding(other.frames, item.frames, "bottom", "top", settings) -
         item.y;
+    // Between a frame's edge and a card it does not hold, a quarter of a row's gap. Wherever the card
+    // is beside one of the frame's members, the pairs of cards above already keep them a row's gap
+    // apart and the frame's padding on top of that; what is left is the frame's border coming near a
+    // card past the end of its members, which only has to stay visibly off it. Any more lowers the
+    // rows beneath for nothing, and a lowered branch row bends its wire across what it passes.
+    const frameGap = settings.rowGap / 4;
+    /** How far `item` has to move down to clear a frame that does not hold it, which is above it. */
+    const clearanceBelowFrame = (item: Rect, box: Rect) => box.y + box.h + frameGap - item.y;
+    const cardsOf = (items: readonly LocalItem[]) =>
+        items.flatMap(item => (item.id === null ? [] : [{ card: card(item.id), rect: { x: item.x, y: item.y, w: item.w, h: item.h } }]));
 
     rows.forEach((row, rowIndex) => {
         // The row in its own frame of reference: its line at 0.
-        const local: (Obstacle & { id: string | null })[] = [];
+        const local: LocalItem[] = [];
         for (let i = 0; i < row.cards.length; i += 1) {
             const id = row.cards[i]!;
             local.push({ id, x: x.get(id)!, y: -card(id).line, w: card(id).w, h: card(id).h, frames: card(id).frames, wire: false });
@@ -1203,7 +1450,8 @@ function place(
                     frames: card(item.id).frames,
                 }));
                 // Clear whatever of the row is already there - cards before the anchor that the
-                // tree reaches back under, their trees, and the row's wire.
+                // tree reaches back under, their trees, the row's wire, and the frames round them.
+                const localBoxes = [...frameBoxes(cardsOf(local), nesting, settings)];
                 for (let settled = false, guard = 0; !settled && guard < 50; guard += 1) {
                     settled = true;
                     for (const rect of rects) {
@@ -1215,6 +1463,18 @@ function place(
                             const push = clearanceBelow(at, other);
                             if (push > 0) {
                                 top += push;
+                                at.y += push;
+                                settled = false;
+                            }
+                        }
+                        for (const [frame, box] of localBoxes) {
+                            if (rect.frames.includes(frame) || !overlapsAcross(at, box) || box.y >= at.y + at.h + settings.rowGap) {
+                                continue;
+                            }
+                            const push = clearanceBelowFrame(at, box);
+                            if (push > 0) {
+                                top += push;
+                                at.y += push;
                                 settled = false;
                             }
                         }
@@ -1238,7 +1498,8 @@ function place(
         }
 
         // Drop the row: as high as it can go below what is already placed, and never above the
-        // row it branched from.
+        // row it branched from. A frame that starts in this row has to fit below what is there as
+        // a whole; one that already holds cards above reaches down to its cards here.
         let line = rowIndex === 0 ? 0 : Number.NEGATIVE_INFINITY;
         if (row.from === null && rowIndex > 0) {
             // A chain of its own starts below everything, as the author's separate chains read.
@@ -1246,13 +1507,36 @@ function place(
         } else if (row.from !== null) {
             line = lineOfRow.get(structure.rowOf.get(row.from)!)!;
         }
+        const lowerTo = (item: Rect, bottom: number) => {
+            line = Math.max(line, bottom - item.y);
+        };
         for (const item of local) {
             if (item.wire) {
                 continue;
             }
             for (const other of placed) {
                 if (overlapsAcross(item, other)) {
-                    line = Math.max(line, line + clearanceBelow({ ...item, y: line + item.y }, other));
+                    lowerTo(item, item.y + clearanceBelow(item, other));
+                }
+            }
+            for (const [frame, box] of boxes) {
+                if (!item.frames.includes(frame) && overlapsAcross(item, box)) {
+                    lowerTo(item, item.y + clearanceBelowFrame(item, box));
+                }
+            }
+        }
+        for (const [frame, box] of frameBoxes(cardsOf(local), nesting, settings)) {
+            if (boxes.has(frame)) {
+                continue;
+            }
+            for (const other of placed) {
+                if (overlapsAcross(box, other)) {
+                    lowerTo(box, other.y + other.h + (other.wire ? settings.clearance : frameGap));
+                }
+            }
+            for (const [other, otherBox] of boxes) {
+                if (!nested(nesting, frame, other) && overlapsAcross(box, otherBox)) {
+                    lowerTo(box, otherBox.y + otherBox.h + settings.rowGap);
                 }
             }
         }
@@ -1265,25 +1549,20 @@ function place(
             placed.push(rect);
             if (item.id !== null) {
                 positions.set(item.id, { x: rect.x, y: rect.y });
+                placedCards.push({ card: card(item.id), rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } });
                 floor = Math.max(floor, rect.y + rect.h);
             }
         }
+        boxes = frameBoxes(placedCards, nesting, settings);
+        for (const box of boxes.values()) {
+            floor = Math.max(floor, box.y + box.h);
+        }
     });
 
-    // --- Normalise to the island's own top-left, frame padding included.
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    const pad = settings.framePadding;
-    for (const [id, point] of positions) {
-        const c = card(id);
-        const depth = c.frames.length;
-        minX = Math.min(minX, point.x - depth * pad.left);
-        minY = Math.min(minY, point.y - depth * pad.top);
-        maxX = Math.max(maxX, point.x + c.w + depth * pad.right);
-        maxY = Math.max(maxY, point.y + c.h + depth * pad.bottom);
-    }
+    // --- Normalise to the island's own top-left, frames included.
+    const extent = boundsOf([...placedCards.map(item => item.rect), ...boxes.values()]);
+    const minX = extent.x;
+    const minY = extent.y;
     const shifted = new Map<string, { x: number; y: number }>();
     const rects = new Map<string, Rect>();
     for (const [id, point] of positions) {
@@ -1291,15 +1570,17 @@ function place(
         shifted.set(id, next);
         rects.set(id, { x: next.x, y: next.y, w: card(id).w, h: card(id).h });
     }
-    const defects = scoreOf(countDefects(structure.wires, rects, { skipHidden: true }));
+    const defects =
+        scoreOf(countDefects(structure.wires, rects, { skipHidden: true })) +
+        FRAME_INTRUSION_WEIGHT * frameIntrusions(rects, cards, nesting, settings);
     const treeTops = new Map<string, { top: number; line: number }>();
     for (const [root, top] of treeTopOf) {
         treeTops.set(root, { top, line: lineOfRow.get(treeRowOf.get(root)!)! - minY });
     }
     return {
         positions: shifted,
-        width: maxX - minX,
-        height: maxY - minY,
+        width: extent.w,
+        height: extent.h,
         defects,
         score: defects + LENGTH_WEIGHT * wireLength(structure.wires, rects),
         treeTops,
@@ -1368,7 +1649,6 @@ function placeAndRepair(structure: Structure, choices: ReadonlyMap<string, Choic
 function treesUnderWires(structure: Structure, placement: Placement, settings: Settings): Map<string, number> {
     const { cards } = structure;
     const wanted = new Map<string, number>();
-    const inset = 4;
     for (const list of structure.trees.values()) {
         for (const tree of list) {
             const place = placement.treeTops.get(tree.root);
@@ -1391,14 +1671,10 @@ function treesUnderWires(structure: Structure, placement: Placement, settings: S
                     continue;
                 }
                 const points = sampleWire(
-                    { x: a.x + cards.get(wire.from)!.w, y: a.y + wire.fromOffset },
-                    { x: b.x, y: b.y + wire.toOffset },
+                    { x: a.x + cards.get(wire.from)!.w - WIRE_END_INSET, y: a.y + wire.fromOffset },
+                    { x: b.x + WIRE_END_INSET, y: b.y + wire.toOffset },
                 );
-                const hit = rects.some(rect =>
-                    points.some(([px, py]) =>
-                        px > rect.x + inset && px < rect.x + rect.w - inset && py > rect.y + inset && py < rect.y + rect.h - inset,
-                    ),
-                );
+                const hit = rects.some(rect => runsThrough(points, rect));
                 if (!hit) {
                     continue;
                 }
@@ -1533,9 +1809,17 @@ function sampleWire(start: { x: number; y: number }, end: { x: number; y: number
     return points;
 }
 
+/**
+ * Which side of the line through a and b the point c is on. Points on the line - within rounding -
+ * count as one side, so two wires running along the same line (a loop's wire back along its own row)
+ * are not counted as crossing at every sample the rounding happens to flip.
+ */
 function orient(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): boolean {
-    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) > 0;
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) > COLLINEAR_EPSILON;
 }
+
+/** Far below any real crossing's cross product, far above the rounding of a straight sampled wire. */
+const COLLINEAR_EPSILON = 1e-6;
 
 function segmentsCross(p1: [number, number], p2: [number, number], q1: [number, number], q2: [number, number]): boolean {
     if (orient(q1[0], q1[1], q2[0], q2[1], p1[0], p1[1]) === orient(q1[0], q1[1], q2[0], q2[1], p2[0], p2[1])) {
@@ -1557,8 +1841,8 @@ function countDefects(
         if (!a || !b) {
             continue;
         }
-        const start = { x: a.x + a.w, y: a.y + wire.fromOffset };
-        const end = { x: b.x, y: b.y + wire.toOffset };
+        const start = { x: a.x + a.w - WIRE_END_INSET, y: a.y + wire.fromOffset };
+        const end = { x: b.x + WIRE_END_INSET, y: b.y + wire.toOffset };
         if (end.x < start.x - 1) {
             backwards += 1;
         }
@@ -1597,17 +1881,12 @@ function countDefects(
     }
 
     let throughCards = 0;
-    const inset = 4;
     for (const curve of curves) {
         for (const [id, rect] of rects) {
             if (id === curve.wire.from || id === curve.wire.to || !boxesTouch(curve.box, rect)) {
                 continue;
             }
-            const hit = curve.points.some(
-                ([px, py]) =>
-                    px > rect.x + inset && px < rect.x + rect.w - inset && py > rect.y + inset && py < rect.y + rect.h - inset,
-            );
-            if (hit) {
+            if (runsThrough(curve.points, rect)) {
                 throughCards += 1;
             }
         }
@@ -1648,6 +1927,63 @@ function underAnotherCard(point: [number, number], wires: readonly [Wire, Wire],
             point[1] > rect.y - grow &&
             point[1] < rect.y + rect.h + grow
         ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** How far inside a card's edge a wire has to come before it counts as running through the card. */
+const THROUGH_INSET = 4;
+
+/**
+ * Whether a sampled wire runs through a card's body, a little inside its edge. Each stretch between
+ * two samples is tested whole, not only its ends: the samples are far apart on a long wire, and a
+ * wire clipping a card's corner between two of them is still drawn across it.
+ */
+function runsThrough(points: readonly [number, number][], card: Rect): boolean {
+    const x0 = card.x + THROUGH_INSET;
+    const x1 = card.x + card.w - THROUGH_INSET;
+    const y0 = card.y + THROUGH_INSET;
+    const y1 = card.y + card.h - THROUGH_INSET;
+    if (x0 >= x1 || y0 >= y1) {
+        return false;
+    }
+    for (let i = 0; i < points.length - 1; i += 1) {
+        const [ax, ay] = points[i]!;
+        const [bx, by] = points[i + 1]!;
+        // Clip the stretch to the inset rectangle (Liang-Barsky); anything left over is inside.
+        let t0 = 0;
+        let t1 = 1;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const edges: [number, number][] = [
+            [-dx, ax - x0],
+            [dx, x1 - ax],
+            [-dy, ay - y0],
+            [dy, y1 - ay],
+        ];
+        let inside = true;
+        for (const [p, q] of edges) {
+            if (p === 0) {
+                if (q <= 0) {
+                    inside = false;
+                    break;
+                }
+                continue;
+            }
+            const r = q / p;
+            if (p < 0) {
+                t0 = Math.max(t0, r);
+            } else {
+                t1 = Math.min(t1, r);
+            }
+            if (t0 >= t1) {
+                inside = false;
+                break;
+            }
+        }
+        if (inside) {
             return true;
         }
     }

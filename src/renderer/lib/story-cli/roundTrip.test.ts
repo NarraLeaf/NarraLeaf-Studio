@@ -287,7 +287,7 @@ describe("a row that names a row the same file adds", () => {
     });
 
     /**
-     * How a clip leaves - `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
+     * How a clip plays and leaves - `wait=`, `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
      * into a scene and printed back as the same lines, so every one of them is a row the file can
      * carry rather than a `»` line.
      */
@@ -312,8 +312,7 @@ describe("a row that names a row the same file adds", () => {
         const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
         const lines = [
             "/play festival name=festival hide=false",
-            "/play festival out=fade d=1.2s",
-            "/show festival",
+            "/play festival name=festival wait=false out=fade d=1.2s",
             "/hide festival out=fade d=0.5s",
         ];
         const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
@@ -334,8 +333,8 @@ describe("a row that names a row the same file adds", () => {
             return block?.kind === "action" ? block.payload : null;
         });
         expect(payloads[0]).toMatchObject({ operation: "play", assetId: clipId, hideOnEnd: false });
-        expect(payloads[1]).toMatchObject({ operation: "play", hideOnEnd: true, durationMs: 1200 });
-        expect(payloads[3]).toMatchObject({ operation: "hide", durationMs: 500 });
+        expect(payloads[1]).toMatchObject({ operation: "play", assetId: clipId, waitForEnd: false, durationMs: 1200 });
+        expect(payloads[2]).toMatchObject({ operation: "hide", durationMs: 500 });
 
         const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
         for (const line of lines) {
@@ -548,7 +547,7 @@ describe("the branches of one /if", () => {
 });
 
 /**
- * A clip declared in a file, then paused, resumed, sought and stopped further down.
+ * A clip a file plays, then pauses, resumes, seeks and stops further down.
  *
  * The transport verbs reach sound as well as video, and a name nothing on stage answers to is taken
  * for a sound - the row editor's rule for a name made somewhere it cannot see. The first reading of
@@ -556,14 +555,20 @@ describe("the branches of one /if", () => {
  * sound on every one of those lines; the second reading then found `clip` twice on the stage the
  * first one built - the clip, and the sound those rows had made up - and refused every line as
  * ambiguous. Typed into the editor in this order, each line finds the clip and nothing else.
+ *
+ * Every shape a clip can come on with: a play the story waits on and that holds its last frame, one
+ * the story does not wait for (the shape the later rows are written for), the same through `/video`,
+ * the word that names `/play` too, and a clip played a second time by its name alone.
  */
-describe("a clip the file declares, then pauses or stops", () => {
+describe("a clip the file plays, then pauses or stops", () => {
     const declarations: readonly (readonly string[])[] = [
         ["/play festival name=clip hide=false"],
-        ["/video festival name=clip", "/show clip"],
+        ["/play festival name=clip wait=false"],
+        ["/video festival name=clip wait=false"],
+        ["/play festival name=clip", "/play clip wait=false"],
     ];
     for (const declaration of declarations) {
-        it(`lands the rows the editor lands, after ${declaration[0].split(" ")[0]}`, () => {
+        it(`lands the rows the editor lands, after ${declaration.join(" + ")}`, () => {
             commandI18nStore.setPreference(false);
             const project = skeletonProject();
             expect(project).not.toBeNull();

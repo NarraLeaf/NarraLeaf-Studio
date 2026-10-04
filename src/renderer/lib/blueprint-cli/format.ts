@@ -17,6 +17,7 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { readBlueprintCommentSize } from "@shared/blueprint/blueprintCommentGeometry";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
 import {
+    BLUEPRINT_LAYOUT_LOOP_NODE_TYPES,
     layoutBlueprintGraph,
     measureBlueprintLayout,
     type BlueprintLayoutCard,
@@ -156,7 +157,18 @@ export function layoutGraphOf(ir: BlueprintGraphIr): BlueprintLayoutGraph {
             continue;
         }
         const geometry = blueprintCardGeometry(entry, params, wired.get(node.id) ?? new Set());
-        cards.push({ id: node.id, x, y, width: geometry.width, height: geometry.height, pins: geometry.pins });
+        cards.push({
+            id: node.id,
+            x,
+            y,
+            width: geometry.width,
+            // The width is an estimate that has to hold in every interface language, so the card is
+            // laid out as anything from the narrowest a card is drawn up to that.
+            minWidth: BLUEPRINT_CARD_NARROWEST,
+            height: geometry.height,
+            pins: geometry.pins,
+            loop: BLUEPRINT_LAYOUT_LOOP_NODE_TYPES.has(node.type),
+        });
     }
     // A frame holds what it fully contains, as on the canvas - but a width here is an estimate
     // rounded up, and a card estimated wider than it is would fall out of the frame the author drew
