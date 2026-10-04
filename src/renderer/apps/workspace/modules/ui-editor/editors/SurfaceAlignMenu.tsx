@@ -12,10 +12,8 @@ import {
 import type { TranslationKey } from "@shared/i18n";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { useTranslation } from "@/lib/i18n";
-import { isMacPlatform } from "@/lib/app/platform";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
-import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import {
@@ -81,7 +79,8 @@ type Props = {
 export function SurfaceAlignTrigger({ surfaceId, documentService, stateService, readOnly, readOnlyReason, revision }: Props) {
     const { t } = useTranslation();
     const popover = useSurfaceToolbarPopover(revision);
-    const isMac = isMacPlatform();
+    // The chord each row prints is the one that would fire now, a rebinding included.
+    const shortcuts = useShortcutLabels();
 
     const selection = useMemo<UIElementSelection | null>(() => {
         if (!stateService) {
@@ -114,13 +113,12 @@ export function SurfaceAlignTrigger({ surfaceId, documentService, stateService, 
 
     const renderRow = (entry: AlignEntry) => {
         const Icon = entry.icon;
-        const chord = getKeybindingCatalogEntry(entry.catalogId)?.key;
         return (
             <SurfaceToolbarPopoverRow
                 key={entry.op}
                 icon={<Icon className="h-3.5 w-3.5" />}
                 label={t(entry.labelKey as TranslationKey)}
-                shortcut={chord ? formatKeybinding(chord, isMac) : undefined}
+                shortcut={shortcuts.forBinding(entry.catalogId)}
                 disabled={readOnly || !availability[entry.op]}
                 onClick={() => run(entry.op)}
             />

@@ -6,6 +6,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
+import {
+    formatFixedInput,
+    getFixedInputEntry,
+    getFixedInputsExtending,
+    resolveFixedInputDisplay,
+    type FixedInput,
+} from "@/lib/workspace/services/ui/fixedInputCatalog";
 import { parseHelpBody } from "./helpBody";
 import { getHelpTopic, helpBodyKey, helpTitleKey, type HelpTopic, type HelpTopicId } from "./helpTopics";
 
@@ -51,13 +58,29 @@ export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTo
     const blocks = useMemo(() => parseHelpBody(t(helpBodyKey(topic.id))), [t, topic.id]);
     const isMac = isMacPlatform();
 
+    // A row is a command and every way to run it: a rebindable chord (as bound now) followed by the
+    // gestures that do the same, or, for a fixed-input entry, its gestures and fixed keys alone.
+    const formatInput = (input: FixedInput) => formatFixedInput(input, isMac, t);
     const shortcuts = (topic.shortcuts ?? [])
-        .map(catalogId => {
-            const entry = getKeybindingCatalogEntry(catalogId);
-            const key = resolveShortcut(catalogId);
-            return entry && key ? { id: catalogId, label: t(entry.labelKey), key } : null;
+        .map((id): { id: string; label: string; inputs: string[] } | null => {
+            const binding = getKeybindingCatalogEntry(id);
+            if (binding) {
+                const key = resolveShortcut(id);
+                return key
+                    ? {
+                          id,
+                          label: t(binding.labelKey),
+                          inputs: [formatKeybinding(key, isMac), ...getFixedInputsExtending(id).map(formatInput)],
+                      }
+                    : null;
+            }
+            const fixed = getFixedInputEntry(id);
+            const display = fixed ? resolveFixedInputDisplay(fixed) : null;
+            return fixed && display
+                ? { id, label: t(display.labelKey), inputs: fixed.inputs.map(formatInput) }
+                : null;
         })
-        .filter((row): row is { id: string; label: string; key: string } => row !== null);
+        .filter((row): row is { id: string; label: string; inputs: string[] } => row !== null);
 
     const related = (topic.related ?? [])
         .map(id => getHelpTopic(id))
@@ -85,10 +108,17 @@ export function HelpContent({ topic, resolveShortcut = defaultShortcut, onOpenTo
             {shortcuts.length > 0 && (
                 <div className="mt-3 border-t border-edge-subtle pt-2">
                     {shortcuts.map(row => (
-                        <div key={row.id} className="flex h-6 items-center gap-3">
-                            <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">{row.label}</span>
-                            <span className="shrink-0 rounded-md border border-edge bg-fill-subtle px-1.5 text-2xs tabular-nums text-fg-muted">
-                                {formatKeybinding(row.key, isMac)}
+                        <div key={row.id} className="flex min-h-6 items-center gap-3 py-0.5">
+                            <span className="min-w-0 flex-1 text-2xs text-fg-subtle">{row.label}</span>
+                            <span className="flex max-w-[65%] flex-wrap justify-end gap-1">
+                                {row.inputs.map((input, index) => (
+                                    <span
+                                        key={index}
+                                        className="whitespace-nowrap rounded-md border border-edge bg-fill-subtle px-1.5 text-2xs tabular-nums text-fg-muted"
+                                    >
+                                        {input}
+                                    </span>
+                                ))}
                             </span>
                         </div>
                     ))}
