@@ -160,7 +160,14 @@ import {
 // the scene editor's find/replace model.
 import { resolveStoryCameraLook, resolveStoryCameraLookOscillation, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { neutralStoryCameraLensProps, resolveStoryCameraLensSteps } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
-import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
+import type {
+    StageSnapshotDisplayable,
+    StageSnapshotEffects,
+    StageSnapshotMusic,
+    StageSnapshotSound,
+    StageSnapshotSoundState,
+    StoryStageSnapshot,
+} from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
     collectStoryPlaybackPlan,
@@ -1586,10 +1593,13 @@ async function buildLaunchEntryScene(params: {
                 diagnostics,
                 ...(params.localization ? { localization: params.localization } : {}),
             });
-    // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
-    // otherwise "play from here" is the one way to enter a scene silently.
+    // A row-precise launch replaces the scene, so it has to carry the scene's music too - otherwise
+    // "play from here" is the one way to enter a scene silently. Which track that is at the target
+    // row is the walk's answer (`snapshot.music`), and it is started below; the scene's own track is
+    // resolved here because it is the answer until a `/bgm` row replaces it, and because its fade is
+    // the one the scene's music leaves with.
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
-    const launchMusic = await resolveSceneBackgroundMusic({
+    const sceneMusic = await resolveSceneBackgroundMusic({
         scene,
         audioClips: input.audioClips,
         audioTracks,
@@ -1602,14 +1612,15 @@ async function buildLaunchEntryScene(params: {
         sceneRuntimeName(scene),
         {
             ...(backgroundSrc ? { background: backgroundSrc } : {}),
-            ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
+            // The fade the engine stops the scene's music with when the story leaves the scene - the
+            // scene's own, whichever track is playing by then, as in a playthrough. No track goes in
+            // the config: the scene would start it in its init, before anything here could turn it
+            // down, pause it or swap it for the one a `/bgm` row put on.
+            ...(sceneMusic ? { backgroundMusicFade: sceneMusic.fadeMs } : {}),
         },
     );
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
-    if (launchMusic) {
-        setStableElementId(params.elementIdBindings, launchMusic.sound, sceneMusicElementId(`${launchIdPrefix}:scene`));
-    }
 
     const ctx: SceneCompileContext = {
         document: input.document,
@@ -1648,10 +1659,12 @@ async function buildLaunchEntryScene(params: {
         vfx: new Map(),
         vfxAssetIds: new Map(),
         resolveWeatherClip: params.input.resolveWeatherClip,
-        sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
-        soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
-        soundAssetIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.assetId]]) : new Map(),
-        soundClips: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.clip]]) : new Map(),
+        // Filled below, from the walk: the music on the channel at the target row and every handle
+        // the scene's rows start - see `compileLaunchMusic` and `compileLaunchSounds`.
+        sounds: new Map(),
+        soundTrackIds: new Map(),
+        soundAssetIds: new Map(),
+        soundClips: new Map(),
         audioClips: input.audioClips,
         audioTracks,
         animations: params.animations,
@@ -1844,6 +1857,13 @@ async function buildLaunchEntryScene(params: {
             statements.push(vfx.pause());
         }
     }
+
+    // Sound, last before the tail so it is heard with the first line rather than over the setup:
+    // the track on the music channel at the target row, and every handle the scene's rows start -
+    // built so the tail's `/vol` and `/stop` find them, and started again where the walk left them
+    // playing.
+    statements.push(...await compileLaunchMusic(ctx, snapshot.music, sceneMusic, `${launchIdPrefix}:scene`));
+    statements.push(...await compileLaunchSounds(ctx, snapshot.sounds));
 
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
@@ -4185,6 +4205,194 @@ function rowFadeMs(payload: Extract<StoryActionPayload, { action: "audio" }>): n
     return payload.fadeMs ?? 0;
 }
 
+/** A track on the music channel, and what the sound-control family needs to address it. */
+type MusicHandle = { sound: Sound; trackId: string; assetId: string; clip: AudioClipRegion | undefined };
+
+/**
+ * The track a `/bgm` row with a file puts on the music channel.
+ *
+ * A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it resolves
+ * from its own row alone: inheriting the previous music's track would make the second `/bgm` in a
+ * scene mean something different from the first, invisibly. For the same reason there is no conflict
+ * check here - a re-point is not a dropped intent.
+ *
+ * Shared with a row-precise launch, which rebuilds the track the walk to its row left on the channel
+ * from the row that put it there - through this, so the two cannot build it differently.
+ */
+async function buildRowMusic(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    assetId: string,
+): Promise<MusicHandle | null> {
+    const { track, playback } = resolveRowPlayback(ctx, payload, null);
+    const url = await resolveAsset(ctx, assetId, "audio", blockId);
+    if (!url) {
+        return null;
+    }
+    const clip = clipFor(ctx, assetId, blockId);
+    const sound = createBusSound(ctx.audioTracks, playback.busId, "bgm", {
+        src: url,
+        loop: playback.loop,
+        ...clipSoundConfig(clip, playback),
+    });
+    // Named by its row: every `/bgm` with an asset builds a track of its own, and the row is what
+    // that track is.
+    setStableElementId(ctx.elementIdBindings, sound, sceneElementStaticId(ctx, "bgm", blockId));
+    return { sound, trackId: track.id, assetId, clip };
+}
+
+/**
+ * Register the track on the music channel under the reserved name the sound-control family
+ * defaults to: `/vol 0.5` addresses the music channel by finding the BGM handle under "bgm" (see
+ * BGM_OBJECT_NAME in the editor).
+ */
+function registerMusicHandle(ctx: SceneCompileContext, music: MusicHandle): void {
+    ctx.sounds.set(BGM_SOUND_NAME, music.sound);
+    ctx.soundTrackIds.set(BGM_SOUND_NAME, music.trackId);
+    ctx.soundAssetIds.set(BGM_SOUND_NAME, music.assetId);
+    ctx.soundClips.set(BGM_SOUND_NAME, music.clip);
+}
+
+/**
+ * The music a row-precise launch opens with: the track on the channel at the target row, registered
+ * so the tail's rows find it, and started the way the walk left it.
+ *
+ * The track is the scene's own until a `/bgm` row on the walked path replaces it - then it is that
+ * row's, rebuilt through {@link buildRowMusic} under the name a playthrough gives it - and a `/bgm`
+ * with no file leaves the channel empty. It arrives over the fade its source brings it in with: the
+ * scene's own fade for the scene's music, which is how a launch has always opened, and the row's
+ * for a row's. Unless the walk turned it down, paused or moved it: then it starts already settled,
+ * because a fade towards the level it was built with would be heard climbing past the one it has.
+ */
+async function compileLaunchMusic(
+    ctx: SceneCompileContext,
+    state: StageSnapshotMusic | null,
+    sceneMusic: (MusicHandle & { fadeMs: number }) | null,
+    sceneElementId: string,
+): Promise<NlrStatement[]> {
+    if (!state) {
+        return [];
+    }
+    let music: (MusicHandle & { fadeMs: number }) | null = null;
+    if (state.setBy) {
+        const row = ctx.scene.blocks[state.setBy];
+        const payload = row?.kind === "action" && row.payload.action === "audio" && row.payload.operation === "setBgm"
+            ? row.payload
+            : null;
+        const assetId = payload?.assetId?.trim();
+        const built = payload && assetId ? await buildRowMusic(ctx, state.setBy, payload, assetId) : null;
+        music = built && payload ? { ...built, fadeMs: rowFadeMs(payload) } : null;
+    } else if (sceneMusic) {
+        // Owned by the launch's scene and named under it, as a scene's music is under its scene.
+        setStableElementId(ctx.elementIdBindings, sceneMusic.sound, sceneMusicElementId(sceneElementId));
+        music = sceneMusic;
+    }
+    if (!music) {
+        return [];
+    }
+    registerMusicHandle(ctx, music);
+    if (!state.playing) {
+        return compileSnapshotSoundIdle(music.sound, state);
+    }
+    const sound = music.sound;
+    return compileSnapshotSoundStart(ctx, BGM_SOUND_NAME, sound, state, fadeMs => ctx.nlrScene.setBackgroundMusic(sound, fadeMs), music.fadeMs);
+}
+
+/**
+ * Every sound handle a row-precise launch's scene starts, built from the row a full compile builds
+ * it from, and the looping ones the walk left playing started again.
+ *
+ * Built whether playing or not, for the same reason a launch builds every clip and overlay the scene
+ * declares: the tail's `/vol rain` and `/stop rain` look the handle up by name, and a launch that only
+ * knew the handles its own tail starts reported every one started before the target row as not
+ * playing. Built through {@link getSound}, under the name the launch gives everything it builds.
+ *
+ * Only a looping clip is started again. One that plays through ends by itself after a time nothing on
+ * the walked path records, so at the target row it is most likely over - and a launch that played it
+ * again would put a door slam under a line that was written after it. Whether the clip loops is read
+ * from the row it is built from, through the same resolution the handle was built with.
+ */
+async function compileLaunchSounds(ctx: SceneCompileContext, records: readonly StageSnapshotSound[]): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    for (const record of records) {
+        const source = ctx.scene.blocks[record.sourceBlockId];
+        if (source?.kind !== "action" || source.payload.action !== "audio" || source.payload.operation !== "playSound") {
+            continue;
+        }
+        const sound = await getSound(ctx, record.objectName, source.payload.assetId, source.id, source.payload);
+        if (!sound) {
+            continue;
+        }
+        const loops = resolveRowPlayback(ctx, source.payload, null).playback.loop;
+        if (!record.playing || !loops) {
+            statements.push(...compileSnapshotSoundIdle(sound, record));
+            continue;
+        }
+        statements.push(...compileSnapshotSoundStart(ctx, record.objectName, sound, record, fadeMs => sound.play(fadeMs), 0));
+    }
+    return statements;
+}
+
+/**
+ * Start a sound where the walk left it.
+ *
+ * Every adjustment the engine makes only to a clip that is playing - a level, a rate, a play-head
+ * position, a pause - goes on after the start, so the clip starts muted whenever one follows and is
+ * unmuted once it has landed. Without that the clip would be heard for a moment at the level and
+ * position it was built with, which on a `/vol rain 0` is a burst of rain the row was written to
+ * silence. A clip the walk left muted starts muted and stays so.
+ *
+ * Every adjustment is instant: a fade a row asked for has finished long before the row the launch
+ * stands on. `fadeMs` is only how the clip arrives when nothing follows.
+ */
+function compileSnapshotSoundStart(
+    ctx: SceneCompileContext,
+    name: string,
+    sound: Sound,
+    state: StageSnapshotSoundState,
+    start: (fadeMs: number) => NlrStatement,
+    fadeMs: number,
+): NlrStatement[] {
+    const volumeRow = state.volumeBy ? ctx.scene.blocks[state.volumeBy] : undefined;
+    // The level exactly as the `/vol` row computes it, the clip's gain folded in once.
+    const volume = volumeRow?.kind === "action" && volumeRow.payload.action === "audio"
+        ? clipVolume(ctx.soundClips.get(name), resolveRowPlayback(ctx, volumeRow.payload, name).playback.volume)
+        : undefined;
+    const settles = volume !== undefined || state.rate !== undefined || state.seekMs !== undefined || state.paused;
+    const startsMuted = settles || state.muted === true;
+    const statements: NlrStatement[] = [];
+    if (startsMuted) {
+        statements.push(sound.mute(true));
+    }
+    statements.push(start(settles ? 0 : fadeMs));
+    if (volume !== undefined) {
+        statements.push(sound.setVolume(volume, 0));
+    }
+    if (state.rate !== undefined) {
+        statements.push(sound.setRate(state.rate));
+    }
+    if (state.seekMs !== undefined) {
+        // Seconds at the engine boundary, milliseconds in the record, as for the row itself.
+        statements.push(sound.seek(state.seekMs / 1000));
+    }
+    if (state.paused) {
+        statements.push(sound.pause(0));
+    }
+    if (startsMuted && state.muted !== true) {
+        statements.push(sound.mute(false));
+    }
+    return statements;
+}
+
+/**
+ * A sound the walk left silent, carrying the one thing the engine keeps on a clip that is not
+ * playing: the mute flag, which its next start honours.
+ */
+function compileSnapshotSoundIdle(sound: Sound, state: StageSnapshotSoundState): NlrStatement[] {
+    return state.muted === true ? [sound.mute(true)] : [];
+}
+
 async function compileAudioAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
@@ -4200,33 +4408,14 @@ async function compileAudioAction(
             ctx.soundClips.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, rowFadeMs(payload)), block)];
         }
-        // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
-        // resolves from its own row alone: inheriting the previous music's track would make the
-        // second `/bgm` in a scene mean something different from the first, invisibly. For the same
-        // reason there is no conflict check here - a re-point is not a dropped intent.
-        const { track, playback } = resolveRowPlayback(ctx, payload, null);
-        const url = await resolveAsset(ctx, payload.assetId, "audio", block.id);
-        if (!url) {
+        const music = await buildRowMusic(ctx, block.id, payload, payload.assetId);
+        if (!music) {
             return [];
         }
-        const clip = clipFor(ctx, payload.assetId, block.id);
-        const sound = createBusSound(ctx.audioTracks, playback.busId, "bgm", {
-            src: url,
-            loop: playback.loop,
-            ...clipSoundConfig(clip, playback),
-        });
-        // Named by its row: every `/bgm` with an asset builds a track of its own, and the row is what
-        // that track is.
-        setStableElementId(ctx.elementIdBindings, sound, sceneElementStaticId(ctx, "bgm", block.id));
-        // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
-        // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
-        ctx.sounds.set(BGM_SOUND_NAME, sound);
-        ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
-        ctx.soundAssetIds.set(BGM_SOUND_NAME, payload.assetId);
-        ctx.soundClips.set(BGM_SOUND_NAME, clip);
+        registerMusicHandle(ctx, music);
         return [recordStatement(
             ctx,
-            ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)),
+            ctx.nlrScene.setBackgroundMusic(music.sound, rowFadeMs(payload)),
             block,
             undefined,
             payload.assetId,
