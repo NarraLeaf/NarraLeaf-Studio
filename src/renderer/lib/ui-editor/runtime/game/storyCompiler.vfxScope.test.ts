@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { compileStudioStoryToNlr } from "./storyCompiler";
+import { computeStoryStageSnapshot } from "./storyStageSnapshot";
 import type { StoryDocument } from "@shared/types/story";
 
 /**
- * An ambience overlay outlives the scene that started it, so it has to be addressable from the
- * scenes that come after.
+ * An ambience overlay belongs to the scene that declares it, like every other stage object.
  *
- * The engine holds a `Vfx` on `GameState`, not on a scene: scene exit does not take it away and
- * only its own `hide` does. Compiling one overlay per scene therefore produced a stage nobody could
- * drive - rain started in the first scene kept falling, the second scene's `/hide rain` resolved no
- * handle and compiled to nothing, and a second `/vfx rain` built a whole second overlay on top of
- * the first. All three are the same mistake, which is why they are pinned together here.
+ * The engine takes an overlay off the stage with the scene that showed it - rain started in one scene
+ * stops when the story jumps to the next - so the compiler builds one overlay per scene that declares
+ * it, names it under that scene, and a later scene that never declared the name has nothing to
+ * address: its `/hide rain` is the same missing-object report any other stage object gives.
  */
 
 const CLIP = "22222222-2222-4222-8222-222222222222";
@@ -26,7 +25,17 @@ function vfxBlock(id: string, operation: string, objectName: string, assetId?: s
     };
 }
 
-function document(sceneBBlock: ReturnType<typeof vfxBlock>): StoryDocument {
+function lineBlock(id: string, text: string) {
+    return {
+        kind: "narration",
+        id,
+        parentId: null,
+        childrenIds: [],
+        payload: { text: { textId: `t-${id}`, segments: [{ type: "text", value: text }] } },
+    };
+}
+
+function document(sceneA: ReturnType<typeof vfxBlock>[], sceneB: ReturnType<typeof vfxBlock>[]): StoryDocument {
     return {
         schemaVersion: 18,
         id: "story-1",
@@ -36,66 +45,90 @@ function document(sceneBBlock: ReturnType<typeof vfxBlock>): StoryDocument {
                 id: "scene-a",
                 name: "One",
                 runtimeName: "one",
-                rootBlockIds: ["a1"],
-                blocks: { a1: vfxBlock("a1", "create", "rain", CLIP) },
+                rootBlockIds: sceneA.map(block => block.id),
+                blocks: Object.fromEntries(sceneA.map(block => [block.id, block])),
             },
             "scene-b": {
                 id: "scene-b",
                 name: "Two",
                 runtimeName: "two",
-                rootBlockIds: ["b1"],
-                blocks: { b1: sceneBBlock },
+                rootBlockIds: sceneB.map(block => block.id),
+                blocks: Object.fromEntries(sceneB.map(block => [block.id, block])),
             },
         },
     } as unknown as StoryDocument;
 }
 
-async function compile(doc: StoryDocument) {
+async function compile(doc: StoryDocument, extra: Partial<Parameters<typeof compileStudioStoryToNlr>[0]> = {}) {
     return compileStudioStoryToNlr({
         document: doc,
         sceneId: "scene-a",
         resolveAssetUrl: (assetId: string) => `test://${assetId}`,
+        ...extra,
     } as Parameters<typeof compileStudioStoryToNlr>[0]);
 }
 
-describe("ambience overlays across scenes", () => {
-    it("gives one name one overlay, however many scenes name it", async () => {
-        const compiled = await compile(document(vfxBlock("b1", "hide", "rain")));
+const overlayIds = (compiled: Awaited<ReturnType<typeof compile>>) =>
+    compiled.elementIdBindings.filter(id => /^nl:(vfx|launch):/.test(id) && id.includes("vfx:"));
 
-        const ids = compiled.elementIdBindings.filter(id => id.startsWith("nl:vfx:"));
-        expect(ids).toEqual(["nl:vfx:rain"]);
+describe("ambience overlays are scoped to their scene", () => {
+    it("names each overlay under the scene that declares it", async () => {
+        const compiled = await compile(document(
+            [vfxBlock("a1", "create", "rain", CLIP)],
+            [vfxBlock("b1", "create", "rain", OTHER_CLIP)],
+        ));
+
+        // Two scenes, two overlays: each scene's rain is its own, and neither is the other's.
+        expect(overlayIds(compiled).sort()).toEqual(["nl:vfx:scene-a:rain", "nl:vfx:scene-b:rain"]);
+        // A second scene naming a different clip is not a conflict any more - it is a different overlay.
+        expect(compiled.diagnostics.filter(entry => /different clip/.test(entry.message))).toEqual([]);
     });
 
-    it("resolves a hide in a later scene instead of compiling nothing", async () => {
-        const compiled = await compile(document(vfxBlock("b1", "hide", "rain")));
+    it("reports a later scene addressing an overlay only an earlier scene declared", async () => {
+        const compiled = await compile(document(
+            [vfxBlock("a1", "create", "rain", CLIP)],
+            [vfxBlock("b1", "hide", "rain")],
+        ));
 
-        // The old failure spoke: it warned that the effect had no clip, because the second scene's
-        // map was empty and a hide row carries no asset to build one from.
-        expect(compiled.diagnostics.filter(entry => /Ambience effect/.test(entry.message))).toEqual([]);
+        // The rain left with the first scene, so the second has nothing by that name - the report
+        // every stage object gives when no row in its scene declares it.
+        const reported = compiled.diagnostics.filter(entry => entry.blockId === "b1");
+        expect(reported).toHaveLength(1);
+        expect(reported[0].level).toBe("error");
+        expect(reported[0].message).toMatch(/Ambience effect/);
     });
 
-    it("keeps the id out of the scene it was created in", async () => {
-        // A scene-qualified id would move the moment the author moved the create row, or reordered
-        // the scenes, and a save that named the old one restores nothing.
-        const compiled = await compile(document(vfxBlock("b1", "hide", "rain")));
-
-        expect(compiled.elementIdBindings.some(id => /^nl:vfx:scene-/.test(id))).toBe(false);
-    });
-
-    it("reports a second row that names a different clip for the same overlay", async () => {
-        const compiled = await compile(document(vfxBlock("b1", "create", "rain", OTHER_CLIP)));
+    it("still reports a second row in one scene that names a different clip for the same overlay", async () => {
+        const compiled = await compile(document(
+            [vfxBlock("a1", "create", "rain", CLIP), vfxBlock("a2", "create", "rain", OTHER_CLIP)],
+            [],
+        ));
 
         const reported = compiled.diagnostics.filter(entry => /different clip/.test(entry.message));
         expect(reported).toHaveLength(1);
         expect(reported[0].level).toBe("warning");
-        expect(reported[0].blockId).toBe("b1");
-        // Still one overlay: the row addresses what is already on stage rather than stacking.
-        expect(compiled.elementIdBindings.filter(id => id.startsWith("nl:vfx:"))).toEqual(["nl:vfx:rain"]);
+        expect(reported[0].blockId).toBe("a2");
+        expect(overlayIds(compiled)).toEqual(["nl:vfx:scene-a:rain"]);
     });
 
-    it("says nothing when the second row names the same clip", async () => {
-        const compiled = await compile(document(vfxBlock("b1", "create", "rain", CLIP)));
+    it("gives a row launch the overlays its scene declared before the row, so the tail can address them", async () => {
+        const doc = document(
+            [
+                vfxBlock("a1", "create", "rain", CLIP),
+                vfxBlock("a2", "show", "rain"),
+                lineBlock("a3", "It is raining.") as never,
+                vfxBlock("a4", "hide", "rain"),
+            ],
+            [],
+        );
+        const snapshot = computeStoryStageSnapshot({ document: doc, sceneId: "scene-a", targetBlockId: "a3" });
 
-        expect(compiled.diagnostics.filter(entry => /different clip/.test(entry.message))).toEqual([]);
+        // The walked path created and showed the rain, and nothing hid it before the target row.
+        expect(snapshot.vfx).toEqual([{ objectName: "rain", sourceBlockId: "a1", staged: true, shownBy: "a2", paused: false }]);
+
+        const compiled = await compile(doc, { launch: { targetBlockId: "a3", snapshot } });
+        // The tail's hide finds the overlay the launch built for it, under the launch's own names.
+        expect(compiled.diagnostics.filter(entry => entry.level === "error")).toEqual([]);
+        expect(overlayIds(compiled).some(id => id.startsWith("nl:launch:scene-a:a3:vfx:rain"))).toBe(true);
     });
 });

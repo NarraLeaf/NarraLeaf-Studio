@@ -50,6 +50,9 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { listLocalizationKeyUses } from "@/lib/workspace/services/localization/localizationKeyUses";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
@@ -85,6 +88,8 @@ const ADD_KEY_ROW_HEIGHT_PX = 44;
 const CHARACTERS_GROUP_KEY = "__characters__";
 const SCENES_GROUP_KEY = "__scenes__";
 const KEYS_GROUP_KEY = "__keys__";
+/** How many of the places still naming a key the removal confirmation lists before it counts the rest. */
+const KEY_REMOVAL_PLACES_SHOWN = 12;
 
 /** A display row of any origin (story line, character name, UI text, named key). */
 type TableRow = TranslationTableRow & {
@@ -707,6 +712,44 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         localizationService.setKey(row.keyName, { sourceText, ...(note ? { note } : {}) });
     }, [localizationService]);
 
+    /**
+     * What removing a key leaves behind: the widgets and blueprints still naming it, each listed, so
+     * the author decides with the places in front of them rather than finding them afterwards one by
+     * one. Capped, because a key used on every page would otherwise push the buttons off the dialog.
+     */
+    const describeKeyRemoval = useCallback((name: string): string => {
+        const blueprintService = context && isInitialized
+            ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
+            : null;
+        const uses = listLocalizationKeyUses({
+            uiDocument: uiDocumentService?.getDocument() ?? null,
+            blueprintDocument: blueprintService?.getBlueprintDocument() ?? null,
+            keyName: name,
+            widgetName: element => widgetModuleRegistry.get(element.type)?.displayName ?? element.type,
+        });
+        const places = [
+            ...uses.elements.map(use => t("workspace.localization.table.removeKeyUsedByElement", {
+                owner: use.ownerName,
+                element: use.elementName,
+            })),
+            ...uses.blueprints.map(blueprint => t("workspace.localization.table.removeKeyUsedByBlueprint", { name: blueprint })),
+        ];
+        const detail = t("workspace.localization.table.removeKeyConfirmDetail");
+        if (places.length === 0) {
+            return detail;
+        }
+        const shown = places.slice(0, KEY_REMOVAL_PLACES_SHOWN);
+        const more = places.length - shown.length;
+        return [
+            t("workspace.localization.table.removeKeyUsedBy"),
+            ...shown,
+            ...(more > 0 ? [t("workspace.localization.table.removeKeyUsedByMore", { count: more })] : []),
+            "",
+            t("workspace.localization.table.removeKeyUsedByAfter"),
+            detail,
+        ].join("\n");
+    }, [context, isInitialized, uiDocumentService, t]);
+
     const handleKeyRemove = useCallback(async (row: TranslationTableRow) => {
         if (!localizationService || !uiService || !row.keyName) {
             return;
@@ -714,12 +757,12 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         const name = row.keyName;
         const confirmed = await uiService.showConfirm(
             t("workspace.localization.table.removeKeyConfirm", { name }),
-            t("workspace.localization.table.removeKeyConfirmDetail"),
+            describeKeyRemoval(name),
         );
         if (confirmed) {
             localizationService.removeKey(name);
         }
-    }, [localizationService, uiService, t]);
+    }, [localizationService, uiService, t, describeKeyRemoval]);
 
     /** Create a named key from the add row; returns whether it succeeded. */
     const handleAddKey = useCallback((name: string, sourceText: string): boolean => {

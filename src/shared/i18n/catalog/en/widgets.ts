@@ -9,7 +9,7 @@ export const widgets = {
          * The section holding this control's logic, which may be a blueprint or a script. Worded
          * like `uiEditor.ownerLabel.widgetMain`, because it is the same thing under another panel.
          */
-        controlLabel: "Component logic",
+        controlLabel: "Widget logic",
     },
     appearance: {
         title: "Appearance",
@@ -67,7 +67,14 @@ export const widgets = {
         enableItalic: "Enable italic",
         disableItalic: "Disable italic",
     },
+    sampleText: {
+        label: "Sample text",
+        hint: "Shown in the editor only. The game shows the story's current line.",
+        bindingNoEffect: "This binding has no effect in the {slot} slot.",
+        removeBinding: "Remove",
+    },
     localization: {
+        direct: "Direct",
         translationKey: "Translation key",
         noSourceLanguage: "The project has no source language",
         none: "None",
@@ -86,7 +93,7 @@ export const widgets = {
         title: "List",
         sectionContent: "Content",
         runtimeItems: "Runtime items",
-        runtimePreviewOnly: "Preview only",
+        runtimeListContent: "List content",
         runtimePageState: "Page state array",
         runtimeAppState: "App state array",
         runtimePageProps: "Page props array",
@@ -164,8 +171,6 @@ export const widgets = {
         value: "Value",
         valueHint: "Starting text. What the player types is held by the running game, not by this document.",
         placeholder: "Placeholder",
-        placeholderKey: "Placeholder key",
-        placeholderKeyHint: "The placeholder is shown to the player: attach a key to translate it.",
         sectionBehavior: "Behavior",
         inputMode: "Input mode",
         inputModeText: "Text",
@@ -230,7 +235,6 @@ export const widgets = {
         start: "Start",
         center: "Center",
         end: "End",
-        stretch: "Stretch",
         spaceBetween: "Space between",
         spaceAround: "Space around",
         gapHint: "Gap between children",
@@ -379,6 +383,7 @@ export const widgets = {
         button: { name: "Button", label: "Button" },
         choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
         container: { name: "Container" },
+        group: { name: "Group" },
         dialog: { name: "Sentence", text: "The current line will appear here." },
         frame: { name: "Page" },
         image: { name: "Image" },

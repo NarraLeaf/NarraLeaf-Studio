@@ -30,9 +30,13 @@ import {
 import { subscribeVideoPreviewPlayback } from "@/lib/ui-editor/interaction/videoPreviewPlayback";
 import { TooltipGroup } from "@/lib/tooltip";
 import { CANVAS_FREE_CENTRE_LEFT } from "@/lib/components/layout/editorSidebarInset";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 
 /** The middle of the canvas the outline leaves free, which is the whole canvas where none is set. */
 const DOCKER_BAR_POSITION: React.CSSProperties = { left: CANVAS_FREE_CENTRE_LEFT };
+
+/** The rows of the overflow insert menu, for the keyboard walk its floating layer gives it. */
+const OVERFLOW_MENU_ITEM_SELECTOR = "[data-docker-overflow-item]";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -57,6 +61,7 @@ function PaletteDockerBar({
     componentsActive,
     onSelectType,
     onOpenComponents,
+    overflowButtonRef,
     readOnly,
 }: {
     primaryEntries: InsertPaletteEntry[];
@@ -65,10 +70,17 @@ function PaletteDockerBar({
     componentsActive: boolean;
     onSelectType: (type: string) => void;
     onOpenComponents?: () => void;
+    /**
+     * The overflow button. Owned by the bar rather than here because the component library is
+     * opened from this menu and outlives it: when the library closes, focus goes back to this
+     * button, the menu row that opened it being long gone.
+     */
+    overflowButtonRef: React.RefObject<HTMLButtonElement | null>;
     readOnly: UIEditorReadOnly;
 }) {
     const { t } = useTranslation();
-    const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
     const overflowMenuRef = useRef<HTMLDivElement | null>(null);
     const [overflowOpen, setOverflowOpen] = useState(false);
     const [overflowMenuStyle, setOverflowMenuStyle] = useState<React.CSSProperties>({});
@@ -88,6 +100,16 @@ function PaletteDockerBar({
         },
         [closeOverflow, onSelectType],
     );
+
+    // Focus goes to the active row, or the first; the arrows walk the rows; Escape closes the menu and
+    // nothing under it, and focus comes back to the "more" button.
+    useFloatingLayer({
+        open: overflowOpen,
+        onClose: closeOverflow,
+        panelRef: overflowMenuRef,
+        ownerRefs: [overflowButtonRef],
+        itemSelector: OVERFLOW_MENU_ITEM_SELECTOR,
+    });
 
     const overflowActive = componentsActive || overflowEntries.some(entry => entry.module.type === activeInsertType);
     const showComponentsEntry = Boolean(onOpenComponents);
@@ -109,7 +131,7 @@ function PaletteDockerBar({
             const padding = 8;
             const left = Math.min(
                 Math.max(padding, buttonRect.left + buttonRect.width / 2 - menuRect.width / 2),
-                window.innerWidth - menuRect.width - padding,
+                hostWindow.innerWidth - menuRect.width - padding,
             );
             const top = Math.max(padding, buttonRect.top - menuRect.height - gap);
             setOverflowMenuStyle({
@@ -121,15 +143,15 @@ function PaletteDockerBar({
         };
 
         positionMenu();
-        const raf = requestAnimationFrame(positionMenu);
-        window.addEventListener("resize", positionMenu);
-        window.addEventListener("scroll", positionMenu, true);
+        const raf = hostWindow.requestAnimationFrame(positionMenu);
+        hostWindow.addEventListener("resize", positionMenu);
+        hostWindow.addEventListener("scroll", positionMenu, true);
         return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", positionMenu);
-            window.removeEventListener("scroll", positionMenu, true);
+            hostWindow.cancelAnimationFrame(raf);
+            hostWindow.removeEventListener("resize", positionMenu);
+            hostWindow.removeEventListener("scroll", positionMenu, true);
         };
-    }, [overflowOpen, overflowEntries.length]);
+    }, [hostWindow, overflowOpen, overflowEntries.length]);
 
     useEffect(() => {
         if (!overflowOpen) {
@@ -147,19 +169,11 @@ function PaletteDockerBar({
             closeOverflow();
         };
 
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closeOverflow();
-            }
-        };
-
-        document.addEventListener("mousedown", handleMouseDown, true);
-        document.addEventListener("keydown", handleKeyDown, true);
+        hostDocument.addEventListener("mousedown", handleMouseDown, true);
         return () => {
-            document.removeEventListener("mousedown", handleMouseDown, true);
-            document.removeEventListener("keydown", handleKeyDown, true);
+            hostDocument.removeEventListener("mousedown", handleMouseDown, true);
         };
-    }, [closeOverflow, overflowOpen]);
+    }, [closeOverflow, hostDocument, overflowOpen]);
 
     useEffect(() => {
         if (!showOverflowMenu) {
@@ -183,6 +197,8 @@ function PaletteDockerBar({
                     <button
                         key={mod.type}
                         type="button"
+                        data-docker-overflow-item=""
+                        data-selected={isActive ? "true" : undefined}
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             isActive
                                 ? "bg-primary/20 text-fg"
@@ -212,6 +228,8 @@ function PaletteDockerBar({
                     {overflowEntries.length > 0 ? <div className="my-1 h-px bg-fill" /> : null}
                     <button
                         type="button"
+                        data-docker-overflow-item=""
+                        data-selected={componentsActive ? "true" : undefined}
                         className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
                             componentsActive
                                 ? "bg-primary/20 text-fg"
@@ -285,7 +303,7 @@ function PaletteDockerBar({
                     >
                         <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
-                    {typeof document === "undefined" ? overflowMenu : createPortal(overflowMenu, document.body)}
+                    {typeof document === "undefined" ? overflowMenu : createPortal(overflowMenu, hostDocument.body)}
                 </>
             ) : null}
         </TooltipGroup>
@@ -639,6 +657,7 @@ function ComponentsLibraryModal({
     activeComponentId,
     onSelectComponent,
     onClose,
+    returnFocusRef,
     readOnly,
 }: {
     documentService: UIDocumentService;
@@ -647,6 +666,8 @@ function ComponentsLibraryModal({
     activeComponentId: string | null;
     onSelectComponent: (componentId: string) => void;
     onClose: () => void;
+    /** Where focus goes when the library closes: the menu row that opened it is gone by then. */
+    returnFocusRef: React.RefObject<HTMLElement | null>;
     readOnly: UIEditorReadOnly;
 }) {
     const { t } = useTranslation();
@@ -663,32 +684,21 @@ function ComponentsLibraryModal({
         return components.filter(component => component.name.toLowerCase().includes(needle));
     }, [components, query]);
 
-    useEffect(() => {
-        if (!open) {
-            return undefined;
-        }
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                onClose();
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown, true);
-        return () => {
-            document.removeEventListener("keydown", handleKeyDown, true);
-        };
-    }, [onClose, open]);
+    // A dialog over the canvas: focus starts in the search field, Tab stays inside, Escape closes it
+    // and nothing under it, and focus goes back to the toolbar's "more" button it was opened from.
+    useFloatingLayer({
+        open,
+        onClose,
+        panelRef,
+        ownerRefs: [returnFocusRef],
+        scope: "trap",
+        initialFocus: searchRef,
+    });
 
     useEffect(() => {
         if (!open) {
             setQuery("");
-            return undefined;
         }
-        const frame = window.requestAnimationFrame(() => {
-            searchRef.current?.focus();
-        });
-        return () => window.cancelAnimationFrame(frame);
     }, [open]);
 
     const stopPointerPropagation = useCallback((event: React.SyntheticEvent) => {
@@ -843,6 +853,7 @@ export function UIEditorDockerBar({
      */
     const [ephemeralPreviewVersion, setEphemeralPreviewVersion] = useState(0);
     const [componentsLibraryOpen, setComponentsLibraryOpen] = useState(false);
+    const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
 
     useEffect(() => {
         const unsub = stateService.on("selectionChanged", selection => {
@@ -1008,6 +1019,7 @@ export function UIEditorDockerBar({
                             componentsActive={componentsLibraryOpen || Boolean(activeComponentId)}
                             onSelectType={handleSelectType}
                             onOpenComponents={enableComponents ? () => setComponentsLibraryOpen(true) : undefined}
+                            overflowButtonRef={overflowButtonRef}
                             readOnly={readOnly}
                         />
                     )}
@@ -1020,6 +1032,7 @@ export function UIEditorDockerBar({
                 activeComponentId={activeComponentId}
                 onSelectComponent={handleSelectComponent}
                 onClose={() => setComponentsLibraryOpen(false)}
+                returnFocusRef={overflowButtonRef}
                 readOnly={readOnly}
             />
         </div>

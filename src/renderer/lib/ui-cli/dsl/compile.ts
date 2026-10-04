@@ -19,6 +19,7 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
+import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import {
     CONTRIBUTED_WIDGET_PART_SLOT_KEY,
     getContributedWidgetPartSlots,
@@ -37,7 +38,7 @@ import {
 } from "@shared/types/ui-editor/document";
 import type { BpDiagnostic } from "../../blueprint-cli/dsl/ast";
 import { describeWidget, listWidgetModules, nearestWidgetTypes } from "../catalog";
-import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface } from "../project";
+import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../project";
 import type { UiAssignment, UiElementNode, UiFile, UiStatement } from "./ast";
 
 export type CompiledSurface = {
@@ -67,10 +68,12 @@ export type UiCompileResult = {
 export type UiCompileOptions = {
     /** The document being edited, which is what an unstated id is matched against. */
     existing?: UIDocument | null;
+    /** The project's translation keys, when the file is checked against a project. */
+    textKeys?: TextKeys | null;
 };
 
 export function compileUiFile(file: UiFile, options: UiCompileOptions = {}): UiCompileResult {
-    const context = new CompileContext(options.existing ?? null);
+    const context = new CompileContext(options.existing ?? null, options.textKeys ?? null);
     for (const statement of file.statements) {
         context.statement(statement);
     }
@@ -89,7 +92,10 @@ class CompileContext {
     private readonly knownTypes: Set<string>;
     private readonly seenUnknownProps = new Set<string>();
 
-    public constructor(private readonly existing: UIDocument | null) {
+    public constructor(
+        private readonly existing: UIDocument | null,
+        private readonly textKeys: TextKeys | null = null,
+    ) {
         this.knownTypes = new Set(listWidgetModules().map(module => module.type));
     }
 
@@ -397,6 +403,14 @@ class CompileContext {
 
         if (detail && node.type !== "nl.root") {
             const declared = new Set(detail.props.map(prop => prop.key));
+            // Where the words come from is stated by props a new widget leaves unset - its key, its
+            // own-unit switch, its marks - and the text-site table names them for each widget.
+            const site = uiTextSiteOf(node.type);
+            for (const sourceProp of [site?.keyProp, site?.unitProp, site?.marksProp]) {
+                if (sourceProp) {
+                    declared.add(sourceProp);
+                }
+            }
             for (const key of Object.keys(props)) {
                 // Reported once per type and key rather than once per element: a template that sets a
                 // stale prop sets it on all forty of them, and forty copies of one finding buries the
@@ -408,12 +422,13 @@ class CompileContext {
                         "ui.unknown_prop",
                         `${node.type} declares no default for "${key}".`,
                         node.line,
-                        "A widget may still hold keys its defaults do not name - `localizationKey` is the "
-                            + "common one - so this is a note, not a refusal.",
+                        "A widget may still hold keys its defaults do not name, so this is a note, not a refusal.",
                     );
                 }
             }
         }
+
+        this.checkWordsTwoSources(node, id, label, props);
 
         if (node.componentLink) {
             const component = this.existing ? findComponent(this.existing, node.componentLink.componentId) : undefined;
@@ -464,6 +479,60 @@ class CompileContext {
         }
         this.checkChildren(node, element, context.elements);
         return id;
+    }
+
+    /**
+     * Words written onto a widget whose words a translation key supplies.
+     *
+     * The key wins: the game and the canvas show its text, so an edit to the widget's own `text` or
+     * `label` changes nothing a player sees. What `show` prints for a keyed widget - its stored words,
+     * which are normally the key's - passes; words that differ from both the key's text and what the
+     * element stores are an edit that cannot show, and the tool cannot tell which of the two was
+     * meant. Without a source language the project ships no keys and the widget's own words do show,
+     * until it gets one - so there it is a warning rather than a refusal.
+     */
+    private checkWordsTwoSources(node: UiElementNode, id: string, label: string, props: Record<string, unknown>): void {
+        const site = uiTextSiteOf(node.type);
+        if (!site?.keyProp || site.role !== "words" || !this.textKeys) {
+            return;
+        }
+        const key = typeof props[site.keyProp] === "string" ? (props[site.keyProp] as string).trim() : "";
+        const words = props[site.textProp];
+        const keyText = key ? this.textKeys.keys.get(key) : undefined;
+        if (keyText === undefined || typeof words !== "string" || words === keyText) {
+            return;
+        }
+        const stored = this.existingElement(id);
+        if (stored && readUITextSite(stored, site).text === words) {
+            return;
+        }
+        const writes = `${site.textProp} = ${JSON.stringify(words)}`;
+        if (this.textKeys.keysApply) {
+            this.report(
+                "error",
+                "ui.words_two_sources",
+                `"${label}" writes \`${writes}\` but names key "${key}", whose text (${JSON.stringify(keyText)}) is what the game and the canvas show.`,
+                node.line,
+                `Change the words through the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` to show these words instead.`,
+            );
+            return;
+        }
+        this.report(
+            "warning",
+            "ui.words_two_sources",
+            `"${label}" writes \`${writes}\` and names key "${key}" (${JSON.stringify(keyText)}). The project has no source language, so these words show now; once it has one, the key's text replaces them.`,
+            node.line,
+            `Keep one source: drop \`${site.keyProp}\`, or write the words through the key.`,
+        );
+    }
+
+    /** The element an id names in the document being edited, on a page or in a component definition. */
+    private existingElement(id: string): UIElement | undefined {
+        if (!this.existing) {
+            return undefined;
+        }
+        return this.existing.elements[id]
+            ?? (this.existing.components ?? []).map(component => component.elements?.[id]).find(Boolean);
     }
 
     /**

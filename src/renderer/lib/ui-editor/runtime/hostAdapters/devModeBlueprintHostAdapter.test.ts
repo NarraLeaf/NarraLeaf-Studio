@@ -37,6 +37,8 @@ type ChainNode = {
      * that placed it never hears the press.
      */
     placesComponent?: string;
+    /** Write the head's `x` output into `fired` instead of "yes", to read which point it was handed. */
+    recordsX?: boolean;
 };
 
 const HEAD_TYPE_BY_EVENT = {
@@ -116,7 +118,9 @@ function createChainFixture(chain: readonly ChainNode[]) {
                                     },
                                     edges: [
                                         { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
-                                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
+                                        node.recordsX
+                                            ? { from: { nodeId: "head", port: "x" }, to: { nodeId: "set", port: "value" } }
+                                            : { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
                                     ],
                                 },
                             },
@@ -249,6 +253,14 @@ function createChainFixture(chain: readonly ChainNode[]) {
                 blueprintIdOf(elementId),
                 blueprintDocument.blueprints[blueprintIdOf(elementId)]!,
             ).fired === "yes",
+        /** What this element's own blueprint last wrote into `fired`. */
+        recorded: (elementId: string) =>
+            acquireBlueprintWidgetLocals(
+                "surface",
+                elementId,
+                blueprintIdOf(elementId),
+                blueprintDocument.blueprints[blueprintIdOf(elementId)]!,
+            ).fired,
         /** The elements whose blueprints ran, in the order they started. */
         firedOrder: () => startedBlueprintIds.map(id => id.replace(/^bp-/, "")),
         cleanup: () => {
@@ -305,6 +317,46 @@ describe("createDevModeBlueprintHostAdapter", () => {
         await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 });
 
         expect(fixture.firedOrder()).toEqual(["page"]);
+        fixture.cleanup();
+    });
+
+    it("hands each element up the chain the press in its own box", async () => {
+        // `x` / `y` are local to the element whose head reads them. The point the hit element
+        // measured is its own; an ancestor reached by bubbling looks its own up in the positions
+        // read as the press arrived, so a panel reads the same point whichever child was hit.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick", recordsX: true },
+            { id: "panel", type: "nl.container", listensTo: "mouseClick", recordsX: true },
+            { id: "label", type: "nl.text", listensTo: "mouseClick", recordsX: true },
+        ]);
+        const points: Record<string, { x: number; y: number }> = {
+            label: { x: 4, y: 5 },
+            panel: { x: 44, y: 25 },
+            page: { x: 144, y: 85 },
+        };
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            pointerPositions: elementId => points[elementId] ?? null,
+        });
+
+        expect([fixture.recorded("label"), fixture.recorded("panel"), fixture.recorded("page")]).toEqual([4, 44, 144]);
+        fixture.cleanup();
+    });
+
+    it("hands a press with no positions on as it is", async () => {
+        // A click raised from the keyboard has no point to read, and an element the press has no
+        // point for keeps what it was given rather than inventing one.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick", recordsX: true },
+            { id: "panel", type: "nl.container", listensTo: "mouseClick", recordsX: true },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            pointerPositions: elementId => (elementId === "panel" ? { x: 44, y: 25 } : null),
+        });
+
+        expect([fixture.recorded("panel"), fixture.recorded("page")]).toEqual([44, 4]);
         fixture.cleanup();
     });
 

@@ -19,7 +19,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         widgetModules,
         documentService,
         actions,
-        canAddToGroup,
+        canGroup,
         canUngroup,
         insertParentIdForRow,
     } = input;
@@ -230,12 +230,12 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     items.push(
         {
-            id: "add-to-group",
-            label: translate("uiEditor.contextMenu.addToGroup"),
-            disabled: !canAddToGroup,
+            id: "group",
+            label: translate("uiEditor.contextMenu.group"),
+            disabled: !canGroup,
             onClick: () => {
                 actions.hideMenu();
-                actions.addSelectionToLeaderGroup();
+                actions.groupSelection();
             },
         },
         {

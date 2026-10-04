@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { buildDependencyTable, type InstalledPlugin } from "./ProjectDependencyService";
 import {
     attributeByNamespace,
-    buildDependencyTable,
     collectBlueprintDocumentUsage,
     collectInterfaceDocumentUsage,
     type DependencyUsageRecord,
-    type InstalledPlugin,
     type TypeOwnership,
-} from "./ProjectDependencyService";
+} from "@/lib/plugins/projectPluginUsage";
 import { PROJECT_DEPENDENCY_SCHEMA_VERSION, type ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";

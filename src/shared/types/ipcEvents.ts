@@ -56,7 +56,11 @@ import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
-import type { ProjectTemplateDescriptor } from "./projectTemplate";
+import type {
+    ProjectTemplateAssetContent,
+    ProjectTemplateDescriptor,
+    ProjectTemplateInterfaceContent,
+} from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type {
     AvailableSpellcheckDictionary,
@@ -394,6 +398,8 @@ export enum IPCEventType {
     uiTemplateFetchThemePreviews = "uiTemplate.fetchThemePreviews",
     projectTemplateList = "projectTemplate.list",
     projectTemplateScaffold = "projectTemplate.scaffold",
+    projectTemplateReadInterface = "projectTemplate.readInterface",
+    projectTemplateReadAssets = "projectTemplate.readAssets",
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
@@ -3292,6 +3298,12 @@ export type IPCGameBuildEvents = {
             version: string | null;
             /** When the build was compiled, ISO-8601. */
             builtAt: string | null;
+            /**
+             * Whether the build was made with a distribution key, and so can read a patch at all.
+             * False for a build made before the project had one: the game ignores every patch, so
+             * the dialog says so rather than letting one be exported for it unremarked.
+             */
+            acceptsPatches: boolean;
         };
     };
     /**
@@ -3938,6 +3950,29 @@ export type IPCUITemplateEvents = {
             dependencies: string[];
             contentLocale?: string;
         };
+    };
+    // Read one bundled template's interface documents, to bring a page out of it into an open
+    // project. Read-only and the same for every author, like the list.
+    [IPCEventType.projectTemplateReadInterface]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+            /** Picks the template's own copy of its content written in that language, if it has one. */
+            locale?: string;
+        },
+        response: ProjectTemplateInterfaceContent;
+    };
+    // Read some of a bundled template's own asset files, by id.
+    [IPCEventType.projectTemplateReadAssets]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            templateId: string;
+            locale?: string;
+            assetIds: string[];
+        },
+        response: ProjectTemplateAssetContent[];
     };
 };
 

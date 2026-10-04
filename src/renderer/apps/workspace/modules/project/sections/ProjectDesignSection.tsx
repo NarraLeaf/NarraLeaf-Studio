@@ -37,10 +37,10 @@ import { ChevronDown, ChevronUp, Languages, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Button, Checkbox, IconButton, Input, Select, useEscapeToClose } from "@/lib/components/elements";
+import { Button, Checkbox, IconButton, Input, Select } from "@/lib/components/elements";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { AnchoredPanel } from "@/lib/components/elements/HintPopover";
-import { useDismissWhenHidden } from "@/lib/components/layout/hostVisibility";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { cn } from "@/lib/utils/cn";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { useBrandColorLabel } from "@/apps/workspace/modules/properties/framework/fields/brandPalette";
@@ -678,6 +678,8 @@ function FontRow({
 
 /** How wide the language popover is. Two words and a tick, in the widest language a project lists. */
 const LOCALE_POPOVER_WIDTH_PX = 176;
+/** The language ticks, which the arrow keys walk. */
+const LOCALE_POPOVER_ITEM_SELECTOR = "input[type=\"checkbox\"]";
 
 /**
  * Which languages a rung is for: one tick per language of the project.
@@ -688,9 +690,11 @@ const LOCALE_POPOVER_WIDTH_PX = 176;
  * who has just unticked the last language has to be able to see what they now have.
  *
  * Portalled through `AnchoredPanel` for the reason every floating panel in this app is - the sidebar
- * it opens from is `overflow-hidden` and would clip it - and dismissed three ways, because a body
- * portal outlives things its host does not: a click elsewhere, Escape, and the host panel being
- * switched away from, which would otherwise leave this on screen over whatever replaced it.
+ * it opens from is `overflow-hidden` and would clip it - and dismissed four ways, because a body
+ * portal outlives things its host does not: a click elsewhere, Escape, Tab out of it, and the host
+ * panel being switched away from, which would otherwise leave this on screen over whatever replaced
+ * it. Focus moves onto the first language when it opens, the arrows walk the languages, and closing
+ * gives focus back to the button that opened it.
  */
 function FontLocalesPopover({
     anchorRef,
@@ -708,8 +712,14 @@ function FontLocalesPopover({
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
 
-    useEscapeToClose(true, onClose);
-    useDismissWhenHidden(onClose);
+    const doc = useHostDocument();
+    useFloatingLayer({
+        open: true,
+        onClose,
+        panelRef,
+        ownerRefs: [anchorRef],
+        itemSelector: LOCALE_POPOVER_ITEM_SELECTOR,
+    });
 
     useEffect(() => {
         const onPointerDown = (event: MouseEvent): void => {
@@ -720,9 +730,9 @@ function FontLocalesPopover({
             onClose();
         };
         // Capture, so a click landing on a control that stops propagation still closes this.
-        document.addEventListener("mousedown", onPointerDown, true);
-        return () => document.removeEventListener("mousedown", onPointerDown, true);
-    }, [anchorRef, onClose]);
+        doc.addEventListener("mousedown", onPointerDown, true);
+        return () => doc.removeEventListener("mousedown", onPointerDown, true);
+    }, [anchorRef, doc, onClose]);
 
     const anchor = useCallback(() => anchorRef.current?.getBoundingClientRect() ?? null, [anchorRef]);
 

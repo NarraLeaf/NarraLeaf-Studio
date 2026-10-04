@@ -28,6 +28,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { placementWordFor } from "./commands/transitions";
 import { AssetField } from "./AssetField";
@@ -693,39 +694,42 @@ function AddChannelPicker(props: {
     const [query, setQuery] = useState("");
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const searchBoxRef = useRef<HTMLDivElement | null>(null);
+    const doc = useHostDocument();
 
-    /**
-     * Put the caret in the search box once the panel is actually focusable.
-     *
-     * Two things defeat the obvious `autoFocus`. The panel is portalled, so the attribute is honoured
-     * against a node that is not in the tree the author is looking at yet; and `AnchoredPanel` paints
-     * its first frame `visibility: hidden` while it measures itself, and a hidden subtree cannot take
-     * focus at all - `focus()` there is a silent no-op, which is exactly what it looked like.
-     *
-     * So the attempt is repeated for a few frames and stops as soon as it lands. Bounded rather than
-     * polled: if the box has not taken focus within a handful of frames, something is holding it and
-     * retrying forever would only hide that.
-     */
+    const close = () => {
+        setOpen(false);
+        setQuery("");
+    };
+
+    // A floating layer: it opens with the caret in its search box (the layer waits out the frame
+    // `AnchoredPanel` spends hidden while it measures itself, which defeated a plain `autoFocus`),
+    // ArrowDown from there walks into the channels, Enter adds one, and Escape - from anywhere in
+    // it - closes the picker alone. The panel is portalled, so an Escape it did not take used to bubble
+    // up to the inspector it was opened from and close that as well.
+    useFloatingLayer({
+        open,
+        onClose: close,
+        panelRef,
+        ownerRefs: [triggerRef],
+        itemSelector: "[data-channel-option]",
+    });
+
+    // Light dismiss. The trigger counts as inside: it toggles the picker itself, and closing here
+    // first would have it open again on the same press.
     useEffect(() => {
         if (!open) {
             return;
         }
-        let frame = 0;
-        let raf = 0;
-        const attempt = () => {
-            const input = searchBoxRef.current?.querySelector("input");
-            if (input && document.activeElement !== input) {
-                input.focus();
+        const onDown = (event: MouseEvent) => {
+            const target = event.target as Node;
+            if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) {
+                return;
             }
-            frame += 1;
-            if (frame < 12 && (!input || document.activeElement !== input)) {
-                raf = requestAnimationFrame(attempt);
-            }
+            close();
         };
-        raf = requestAnimationFrame(attempt);
-        return () => cancelAnimationFrame(raf);
-    }, [open]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, open]);
 
     const anchor = useCallback((): PanelAnchor | null => {
         const box = triggerRef.current?.getBoundingClientRect();
@@ -738,11 +742,6 @@ function AddChannelPicker(props: {
             entries: props.channels.filter(channel => channel.group === group && channelMatches(channel, query, props.t)),
         }))
         .filter(entry => entry.entries.length > 0), [props.channels, query, props.t]);
-
-    const close = () => {
-        setOpen(false);
-        setQuery("");
-    };
 
     if (props.channels.length === 0) {
         return null;
@@ -771,18 +770,13 @@ function AddChannelPicker(props: {
                     role="dialog"
                     className="z-50 overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-lg"
                 >
-                    <div ref={searchBoxRef} className="border-b border-edge-subtle p-2">
+                    <div className="border-b border-edge-subtle p-2">
                         <SearchInput
                             size="sm"
                             fullWidth
                             value={query}
                             placeholder={props.t("storyInspector.transformChannel.search")}
                             onChange={event => setQuery(event.target.value)}
-                            onKeyDown={event => {
-                                if (event.key === "Escape") {
-                                    close();
-                                }
-                            }}
                         />
                     </div>
                     <div className="max-h-80 overflow-y-auto p-1">
@@ -799,6 +793,7 @@ function AddChannelPicker(props: {
                                     <button
                                         key={channel.id}
                                         type="button"
+                                        data-channel-option=""
                                         className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-fg-muted transition-colors duration-150 hover:bg-edge-subtle hover:text-fg"
                                         onClick={() => {
                                             props.onAdd(channel);

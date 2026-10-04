@@ -1,6 +1,7 @@
 import http from "http";
 import type { AddressInfo } from "net";
 import { WindowAppType } from "@shared/types/window";
+import { readWindowTag } from "@shared/utils/windowTag";
 import type { BaseApp } from "../../baseApp";
 import type { AppWindow } from "../window/appWindow";
 import {
@@ -201,6 +202,9 @@ export class StudioDebugServer {
             version: this.safeVersion(),
             dev: this.app.isDevMode(),
             port: this.port,
+            // The label this instance puts in front of its window titles, so a tool can tell
+            // which Studio it is talking to without looking at the screen. Null when untagged.
+            windowTag: readWindowTag(process.env),
             endpoints: ["/health", "/windows", "/console", "/devtools", "/anomalies", "/logs"],
             windows: this.liveWindows(),
         };

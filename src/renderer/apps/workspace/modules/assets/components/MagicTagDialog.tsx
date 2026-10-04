@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Wand2, AlertCircle, Check } from 'lucide-react';
 import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core/MagicTagManager';
 import { Asset } from '@/lib/workspace/services/assets/types';
-import { useWindowOverlayHost } from '@/lib/components/layout';
+import { useFloatingLayer, useWindowOverlayHost } from '@/lib/components/layout';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
 import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useTranslation } from '@/lib/i18n';
@@ -28,6 +28,19 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
     const [preview, setPreview] = useState<MagicTagPreview[]>([]);
     const [applying, setApplying] = useState(false);
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+    // A dialog drawn by hand rather than through `Modal`, with a `Modal`'s keyboard behaviour: focus
+    // moves into it when it opens, Tab cannot walk out to the panel behind the dim, Escape closes it -
+    // except while the tags are being written, when Cancel is switched off too - and
+    // closing gives focus back to whatever opened it.
+    useFloatingLayer({
+        open: visible && !!template,
+        onClose,
+        panelRef: dialogRef,
+        scope: "trap",
+        closeOnEscape: !applying,
+        dismissWhenHidden: false,
+    });
 
     // Initialize selected delimiters when template changes
     useEffect(() => {
@@ -114,6 +127,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
 
             {/* Dialog */}
             <div
+                ref={dialogRef}
                 className="relative bg-surface-overlay border border-edge rounded-lg shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
             >

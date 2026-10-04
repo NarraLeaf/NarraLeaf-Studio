@@ -4,7 +4,6 @@
  * Comments in English per project convention.
  */
 
-import { ChevronsRight, CirclePlay, House, MessageSquareOff, Play, StepForward, Undo2 } from "lucide-react";
 import type { Locale } from "@shared/i18n/locales";
 import type { BlueprintLayerTemplate, BlueprintLayerTemplateFacts } from "../blueprintLayerTemplates";
 import { field, lines, WIDGET_OWNERS } from "./templateText";
@@ -38,7 +37,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "startGame",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: Play,
         featured: 13,
         text: {
             en: { title: "Start the game", description: "Starts the story when clicked." },
@@ -58,7 +56,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "continueGame",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: StepForward,
         text: {
             en: {
                 title: "Continue the game",
@@ -85,7 +82,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "returnToTitle",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: House,
         text: {
             en: {
                 title: "Return to title",
@@ -109,7 +105,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "autoForwardButton",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: CirclePlay,
         text: {
             en: { title: "Auto forward button", description: "Turns auto forward on or off when clicked." },
             zh: { title: "自动前进按钮", description: "点击时开启或关闭自动前进" },
@@ -129,7 +124,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "skipButton",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: ChevronsRight,
         text: {
             en: { title: "Skip button", description: "Turns skipping on or off when clicked." },
             zh: { title: "跳过按钮", description: "点击时开启或关闭持续跳过" },
@@ -151,7 +145,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "hideDialogButton",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: MessageSquareOff,
         text: {
             en: { title: "Hide dialog button", description: "Hides or shows the dialog box when clicked." },
             zh: { title: "隐藏对话框按钮", description: "点击时隐藏或显示对话框" },
@@ -167,7 +160,6 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "backOneLine",
         category: "game",
         owners: WIDGET_OWNERS,
-        icon: Undo2,
         text: {
             en: { title: "Back one line", description: "Returns the story to the previous line when clicked." },
             zh: { title: "回到上一行", description: "点击时让故事回到上一行" },
@@ -177,6 +169,32 @@ export const GAME_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             "    click: blueprint.event.head.mouseClick @0,0",
             "    undo: blueprint.game.history.undoLast @260,0",
             "    click -> undo",
+        ),
+    },
+    {
+        id: "nextLineButton",
+        category: "game",
+        owners: WIDGET_OWNERS,
+        text: {
+            en: {
+                title: "Next line button",
+                description: "Moves the story on one line when clicked. While the dialog box is hidden, the click brings it back instead.",
+            },
+            zh: { title: "下一行按钮", description: "点击时让故事前进一行，对话框被隐藏时改为让它重新显示" },
+            ja: { title: "次の行へ進むボタン", description: "クリックでストーリーを一行進め、ダイアログが非表示のときは再び表示する" },
+        },
+        // The starter's dialogue page answers its Advance action the same way, so a line never goes
+        // by while the box that would show it is hidden.
+        graph: () => lines(
+            "    click: blueprint.event.head.mouseClick @0,0",
+            "    shown: blueprint.game.isDialogShown @0,160",
+            "    branch: if @260,0",
+            "    next: blueprint.game.next @520,0",
+            "    show: blueprint.game.showDialog @520,160",
+            "    click -> branch",
+            "    shown.isShown -> branch.condition",
+            "    branch.true -> next",
+            "    branch.false -> show",
         ),
     },
 ];

@@ -1,4 +1,5 @@
 import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
+import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type {
     GameBuildArch,
@@ -218,6 +219,13 @@ export type GameBuildWorkerTarget = {
      */
     electronDist?: string;
     /**
+     * The host's own Electron installation, for a target this host packages without the target
+     * platform's tools (`hostPackagesWithoutPlatformTools`). Studio's packager has electron-builder
+     * lay the game's payload out as an app for the host, which needs no download, and takes the
+     * payload from there; see crossHost/packWithoutPlatformTools.ts. Unset for every other target.
+     */
+    hostElectronDist?: string;
+    /**
      * Absolute path of the app icon for this platform, already in the format
      * that platform's packager wants - `.ico` for Windows, `.icns` for macOS, a
      * PNG for Linux. Unset falls back to the default Electron icon.
@@ -396,6 +404,13 @@ export type GameBuildWorkerConfig = {
      * variable a Studio user had no way to set.
      */
     electronBuilderBinariesMirror?: string;
+    /**
+     * Studio's cache root, for the toolchains Studio's own packager fetches without electron-builder
+     * (the AppImage runtime on a Windows host). The same value the compile worker gets.
+     */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, applied by those same fetches; see downloadRewrites.ts. */
+    downloadRewrites?: DownloadRewriteRule[];
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
     /**

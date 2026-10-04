@@ -9,7 +9,7 @@ import {
     uiEditorCutSelection,
     uiEditorDeleteSelection,
     uiEditorDuplicateSelection,
-    uiEditorGroupIntoLeaderContainer,
+    uiEditorGroupSelection,
     uiEditorPaste,
     uiEditorPasteIntoParent,
     uiEditorSelectAllInSurface,
@@ -127,8 +127,8 @@ export function createOutlinePanelMenuActions(params: {
                 }
             }
         },
-        addSelectionToLeaderGroup: () => {
-            uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+        groupSelection: () => {
+            uiEditorGroupSelection(documentService, stateService, surfaceId, menuSel);
         },
         ungroupSelection: () => {
             uiEditorUngroupSelection(documentService, stateService, surfaceId, menuSel, uiService);

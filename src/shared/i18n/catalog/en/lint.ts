@@ -206,6 +206,11 @@ export const lint = {
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
         },
+        storyVideoControlAfterEnd: {
+            title: "Video already finished",
+            description: "A row pausing, resuming, seeking or stopping a video after a play that waits for its end",
+            message: "{object} has already finished playing at this line; to continue while it plays, turn off “Wait for the video” on its play row",
+        },
         storyCharacterMissing: {
             title: "Missing character",
             description: "A row naming a character the project does not have",
@@ -334,6 +339,16 @@ export const lint = {
             title: "Missing item field",
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
+        uiListTextUntranslated: {
+            title: "Untranslated list content",
+            description: "Words written into a list's content in a project that has a second language",
+            message: "{text} and the rest of this list's content show as written in every language",
+        },
+        uiLocalizationKeyMissing: {
+            title: "Missing localization key",
+            description: "A widget reading its words from a key the project does not have",
+            message: "Reads its words from {key}, which the project does not have",
         },
         uiGestureAnsweredTwice: {
             title: "Gesture answered twice",

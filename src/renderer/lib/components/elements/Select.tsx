@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "../layout/hostVisibility";
+import { useFloatingLayer } from "../layout/floatingLayer";
 import { ChevronDown, Check } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -96,6 +96,8 @@ const variantStyles = {
 };
 
 const SELECT_MENU_GAP_PX = 4;
+/** The rows of an open menu, for the keyboard walk `useFloatingLayer` gives it. */
+const SELECT_OPTION_SELECTOR = "[data-select-option]";
 /** Tailwind max-h-60 */
 const SELECT_MENU_MAX_HEIGHT_PX = 240;
 
@@ -178,11 +180,18 @@ export function Select({
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
-    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
-    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
-    useDismissWhenHidden(() => setIsOpen(false), isOpen);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
+    // Opening moves focus onto the current option, the arrows walk the list, Escape closes the
+    // menu and not the dialog or inspector it sits in, and focus comes back to the trigger. Also
+    // puts the menu away when its kept-alive tab or panel is hidden.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: () => setIsOpen(false),
+        panelRef: dropdownRef,
+        ownerRefs: [selectRef],
+        itemSelector: SELECT_OPTION_SELECTOR,
+    });
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
     const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
     /**
@@ -404,6 +413,7 @@ export function Select({
                 menuClassName,
             )}
             style={dropdownPanelStyle}
+            role="listbox"
             {...menuDataAttributes}
         >
             {options.map((option) => {
@@ -444,6 +454,9 @@ export function Select({
                         onClick={() => handleOptionClick(option)}
                         disabled={option.disabled}
                         aria-current={option.value === value ? "true" : undefined}
+                        role="option"
+                        aria-selected={option.value === value}
+                        data-select-option=""
                     >
                         {optionBody}
                     </InspectOnlyButton>
@@ -473,6 +486,9 @@ export function Select({
                             handleOptionClick(option);
                         }}
                         disabled={option.disabled}
+                        role="option"
+                        aria-selected={option.value === value}
+                        data-select-option=""
                     >
                         {optionBody}
                     </button>
@@ -520,8 +536,20 @@ export function Select({
         </>
     );
 
+    // A closed select opens on the arrows as well as on Enter and Space, the way a native one does.
+    const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (isOpen || disabled || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+        if (dropdownRef.current?.contains(event.target as Node)) return;
+        event.preventDefault();
+        setIsOpen(true);
+    };
+
     return (
-        <div ref={selectRef} className={cn("relative", fullWidth && "w-full min-w-0", className)}>
+        <div
+            ref={selectRef}
+            className={cn("relative", fullWidth && "w-full min-w-0", className)}
+            onKeyDown={handleTriggerKeyDown}
+        >
             {spanTrigger ? (
                 // `Button`'s own classes, spelled out: `Button` renders a `<button>`, and the whole
                 // point of the span trigger is to not be one. Kept in the order it applies them so
@@ -586,14 +614,21 @@ export function Combobox({
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
-    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
-    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
-    useDismissWhenHidden(() => setIsOpen(false), isOpen);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
     const selectRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
+    // The list hangs off the input the author is typing in, so focus stays there; Escape and focus
+    // moving on still close it.
+    useFloatingLayer({
+        open: isOpen,
+        onClose: () => setIsOpen(false),
+        panelRef: dropdownRef,
+        ownerRefs: [selectRef],
+        initialFocus: false,
+        itemSelector: SELECT_OPTION_SELECTOR,
+    });
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
 
     useEffect(() => {
@@ -717,6 +752,7 @@ export function Combobox({
                     {filteredOptions.map((option) => (
                         <button
                             key={option.value}
+                            data-select-option=""
                             className={cn(
                                 "w-full flex items-center gap-2 px-3 py-2 text-left text-sm",
                                 "transition-colors duration-150",

@@ -36,7 +36,7 @@ import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/Gam
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
-import { getTextInputProps } from "./helpers";
+import { getTextInputProps, TEXT_INPUT_SITE } from "./helpers";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
@@ -218,8 +218,9 @@ export function TextInputRenderer(props: WidgetRendererProps) {
             if (isImeKeyEvent(event)) {
                 return;
             }
-            // No stopPropagation: the widget's own `keyDown` event is dispatched from a window
-            // listener and must keep firing for authors who wired it alongside Submit.
+            // No stopPropagation, because nothing downstream needs stopping: every keyboard
+            // listener the game puts on `window`, this widget's own `On Key Down` included, already
+            // ignores a key typed into a text field (`isTextEntryTarget`).
             event.preventDefault();
             void dispatchEvent("submit", {
                 value: valueRef.current,
@@ -229,8 +230,8 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     );
 
     const displayPlaceholder = useLocalizedWidgetText({
+        site: TEXT_INPUT_SITE,
         elementId: element.id,
-        prop: "placeholder",
         sourceText: p.placeholder,
         localizationKey: p.placeholderLocalizationKey ?? undefined,
     });

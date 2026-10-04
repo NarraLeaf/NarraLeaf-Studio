@@ -31,9 +31,8 @@ function mapAlign(v: ContainerStackAlignItems): CSSProperties["alignItems"] {
             return "flex-end";
         case "center":
             return "center";
-        case "stretch":
         default:
-            return "stretch";
+            return "flex-start";
     }
 }
 

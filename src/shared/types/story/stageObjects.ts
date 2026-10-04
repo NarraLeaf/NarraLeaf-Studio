@@ -15,6 +15,7 @@ import {
     normalizeStageObjectName,
     resolveDisplayableTargetRef,
     revealCreates,
+    videoPlayWaits,
 } from "./displayableTarget";
 import {
     BGM_STAGE_OBJECT_NAME,
@@ -398,24 +399,25 @@ const REDECLARABLE_KINDS: ReadonlySet<StageObjectKind> =
  *
  * A `layer` is absent because a layer is a container: the engine mounts one visible, and one that
  * waited to be shown would take its contents with it. A `character` is absent because entering IS
- * the reveal, and a sound has nothing to reveal.
+ * the reveal, a `video` because the only row that declares a clip is the `play` that shows and runs
+ * it, and a sound has nothing to reveal.
  */
 const REVEALABLE_KINDS: ReadonlySet<StageObjectKind> =
-    new Set<StageObjectKind>(["image", "text", "video", "vfx"]);
+    new Set<StageObjectKind>(["image", "text", "vfx"]);
 
 /**
  * Every row of this scene that DECLARES something a later row has to reveal.
  *
  * The candidates for "declared and never shown". Paired with {@link shownStageObjectKeys}, which is
- * the other half of that question and is kept separate because the two are not always read over the
- * same span: an ambience overlay belongs to the whole story rather than to one scene, so its reveal
- * may be anywhere, while an image is gone when its scene ends and can only be shown inside it.
+ * the other half of that question: both are read over the one scene, because everything on the stage
+ * - an ambience overlay as much as an image - is gone when its scene ends and can only be shown
+ * inside it.
  */
 export function revealableStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
     const declarations: StageObjectDeclaration[] = [];
     for (const block of liveSceneBlocks(scene)) {
-        // A `/show <asset>` or `/play <clip>` row declares and reveals in one line, so there is no
-        // later row for it to be waiting on - it is not a candidate for "declared and never shown".
+        // A `/show <asset>` or a `/play` row declares and reveals in one line, so there is no later
+        // row for it to be waiting on - it is not a candidate for "declared and never shown".
         if (block.kind === "action" && revealCreates(block.payload)) {
             continue;
         }
@@ -430,10 +432,8 @@ export function revealableStageObjectDeclarations(scene: StoryScene | null | und
 /**
  * The `kind:name` keys this scene REVEALS - what a `show` row in it puts on screen.
  *
- * Only `show`. Playing a video an earlier row declared does not reveal it (an element is on stage and
- * hidden until something shows it, so a `/play` on its own is a clip the player hears and never sees),
- * and neither does a transform or a rate change. That is the whole point of the distinction the
- * declaration draws. A `/play` that names its own clip does reveal it, but it is a declaration rather
+ * Only `show`. A transform or a rate change does not reveal anything, which is the whole point of
+ * the distinction the declaration draws. A `/play` reveals its clip, but it is a declaration rather
  * than a reference, so it never waits on this list - see {@link revealableStageObjectDeclarations}.
  */
 export function shownStageObjectKeys(scene: StoryScene | null | undefined): ReadonlySet<string> {
@@ -459,9 +459,15 @@ export function shownStageObjectKeys(scene: StoryScene | null | undefined): Read
  * Every row that declares a stage name an earlier row in the same scene already declared, excluding
  * the first - the first is the one that stands, and the later rows are the ones an author has to look
  * at.
+ *
+ * A clip is the one kind where a second declaration is also how the object is used again: every
+ * `/play` defines its clip, so playing it a second time is a second `play` of the same name. That is
+ * only a duplicate when the file differs - the clip that plays is the first row's, and the later
+ * row's file goes nowhere.
  */
 export function duplicateStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
-    const seen = new Set<string>();
+    // The first declaration of each key, and for a clip the file it was built from.
+    const seen = new Map<string, string | undefined>();
     const duplicates: StageObjectDeclaration[] = [];
     for (const block of liveSceneBlocks(scene)) {
         const declaration = declaredStageObject(block);
@@ -469,11 +475,122 @@ export function duplicateStageObjectDeclarations(scene: StoryScene | null | unde
             continue;
         }
         const key = `${declaration.kind}:${declaration.name}`;
+        const clip = declaration.kind === "video" ? videoAssetOf(block) : undefined;
         if (seen.has(key)) {
+            if (declaration.kind === "video" && seen.get(key) === clip) {
+                continue;
+            }
             duplicates.push(declaration);
             continue;
         }
-        seen.add(key);
+        seen.set(key, clip);
     }
     return duplicates;
+}
+
+/**
+ * Every `/pause`, `/resume`, `/seek` or `/stop` that reaches its clip after the clip has certainly
+ * finished: the play that defines the clip waits for its end, and it is an earlier row in the same
+ * straight run of rows, with no play of the clip between them.
+ *
+ * Only what is certain, because the remedy - letting the play not wait - is a real change to the
+ * scene and must not be suggested on a guess. So a row is never reported when:
+ *  - its run is not a sequence: the bodies of a parallel group, a race and a repeat run side by side
+ *    (the compiler hands them to the engine as separate branches), and the branches of a condition
+ *    or a choice are alternatives;
+ *  - anything between the two rows could play the clip again: a group or branch that holds a play of
+ *    it, read whole, whatever its own shape;
+ *  - a label sits between them, which a `/goto` from elsewhere may arrive at without passing the play.
+ *
+ * A disabled row is not in the run at all - the compiler skips it and its subtree.
+ */
+export function finishedClipControls(scene: StoryScene | null | undefined): StageObjectReference[] {
+    if (!scene) {
+        return [];
+    }
+    const found: StageObjectReference[] = [];
+    const walk = (ids: readonly StoryBlockId[], sequential: boolean): void => {
+        // The clips whose latest play in this run waited for the end.
+        const finished = new Set<string>();
+        for (const id of ids) {
+            const block = scene.blocks[id];
+            if (!block || block.disabled) {
+                continue;
+            }
+            if (block.kind === "control" && block.payload.control === "label") {
+                finished.clear();
+            }
+            if (sequential && block.kind === "action" && block.payload.action === "video") {
+                const payload = block.payload;
+                if (payload.operation === "play") {
+                    const name = normalizeStageObjectName(payload.objectName);
+                    if (videoPlayWaits(payload)) {
+                        finished.add(name);
+                    } else {
+                        finished.delete(name);
+                    }
+                } else if (payload.operation !== "hide") {
+                    const reference = stageObjectReference(scene, block);
+                    if (reference && finished.has(reference.name)) {
+                        found.push(reference);
+                    }
+                }
+            }
+            if (block.childrenIds.length > 0) {
+                for (const name of clipsPlayedUnder(scene, block)) {
+                    finished.delete(name);
+                }
+                walk(block.childrenIds, runsInSequence(block));
+            }
+        }
+    };
+    walk(scene.rootBlockIds, true);
+    return found;
+}
+
+/** Whether a row's children run one after another, rather than side by side or as alternatives. */
+function runsInSequence(block: StoryBlock): boolean {
+    if (block.kind === "control") {
+        const payload = block.payload;
+        if (payload.control === "condition") {
+            return false;
+        }
+        if (payload.control === "sequence" || payload.control === "parallel" || payload.control === "race" || payload.control === "repeat") {
+            const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+            return payload.control !== "repeat" && (mode === "do" || mode === "doAsync");
+        }
+        return true;
+    }
+    // A choice's children are its options, one of which the player takes.
+    if (block.kind === "nodeAction" && block.payload.action === "choice") {
+        return false;
+    }
+    return true;
+}
+
+/** The clip names a `play` anywhere under this row defines. */
+function clipsPlayedUnder(scene: StoryScene, root: StoryBlock): Set<string> {
+    const names = new Set<string>();
+    const visit = (ids: readonly StoryBlockId[]): void => {
+        for (const id of ids) {
+            const block = scene.blocks[id];
+            if (!block) {
+                continue;
+            }
+            if (block.kind === "action" && block.payload.action === "video" && block.payload.operation === "play") {
+                names.add(normalizeStageObjectName(block.payload.objectName));
+            }
+            visit(block.childrenIds);
+        }
+    };
+    visit(root.childrenIds);
+    return names;
+}
+
+/** The file a `video` row names, trimmed, or undefined for any other row. */
+function videoAssetOf(block: StoryBlock): string | undefined {
+    if (block.kind !== "action" || block.payload.action !== "video") {
+        return undefined;
+    }
+    return block.payload.assetId?.trim() || undefined;
 }

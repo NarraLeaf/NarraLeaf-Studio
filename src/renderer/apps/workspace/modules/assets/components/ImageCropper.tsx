@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Crop, RefreshCw, X } from "lucide-react";
-import { useEscapeToClose } from "@/lib/components/elements/Modal";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 
 type CropRect = {
@@ -56,9 +56,22 @@ export function ImageCropper({
     onChange,
 }: ImageCropperProps) {
     const { t } = useTranslation();
+    // The window this cropper is drawn in - the renderer's own, or a detached editor's. Its portal,
+    // its placement, its drags and its keys all belong to that window.
+    const hostDocument = useHostDocument();
+    const hostWindow = useHostWindow();
+    const panelRef = useRef<HTMLDivElement | null>(null);
     // The step straight after the asset picker in the thumbnail flow, hand-built the same way and
-    // missing the same keystroke. Fixing only the picker would have moved the dead end one dialog on.
-    useEscapeToClose(visible, onClose);
+    // keeping the same keyboard behaviour: it dims the window like a `Modal`, so focus moves onto it
+    // when it opens, Tab cannot walk out to the page behind it, Escape closes it and nothing it was
+    // opened from, and closing gives focus back to the control that opened it.
+    useFloatingLayer({
+        open: visible,
+        onClose,
+        panelRef,
+        ownerRefs: anchorRef ? [anchorRef] : undefined,
+        scope: "trap",
+    });
     const containerRef = useRef<HTMLDivElement | null>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const [imageSize, setImageSize] = useState<Size | null>(null);
@@ -270,13 +283,13 @@ export function ImageCropper({
         };
         const handleUp = () => setDragState(null);
 
-        window.addEventListener("pointermove", handleMove);
-        window.addEventListener("pointerup", handleUp);
+        hostWindow.addEventListener("pointermove", handleMove);
+        hostWindow.addEventListener("pointerup", handleUp);
         return () => {
-            window.removeEventListener("pointermove", handleMove);
-            window.removeEventListener("pointerup", handleUp);
+            hostWindow.removeEventListener("pointermove", handleMove);
+            hostWindow.removeEventListener("pointerup", handleUp);
         };
-    }, [dragState]);
+    }, [dragState, hostWindow]);
 
     useEffect(() => {
         if (!visible) return;
@@ -291,13 +304,13 @@ export function ImageCropper({
         updateSize();
         const resizeObserver = new ResizeObserver(updateSize);
         resizeObserver.observe(container);
-        window.addEventListener("resize", updateSize);
+        hostWindow.addEventListener("resize", updateSize);
 
         return () => {
             resizeObserver.disconnect();
-            window.removeEventListener("resize", updateSize);
+            hostWindow.removeEventListener("resize", updateSize);
         };
-    }, [visible]);
+    }, [hostWindow, visible]);
 
     useEffect(() => {
         if (!visible) return;
@@ -343,8 +356,8 @@ export function ImageCropper({
         const maxPanelHeight = 640;
 
         const updatePosition = () => {
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
+            const viewportWidth = hostWindow.innerWidth;
+            const viewportHeight = hostWindow.innerHeight;
 
             if (anchorRef?.current) {
                 const rect = anchorRef.current.getBoundingClientRect();
@@ -366,8 +379,8 @@ export function ImageCropper({
 
         updatePosition();
         const handleReposition = () => updatePosition();
-        window.addEventListener("resize", handleReposition);
-        window.addEventListener("scroll", handleReposition, { passive: true });
+        hostWindow.addEventListener("resize", handleReposition);
+        hostWindow.addEventListener("scroll", handleReposition, { passive: true });
 
         let resizeObserver: ResizeObserver | undefined;
         if (containerRef.current && "ResizeObserver" in window) {
@@ -376,11 +389,11 @@ export function ImageCropper({
         }
 
         return () => {
-            window.removeEventListener("resize", handleReposition);
-            window.removeEventListener("scroll", handleReposition);
+            hostWindow.removeEventListener("resize", handleReposition);
+            hostWindow.removeEventListener("scroll", handleReposition);
             resizeObserver?.disconnect();
         };
-    }, [anchorRef, visible]);
+    }, [anchorRef, hostWindow, visible]);
 
     if (!visible) {
         return null;
@@ -422,6 +435,7 @@ export function ImageCropper({
             }}
         >
             <div
+                ref={panelRef}
                 style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
                 className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-surface-raised border border-edge rounded-xl shadow-xl text-fg max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -575,5 +589,5 @@ export function ImageCropper({
         </div>
     );
 
-    return createPortal(panel, document.body);
+    return createPortal(panel, hostDocument.body);
 }

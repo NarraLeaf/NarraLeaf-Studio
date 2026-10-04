@@ -3,6 +3,7 @@ import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
 import { zh } from "@shared/i18n/catalog/zh";
 import { KEYBINDING_CATALOG } from "../workspace/services/ui/keybindingCatalog";
+import { FIXED_INPUT_CATALOG } from "../workspace/services/ui/fixedInputCatalog";
 import { parseHelpBody } from "./helpBody";
 import {
     HELP_SECTIONS,
@@ -25,7 +26,10 @@ import {
 
 const enKeys = flattenCatalog(en);
 const zhKeys = flattenCatalog(zh);
-const catalogIds = new Set(KEYBINDING_CATALOG.map(entry => entry.id));
+const catalogIds = new Set([
+    ...KEYBINDING_CATALOG.map(entry => entry.id),
+    ...FIXED_INPUT_CATALOG.map(entry => entry.id),
+]);
 const registeredIds = new Set<string>(HELP_TOPICS.map(topic => topic.id));
 
 describe("help topic registry", () => {
@@ -54,7 +58,7 @@ describe("help topic registry", () => {
         }
     });
 
-    it("points `shortcuts` at keybinding catalog entries", () => {
+    it("points `shortcuts` at keybinding or fixed-input catalog entries", () => {
         for (const topic of HELP_TOPICS) {
             for (const shortcut of topic.shortcuts ?? []) {
                 expect(catalogIds, `${topic.id} names unknown keybinding ${shortcut}`).toContain(shortcut);

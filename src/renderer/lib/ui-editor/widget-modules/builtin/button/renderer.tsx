@@ -33,7 +33,7 @@ import {
 import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -49,7 +49,7 @@ import {
     writeDesignTimeLocalizationKeySourceText,
 } from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import type { UIElement } from "@shared/types/ui-editor/document";
-import { buttonLabelPatch, getButtonProps } from "./helpers";
+import { BUTTON_SITE, buttonLabelPatch, getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
     debugUIDoubleClick,
@@ -58,7 +58,6 @@ import {
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
-const BUTTON_LABEL_PROP_PATH = "label";
 
 /**
  * The words the canvas shows for a button - its key's, when it is read from one - and what an
@@ -66,7 +65,7 @@ const BUTTON_LABEL_PROP_PATH = "label";
  */
 function designTimeLabelOf(element: UIElement): string {
     const props = getButtonProps(element);
-    return designTimeTextOf(props.localizationKey, props.label);
+    return designTimeTextOf(BUTTON_SITE, props.localizationKey, props.label);
 }
 
 function commitButtonLabelEditValue(documentService: UIDocumentService, elementId: string, nextLabel: string): void {
@@ -76,9 +75,6 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
     const key = docEl ? designTimeKeyOf(getButtonProps(docEl).localizationKey) : null;
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextLabel)) {
         return;
-    }
-    if (docEl?.valueBindings?.[BUTTON_LABEL_PROP_PATH]?.kind === "blueprintValue") {
-        documentService.clearElementBlueprintValueBinding(elementId, BUTTON_LABEL_PROP_PATH);
     }
     documentService.updateElementProps(
         elementId,
@@ -187,9 +183,11 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             }
             e.preventDefault();
             e.stopPropagation();
-            beginInlineTextEdit(stateService, surface.id, element.id);
+            if (editHost) {
+                beginOrExplainInlineTextEdit(editHost, surface.id, element.id);
+            }
         },
-        [element.id, isEditing, stateService, surface.id],
+        [editHost, element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -283,12 +281,11 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     // Localized display label. At design time the source language's: the button's own label, or its
     // key's when it is read from one - the canvas shows what the game shows.
     const displayLabel = useLocalizedWidgetText({
+        site: BUTTON_SITE,
         elementId: element.id,
-        prop: "label",
         sourceText: p.label,
         localizable: p.localizable,
         localizationKey: p.localizationKey,
-        resolveKeyAtDesignTime: true,
     });
     const showLabel = displayLabel.trim().length > 0;
 

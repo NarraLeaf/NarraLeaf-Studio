@@ -13,7 +13,7 @@ export const blueprint = {
     tab: {
         title: "Blueprint",
         invalid: "Blueprint tab is invalid.",
-        notFound: "Blueprint not found: {id}",
+        notFound: "Blueprint not found in this project",
     },
     /** Breakpoints, set from a node's context menu and hit by the Dev Mode debugger. */
     breakpoint: {
@@ -47,6 +47,21 @@ export const blueprint = {
             one: "Deleted the unknown node and its {count} hidden connection. Undo to restore.",
             other: "Deleted the unknown node and its {count} hidden connections. Undo to restore.",
         },
+    },
+    /**
+     * Following a wire to its other end: the tooltip on a hovered wire, which names the end away
+     * from the pointer, and the rows of the wire's and a pin's context menus that go there.
+     * `{target}` is `end` filled in, or the node alone for a pin with no label; `{node}` there is
+     * `nodeDetail` when the card shows something under its title (an element, a field's value).
+     */
+    wire: {
+        nodeDetail: "{node} ({detail})",
+        end: "{node} · {pin}",
+        connectedTo: "Connected to {target}",
+        goTo: "Go to {target}",
+        /** One of several rows naming cards that read alike, numbered left to right as they sit on the graph. */
+        goToNth: "Go to {target} ({n})",
+        goToConnected: "Go to connected node",
     },
     /**
      * A paste of nodes copied in another project.
@@ -344,6 +359,7 @@ export const blueprint = {
             keys: "Keys",
             window: "Window",
             display: "Display",
+            conditions: "Conditions",
         },
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
@@ -1286,6 +1302,7 @@ export const blueprint = {
         getVisible: "Get Visible",
         getWrapMode: "Get Wrap Mode",
         goPage: "Go Page",
+        replacePage: "Replace Page",
         goBack: "Go back",
         showLayer: "Show Layer",
         hideLayer: "Hide Layer",
@@ -1559,6 +1576,8 @@ export const blueprint = {
         appBoot: "Runs once each time the game starts, after the first screen is showing, and does not hold that screen back. On Game Ready has already run by then. In Dev Mode it runs again after every reload.",
         gameReady: "Runs when the game is ready, before any story starts and before the first screen shows; the screen waits for it to finish. Runs before App Boot, and can run again when a game is started or loaded.",
         goBack: "Closes the current page and returns to the page beneath it. On the bottom page it does nothing.",
+        replacePage: "Opens a page in place of the current page, and closes the current page. Go back and Go Page set to None do not return to it.",
+        isGameOverlay: "True when this page, layer or Game UI is shown over a running game. In the global blueprint, true while a page or a modal layer covers the story.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

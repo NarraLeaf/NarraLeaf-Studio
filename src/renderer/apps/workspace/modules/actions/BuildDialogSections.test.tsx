@@ -318,7 +318,7 @@ describe("ContentSection", () => {
         expect(markup).toContain('aria-label="Asset protection"');
         expect(markup).toContain('aria-label="Network policy"');
         // The consequence line follows the control, so the two never disagree.
-        expect(markup).toContain("Assets and saves are encrypted in the packaged game.");
+        expect(markup).toContain("Assets are encrypted in the packaged game.");
         expect(markup).toContain("The packaged game refuses every HTTP and HTTPS request.");
     });
 
@@ -370,6 +370,46 @@ describe("ContentSection", () => {
 
         expect(render()).not.toContain(notice);
         expect(render({ state: togglePlatform(desktopOnly, "web", true) })).toContain(notice);
+    });
+
+    describe("the notice that this build will not accept patches", () => {
+        const missingKey = [{ code: "distribution-key-missing" as const, severity: "warning" as const, section: "content" as const }];
+        const sentence = enBuild.preflight["distribution-key-missing"];
+
+        it("says so, and offers to create the key right there", () => {
+            const markup = render({ findings: missingKey, onCreateDistributionKey: noop });
+
+            expect(markup).toContain(sentence);
+            expect(markup).toContain('data-build-finding="distribution-key-missing"');
+            expect(markup).toMatch(/<button[^>]*>Create<\/button>/);
+        });
+
+        it("is not there once the project has a key, which is when preflight stops filing it", () => {
+            const markup = render({ onCreateDistributionKey: noop });
+
+            expect(markup).not.toContain(sentence);
+            expect(markup).not.toContain('data-build-finding="distribution-key-missing"');
+        });
+
+        it("does not stop the build: it is a warning, never an error", () => {
+            // The dialog sends an error to its section instead of building; a warning ships.
+            expect(render({ findings: missingKey, onCreateDistributionKey: noop })).not.toContain("text-danger");
+        });
+
+        it("goes read-only with the workspace, since creating the key writes the project", () => {
+            frozen = true;
+            const markup = render({ findings: missingKey, onCreateDistributionKey: noop });
+
+            // The three controls the section always has, plus the Create button.
+            expect([...markup.matchAll(/disabled=""/g)]).toHaveLength(4);
+        });
+
+        it("is still said where there is no way to create the key from here", () => {
+            const markup = render({ findings: missingKey });
+
+            expect(markup).toContain(sentence);
+            expect(markup).not.toMatch(/<button[^>]*>Create<\/button>/);
+        });
     });
 });
 

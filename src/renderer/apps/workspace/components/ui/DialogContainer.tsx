@@ -7,6 +7,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import { HelpTrigger, requestContextHelp } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { useFloatingLayer } from "@/lib/components/layout";
 
 /**
  * Individual dialog component
@@ -20,6 +21,19 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
     // able to delete or overwrite anything.
     const fallbackButtonIndex = dialog.buttons?.findIndex(button => !button.disabled && !button.danger) ?? -1;
     const focusButtonIndex = defaultButtonIndex >= 0 ? defaultButtonIndex : fallbackButtonIndex;
+
+    // A dialog layer: Escape closes this dialog and not one under it, Tab stays inside it, and focus
+    // goes back to whatever opened it. Where focus lands on open is decided just below, by the
+    // default button.
+    useFloatingLayer({
+        open: true,
+        onClose,
+        panelRef: dialogRef,
+        scope: "trap",
+        initialFocus: false,
+        closeOnEscape: Boolean(dialog.closable),
+        dismissWhenHidden: false,
+    });
 
     useEffect(() => {
         const frame = window.requestAnimationFrame(() => {
@@ -67,12 +81,6 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 }}
                 onKeyDown={event => {
                     if (isImeKeyEvent(event)) {
-                        return;
-                    }
-                    if (event.key === "Escape" && dialog.closable) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onClose();
                         return;
                     }
                     // Answered here rather than by the global `F1` binding: `KeybindingService`

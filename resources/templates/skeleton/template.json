@@ -1,7 +1,7 @@
 {
     "name": "Skeleton",
-    "description": "A three-scene story with a branching choice, and title, extra, save, load, config and backlog screens with their blueprints already wired.",
-    "version": "1.7.0",
+    "description": "A three-scene story with a branching choice, and splash, title, extra, save, load, config and backlog screens with their blueprints already wired.",
+    "version": "1.9.0",
     "designSize": {
         "width": 1920,
         "height": 1080
@@ -9,11 +9,11 @@
     "locales": {
         "zh": {
             "name": "骨架",
-            "description": "三个场景、一次分支选择，以及标题、鉴赏、存档、读档、设置、记录六个界面，蓝图都已经接好。"
+            "description": "三个场景、一次分支选择，以及启动画面、标题、鉴赏、存档、读档、设置、记录七个界面，蓝图都已经接好。"
         },
         "ja": {
             "name": "スケルトン",
-            "description": "三つのシーンと一度の選択、そしてタイトル・鑑賞・セーブ・ロード・設定・履歴の六画面。ブループリントはすべて接続済みです。"
+            "description": "三つのシーンと一度の選択、そしてスプラッシュ・タイトル・鑑賞・セーブ・ロード・設定・履歴の七画面。ブループリントはすべて接続済みです。"
         }
     },
     "contentLocales": {

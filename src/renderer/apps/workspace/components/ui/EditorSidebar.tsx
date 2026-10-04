@@ -21,7 +21,7 @@ import { ResizableHandle } from "./ResizableHandle";
  * a project's files. Nothing is written until the author actually drags: an undragged sidebar reads
  * the default from here, so changing a default later reaches everyone who never chose otherwise.
  */
-export type EditorSidebarId = "uiOutline" | "blueprintLayers" | "sceneFlowRoutes" | "motionLibrary";
+export type EditorSidebarId = "uiOutline" | "blueprintLayers" | "sceneFlowRoutes" | "motionLibrary" | "assetBrowserFolders";
 
 export type EditorSidebarSpec = {
     /** What the sidebar used to be fixed at, and still opens at until the author drags it. */
@@ -35,6 +35,9 @@ export const EDITOR_SIDEBARS: Readonly<Record<EditorSidebarId, EditorSidebarSpec
     blueprintLayers: { defaultWidth: 224, minWidth: 180, maxWidth: 560 },
     sceneFlowRoutes: { defaultWidth: 240, minWidth: 180, maxWidth: 560 },
     motionLibrary: { defaultWidth: 256, minWidth: 180, maxWidth: 560 },
+    // The folder tree beside the asset browser's contents in the bottom tray. Narrower than the rest:
+    // it lists places, not files, and every pixel it takes is a column of thumbnails.
+    assetBrowserFolders: { defaultWidth: 208, minWidth: 160, maxWidth: 480 },
 };
 
 /**

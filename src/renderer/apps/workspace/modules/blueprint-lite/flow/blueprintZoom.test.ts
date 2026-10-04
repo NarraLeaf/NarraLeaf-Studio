@@ -3,9 +3,46 @@ import {
     BLUEPRINT_FIT_PADDING,
     boundsOfMeasuredNodes,
     clampBlueprintZoom,
+    computeBlueprintRevealViewport,
     computeBlueprintZoomViewport,
     usableBlueprintInset,
 } from "./blueprintZoom";
+
+describe("computeBlueprintRevealViewport", () => {
+    const node = { x: 4000, y: 900, width: 240, height: 120 };
+    const container = { width: 1300, height: 700 };
+    const range = { min: 0.1, max: 2 };
+    const centreOnScreen = (v: { x: number; y: number; zoom: number }) => ({
+        x: (node.x + node.width / 2) * v.zoom + v.x,
+        y: (node.y + node.height / 2) * v.zoom + v.y,
+    });
+
+    it("keeps the author's zoom and puts the node in the middle of the pane", () => {
+        const v = computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 0.8 }, container, range })!;
+        expect(v.zoom).toBe(0.8);
+        expect(centreOnScreen(v)).toEqual({ x: 650, y: 350 });
+    });
+
+    it("centres in what the layer panel leaves of the pane", () => {
+        const v = computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 1 }, container, range, inset: 300 })!;
+        expect(centreOnScreen(v)).toEqual({ x: 300 + 1000 / 2, y: 350 });
+    });
+
+    it("zooms out only as far as it takes to see a card too big for the current zoom", () => {
+        const tall = { ...node, height: 2000 };
+        const v = computeBlueprintRevealViewport({ node: tall, current: { x: 0, y: 0, zoom: 1 }, container, range })!;
+        expect(v.zoom).toBeCloseTo(700 / (1.18 * 2000), 6);
+    });
+
+    it("never zooms in", () => {
+        const v = computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 0.3 }, container, range })!;
+        expect(v.zoom).toBe(0.3);
+    });
+
+    it("has nothing to answer for a pane that has not been laid out", () => {
+        expect(computeBlueprintRevealViewport({ node, current: { x: 0, y: 0, zoom: 1 }, container: { width: 0, height: 0 }, range })).toBeNull();
+    });
+});
 
 /** React Flow's own default range, which this canvas does not override. */
 const RANGE = { min: 0.5, max: 2 };

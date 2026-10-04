@@ -66,10 +66,12 @@ describe("starred favourites migration", () => {
         expect(new Set(migrated).size).toBe(migrated.length);
     });
 
-    it("folds the five old show entries onto one starred /show, keeping first-seen order", () => {
+    it("folds the old show entries onto one starred /show, and a clip's onto /play, keeping first-seen order", () => {
+        // A clip comes on with `/play` and nowhere else, so the entry that revealed one lands there -
+        // as does the retired `video` spec a favourite may still name.
         expect(migrateStarredActionIds([
-            "imageShow", "textShow", "videoShow", "displayableShow", "characterEnter", "bgm",
-        ])).toEqual(["show", "bgm"]);
+            "imageShow", "textShow", "videoShow", "displayableShow", "characterEnter", "bgm", "video",
+        ])).toEqual(["show", "play", "bgm"]);
     });
 
     it("is idempotent - a migrated list migrates to itself", () => {

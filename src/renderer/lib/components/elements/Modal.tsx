@@ -1,12 +1,11 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { HelpTrigger, type HelpTopicId } from "@/lib/help";
-import { useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
-import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Footer action buttons — same classes as DialogContainer (workspace input / info dialogs).
@@ -41,29 +40,14 @@ export function dialogFooterButtonClass(options: {
  * `Modal` has always had, lifted out so there is one definition of it rather than a copy per
  * overlay.
  *
- * Deliberately on the bubble phase: anything nested that means to answer Escape itself - a menu that
- * would otherwise be orphaned above a closed dialog - keeps precedence by calling `stopPropagation`,
- * exactly as it would inside a `Modal`.
+ * It is a floating layer without a box (`useFloatingLayer`), so it keeps the rule every layer keeps:
+ * Escape closes the topmost layer and only it, so a picker opened from a dialog closes without taking
+ * the dialog with it. Anything nested that means to answer Escape itself still keeps precedence by
+ * calling `stopPropagation`. An overlay that can hand over its box should call `useFloatingLayer`
+ * itself, and get focus handling as well.
  */
 export function useEscapeToClose(active: boolean, onClose: () => void): void {
-    // The document this overlay is drawn in, which is not the renderer's own when the caller sits
-    // inside a detached editor window - and a key pressed over there never reaches this one.
-    const doc = useHostDocument();
-    useEffect(() => {
-        if (!active) {
-            return;
-        }
-        const handleEscape = (event: KeyboardEvent) => {
-            if (isImeKeyEvent(event)) {
-                return;
-            }
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-        doc.addEventListener("keydown", handleEscape);
-        return () => doc.removeEventListener("keydown", handleEscape);
-    }, [active, doc, onClose]);
+    useFloatingLayer({ open: active, onClose, scope: "none", dismissWhenHidden: false });
 }
 
 export interface ModalProps {
@@ -114,7 +98,17 @@ export function Modal({
     const { t } = useTranslation();
     const overlayHost = useWindowOverlayHost();
     const doc = useHostDocument();
-    useEscapeToClose(isOpen && closeOnEscape, onClose);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    // A dialog: focus moves in when it opens, Tab cannot walk out to the page behind it, and focus
+    // goes back to whatever opened it when it closes.
+    useFloatingLayer({
+        open: isOpen,
+        onClose,
+        panelRef,
+        scope: "trap",
+        closeOnEscape,
+        dismissWhenHidden: false,
+    });
     useEffect(() => {
         if (isOpen) {
             doc.body.style.overflow = "hidden";
@@ -156,6 +150,9 @@ export function Modal({
 
             {/* Modal panel */}
             <div
+                ref={panelRef}
+                role="dialog"
+                aria-modal="true"
                 className={cn(
                     "relative bg-surface-raised border border-edge rounded-lg shadow-2xl animate-scale-in",
                     sizeStyles[size], "w-full max-h-[90vh] overflow-hidden",

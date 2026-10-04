@@ -369,14 +369,13 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         layerTransform: { keyword: "transform", slots: [DISPLAYABLE_SUBJECT, ...TRANSFORM_TAIL] },
 
         // --- Video ---------------------------------------------------------------------------------
-        videoCreate: {
-            keyword: "video create",
+        videoSeek: { keyword: "video seek", slots: [SUBJECT, { slot: "time", value: "seconds" }] },
+        videoHide: { keyword: "hide", slots: [SUBJECT] },
+        // A play defines the clip it runs, so it carries the file the way a create once did.
+        videoPlay: {
+            keyword: "video play",
             slots: [SUBJECT, { slot: "source", value: "name" }, { slot: "muted", value: "word" }],
         },
-        videoSeek: { keyword: "video seek", slots: [SUBJECT, { slot: "time", value: "seconds" }] },
-        videoShow: { keyword: "show", slots: [SUBJECT] },
-        videoHide: { keyword: "hide", slots: [SUBJECT] },
-        videoPlay: { keyword: "video play", slots: [SUBJECT] },
         videoPause: { keyword: "video pause", slots: [SUBJECT] },
         videoResume: { keyword: "video resume", slots: [SUBJECT] },
         videoStop: { keyword: "video stop", slots: [SUBJECT] },

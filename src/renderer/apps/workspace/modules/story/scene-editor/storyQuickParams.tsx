@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
@@ -22,6 +22,7 @@ import {
     useStoryCommandLineContext,
 } from "./StoryCommandLineView";
 import { StoryLineValueToken } from "./StoryLineValueToken";
+import { keepStoryKeysInPopover } from "./PausePopover";
 import { StoryLineRefToken } from "./StoryLineRefToken";
 import { StoryLineCharacterFace } from "./storyCharacterFace";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
@@ -191,6 +192,7 @@ function QuickParamToken(props: {
 }) {
     const { param } = props;
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const tokenRef = useRef<HTMLButtonElement | null>(null);
     // `getStorySceneName` rather than a fallback to the id: the two "no name" cases have words of
     // their own, and a quick param is a token an author reads at a glance.
     const sceneName = (id: string | undefined) => (id ? getStorySceneName(props.scenes, id) : "—");
@@ -202,6 +204,11 @@ function QuickParamToken(props: {
             props.onApply(param.apply({ kind: "toggle", on: !param.value.on }));
             return;
         }
+        // The token toggles its popover, being its owner (see `QuickParamPopover`).
+        if (anchor) {
+            setAnchor(null);
+            return;
+        }
         const rect = event.currentTarget.getBoundingClientRect();
         setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
     };
@@ -211,7 +218,9 @@ function QuickParamToken(props: {
     return (
         <>
             <button
+                ref={tokenRef}
                 type="button"
+                aria-expanded={anchor !== null}
                 className={`${TOKEN_CLASS} ${isOff ? "text-fg-subtle line-through decoration-solid" : ""}`}
                 onMouseDown={event => event.stopPropagation()}
                 onClick={open}
@@ -223,6 +232,7 @@ function QuickParamToken(props: {
                 <QuickParamPopover
                     param={param}
                     anchor={anchor}
+                    ownerRef={tokenRef}
                     scenes={props.scenes}
                     onApply={payload => { props.onApply(payload); }}
                     onClose={() => setAnchor(null)}
@@ -235,41 +245,44 @@ function QuickParamToken(props: {
 function QuickParamPopover(props: {
     param: QuickParam;
     anchor: { top: number; left: number; bottom: number };
+    /**
+     * The token that opened it. Inside for light dismiss - a press on it closes the popover through
+     * the token's own toggle, rather than here and then open again there - and where focus returns.
+     */
+    ownerRef: RefObject<HTMLElement | null>;
     scenes?: Record<StorySceneId, StoryScene>;
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
-    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
-    // moved to unless it is told (`useDismissWhenHidden`).
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { param } = props;
-
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
+    // Opens on the number field, or on the scene that is set, with the arrows walking the scene list.
+    // Escape closes this alone and focus goes back to the token.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: [props.ownerRef],
+        itemSelector: param.value.kind === "scene" ? "[data-scene-option]" : undefined,
+    });
 
     useEffect(() => {
         const onDown = (event: MouseEvent) => {
-            if (panelRef.current?.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (panelRef.current?.contains(target) || props.ownerRef.current?.contains(target)) {
                 return;
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 200);
-    const left = Math.min(props.anchor.left, window.innerWidth - 236);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 200);
+    const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(
         <div
@@ -277,6 +290,7 @@ function QuickParamPopover(props: {
             className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             {param.value.kind === "duration" ? (
                 <div>
@@ -332,6 +346,8 @@ function QuickParamPopover(props: {
                             <button
                                 key={scene.id}
                                 type="button"
+                                data-scene-option=""
+                                data-selected={selected ? "true" : undefined}
                                 className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm transition-colors ${selected ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"}`}
                                 onClick={() => { props.onApply(param.apply({ kind: "scene", sceneId: scene.id })); props.onClose(); }}
                             >
@@ -342,6 +358,6 @@ function QuickParamPopover(props: {
                 </div>
             ) : null}
         </div>,
-        document.body,
+        doc.body,
     );
 }

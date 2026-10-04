@@ -15,7 +15,7 @@ export const blueprint = {
     tab: {
         title: "ブループリント",
         invalid: "ブループリントのタブが不正",
-        notFound: "ブループリントが見つからない：{id}",
+        notFound: "このプロジェクトにブループリントが見つからない",
     },
     /** ブレークポイント。ノードのコンテキストメニューで置き、開発モードのデバッガーが止まる。 */
     breakpoint: {
@@ -49,6 +49,14 @@ export const blueprint = {
             one: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
             other: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
         },
+    },
+    wire: {
+        nodeDetail: "{node}（{detail}）",
+        end: "{node} · {pin}",
+        connectedTo: "{target} に接続",
+        goTo: "{target} へ移動",
+        goToNth: "{target}（{n}）へ移動",
+        goToConnected: "接続先のノードへ移動",
     },
     crossProject: {
         pasted: {
@@ -314,6 +322,7 @@ export const blueprint = {
             keys: "キー操作",
             window: "ウィンドウ",
             display: "表示",
+            conditions: "表示条件",
         },
     },
     // ブループリントがぶら下がっている先の名前。ノードがどこにあるかを言う検索結果で使う。
@@ -1238,6 +1247,7 @@ export const blueprint = {
         getVisible: "表示を取得",
         getWrapMode: "折り返しを取得",
         goPage: "ページへ移動",
+        replacePage: "ページを置き換える",
         goBack: "前のページに戻る",
         showLayer: "レイヤーを表示",
         hideLayer: "レイヤーを隠す",
@@ -1430,7 +1440,7 @@ export const blueprint = {
         setVisible: "表示を設定",
         showDialog: "ダイアログを表示",
         skip: "スキップ",
-        skipDelay: "スキップ開始までの時間",
+        skipDelay: "待ちを打ち切る",
         split: "分割",
         startGame: "ゲームを始める",
         startsWith: "この文字で始まる",
@@ -1506,6 +1516,8 @@ export const blueprint = {
         appBoot: "ゲームを起動するたびに一度、最初の画面が表示された後に実行される。画面はその完了を待たない。このとき「ゲームの準備ができたとき」は実行済み。開発モードでは再読み込みのたびにもう一度実行される",
         gameReady: "ゲームの準備ができたときに実行される。どのストーリーよりも先、最初の画面が表示されるよりも先で、画面はその完了を待つ。「アプリ起動」より先に実行され、ゲームの開始やロードのときにもう一度実行されることがある",
         goBack: "現在のページを閉じ、その下のページに戻る。いちばん下のページでは何もしない",
+        replacePage: "現在のページの代わりにページを開き、現在のページを閉じる。「前のページに戻る」とページが「なし」の「ページへ移動」では、閉じたページに戻らない",
+        isGameOverlay: "このページ、レイヤー、ゲーム UI が進行中のゲームの上に表示されているとき真。グローバルブループリントでは、ページかモーダルのレイヤーがストーリー画面を覆っているとき真",
     },
     live: {
         nodeClaimed: "{name} がこのノードを編集している",

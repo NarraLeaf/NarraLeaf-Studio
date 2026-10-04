@@ -5,6 +5,7 @@ import {
     defaultContainerWidgetProps,
     getContainerChildLayoutParticipation,
     normalizeContainerClipContent,
+    normalizeContainerStackAlignItems,
     normalizeContainerStackWrap,
     type ContainerChildLayoutParticipation,
     type ContainerLayoutKind,
@@ -23,6 +24,7 @@ export function getContainerProps(element: UIElement): ContainerWidgetProps {
         ...p,
         clipContent: normalizeContainerClipContent(p?.clipContent),
         stackWrap: normalizeContainerStackWrap(p?.stackWrap),
+        stackAlignItems: normalizeContainerStackAlignItems(p?.stackAlignItems),
     };
     return {
         ...merged,

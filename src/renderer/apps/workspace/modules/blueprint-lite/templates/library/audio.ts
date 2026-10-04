@@ -7,7 +7,6 @@
  * Comments in English per project convention.
  */
 
-import { BellRing, Music, Waves } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines } from "./templateText";
 
@@ -16,7 +15,6 @@ export const AUDIO_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "pageMusic",
         category: "audio",
         owners: ["surfaceMain"],
-        icon: Music,
         featured: 3,
         text: {
             en: {
@@ -49,7 +47,6 @@ export const AUDIO_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "ambientSound",
         category: "audio",
         owners: ["surfaceMain"],
-        icon: Waves,
         text: {
             en: {
                 title: "Ambient sound",
@@ -83,7 +80,6 @@ export const AUDIO_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "pageOpenSound",
         category: "audio",
         owners: ["surfaceMain"],
-        icon: BellRing,
         text: {
             en: { title: "Opening sound", description: "Plays a sound effect as this page opens." },
             zh: { title: "页面打开音效", description: "页面打开时播放音效" },

@@ -15,7 +15,7 @@ import {
     ChevronRight,
     FolderOpen,
 } from "lucide-react";
-import { useEscapeToClose } from "@/lib/components/elements/Modal";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { getInterface } from "@/lib/app/bridge";
 import { collectImportFailures } from "@/lib/workspace/assets/importFailure";
 import { Asset } from "@/lib/workspace/services/assets/types";
@@ -52,6 +52,9 @@ const ASSET_TYPE_ICONS = {
 };
 
 const ASSET_SELECTOR_STATE_ID = "narraleaf-studio:asset-selector";
+/** The folders and assets of the list, which the arrow keys walk. */
+const ASSET_SELECTOR_ROW_SELECTOR = "[data-asset-selector-row]";
+const ROW_ATTRIBUTE = { "data-asset-selector-row": "" } as const;
 const WINDOW_TITLEBAR_HEIGHT = 40;
 
 interface AssetSelectorState {
@@ -114,7 +117,7 @@ export function AssetSelector({
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     // The picker asks about the freeze itself rather than trusting whoever opened it: it renders in
-    // a portal on `document.body`, so every `fieldset disabled` clamp an inspector puts around its
+    // a portal on the window's body, so every `fieldset disabled` clamp an inspector puts around its
     // trigger stops at the panel's edge and never reaches the controls inside.
     const freeze = useFreezeGuard();
     const { assets, groups, loading, hasLoaded, loadFailed, loadAssets } = useAssetData({ context, isInitialized });
@@ -162,10 +165,31 @@ export function AssetSelector({
         position: { top: number; left: number };
     } | null>(null);
 
-    // Escape closes it, the way the backdrop and the X already do. This is a dialog that positions
-    // against its trigger rather than centring, so it is not a `Modal` and had none of a `Modal`'s
-    // keyboard behaviour - leaving the mouse as the only way out of every asset picker in Studio.
-    useEscapeToClose(visible, onClose);
+    // The window this picker is drawn in - the renderer's own, or a detached editor's. Its portal,
+    // its placement and its keys all belong to that window.
+    const hostDocument = useHostDocument();
+    const hostWindow = useHostWindow();
+
+    // A dialog that positions against its trigger rather than centring, so it is not a `Modal`, but
+    // it dims the window like one and keeps a `Modal`'s keyboard behaviour: focus goes to the search
+    // field when it opens, Tab cannot walk out to the page behind the dim, Escape closes the picker
+    // and nothing it was opened from, the arrows walk the folders and assets (ArrowDown from the
+    // search field enters the list), and closing gives focus back to the control that opened it.
+    //
+    // Escape used to reach the search field first, which cleared the query and let the key go on to
+    // close the picker. The layer hears it before the field now, so the query is cleared here to keep
+    // what an Escape leaves behind the same: the next visit starts from the whole list.
+    useFloatingLayer({
+        open: visible,
+        onClose: () => {
+            setSearchQuery("");
+            onClose();
+        },
+        panelRef,
+        ownerRefs: anchorRef ? [anchorRef] : undefined,
+        scope: "trap",
+        itemSelector: ASSET_SELECTOR_ROW_SELECTOR,
+    });
 
     /**
      * Seed the selection from the caller's ids when the dialog opens, or when
@@ -314,8 +338,8 @@ export function AssetSelector({
         const maxPanelHeight = 560; // matches max-h
 
         const updatePosition = () => {
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
+            const viewportWidth = hostWindow.innerWidth;
+            const viewportHeight = hostWindow.innerHeight;
             const panelHeight = Math.min(panelRef.current?.offsetHeight ?? maxPanelHeight, maxPanelHeight);
 
             if (anchorRef?.current) {
@@ -344,8 +368,8 @@ export function AssetSelector({
 
         updatePosition();
         const handleReposition = () => updatePosition();
-        window.addEventListener("resize", handleReposition);
-        window.addEventListener("scroll", handleReposition, { passive: true });
+        hostWindow.addEventListener("resize", handleReposition);
+        hostWindow.addEventListener("scroll", handleReposition, { passive: true });
 
         let resizeObserver: ResizeObserver | undefined;
         if (panelRef.current && "ResizeObserver" in window) {
@@ -354,11 +378,11 @@ export function AssetSelector({
         }
 
         return () => {
-            window.removeEventListener("resize", handleReposition);
-            window.removeEventListener("scroll", handleReposition);
+            hostWindow.removeEventListener("resize", handleReposition);
+            hostWindow.removeEventListener("scroll", handleReposition);
             resizeObserver?.disconnect();
         };
-    }, [anchorRef, visible, displayedAssets.length]);
+    }, [anchorRef, hostWindow, visible, displayedAssets.length]);
 
     const assetsByGroup = useMemo(() => {
         const map = new Map<string | null | undefined, Asset[]>();
@@ -442,8 +466,8 @@ export function AssetSelector({
         const gap = 12;
         const previewWidth = 240;
         const previewHeight = 240;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const viewportWidth = hostWindow.innerWidth;
+        const viewportHeight = hostWindow.innerHeight;
 
         let left = rect.right + gap;
         if (left + previewWidth > viewportWidth - margin) {
@@ -459,7 +483,7 @@ export function AssetSelector({
         if (top > maxTop) top = maxTop;
 
         return { top, left };
-    }, []);
+    }, [hostWindow]);
 
     const openPreview = useCallback(
         async (asset: Asset<AssetType.Image>, target: HTMLElement) => {
@@ -527,6 +551,7 @@ export function AssetSelector({
                     return (
                         <div key={group.id} className="mb-1">
                             <button
+                                {...ROW_ATTRIBUTE}
                                 onClick={() => toggleGroup(group.id)}
                                 className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-fill-subtle transition-colors text-left"
                                 style={{ paddingLeft: `${paddingLeft + 8}px` }}
@@ -575,6 +600,7 @@ export function AssetSelector({
             <button
                 key={asset.id}
                 data-asset-id={asset.id}
+                {...ROW_ATTRIBUTE}
                 onClick={() => handleItemClick(asset)}
                 onMouseEnter={(e) => handlePreviewEnter(asset, e.currentTarget)}
                 onMouseLeave={hidePreview}
@@ -607,6 +633,7 @@ export function AssetSelector({
                         <div key={group.id} className="mb-1">
                             <button
                                 type="button"
+                                {...ROW_ATTRIBUTE}
                                 onClick={() => toggleVirtualGroup(group.id)}
                                 className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-fill-subtle transition-colors text-left"
                                 style={{ paddingLeft: `${rootHeaderPad}px` }}
@@ -703,7 +730,7 @@ export function AssetSelector({
         // Refused here and not only on the button, because the button is not the last thing that
         // happens before bytes move: the file dialog opens next and then every file the author picked
         // is copied into the library. A refusal that arrives after the copy is a frozen project that
-        // has already written; and this picker is a portal on `document.body`, so a freeze that arms
+        // has already written; and this picker is a portal on the window's body, so a freeze that arms
         // while it is open reaches nothing that would have closed it.
         if (freeze.frozen) return;
 
@@ -882,6 +909,6 @@ export function AssetSelector({
                 </div>
             )}
         </>,
-        document.body,
+        hostDocument.body,
     );
 }

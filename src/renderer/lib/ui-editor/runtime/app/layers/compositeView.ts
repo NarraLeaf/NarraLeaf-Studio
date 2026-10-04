@@ -72,6 +72,11 @@ export type CompositeViewInput = {
         coveredByPage: boolean;
         /** Whether the stage takes pointer input at all; it does not during a quit's hand-off. */
         pointerLive: boolean;
+        /**
+         * Whether the player has put the dialogue box away (`showDialog` off). The engine leaves the
+         * box mounted and transparent, so the dialogue surface is still registered and still listed.
+         */
+        dialogHidden: boolean;
         /** The Game UI surfaces mounted on it, in the order they registered. */
         surfaces: readonly CompositeViewStageSurface[];
     } | null;
@@ -113,6 +118,9 @@ function describeStage(input: CompositeViewInput): GameAppCompositeStage | null 
                 surfaceName: entry.surface.name,
                 slotId,
                 concealed,
+                // Only the dialogue box is put away: the engine's `showDialog` hides the box the
+                // dialogue surface is drawn in, and no other slot.
+                hidden: slotId === "dialog" && stage.dialogHidden,
                 interactive: stage.pointerLive && entry.takesInput && stage.storyOnScreen,
                 takesInput: entry.takesInput,
             };

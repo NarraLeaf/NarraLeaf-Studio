@@ -242,7 +242,21 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // source, finds no object of that name on stage and compiles the row to nothing - so the picture the
 // author put on the line would simply not appear, and lint would call the row a dangling reference.
 // Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 26 as const;
+// v27 makes `play` the only row that puts a clip on the stage. A story video used to be modelled as
+// a picture is - declared (`create`), revealed (`show`), run (`play`) and hidden - and a clip could
+// come into existence on any of three rows, while `play` itself meant "build, reveal, run and clear
+// away" when it carried a file and "run whatever an earlier row left" when it only named one, with a
+// different default for whether the clip stayed afterwards. Every `play` now carries its file and
+// defines its clip, the later rows (`pause`, `resume`, `seek`, `stop`, `hide`) name the clip a play
+// defined, and a play can let the story move on while the clip runs (`waitForEnd: false`).
+// The step folds each clip's `create` / `show` rows into the first `play` of it that follows them in
+// the scene, gives every `play` that only named a clip that clip's file, and turns what can no longer
+// be said - a clip declared and never played, a row addressing a clip nothing plays - into a note
+// quoting the line, so nothing leaves the document unannounced. The bump is not optional, and the
+// reason is what a v26 Studio would *play*: a `play` that no longer has a `create` above it, and does
+// not carry `hideOnEnd`, would be read as the bare transport verb and leave its last frame over every
+// scene after it, and a non-waiting play would hold the story for the length of the clip.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 27 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -953,32 +967,60 @@ export type StoryActionPayload =
     | {
           /**
            * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
-           * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           * than sharing `displayable`'s.
            *
-           * `create` declares, like the `image` arm's: it compiles to `Video.preload()`, which puts a
-           * hidden element on stage so the clip starts buffering, and `show` is what reveals it.
+           * **`play` is the only row that puts a clip on the stage** (v27). It carries the file
+           * ({@link assetId}) and defines the clip under {@link objectName}: it reveals the clip, runs
+           * it, and - unless {@link hideOnEnd} says otherwise - takes it off the stage when it ends. A
+           * second `play` of the same name and file runs that clip again.
            *
-           * A `show` carrying {@link assetId} is the one-row form, on the same terms as the `image`
-           * arm's - it builds the clip, names it and reveals it. Revealing is still not playing: the
-           * element is on screen holding its first frame, and `/play` is what runs it.
-           *
-           * A `play` carrying {@link assetId} is the one-row cutscene: it builds the clip, names it,
-           * reveals it and runs it to the end. Without one, `play` runs a clip an earlier row put on
-           * stage and leaves its visibility alone. No document needs migrating for this: a `play` row
-           * could always hold an asset, and one that did now does what it says.
-           *
-           * Additive: the four transport operations and `timeMs` are new in A3, and no document
-           * written before them carries either, so no schema bump.
+           * Every other operation names a clip a `play` defined: `pause`, `resume`, `seek`, `stop`
+           * (end it now, as though it had reached its end - the defining play then hides it or holds
+           * its frame, as it says) and `hide`. A video is a cutscene the story plays, not an object it
+           * stages, so there is no row that declares or reveals a clip without running it; v27
+           * folded the `create` and `show` rows that used to into the plays that followed them.
            */
           action: "video";
-          operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
+          operation: "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
-          /** Which clip a non-`create` op addresses. Same rule as the `image` arm's `target`. */
+          /**
+           * Which clip a control operation addresses, bound to the `play` that defines it. Same rule
+           * as the `image` arm's `target`. A `play` carries none: it defines its clip itself.
+           */
           target?: StoryActionableTargetRef;
+          /** `play` — the clip it plays. Required: a play with no file plays nothing. */
           assetId?: string;
+          /** `play` — whether the clip plays without sound. */
           muted?: boolean;
           /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
           timeMs?: number;
+          /**
+           * `play` — whether the story waits for the clip to end before it moves on.
+           *
+           * Absent means it waits, which is what every `play` written before this field did. `false`
+           * lets the next row run at once while the clip plays on; the clip still leaves the stage
+           * when it ends, as {@link hideOnEnd} says. `videoPlayWaits` is the one reading of this field.
+           *
+           * Added with v27; a v26 document cannot carry it.
+           */
+          waitForEnd?: boolean;
+          /**
+           * `play` — whether the clip leaves the stage once it has played to the end.
+           *
+           * Absent means it does: a clip that ends holds its last frame above every scene, across a
+           * jump too, so clearing itself away is what a cutscene is expected to do. `false` holds that
+           * last frame until a `hide` row takes it away. `videoPlayHidesOnEnd` is the one reading of
+           * this field.
+           */
+          hideOnEnd?: boolean;
+          /**
+           * How long the clip takes to fade out, in milliseconds - on a `hide`, and on a `play` that
+           * hides its clip when it ends. `0` is a cut.
+           *
+           * Unset, a `hide` cuts, as it always did, and a hiding `play` fades over the default every
+           * other hide row is seeded with. `videoLeaveFadeMs` is the one reading of this field.
+           */
+          durationMs?: number;
       }
     | {
           /**

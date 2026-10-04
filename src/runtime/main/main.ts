@@ -113,16 +113,23 @@ import {
 } from "./windowGeometry";
 import { installWindowCrashHandling, type WindowCrashHandle } from "./windowCrashHandling";
 import {
+    ALLOWED_STARTUP_SWITCHES,
+    environmentDisablesSandbox,
     hasDebuggingSwitch,
     hasStartupSwitch,
     honoursDebuggableMarker,
     REFUSAL_LOG_PREFIX,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
+    SANDBOX_FALLBACK_NOTICE,
+    SANDBOX_SWITCH,
+    type StartupArgumentReview,
 } from "@shared/utils/runtimeStartupArguments";
+import { nodeSandboxProbeHost, probeLinuxSandbox, type SandboxProbeResult } from "./sandboxProbe";
 import { silenceRuntimeConsole } from "./runtimeConsole";
 import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
+import { installWindowTag, readWindowTag } from "@shared/utils/windowTag";
 
 /**
  * When this process was created, as the operating system recorded it - the zero of the game's
@@ -271,6 +278,11 @@ const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
  * nothing to finish. A driven one does, and whether it is on top says nothing about the game.
  */
 const testDriven = shellMode !== "production" && process.env.NARRALEAF_TEST_DRIVEN === "1";
+
+// The label of whatever session launched this game, in front of its title. Read in every mode: a
+// packaged game started for an acceptance run needs it as much as a preview does, and a player's
+// environment does not carry the variable. See `windowTag.ts`.
+installWindowTag(app, readWindowTag(process.env));
 
 // Preview keeps saves next to the compiled app; a shipped game names its
 // per-user directory explicitly (see resolvePlayerDataDir).
@@ -450,7 +462,42 @@ function runtimeResources(): RuntimeResources {
  * everything outside that stops the launch - see `@shared/utils/runtimeStartupArguments`.
  */
 function refusedStartupArguments(): string[] {
-    return reviewStartupArguments(startupArguments(), process.platform).refused;
+    return reviewThisLaunch().refused;
+}
+
+/**
+ * This launch's command line under the startup rules, including what it asks of the sandbox.
+ *
+ * The sandbox switch is looked for on Chromium's own command line as well as in `argv`, because that
+ * is where the environment variable Electron reads puts it - and that is what decides whether the
+ * sandbox will actually be off, however the switch got there.
+ */
+function reviewThisLaunch(): StartupArgumentReview {
+    return reviewStartupArguments(startupArguments(), process.platform, ALLOWED_STARTUP_SWITCHES, {
+        inEffect: app.commandLine.hasSwitch(SANDBOX_SWITCH),
+        environment: environmentDisablesSandbox(process.env, process.platform),
+        machineCapable: machineCanSandbox,
+    });
+}
+
+/** What the game found when it examined the machine for a sandbox; null until a launch asked. */
+let sandboxProbe: SandboxProbeResult | null = null;
+
+/**
+ * Whether this machine can give Chromium a sandbox, found out the first time a launch asks to go
+ * without one and kept, so both command-line gates decide on the same finding. Only asked on Linux.
+ *
+ * A machine that cannot is a launch going ahead without the sandbox, which goes in the log with what
+ * the game found, for whoever is later asked why.
+ */
+function machineCanSandbox(): boolean {
+    if (!sandboxProbe) {
+        sandboxProbe = probeLinuxSandbox(nodeSandboxProbeHost());
+        if (!sandboxProbe.capable) {
+            logRuntime("info", `${SANDBOX_FALLBACK_NOTICE}${sandboxProbe.reason}`);
+        }
+    }
+    return sandboxProbe.capable;
 }
 
 /**
@@ -559,11 +606,11 @@ function commandLineRefusalReason(refused: readonly string[]): string {
  * itself, were both told the game had run.
  */
 function refuseStartupArguments(): boolean {
-    const refused = refusedStartupArguments();
+    const { refused, removable } = reviewThisLaunch();
     if (refused.length === 0) {
         return false;
     }
-    for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
+    for (const name of removable) {
         app.commandLine.removeSwitch(name);
     }
     refuseToStart(startupRefusalHost, { kind: "commandLine", reason: commandLineRefusalReason(refused) });

@@ -336,15 +336,15 @@ export const project = {
         },
         bgmVolume: {
             title: "音楽の音量",
-            description: "音楽のバス",
+            description: "音楽のトラック",
         },
         soundVolume: {
             title: "効果音の音量",
-            description: "効果音のバス",
+            description: "効果音のトラック",
         },
         voiceVolume: {
             title: "ボイスの音量",
-            description: "ボイスのバス",
+            description: "ボイスのトラック",
         },
         voiceEndMode: {
             title: "ボイス付きの行が終わったとき",
@@ -395,7 +395,7 @@ export const project = {
         // 以後それぞれの形に応じた既定のバスへ解決される。どれになるかは何を鳴らすかで変わるので、
         // ここで 1 本のトラック名を挙げれば当て推量になる。
         deleteDetail: {
-            other: "{count} 件の参照が既定のバスに落ちる",
+            other: "{count} 件の参照が既定のトラックに落ちる",
         },
         // 下にあるトラックは削除されず繰り上がる。どこへ行くかを作者に伝える。
         deleteChildren: {
@@ -403,7 +403,7 @@ export const project = {
         },
         // プレイヤー側の音量スライダー。3 本の既定バスに割り当たっている。
         slider: {
-            bgm: "BGM の音量",
+            bgm: "音楽の音量",
             sound: "効果音の音量",
             voice: "ボイスの音量",
             // 3 本のどれも通らずマスターにぶら下がるバスには専用の割り当てが無いので、

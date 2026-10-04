@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、签名、优化、载入与移动端",
+            description: "安全、签名、压缩、载入与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -255,7 +255,7 @@ export const project = {
         saveIncompatibleDescription: "存档写入之后故事已变更",
         saveResume: "恢复进度",
         saveDiscard: "不恢复进度",
-        saveResumeScene: "尝试恢复到场景",
+        saveResumeScene: "回到中断处",
         saveForce: "强制载入",
         languageInGameTitle: "游戏进行中切换语言",
         languageInGameDescription: "在标题画面切换时，三种设置都立即生效",
@@ -361,20 +361,20 @@ export const project = {
     audio: {
         // 什么是总线、音量如何逐级相乘，已经移进 `audio` 帮助主题，由本区标题上的 `?` 打开。
         // 它原先是这里的一段话，再往前是每条轨道的每个字段上都写一遍。
-        add: "新建轨道",
+        add: "新建音轨",
         history: {
             add: "新建音轨 {name}",
             delete: "删除音轨 {name}",
             edit: "修改音轨",
         },
-        newTrackName: "新建轨道",
+        newTrackName: "新建音轨",
         nameTitle: "名称",
         parentTitle: "汇入",
         parentMaster: "主输出",
         volumeTitle: "音量",
         volumeUnit: "%",
         loopTitle: "默认循环",
-        loopDescription: "在该轨道上播放的片段默认循环，除非播放它的动作另有指定",
+        loopDescription: "在该音轨上播放的片段默认循环，除非播放它的动作另有指定",
         duplicate: "复制",
         delete: "删除",
         // 展开后紧挨着「删除」：确认框接下来要说的就是这个数字。
@@ -385,19 +385,19 @@ export const project = {
         // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
         // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。
         deleteDetail: {
-            other: "{count} 处引用将各自回落到默认总线",
+            other: "{count} 处引用将各自回落到默认音轨",
         },
         // 子总线会被上提而不是一并删除，并且明确告诉作者它们落到哪里。
         deleteChildren: {
-            other: "其下的 {count} 条轨道将移到 {parent}",
+            other: "其下的 {count} 条音轨将移到 {parent}",
         },
         // 玩家自己的音量滑块，与三条内置总线一一对应。
         slider: {
-            bgm: "BGM 音量",
+            bgm: "音乐音量",
             sound: "音效音量",
             voice: "语音音量",
-            // 不经由三条内置总线、直接挂在主输出下的总线没有专属滑杆，玩家只能用全局音量控制它
-            global: "全局音量",
+            // 不经由三条内置总线、直接挂在主输出下的总线没有专属滑杆，玩家只能用总音量控制它
+            global: "总音量",
         },
     },
     settings: {

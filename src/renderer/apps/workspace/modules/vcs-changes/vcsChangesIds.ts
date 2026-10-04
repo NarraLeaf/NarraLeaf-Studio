@@ -36,7 +36,20 @@ export type VcsChangesPayload =
      * in. A NUMBER rather than a rendered `#36`, so `revisionLabel` stays the one thing that decides
      * how a version is spelled.
      */
-    | { readonly mode: "working-tree"; readonly headNumber?: number }
+    | {
+        readonly mode: "working-tree";
+        readonly headNumber?: number;
+        /**
+         * Which press of a way into this comparison the tab is answering.
+         *
+         * The tab never re-reads on its own (it scans; docs §4.17), and the working tree has one tab,
+         * so pressing "compare with the previous version" again only brought the open tab forward
+         * with the list it read the first time - every change made since was missing from it, with
+         * nothing on screen saying the list was old. A new number is a new request to read; it says
+         * nothing else, and an opener sets it rather than passing it through.
+         */
+        readonly readRequest?: number;
+    }
     /**
      * Two revisions, each named by its number - `#12`, the name every other version surface uses.
      *

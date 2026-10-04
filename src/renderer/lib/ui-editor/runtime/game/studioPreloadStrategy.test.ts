@@ -298,6 +298,66 @@ describe("Studio's preload scheduler", () => {
 
             expect(said).toEqual([`An image row 3 of "The ending" asks for was shown without being warmed.`]);
         });
+
+        /** One clip, asked for by an early row of the corridor and by row 4 of the club room. */
+        function sharedClip(extra?: { scene?: object; sceneId?: string }): CompiledNlrStory {
+            return {
+                ...compiledWith({
+                    scenes: { corridor: sceneOne, club: sceneTwo },
+                    warmOrder: {
+                        corridor: order({
+                            sceneName: "Corridor",
+                            blockOrder: ["corridor-play"],
+                            byBlock: { "corridor-play": [{ type: "video", url: "clip.mp4" }] },
+                            rows: { "corridor-play": 5 },
+                        }),
+                        club: order({
+                            sceneName: "Club room",
+                            blockOrder: ["club-play"],
+                            byBlock: { "club-play": [{ type: "video", url: "clip.mp4" }] },
+                            rows: { "club-play": 4 },
+                        }),
+                    },
+                    actions: [
+                        { staticId: "corridor-play-action", blockId: "corridor-play" },
+                        { staticId: "club-play-action", blockId: "club-play" },
+                    ],
+                }),
+                ...extra,
+            } as CompiledNlrStory;
+        }
+
+        it("names the row the play head is on, when another scene asked for the same clip first", () => {
+            // A clip reports itself from inside the action that plays it, which the engine announced
+            // a moment earlier. The scene of the latest plan trails a jump by a render, so it is not
+            // the thing to ask.
+            const said: string[] = [];
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(sharedClip());
+            scheduler.useMissingReport(message => said.push(message));
+
+            scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null });
+            scheduler.plan({ kind: "advance", actionId: "club-play-action", scene: sceneOne as never, story: null });
+            scheduler.onMissing!({ type: "video", src: "clip.mp4" });
+
+            expect(said).toEqual([`A clip row 4 of "Club room" asks for was played without being buffered.`]);
+        });
+
+        it("names the scene a row-precise launch stands for, not the first scene that used the clip", () => {
+            // The launch enters through a synthetic scene no warm order describes. Every row it plays
+            // belongs to the scene it was launched in, and that is the scene to name - even before
+            // the play head has said which row.
+            const launchScene = {};
+            const said: string[] = [];
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(sharedClip({ scene: launchScene, sceneId: "club" }));
+            scheduler.useMissingReport(message => said.push(message));
+
+            scheduler.plan({ kind: "scene", scene: launchScene as never, story: null });
+            scheduler.onMissing!({ type: "video", src: "clip.mp4" });
+
+            expect(said).toEqual([`A clip row 4 of "Club room" asks for was played without being buffered.`]);
+        });
     });
 
     describe("what the stage mounts when a scene starts", () => {
@@ -419,14 +479,15 @@ describe("naming the scene's sounds for the audio cache", () => {
 });
 
 /**
- * A clip the play row itself names, planned exactly as one a `/video` row above it declares.
+ * A clip a play row defines, planned from scene entry - and a play that does not wait planned exactly
+ * as one that does.
  *
  * Real compiles, because what is pinned is the seam between the two halves: the compiler records the
- * clip against the row that builds it, and the plan names every clip ahead of the play head. A
- * one-row cutscene has no earlier row to start the buffering, so this is the only thing that does -
- * and it has to start it at the same moment the three-row form would, scene entry included.
+ * clip against the row that builds it, and the plan names every clip ahead of the play head. The play
+ * is the only row a clip comes on with, so nothing earlier starts the buffering; and a play that lets
+ * the story move on is wrapped in an async group, which must not change when its clip is warmed.
  */
-describe("a clip a play row names itself", () => {
+describe("a clip a play row defines", () => {
     function videoRow(id: string, payload: Extract<StoryActionPayload, { action: "video" }>): StoryBlock {
         return { id, kind: "action", parentId: null, childrenIds: [], payload };
     }
@@ -456,29 +517,29 @@ describe("a clip a play row names itself", () => {
             schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
             id: "story-1",
             name: "Story",
-            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["one-row", "three-row"] }],
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["waits", "moves-on"] }],
             scenes: {
-                "one-row": sceneOf("one-row", [
+                "waits": sceneOf("waits", [
+                    line("before"),
                     videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
                     line("after"),
                 ]),
-                "three-row": sceneOf("three-row", [
-                    videoRow("declare", { action: "video", operation: "create", objectName: "festival", assetId: "asset-festival" }),
-                    videoRow("reveal", { action: "video", operation: "show", objectName: "festival" }),
-                    videoRow("run", { action: "video", operation: "play", objectName: "festival" }),
-                    line("later"),
+                "moves-on": sceneOf("moves-on", [
+                    line("before"),
+                    videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival", waitForEnd: false }),
+                    line("during"),
                 ]),
             },
         };
         return compileStudioStoryToNlr({
             document,
-            sceneId: "one-row",
+            sceneId: "waits",
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
             collectWarmOrder: true,
         });
     }
 
-    it("puts the clip on the stage to buffer the moment the scene starts, as the three-row form does", async () => {
+    it("puts the clip on the stage to buffer the moment the scene starts, whether or not the story waits on it", async () => {
         const compiled = await compile();
         const scheduler = createStudioPreloadScheduler();
         scheduler.useCompiled(compiled);
@@ -487,10 +548,53 @@ describe("a clip a play row names itself", () => {
             kind: "scene", scene: compiled.scenes[sceneId] as never, story: null,
         }) as PreloadPlan;
 
-        const oneRow = compiled.sceneElements?.["one-row"]?.videos.get("festival");
-        const threeRow = compiled.sceneElements?.["three-row"]?.videos.get("festival");
-        expect(oneRow).toBeDefined();
-        expect(planFor("one-row").video).toEqual([oneRow]);
-        expect(planFor("three-row").video).toEqual([threeRow]);
+        const waits = compiled.sceneElements?.["waits"]?.videos.get("festival");
+        const movesOn = compiled.sceneElements?.["moves-on"]?.videos.get("festival");
+        expect(waits).toBeDefined();
+        expect(movesOn).toBeDefined();
+        expect(planFor("waits").video).toEqual([waits]);
+        expect(planFor("moves-on").video).toEqual([movesOn]);
+    });
+
+    /**
+     * A line after the play is placed after it, not at the top of the scene. Read as the top, the plan
+     * put the clip the play had already run and cleared away back on the stage, hidden, where a later
+     * `/resume` ran it unseen and heard. A second play of the clip further down still asks for it.
+     */
+    it("leaves a clip the story has played out of the plan for the rows after it, until a play of it lies ahead", async () => {
+        const document: StoryDocument = {
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            id: "story-1",
+            name: "Story",
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene"] }],
+            scenes: {
+                scene: sceneOf("scene", [
+                    line("before"),
+                    videoRow("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival", waitForEnd: false }),
+                    line("after"),
+                    videoRow("again", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
+                    line("last"),
+                ]),
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            collectWarmOrder: true,
+        });
+        const scheduler = createStudioPreloadScheduler();
+        scheduler.useCompiled(compiled);
+        const clip = compiled.sceneElements?.["scene"]?.videos.get("festival");
+        const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)!.staticId;
+        const planAt = (blockId: string) => scheduler.plan({
+            kind: "advance", actionId: actionOf(blockId), scene: compiled.scenes["scene"] as never, story: null,
+        }) as PreloadPlan;
+
+        expect(planAt("before").video).toEqual([clip]);
+        // Between the two plays the second one still lies ahead.
+        expect(planAt("after").video).toEqual([clip]);
+        // After the last play of it, nothing asks for the clip any more.
+        expect(planAt("last").video).toEqual([]);
     });
 });

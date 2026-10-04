@@ -23,8 +23,8 @@ import type {
 } from "@shared/types/story";
 import {
     authoredCharacterStageName,
+    DEFAULT_VIDEO_LEAVE_FADE_MS,
     declarationDefaultForType,
-    declaresStageObject,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
     listScenesInDocumentOrder,
@@ -36,6 +36,9 @@ import {
     sceneVariableDefs,
     storyPersistentDefs,
     storyTransitionKindOf,
+    videoLeaveFadeMs,
+    videoPlayHidesOnEnd,
+    videoPlayWaits,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
@@ -74,6 +77,7 @@ import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
 import { FieldLabel, Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -512,17 +516,20 @@ const layerOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "hide", label: t("common.hide") },
 ];
 
+// `play` first: it is the row that brings a clip on, and the others name a clip a play defined.
 const videoOperationOptions = (t: TFunc): SelectOption[] => [
-    { value: "create", label: t("common.create") },
-    { value: "show", label: t("common.show") },
-    { value: "hide", label: t("common.hide") },
-    // `play` waits for the clip to end, `resume` does not - the labels have to carry that, since the
-    // two are otherwise indistinguishable in a list.
     { value: "play", label: t("storyInspector.videoOperation.play") },
     { value: "pause", label: t("storyInspector.videoOperation.pause") },
     { value: "resume", label: t("storyInspector.videoOperation.resume") },
-    { value: "stop", label: t("storyInspector.videoOperation.stop") },
     { value: "seek", label: t("storyInspector.videoOperation.seek") },
+    { value: "stop", label: t("storyInspector.videoOperation.stop") },
+    { value: "hide", label: t("common.hide") },
+];
+
+/** How a clip leaves: the two words `out=` takes on a clip, under the labels it has on a picture. */
+const videoLeaveOptions = (t: TFunc): SelectOption[] => [
+    { value: "fade", label: t("storyInspector.transformPreset.fadeOut") },
+    { value: "none", label: t("common.none") },
 ];
 
 const audioOperationOptions = (t: TFunc): SelectOption[] => [
@@ -608,8 +615,15 @@ export function ActionInspector(props: {
         // The body of the properties panel: no floating-card chrome, and no close button either — the
         // rail follows the selection now, so there is nothing here to dismiss. Escape still reaches the
         // controller (the row keeps its selection, the editor leaves inspector mode).
+        //
+        // Not when the Escape was somebody else's: an input method cancelling a conversion in one of
+        // the fields, or a control that already answered it. A picker opened from a field is a
+        // floating layer and takes its own Escape before this ever sees it.
         <div
             onKeyDown={event => {
+                if (event.defaultPrevented || isImeKeyEvent(event)) {
+                    return;
+                }
                 if (event.key === "Escape") {
                     event.stopPropagation();
                     props.onClose();
@@ -1141,11 +1155,14 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "video") {
-        // The clip is read only where a row can build one: `create`, and the `show` and `play` that
-        // name their own clip. Every other operation addresses a clip by name, so an asset picked
-        // there would be a setting the compiler never reads. Mute rides on the clip the row builds,
-        // so it is offered exactly where the row builds one.
-        const readsClip = payload.operation === "create" || payload.operation === "show" || payload.operation === "play";
+        // A play is the row that brings the clip on, so it is the one that reads a file - and it must
+        // have one: a play with no file plays nothing. Every other operation addresses a clip by name,
+        // so a file picked there would be a setting the compiler never reads.
+        const plays = payload.operation === "play";
+        // How the clip leaves, on the two rows that take it off the stage: a hide, and a play that
+        // clears its clip away at the end. Shown as what the row will do, defaults included.
+        const leaveFadeMs = videoLeaveFadeMs(payload);
+        const waits = videoPlayWaits(payload);
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1154,8 +1171,7 @@ function ActionPayloadFields(props: {
                     value={payload.operation}
                     onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "video" }>["operation"] })}
                 />
-                <TextField label={t("storyInspector.video.videoName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                {readsClip ? (
+                {plays ? (
                     <AssetField
                         label={t("storyInspector.video.videoAsset")}
                         assetType={AssetType.Video}
@@ -1164,15 +1180,59 @@ function ActionPayloadFields(props: {
                         allowAssetSets
                     />
                 ) : null}
-                {declaresStageObject(payload) ? (
-                    <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
-                ) : null}
+                <TextField label={t("storyInspector.video.videoName")} value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
                 {payload.operation === "seek" ? (
                     <SecondsField
                         label={t("storyInspector.video.seekTime")}
                         value={payload.timeMs}
                         onChange={timeMs => props.onChange({ ...payload, timeMs: timeMs === undefined ? undefined : Math.max(0, timeMs) })}
                     />
+                ) : null}
+                {plays ? (
+                    // Each default is the absent value, so a row set back to it says nothing on its line.
+                    <div>
+                        <ToggleField
+                            label={t("storyInspector.video.waitForEnd")}
+                            checked={waits}
+                            onChange={checked => props.onChange({ ...payload, waitForEnd: checked ? undefined : false })}
+                        />
+                        {waits ? <div className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.video.skipHint")}</div> : null}
+                    </div>
+                ) : null}
+                {plays ? (
+                    <ToggleField
+                        label={t("storyInspector.video.hideOnEnd")}
+                        checked={videoPlayHidesOnEnd(payload)}
+                        onChange={checked => props.onChange({ ...payload, hideOnEnd: checked ? undefined : false })}
+                    />
+                ) : null}
+                {leaveFadeMs !== null ? (
+                    <SelectField
+                        label={t("storyInspector.video.leave")}
+                        options={videoLeaveOptions(t)}
+                        value={leaveFadeMs > 0 ? "fade" : "none"}
+                        onChange={word => props.onChange({
+                            ...payload,
+                            // Each verb's own default is the absent value: a hide cuts unless it says
+                            // otherwise, a hiding play fades. The other word is written down.
+                            durationMs: payload.operation === "hide"
+                                ? (word === "none" ? undefined : DEFAULT_VIDEO_LEAVE_FADE_MS)
+                                : (word === "none" ? 0 : undefined),
+                        })}
+                    />
+                ) : null}
+                {leaveFadeMs !== null && leaveFadeMs > 0 ? (
+                    <SecondsField
+                        label={t("storyInspector.field.duration")}
+                        value={leaveFadeMs}
+                        onChange={durationMs => props.onChange({
+                            ...payload,
+                            durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs),
+                        })}
+                    />
+                ) : null}
+                {plays ? (
+                    <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 ) : null}
             </div>
         );

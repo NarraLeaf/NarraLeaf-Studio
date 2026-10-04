@@ -219,3 +219,51 @@ describe("compiling a .ui file", () => {
             .toContain("ui.unknown_slot");
     });
 });
+
+describe("where a widget's words come from", () => {
+    const keyed = (label: string) =>
+        `${MINIMAL}        Start: nl.button id=start @0,0 10x10\n            label = ${JSON.stringify(label)}\n            localizationKey = menu.start\n`;
+    const KEYS = { keysApply: true, keys: new Map([["menu.start", "Start"]]) };
+
+    function diagnostics(text: string, options: Parameters<typeof compileUiFile>[1]) {
+        return compileUiFile(parseUiFile(text), options).diagnostics;
+    }
+
+    it("takes a widget's key, own-unit switch and marks as props it has", () => {
+        const text = `${MINIMAL}        Title: nl.text id=t @0,0 10x10\n            text = "Hello"\n            localizable = true\n`
+            + "            localizationKey = menu.start\n            rich = []\n";
+        expect(codes(text)).not.toContain("ui.unknown_prop");
+        expect(codes(`${MINIMAL}        Art: nl.image id=a @0,0 10x10\n            localizationKey = menu.start\n`)).toContain("ui.unknown_prop");
+    });
+
+    it("refuses words written onto a keyed widget that the key's text would replace", () => {
+        const found = diagnostics(keyed("Begin the game"), { textKeys: KEYS }).filter(item => item.code === "ui.words_two_sources");
+        expect(found).toHaveLength(1);
+        expect(found[0].severity).toBe("error");
+        expect(found[0].message).toContain("menu.start");
+    });
+
+    it("passes the words a show prints: the key's own, or what the element already stores", () => {
+        expect(diagnostics(keyed("Start"), { textKeys: KEYS }).map(item => item.code)).not.toContain("ui.words_two_sources");
+        const existing = {
+            schemaVersion: 12,
+            id: "d",
+            name: "D",
+            surfaces: [],
+            elements: { start: { id: "start", type: "nl.button", parentId: null, childrenIds: [], layout: { x: 0, y: 0, width: 1, height: 1 }, props: { label: "Old words", localizationKey: "menu.start" } } },
+        } as unknown as NonNullable<Parameters<typeof compileUiFile>[1]>["existing"];
+        expect(diagnostics(keyed("Old words"), { textKeys: KEYS, existing }).map(item => item.code)).not.toContain("ui.words_two_sources");
+    });
+
+    it("only warns while the project has no source language, where the widget's own words still show", () => {
+        const found = diagnostics(keyed("Begin"), { textKeys: { ...KEYS, keysApply: false } })
+            .filter(item => item.code === "ui.words_two_sources");
+        expect(found.map(item => item.severity)).toEqual(["warning"]);
+    });
+
+    it("says nothing without the project's keys, or for a key the project does not have", () => {
+        expect(codes(keyed("Begin"))).not.toContain("ui.words_two_sources");
+        expect(diagnostics(keyed("Begin"), { textKeys: { keysApply: true, keys: new Map() } }).map(item => item.code))
+            .not.toContain("ui.words_two_sources");
+    });
+});

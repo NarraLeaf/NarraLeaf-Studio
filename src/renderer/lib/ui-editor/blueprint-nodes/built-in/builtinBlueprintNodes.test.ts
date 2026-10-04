@@ -232,6 +232,7 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_PAGE_REPLACE,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
@@ -400,6 +401,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
             hostApi: {
                 navigation: {
                     openSurface: async () => undefined,
+                    replaceSurface: async () => undefined,
                     getPageProps: () => ({}),
                     pageBack: async () => undefined,
                     clearPages: async () => undefined,
@@ -556,6 +558,10 @@ function createPageNavigationHostAdapter(
                 navigation: {
                     openSurface: async (surfaceId: string, props?: unknown) => {
                         openedSurfaceIds.push(surfaceId);
+                        openedPageProps.push(props);
+                    },
+                    replaceSurface: async (surfaceId: string, props?: unknown) => {
+                        openedSurfaceIds.push(`replace:${surfaceId}`);
                         openedPageProps.push(props);
                     },
                     getPageProps: () => pageProps,
@@ -779,6 +785,7 @@ function createGameSaveHostAdapter(options: {
             hostApi: {
                 navigation: {
                     openSurface: async () => undefined,
+                    replaceSurface: async () => undefined,
                     getPageProps: () => ({}),
                     pageBack: async () => undefined,
                     clearPages: async () => undefined,
@@ -1455,6 +1462,60 @@ describe("built-in blueprint nodes", () => {
         });
         expect(openedSurfaceIds).toEqual([""]);
         expect(openedPageProps).toEqual([undefined]);
+
+        // Replace Page asks for its own capability, with the page and its props; nothing runs after
+        // it, because the page asking is the one being replaced.
+        openedSurfaceIds.length = 0;
+        openedPageProps.length = 0;
+        const localsAfterReplace: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "replacePage",
+                entries: { main: { start: { nodeId: "replace", port: "in" } } },
+                nodes: {
+                    replace: {
+                        id: "replace",
+                        type: BLUEPRINT_NODE_TYPE_PAGE_REPLACE,
+                        params: { surfaceId: "title-page" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterReplace" },
+                    },
+                    props: {
+                        id: "props",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                        params: { value: { from: "splash" } },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "replace", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "props", port: "value" }, to: { nodeId: "replace", port: "props" } },
+                ],
+            },
+            entry: { start: { nodeId: "replace", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds, {}, [], [], openedPageProps),
+            blueprintLocals: localsAfterReplace,
+        });
+        expect(openedSurfaceIds).toEqual(["replace:title-page"]);
+        expect(openedPageProps).toEqual([{ from: "splash" }]);
+        expect(localsAfterReplace).not.toHaveProperty("afterReplace");
+
+        // With no page it refuses on the node. Go Page reads no page as "empty the stack"; replacing
+        // the page on top with nothing has no meaning of its own.
+        openedSurfaceIds.length = 0;
+        await expect(executeGraph({
+            graph: {
+                id: "replaceNothing",
+                entries: { main: { start: { nodeId: "replace", port: "in" } } },
+                nodes: { replace: { id: "replace", type: BLUEPRINT_NODE_TYPE_PAGE_REPLACE, params: {} } },
+                edges: [],
+            },
+            entry: { start: { nodeId: "replace", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds, {}, [], [], openedPageProps),
+        })).rejects.toThrow(/Replace Page/);
+        expect(openedSurfaceIds).toEqual([]);
 
         const quitApplicationCalls: boolean[] = [];
         const localsAfterQuit: Record<string, unknown> = {};

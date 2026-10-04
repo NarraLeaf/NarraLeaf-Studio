@@ -22,7 +22,8 @@ import {
     type StoryRowSpeakerKey,
     type StoryRowTallies,
 } from "./storyRowFilter";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 const PANEL_WIDTH = 236;
 /** Roughly the panel's natural height with a small cast — what it is pushed up by. */
@@ -179,22 +180,23 @@ export function StoryRowFilterMenu(props: {
     onChange: (filter: StoryRowFilter) => void;
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const panelRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
+    /** The opening button, as the floating layer names its owners. Read when asked, never stale. */
+    const anchorElRef = useRef<HTMLElement | null>(props.anchorEl);
+    anchorElRef.current = props.anchorEl;
+    // A menu of switches, walked by the keyboard like one: it opens with the focus on its first
+    // ticked row (or its first row), the arrows walk every row including the preset and Clear at the
+    // top, Space and Enter flip the one under the focus and leave the menu open, and Escape closes it
+    // alone and puts the focus back on the filter button.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: [anchorElRef],
+        itemSelector: "button",
+    });
 
     // Light dismiss, matching the editor's other popovers: any pointerdown outside closes, and the
     // event still reaches whatever was clicked so the toolbar button's own toggle stays a toggle.
@@ -206,9 +208,9 @@ export function StoryRowFilterMenu(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const toggleFacet = (facet: StoryRowFacetId) => {
         const facets = new Set(props.filter.facets);
@@ -250,11 +252,12 @@ export function StoryRowFilterMenu(props: {
     const active = isStoryRowFilterActive(props.filter);
     // Right-aligned to the button: it is the last-but-two control on a right-hand toolbar, so opening
     // leftwards is the only placement that does not hang the panel off the edge of a narrow editor.
-    const left = Math.max(VIEWPORT_MARGIN, Math.min(props.anchor.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN));
-    const top = Math.min(props.anchor.bottom + 6, Math.max(VIEWPORT_MARGIN, window.innerHeight - PANEL_MAX_HEIGHT));
+    const view = doc.defaultView ?? window;
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(props.anchor.right - PANEL_WIDTH, view.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN));
+    const top = Math.min(props.anchor.bottom + 6, Math.max(VIEWPORT_MARGIN, view.innerHeight - PANEL_MAX_HEIGHT));
     // In a window too short to hold the whole list the panel scrolls rather than running off the
     // bottom — thirteen facets plus a cast is more than a half-height editor has room for.
-    const maxHeight = Math.max(120, window.innerHeight - top - VIEWPORT_MARGIN);
+    const maxHeight = Math.max(120, view.innerHeight - top - VIEWPORT_MARGIN);
 
     const sections: { key: string; label: string; facets: readonly StoryRowFacetId[] }[] = [
         { key: "script", label: t("story.view.filter.sectionScript"), facets: STORY_ROW_NARRATIVE_FACETS },
@@ -269,6 +272,7 @@ export function StoryRowFilterMenu(props: {
             className="fixed z-[70] flex flex-col gap-1 overflow-y-auto rounded-lg border border-edge bg-surface-raised p-1.5 shadow-2xl"
             style={{ top, left, width: PANEL_WIDTH, maxHeight }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             {/* The preset, then the way out. Clear is disabled rather than hidden while there is
                 nothing to clear: a control that appears the moment it becomes useful is one the author
@@ -331,6 +335,6 @@ export function StoryRowFilterMenu(props: {
                 </>
             ) : null}
         </div>,
-        globalThis.document.body,
+        doc.body,
     );
 }

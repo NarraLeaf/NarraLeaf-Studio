@@ -177,7 +177,7 @@ Game 节点组默认具有：
 - `blueprint.game.isNvlMode` - 读取当前是否处于 NVL 模式；pure 节点，可用于 Blueprint Value
 - `blueprint.game.choose` - `Select Choice`，按原始选项序号选择当前菜单的选项；默认 Choice 模板在 Choice List 蓝图中预接 `Item Click → Select Choice`；hidden/disabled 选项拒绝，无活动菜单时执行失败
 - `blueprint.game.isInGame` - 读取当前是否处于 NarraLeaf 游戏状态；pure 节点，可用于 Blueprint Value
-- `blueprint.game.isGameOverlay` - 读取当前 Page / Game UI Surface 是否以游戏上方 UI 叠层身份运行；pure 节点，可用于 Blueprint Value
+- `blueprint.game.isGameOverlay` - 读取当前 Page / Game UI Surface 是否以游戏上方 UI 叠层身份运行；在全局蓝图中，游戏状态下读取舞台上方是否画着 Page 或模态叠加页面；pure 节点，可用于 Blueprint Value
 - `blueprint.game.quit` - 退出当前 NarraLeaf 游戏状态并打开指定返回 Page（尾节点，无执行出口）
 - `blueprint.game.next` - 触发当前 NarraLeaf live game 的 virtual click 路径；默认 Dialog 模板在 Dialog Content 蓝图中用 Content 点击、绑定 Interaction Layer / Panel / 子控件的 Element Click 和 Space `keyUp` 调用
 - `blueprint.game.skip` - 调用 NarraLeaf `LiveGame.skipDialog()` 跳过当前 dialog

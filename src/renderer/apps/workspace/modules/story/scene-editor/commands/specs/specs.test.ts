@@ -7,6 +7,7 @@ import { resolveCommandLine, type StoryCommandContext } from "../../storyCommand
 import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
+import { i18nStore } from "@/lib/i18n";
 
 /**
  * The line → block contract, pinned end-to-end: parse → resolve → spec.build. This is the suite the
@@ -58,6 +59,8 @@ const CONTEXT: StoryCommandContext = {
         },
     },
     stageObjects: { image: ["hero"], text: ["title"], layer: ["overlay"], video: ["clip"], audio: ["music"], vfx: ["petals"] },
+    // The clip an earlier `/play` defined: `clip`, playing the file `intro`.
+    videoClips: { clip: { assetId: "v1" } },
 };
 
 let nextId = 0;
@@ -253,20 +256,18 @@ describe("generic verbs", () => {
         expect(ms("/hide hero out=fade d=1.5")).toBeUndefined();
     });
 
-    it("/show reaches text, video and layer targets too", () => {
+    it("/show reaches text and layer targets too, and refuses a clip, which only /play brings on", () => {
         expect(build("/show title")).toMatchObject({ payload: { action: "text", operation: "show", objectName: "title" } });
-        expect(build("/show clip")).toMatchObject({ payload: { action: "video", operation: "show", objectName: "clip" } });
         expect(build("/show overlay")).toMatchObject({ payload: { action: "displayable", operation: "show", target: { kind: "layer", name: "overlay" } } });
+        expect(issuesOf("/show clip")).toEqual(["unsupportedTarget"]);
     });
 
-    it("/show names a picture or a clip out of the library, creating what it reveals", () => {
+    it("/show names a picture out of the library, creating what it reveals, and no clip", () => {
         // The name the element takes is the file's own, which is what every later row addresses.
         expect(build("/show night")).toMatchObject({
             payload: { action: "image", operation: "show", objectName: "night", assetId: "i2" },
         });
-        expect(build("/show intro")).toMatchObject({
-            payload: { action: "video", operation: "show", objectName: "intro", assetId: "v1" },
-        });
+        expect(issuesOf("/show intro")).toEqual(["unknownTarget"]);
         // Placed and faded exactly as `/image` places and fades one: the placement wins, because a
         // transform holds one preset and `pos=` is the more specific instruction.
         expect(build("/show night pos=left")).toMatchObject({
@@ -287,7 +288,6 @@ describe("generic verbs", () => {
         expect(build("/show hero")).toMatchObject({
             payload: { action: "image", operation: "show", objectName: "hero" },
         });
-        expect(build("/show clip")).toMatchObject({ payload: { action: "video", operation: "show", objectName: "clip" } });
     });
 
     it("refuses name= on a subject that is already on stage", () => {
@@ -322,10 +322,23 @@ describe("generic verbs", () => {
         expect(issuesOf("/swap hero nosuchimage")).toEqual(["unknownAsset"]);
     });
 
-    it("/play plays a video by name", () => {
-        expect(build("/play clip")).toMatchObject({ payload: { action: "video", operation: "play", objectName: "clip" } });
-        // A clip on stage is addressed, never rebuilt: no asset rides along.
-        expect((build("/play clip").payload as { assetId?: string }).assetId).toBeUndefined();
+    it("/play plays a clip an earlier play defined again, carrying that clip's file", () => {
+        // Every play defines its clip, so the row holds the file and no reference to another row.
+        const again = build("/play clip");
+        expect(again).toMatchObject({ payload: { action: "video", operation: "play", objectName: "clip", assetId: "v1" } });
+        expect(again.payload).not.toHaveProperty("target");
+    });
+
+    it("/video and /vid are other names for /play", () => {
+        for (const line of ["/video intro", "/vid intro"]) {
+            expect(build(line)).toMatchObject({ payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1" } });
+        }
+    });
+
+    it("refuses a /play of a name no play gave a file", () => {
+        const staged: StoryCommandContext = { ...CONTEXT, stageObjects: { ...CONTEXT.stageObjects, video: ["clip", "ghost"] } };
+        const line = parseCommandLine("/play ghost");
+        expect(resolveCommandLine(line, staged).issues.map(issue => issue.code)).toEqual(["unknownAsset"]);
     });
 
     it("/play names a clip out of the library, building the clip it runs", () => {
@@ -341,16 +354,53 @@ describe("generic verbs", () => {
 
     it("/play reads the library first when the line names the clip it creates", () => {
         // Once a `/play intro name=intro` row exists, `intro` answers on stage too. The key is what
-        // keeps that row reading back as the one that builds the clip.
-        const staged: StoryCommandContext = { ...CONTEXT, stageObjects: { ...CONTEXT.stageObjects, video: ["clip", "intro"] } };
+        // keeps that row reading back as the one that builds the clip; without it the line plays the
+        // clip on stage again, which carries the same file.
+        const staged: StoryCommandContext = {
+            ...CONTEXT,
+            stageObjects: { ...CONTEXT.stageObjects, video: ["clip", "intro"] },
+            videoClips: { ...CONTEXT.videoClips, intro: { assetId: "v1", muted: true } },
+        };
         expect(buildIn("/play intro name=intro", staged)).toMatchObject({
             payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1" },
         });
-        expect((buildIn("/play intro", staged).payload as { assetId?: string }).assetId).toBeUndefined();
+        expect(buildIn("/play intro", staged)).toMatchObject({
+            payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1", muted: true },
+        });
     });
 
     it("refuses name= on a /play whose clip is already on stage", () => {
         expect(issuesOf("/play clip name=cutscene")).toEqual(["unsupportedParam"]);
+    });
+
+    it("/play says whether the story waits, whether the clip leaves at the end, and how", () => {
+        const payloadOf = (source: string) => build(source).payload as { hideOnEnd?: boolean; durationMs?: number; waitForEnd?: boolean; muted?: boolean };
+        // Unstated, every play waits and clears its clip away.
+        expect(payloadOf("/play intro")).not.toHaveProperty("hideOnEnd");
+        expect(payloadOf("/play intro")).not.toHaveProperty("waitForEnd");
+        expect(payloadOf("/play clip")).not.toHaveProperty("hideOnEnd");
+        expect(payloadOf("/play intro wait=false")).toMatchObject({ waitForEnd: false });
+        expect(payloadOf("/play intro hide=false")).toMatchObject({ hideOnEnd: false });
+        expect(payloadOf("/play intro muted")).toMatchObject({ muted: true });
+        // How it leaves is `/hide`'s own pair. `out=fade` alone is the default fade, written as nothing.
+        expect(payloadOf("/play intro out=fade")).toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+        expect(payloadOf("/play intro d=1.5")).toMatchObject({ durationMs: 1500 });
+        expect(payloadOf("/play intro out=none")).toMatchObject({ durationMs: 0 });
+        expect(payloadOf("/play clip out=fade d=0.5")).toEqual(expect.not.objectContaining({ hideOnEnd: expect.anything() }));
+        // How a clip leaves means nothing on a row that keeps it.
+        expect(issuesOf("/play intro hide=false out=fade")).toEqual(["conflictingParams"]);
+        // A clip fades or cuts; nothing else is a word here.
+        expect(parseCommandLine("/play intro out=slide-left")).toMatchObject({ issues: [{ code: "badValue" }] });
+    });
+
+    it("/hide on a clip takes a fade, written down because a hide otherwise cuts", () => {
+        const payloadOf = (source: string) => build(source).payload as { action: string; durationMs?: number };
+        expect(payloadOf("/hide clip")).toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+        expect(payloadOf("/hide clip out=fade")).toMatchObject({ action: "video", durationMs: 250 });
+        expect(payloadOf("/hide clip out=fade d=0.8")).toMatchObject({ durationMs: 800 });
+        expect(payloadOf("/hide clip d=0.8")).toMatchObject({ durationMs: 800 });
+        expect(payloadOf("/hide clip out=none")).toMatchObject({ durationMs: 0 });
+        expect(issuesOf("/hide clip out=slide-left")).toEqual(["unsupportedOption"]);
     });
 });
 
@@ -535,9 +585,9 @@ describe("media objects", () => {
         });
     });
 
-    it("/video reads the bare muted flag", () => {
+    it("/video reads the bare muted flag, as the /play it is another name for", () => {
         expect(build("/video intro muted")).toMatchObject({
-            payload: { action: "video", operation: "create", objectName: "intro", assetId: "v1", muted: true },
+            payload: { action: "video", operation: "play", objectName: "intro", assetId: "v1", muted: true },
         });
     });
 
@@ -1083,6 +1133,22 @@ describe("logic and effects", () => {
         expect(build("/transform hero motion")).toMatchObject({
             payload: { action: "displayable", transform: { mode: "animation" } },
         });
+    });
+
+    it("/transform takes 运镜 for the Story Motion flag in Chinese, as well as the slot's current word 动效", () => {
+        // 运镜 is what a Chinese author typed for this flag before the slot was named after the Story
+        // Motion it binds. Lines typed that way have to keep building the same row, in every locale.
+        const canonicalCamera = build("/transform camera motion").payload;
+        const canonicalHero = build("/transform hero motion").payload;
+        i18nStore.setLocale("zh");
+        try {
+            expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
+            expect(build("/transform camera 动效").payload).toEqual(canonicalCamera);
+            expect(build("/transform hero 运镜").payload).toEqual(canonicalHero);
+        } finally {
+            i18nStore.setLocale("en");
+        }
+        expect(build("/transform camera 运镜").payload).toEqual(canonicalCamera);
     });
 
     it("/vfx declares a looping overlay and names it off the clip", () => {

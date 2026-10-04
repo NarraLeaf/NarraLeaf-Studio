@@ -250,6 +250,22 @@ export function blueprintElementPreviewsSignature(
         .join("\x1e");
 }
 
+/**
+ * {@link blueprintDynamicSelectOptionsByNodeSignature} for the options every node shares.
+ *
+ * A node's dropdowns are filled from these when the canvas builds it, so the canvas has to rebuild
+ * when they change - and they change most often just after a tab opens: the stories load after it,
+ * and until they have, a Start Game's scene list is empty and the scene it names reads as unpicked.
+ */
+export function blueprintDynamicSelectOptionsSignature(
+    options: Record<string, BlueprintInspectorParamSelectOption[]> | undefined,
+): string {
+    return Object.entries(options ?? {})
+        .map(([sourceId, list]) => `${sourceId}:${list.map(option => `${option.value}:${option.label}`).join("\x1f")}`)
+        .sort()
+        .join("\x1e");
+}
+
 export function blueprintDynamicSelectOptionsByNodeSignature(
     optionsByNodeId: BlueprintDynamicSelectOptionsByNodeId | undefined,
 ): string {

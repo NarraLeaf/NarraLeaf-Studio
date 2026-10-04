@@ -11,6 +11,7 @@ import {
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
     duplicateStoryEndingNames,
+    finishedClipControls,
     isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneIdsInDocumentOrder,
@@ -1154,10 +1155,9 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
          * mode of documents written before the split, where `create` DID reveal - every one of those
          * rows now declares and stops there, and nothing else in the project says so.
          *
-         * Two spans, because the objects have two lifetimes. An image, a text or a video belongs to
-         * its scene and can only be shown inside it. An ambience overlay is game-level - rain started
-         * in one scene is still falling in the next - so its reveal may be in any scene, and reading
-         * one scene at a time would report every overlay declared in a prologue and shown later.
+         * One span: every stage object belongs to the scene that declares it - an ambience overlay
+         * included, since rain leaves the stage with the scene that started it - so it can only be
+         * shown inside that scene.
          */
         id: "story/declared-never-shown",
         category: "story",
@@ -1166,23 +1166,10 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         run(ctx) {
             const findings: LintFinding[] = [];
             for (const entry of ctx.stories) {
-                const scenes = listScenesInDocumentOrder(entry.document);
-                const shownByScene = new Map<string, ReadonlySet<string>>();
-                const shownAnywhere = new Set<string>();
-                for (const scene of scenes) {
+                for (const scene of listScenesInDocumentOrder(entry.document)) {
                     const shown = shownStageObjectKeys(scene);
-                    shownByScene.set(scene.id, shown);
-                    for (const key of shown) {
-                        shownAnywhere.add(key);
-                    }
-                }
-                for (const scene of scenes) {
                     for (const declaration of revealableStageObjectDeclarations(scene)) {
-                        const key = `${declaration.kind}:${declaration.name}`;
-                        const shown = declaration.kind === "vfx"
-                            ? shownAnywhere.has(key)
-                            : shownByScene.get(scene.id)?.has(key) === true;
-                        if (shown) {
+                        if (shown.has(`${declaration.kind}:${declaration.name}`)) {
                             continue;
                         }
                         findings.push({
@@ -1226,6 +1213,38 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageParams: { object: duplicate.label },
                         location: storyLocation(entry, scene, duplicate.blockId),
                         target: blockTarget(entry, scene, duplicate.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A `/pause`, `/resume`, `/seek` or `/stop` that names a clip which has always finished by the
+         * time the row runs: the play defining the clip waits for its end, earlier in the same run of
+         * rows, and nothing between them plays it again. The row then addresses a clip that has left
+         * the stage, so it does nothing - and the author almost always meant the clip to keep playing
+         * under the rows in between, which is what a play that does not wait is for.
+         *
+         * `warning`: the row is harmless, only pointless, and a draft may hold one on its way to the
+         * scene the author means. Which rows count is decided in `finishedClipControls`, and it reports
+         * only what is certain - nothing inside a parallel group or across branches.
+         */
+        id: "story/video-control-after-end",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyVideoControlAfterEnd",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const reference of finishedClipControls(scene)) {
+                    findings.push({
+                        ruleId: "story/video-control-after-end",
+                        messageKey: "lint.rule.storyVideoControlAfterEnd.message",
+                        messageParams: { object: reference.label },
+                        location: storyLocation(entry, scene, reference.blockId),
+                        target: blockTarget(entry, scene, reference.blockId),
                     });
                 }
             }

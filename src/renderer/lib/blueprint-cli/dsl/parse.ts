@@ -195,7 +195,7 @@ function blockKeyword(text: string): string {
 }
 
 /** Cut a trailing `#` comment, leaving `#` characters that sit inside a quoted string alone. */
-function stripComment(line: string): string {
+export function stripComment(line: string): string {
     let quote: string | null = null;
     for (let i = 0; i < line.length; i += 1) {
         const ch = line[i];

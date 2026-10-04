@@ -30,7 +30,7 @@ running the command twice. One variant, one platform, one format, one exit code.
 | `--build-variant` | A build variant's name | `main`, the release variant |
 | `--build-target` | `windows`, `macos`, `linux`, `web`, `android`, `ios` | the host's own platform |
 | `--build-format` | One format of that platform | the platform's first (`zip` for the desktops and the web, `apk`, `ipa`) |
-| `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `x64` otherwise |
+| `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `universal` for macOS built elsewhere, `x64` otherwise |
 | `--build-output` | Where the artifacts land; relative to the working directory | `<project>/dist` |
 | `--build-report` | Where to write the JSON report | no report file |
 | `--build-allow-unsigned` | — | the run stops rather than shipping unsigned |
@@ -260,8 +260,22 @@ Two more things make a headless host work at all:
 
 ## What a host can build
 
-macOS builds require a Mac; Linux builds require a Unix host. `--build-target` refuses anything else
-before opening the project, with the same sentence the Build dialog uses — it is the same fact.
+Every host builds every desktop platform, but not every format of it:
+
+| Host | Windows | macOS | Linux |
+|---|---|---|---|
+| Windows | `zip`, `nsis`, `dir` | `zip` | `zip`, `appimage` |
+| macOS | `zip`, `nsis`, `dir` | `zip`, `dmg`, `dir` | `zip`, `appimage`, `dir` |
+| Linux | `zip`, `nsis`, `dir` | `zip` | `zip`, `appimage`, `dir` |
+
+Off its own platform a macOS or Linux package is assembled by Studio and written straight into its
+package file, because a Windows folder cannot hold the symbolic links a macOS app is made of or the
+permission bits a Linux executable needs; an unpacked folder would lose them, and a disk image needs
+macOS itself. A macOS
+app built that way is signed ad hoc, as an unsigned build made on a Mac is, and cannot carry a
+certificate signature: signing a macOS app with a certificate still requires a Mac. `--build-format`
+refuses a format the host cannot produce before opening the project, with the same sentence the
+pipeline uses.
 
 ## Worked example
 

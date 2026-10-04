@@ -10,11 +10,12 @@
  * author is watching without going back to the editor window.
  */
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { Select } from "@/lib/components/elements/Select";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { BlueprintBreakpointDialog } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointDialog";
@@ -30,6 +31,20 @@ export function BlueprintDebuggerOverlay(): ReactNode {
     const ctx = useBlueprintDebuggerContext();
     const paused = ctx?.snapshot.status === "paused";
     const open = Boolean(ctx && (paused || ctx.graphBrowserOpen));
+    const panelRef = useRef<HTMLDivElement | null>(null);
+
+    // A layer that holds the window while it is up: it covers the stage and the drawer, so Tab stays
+    // inside it and focus starts on it rather than on a game nobody can see. Escape pressed in it
+    // closes it when the close button would - while the game is only being browsed - and while the
+    // game is stopped the key is spent here, so it neither reaches the stopped game nor closes the
+    // drawer underneath.
+    useFloatingLayer({
+        open,
+        onClose: () => ctx?.closeGraphBrowser(),
+        panelRef,
+        scope: "trap",
+        closeOnEscape: !paused,
+    });
 
     // Landing on a stop with nothing picked yet: the stopped graph is what the overlay shows, and
     // closing it afterwards should not put the author back on a blank picker.
@@ -90,7 +105,7 @@ export function BlueprintDebuggerOverlay(): ReactNode {
     const editingBreakpoint = editing ? ctx.breakpointsByKey.get(blueprintBreakpointKey(editing)) : undefined;
 
     return (
-        <div className="pointer-events-auto absolute inset-0 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
+        <div ref={panelRef} className="pointer-events-auto absolute inset-0 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
             <div className="flex shrink-0 items-center gap-2 border-b border-edge px-2 py-1.5">
                 <span className="text-xs font-medium text-fg">{t("devMode.debugger.title")}</span>
                 <BlueprintDebuggerToolbar session={ctx.session} snapshot={ctx.snapshot} />

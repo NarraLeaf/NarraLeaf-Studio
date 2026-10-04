@@ -2,8 +2,8 @@
  * The text format against the whole interface the shipped skeleton holds.
  *
  * A format that can only express what its own examples use is a format that will lose someone's page
- * the first time it meets a real one. The skeleton is eleven surfaces, eleven component definitions
- * and nearly three hundred elements of real authored work - appearance variants, list item templates, component
+ * the first time it meets a real one. The skeleton is twelve surfaces, three component definitions
+ * and some two hundred and fifty elements of real authored work - appearance variants, list item templates, component
  * instances with params, value bindings of both kinds, a stage surface per player slot - so printing
  * all of it and compiling the result back is the only claim worth making about round-tripping: not
  * that it works, but that it works on everything that exists.

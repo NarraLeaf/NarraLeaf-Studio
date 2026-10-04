@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useHostWindow } from "@/lib/components/layout";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import {
     createContext,
     useCallback,
@@ -659,21 +659,27 @@ function JsonEditorPortal({
         onClose();
     }, [commitRawDraft, onClose]);
 
+    // A popover that is mounted only while it is open. Focus moves onto the panel when it opens (Tab
+    // goes on into its controls), Escape closes it - only it: a type menu open inside it closes
+    // first, and the node and inspector it was portalled out of never hear the key - Tab out of it
+    // closes it, and closing gives focus back to its edit button. Every way out commits a raw draft
+    // first, and a draft that does not parse keeps the editor open with its error showing.
+    useFloatingLayer({
+        open: true,
+        onClose: closeFromExternalInteraction,
+        panelRef,
+        ownerRefs: [triggerRef],
+        initialFocus: panelRef,
+    });
+
     useEffect(() => {
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closeFromExternalInteraction();
-            }
-        };
         const onPointerDown = (event: PointerEvent) => {
             if (!isJsonEditorTarget(event.target, panelRef.current, triggerRef.current, scopeId)) {
                 closeFromExternalInteraction();
             }
         };
-        hostWindow.addEventListener("keydown", onKeyDown);
         hostWindow.addEventListener("pointerdown", onPointerDown);
         return () => {
-            hostWindow.removeEventListener("keydown", onKeyDown);
             hostWindow.removeEventListener("pointerdown", onPointerDown);
         };
     }, [closeFromExternalInteraction, scopeId, triggerRef]);

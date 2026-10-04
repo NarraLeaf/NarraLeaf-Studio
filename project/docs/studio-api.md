@@ -336,14 +336,18 @@ type StoryPluginActionRegistration = {
   detail?: string;
   group?: string;
   createBlock: (input: { generateId: () => string; initialText?: string }) => StoryBlock;
+  describe?: (params: Record<string, unknown>) => string | null | undefined;  // 行的显示文字，缺省为 label
 };
 ```
 
 语义与边界：
 
-- `createBlock` 返回**标准故事块**（`StoryBlock`），插入后与手工创建的块无异——文档不因此依赖插件，块的编译与执行走既有链路。
+- `createBlock` 可以返回**标准故事块**（`StoryBlock`），插入后与手工创建的块无异——文档不因此依赖插件，块的编译与执行走既有链路。
+- 也可以返回插件自己的行 `{ kind: "action", payload: { action: "plugin", pluginId, actionId, params } }`：游戏里由 runtime entry 在
+  `app.game.storyActions` 用同一个 id 注册的 `run` 执行，故事等它结束（见 [runtime-api.md](./runtime-api.md#gamestoryactions)）。这种行让工程硬依赖插件。
+  `initialText` 是作者在命令后面打的字，是这种行拿参数的唯一入口；`describe(params)` 让行在场景编辑器里显示参数（抛错或返回空时退回 `label`）。
 - 宿主对返回值做防御性归一（顶层 `parentId`/`childrenIds` 重置），并把 `createBlock` 抛错转为 workspace 通知。
-- 需要游戏侧插件逻辑的动作应生成 Blueprint 块并在其中使用插件蓝图节点（运行时模式见 [runtime-api.md](./runtime-api.md)）。
+- 需要组合多个游戏侧步骤时，也可以生成 Blueprint 块并在其中使用插件蓝图节点；蓝图行同样等整张图跑完再继续（运行时模式见 [runtime-api.md](./runtime-api.md)）。
 - 注册由宿主追踪，插件卸载时自动回收。
 
 ## app.privileged

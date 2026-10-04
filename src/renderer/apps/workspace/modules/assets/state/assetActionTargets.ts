@@ -13,6 +13,14 @@ export interface ContextMenuTargetState {
      * row that belongs to the place rather than to the file — the sub-set that hangs at this value.
      */
     assetSetValue?: { setId: string; value: string };
+    /**
+     * The folder the menu was opened in, when it was opened on empty space inside one rather than on
+     * a row (`item` is null). What New Group, Import and Paste make or move things into.
+     *
+     * Absent on a section header, which is the section's root. The bottom tray's browser is the one
+     * view that shows the inside of a folder with room around its rows to right-click.
+     */
+    placeGroupId?: string;
 }
 
 /** One row an action will act on, carrying enough to call the group or asset service method. */

@@ -12,7 +12,7 @@ import { translate } from "@/lib/i18n";
 const ROOT = "nl.root";
 
 export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): ContextMenuDef {
-    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canAddToGroup, canUngroup } = input;
+    const { menuSelection, hasClipboard, widgetModules, documentService, actions, canGroup, canUngroup } = input;
     const items: ContextMenuDef = [];
 
     if (hasClipboard) {
@@ -173,12 +173,12 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
 
     items.push(
         {
-            id: "add-to-group",
-            label: translate("uiEditor.contextMenu.addToGroup"),
-            disabled: !canAddToGroup,
+            id: "group",
+            label: translate("uiEditor.contextMenu.group"),
+            disabled: !canGroup,
             onClick: () => {
                 actions.hideMenu();
-                actions.addSelectionToLeaderGroup();
+                actions.groupSelection();
             },
         },
         {

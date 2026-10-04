@@ -28,7 +28,7 @@ import { entrySurfacePointerMisses, resolveEntrySurface } from "@shared/types/ui
 import { applyCompiled, findEntryTarget } from "./apply";
 import { compileUiFile, type UiCompileResult } from "./dsl/compile";
 import { parseUiFile, UiParseError } from "./dsl/parse";
-import { collectTree, elementPath, type BlueprintIndex } from "./project";
+import { collectTree, elementPath, type BlueprintIndex, type TextKeys } from "./project";
 
 export { formatDiagnostics } from "../blueprint-cli/check";
 
@@ -45,12 +45,14 @@ export type UiCheckResult = {
 export type UiCheckOptions = {
     existing?: UIDocument | null;
     blueprints?: BlueprintIndex | null;
+    /** The project's translation keys, which decide whether a keyed widget's own words are shown. */
+    textKeys?: TextKeys | null;
 };
 
 export function checkUiSource(source: string, options: UiCheckOptions = {}): UiCheckResult {
     let compiled: UiCompileResult;
     try {
-        compiled = compileUiFile(parseUiFile(source), { existing: options.existing ?? null });
+        compiled = compileUiFile(parseUiFile(source), { existing: options.existing ?? null, textKeys: options.textKeys ?? null });
     } catch (error) {
         if (error instanceof UiParseError) {
             return {

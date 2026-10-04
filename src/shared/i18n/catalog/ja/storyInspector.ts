@@ -400,8 +400,7 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        // 「再生」はクリップが終わるまでストーリーを待たせる。「再開」は待たせない。
-        play: "再生（終わるまで待つ）",
+        play: "再生",
         pause: "一時停止",
         resume: "再開",
         stop: "停止",
@@ -496,6 +495,10 @@ export const storyInspector = {
         videoName: "動画の名前",
         videoAsset: "動画アセット",
         seekTime: "この位置へ",
+        hideOnEnd: "再生の終了後に隠す",
+        leave: "退場",
+        waitForEnd: "再生の終了を待つ",
+        skipHint: "プレイヤーはクリックかスキップキーで動画を途中で終えられる",
     },
 
     nvl: {
@@ -575,8 +578,8 @@ export const storyInspector = {
         conditionContainer: "条件の入れ物。条件の枝を子として足す",
         control: "制御",
         sequence: "順に実行",
-        parallel: "すべて並列",
-        race: "どれか 1 つ",
+        parallel: "並行",
+        race: "先着",
         repeat: "繰り返し",
         mode: {
             do: "実行",

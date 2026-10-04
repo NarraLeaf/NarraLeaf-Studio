@@ -614,6 +614,26 @@ describe("validatePluginManifest — capability/permission alignment", () => {
         });
     });
 
+    it("accepts both spellings of the sidecar transport and refuses anything else", () => {
+        const withTransport = (transport: string) => {
+            const manifest = fullManifest();
+            const sidecars: Array<Record<string, unknown>> = manifest.contributes.sidecars;
+            sidecars[0] = { ...sidecars[0], transport };
+            return validatePluginManifest(manifest);
+        };
+
+        for (const transport of ["jsonl", "stdio-jsonl"]) {
+            const result = withTransport(transport);
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.manifest.contributes.sidecars[0].transport).toBe(transport);
+        }
+        expect(withTransport("stdio")).toMatchObject({
+            ok: false,
+            error: expect.stringContaining("transport must be"),
+        });
+    });
+
     it("rejects an unknown runtime capability rather than ignoring the typo", () => {
         const result = validatePluginManifest(fullManifest({
             contributes: { runtimeCapabilities: ["stroe"] },
