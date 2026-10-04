@@ -28,7 +28,7 @@ import { signArtifactsWithGpg } from "./gpgSign";
 import { runMobileRepack } from "./mobile/runMobileRepack";
 import { packageWebSite } from "./packageWebSite";
 import type { GameBuildWorkerConfig, GameBuildWorkerFuses, GameBuildWorkerTarget } from "./protocol";
-import { ensureWinCodeSignCache } from "./winCodeSignCache";
+import { ensureWinCodeSignCache, withBinariesMirrorEnv } from "./winCodeSignCache";
 
 /**
  * The electron-builder invocation behind a production game build. Pure with
@@ -317,14 +317,16 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
         await ensureWinCodeSignCache(log, config.electronBuilderBinariesMirror);
     }
     const artifacts: string[] = [];
-    // Both wrappers below set process-wide environment, which electron-builder
-    // reads at sign time. Set around the whole loop rather than per target, so a
-    // mixed selection cannot flip either mid-build.
+    // The wrappers below set process-wide environment, which electron-builder
+    // reads at download and sign time. Set around the whole loop rather than per
+    // target, so a mixed selection cannot flip any of them mid-build.
     //
     // SIGNTOOL_PATH is the only way to tell electron-builder which signtool to
     // use; unset when the host has no Windows SDK, in which case it downloads
     // its own bundle. The Apple variables are likewise @electron/notarize's only
-    // interface - see withNotarizationEnv.
+    // interface - see withNotarizationEnv - and the binaries mirror variables are
+    // the only way to move electron-builder's own toolset downloads (see
+    // withBinariesMirrorEnv).
     const host = currentGameBuildPlatform();
     // electron-builder for one target, also run by Studio's own packager for the parts it can still
     // do on this host (see packWithoutPlatformTools).
@@ -347,7 +349,8 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
         });
         return produced.map(artifact => path.resolve(artifact));
     };
-    await withNotarizationEnv(notarizationForTargets(config.targets), () =>
+    await withBinariesMirrorEnv(config.electronBuilderBinariesMirror, () =>
+        withNotarizationEnv(notarizationForTargets(config.targets), () =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
@@ -369,7 +372,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 }
                 artifacts.push(...await runBuilder(config, target));
             }
-        }));
+        })));
     return artifacts;
 }
 

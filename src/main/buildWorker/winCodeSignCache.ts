@@ -72,6 +72,54 @@ export function binariesMirror(configured?: string): string {
     return mirror.endsWith("/") ? mirror : `${mirror}/`;
 }
 
+/**
+ * Every variable electron-builder reads its binaries mirror from, in the order it reads them; the
+ * first one set wins (`getBinariesMirrorUrl` in app-builder-lib).
+ */
+export const BINARIES_MIRROR_ENV_VARS = [
+    "NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR",
+    "npm_config_electron_builder_binaries_mirror",
+    "npm_package_config_electron_builder_binaries_mirror",
+    "ELECTRON_BUILDER_BINARIES_MIRROR",
+] as const;
+
+/**
+ * Run `body` with electron-builder's own downloads pointed at the author's binaries mirror.
+ *
+ * electron-builder takes the mirror from the environment and nothing else - not from its
+ * configuration, not from an argument - so the setting has to become process environment for
+ * the length of the packaging. Without this the setting reached only the files Studio fetches
+ * itself, and the 7-Zip and NSIS archives electron-builder fetches on every Windows build went to
+ * github.com whatever the author had chosen.
+ *
+ * All four variables are set, not just the last: they are read first-set-wins, so a stale
+ * `NPM_CONFIG_...` on the host would otherwise outrank the setting, against the precedence
+ * {@link binariesMirror} states. An empty setting changes nothing, which leaves a host's own
+ * variables in charge exactly as before.
+ */
+export async function withBinariesMirrorEnv<T>(configured: string | undefined, body: () => Promise<T>): Promise<T> {
+    const mirror = configured?.trim();
+    if (!mirror) {
+        return body();
+    }
+    const value = mirror.endsWith("/") ? mirror : `${mirror}/`;
+    const previous = BINARIES_MIRROR_ENV_VARS.map(name => [name, process.env[name]] as const);
+    for (const name of BINARIES_MIRROR_ENV_VARS) {
+        process.env[name] = value;
+    }
+    try {
+        return await body();
+    } finally {
+        for (const [name, before] of previous) {
+            if (before === undefined) {
+                delete process.env[name];
+            } else {
+                process.env[name] = before;
+            }
+        }
+    }
+}
+
 async function canCreateSymlinks(): Promise<boolean> {
     const target = path.join(os.tmpdir(), `nls-symlink-probe-${process.pid}-${Date.now()}`);
     const link = `${target}.link`;
