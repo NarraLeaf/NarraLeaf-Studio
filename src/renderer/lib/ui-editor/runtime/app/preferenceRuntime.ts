@@ -29,6 +29,10 @@
  * the boot path and again on every change, which is what makes a settings screen's slider move the
  * pace of the game rather than a number nobody reads.
  *
+ * `showDialog` is the exception to the second half: it is the player's hide-the-box gesture, which
+ * describes one playthrough rather than a choice to keep, so it is never stored and every new game
+ * or loaded save starts it at the author's value - see {@link PLAYTHROUGH_PREFERENCE_KEYS}.
+ *
  * Comments in English per project convention.
  */
 
@@ -82,6 +86,26 @@ export type PlayerPreferencePersistenceOptions = {
 };
 
 /**
+ * The preferences that belong to the playthrough on screen rather than to the player.
+ *
+ * `showDialog` is the player putting the dialogue box away to look at the picture behind it - the
+ * quick menu's Hide, a long press, a `Hide Dialog` node. It lives in the preference store because
+ * that is where the engine's box reads it from, but it is a gesture rather than a setting: a player
+ * who hid the box to look at one picture has not chosen to start every later game without one. Kept
+ * as a setting, it was restored on the next launch and outlived a return to the title, so a new game
+ * or a loaded save opened with its first line already hidden and nothing on screen saying why.
+ *
+ * So these are neither restored from the store nor written to it, and every playthrough starts them
+ * again at the author's value ({@link startPlaythroughPreferences}). The author's value still means
+ * what Project ▸ Game ▸ Player defaults says it means: the state a game starts in.
+ */
+export const PLAYTHROUGH_PREFERENCE_KEYS: readonly PlayerPreferenceKey[] = ["showDialog"];
+
+function isPlaythroughPreference(key: string): boolean {
+    return (PLAYTHROUGH_PREFERENCE_KEYS as readonly string[]).includes(key);
+}
+
+/**
  * A persisted value as a preference map, from whatever was in the store.
  *
  * **Sparse on purpose**, unlike the authored defaults: what is stored is the set of preferences the
@@ -91,7 +115,9 @@ export type PlayerPreferencePersistenceOptions = {
  * anything.
  *
  * Total: an unreadable store, or an entry naming a preference this Studio does not have, lands the
- * player on the authored defaults rather than throwing on the boot path.
+ * player on the authored defaults rather than throwing on the boot path. A store written before
+ * {@link PLAYTHROUGH_PREFERENCE_KEYS} existed still carries the last hide a player left on; that
+ * entry is skipped here and dropped by the next write.
  */
 export function readPersistedPlayerPreferences(raw: unknown): Partial<PlayerPreferences> {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -100,6 +126,9 @@ export function readPersistedPlayerPreferences(raw: unknown): Partial<PlayerPref
     const record = raw as Record<string, unknown>;
     const stored: Record<string, PlayerPreferenceValue> = {};
     for (const key of PLAYER_PREFERENCE_KEYS) {
+        if (isPlaythroughPreference(key)) {
+            continue;
+        }
         if (Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined) {
             stored[key] = normalizePlayerPreference(key, record[key]);
         }
@@ -112,6 +141,9 @@ function collectPlayerPreferences(preference: PreferenceStoreLike): Partial<Play
     const current = preference.getPreferences();
     const collected: Record<string, PlayerPreferenceValue> = {};
     for (const key of PLAYER_PREFERENCE_KEYS) {
+        if (isPlaythroughPreference(key)) {
+            continue;
+        }
         const value = current[key];
         if (value !== undefined) {
             collected[key] = normalizePlayerPreference(key, value);
@@ -171,7 +203,8 @@ export async function attachPlayerPreferences(
     // Subscribed after both imports so the boot path writes nothing: the restore would otherwise
     // fire a change per key and echo the store straight back at itself.
     const token = preference.onPreferenceChange((key: string) => {
-        if (disposed || !isKnownPreference(key)) {
+        // A playthrough preference is not kept, so a change to one has nothing to write.
+        if (disposed || !isKnownPreference(key) || isPlaythroughPreference(key)) {
             return;
         }
         if (key === "autoForwardDelay") {
@@ -196,6 +229,37 @@ export async function attachPlayerPreferences(
 
 function isKnownPreference(key: string): key is PlayerPreferenceKey {
     return (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
+}
+
+/**
+ * Start a playthrough's own preferences at the author's values.
+ *
+ * Call as a playthrough begins - before `newGame()`, whether it is about to play from the start or
+ * have a save deserialized into it - so the first line mounts with the box in the state the author
+ * chose and `Is Dialog Shown` agrees with what is drawn from that line on.
+ *
+ * Only a value that differs is written. Writing goes through the store's own setter, so whatever
+ * listens - the engine's box, the blueprint `gamePreferenceChanged` event - hears it, and a game
+ * that already agrees (the ordinary case) hears nothing at all.
+ */
+export function startPlaythroughPreferences(
+    preference: PreferenceStoreLike | undefined,
+    defaults?: PlayerPreferences,
+): void {
+    if (!preference || typeof preference.importPreferences !== "function") {
+        return;
+    }
+    const authored: PlayerPreferences = { ...DEFAULT_PLAYER_PREFERENCES, ...(defaults ?? {}) };
+    const current = preference.getPreferences();
+    const changed: Record<string, unknown> = {};
+    for (const key of PLAYTHROUGH_PREFERENCE_KEYS) {
+        if (current[key] !== authored[key]) {
+            changed[key] = authored[key];
+        }
+    }
+    if (Object.keys(changed).length > 0) {
+        preference.importPreferences(changed);
+    }
 }
 
 /**
