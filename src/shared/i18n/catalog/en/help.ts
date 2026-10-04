@@ -498,6 +498,7 @@ export const help = {
                 + "back. The import reports how many lines it applied, how many were unchanged and how many it "
                 + "could not match.\n"
                 + "- Export and import are in the language row's More menu.\n"
+                + "- In an exported file, a translation key's row names the pages and components that use the key.\n"
                 + "- Words written directly on an interface widget are translated like a line: each widget's own "
                 + "words have a row in the translation table, except words made only of digits and symbols, and "
                 + "sample text.\n"
