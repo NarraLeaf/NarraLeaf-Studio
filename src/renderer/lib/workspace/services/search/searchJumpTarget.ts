@@ -16,9 +16,17 @@ export type SearchJumpTarget =
     /** A whole story: its flow map is the view of a story rather than of one scene. */
     | { kind: "storyFlow"; storyId: string; storyName: string }
     | { kind: "character"; characterId: string }
-    | { kind: "uiSurface"; surfaceId: string }
-    /** A component definition: its own editor tab, the one the component library opens. */
-    | { kind: "uiComponent"; componentId: string }
+    /**
+     * A page or a stage layer. With `elementId`, the widget on it to select once its editor opens - an
+     * optional field rather than a variant of its own, so every consumer that opens the page keeps
+     * opening it and only the ones that can say which widget say so.
+     */
+    | { kind: "uiSurface"; surfaceId: string; elementId?: string }
+    /**
+     * A component definition: its own editor tab, the one the component library opens. With
+     * `elementId`, the widget inside the definition to select, as for a page.
+     */
+    | { kind: "uiComponent"; componentId: string; elementId?: string }
     | { kind: "asset"; assetId: string; assetType: string }
     /**
      * An asset set - a thing a reference can point at that is not a file.

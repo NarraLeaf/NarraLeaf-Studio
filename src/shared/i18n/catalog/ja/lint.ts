@@ -456,6 +456,8 @@ export const lint = {
                 other: "{count} 箇所",
             },
             messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageInState: "状態「{state}」でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageInLanguageInState: "{language}の状態「{state}」でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
             messageMore: "他に {characters}、プロジェクトのフォントに無い",
             moreCharacterCount: {
                 other: "{count} 文字",

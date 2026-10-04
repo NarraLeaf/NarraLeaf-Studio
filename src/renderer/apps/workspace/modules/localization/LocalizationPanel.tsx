@@ -50,6 +50,11 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { describeLocalizationKeyContext, indexLocalizationKeyUses } from "@/lib/workspace/services/localization/localizationKeyUses";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -87,6 +92,24 @@ import {
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
+
+/** The project's blueprints, or none while their store is still coming up. */
+function readBlueprintDocument(uiDocumentService: UIDocumentService | null): BlueprintDocument | null {
+    try {
+        return uiDocumentService?.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Call `onChange` whenever a blueprint changes; a no-op unsubscribe when there is no graph store yet. */
+function subscribeToBlueprints(uiDocumentService: UIDocumentService | null, onChange: () => void): () => void {
+    try {
+        return uiDocumentService?.getContext().services.get<UIGraphService>(Services.UIGraph).onGraphsChanged(onChange) ?? (() => undefined);
+    } catch {
+        return () => undefined;
+    }
+}
 
 /** Which language row's "more" menu is open, and where to place it. */
 type LocaleMenuState = {
@@ -238,8 +261,19 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             if (!keysDocument) {
                 keysDocument = await localizationService.loadKeys().catch(() => undefined);
             }
+            // A key's row says where the key is used - the pages and components showing its words or
+            // reading it in a blueprint - since its name alone tells a translator nothing about them.
+            const keyUses = indexLocalizationKeyUses({
+                uiDocument: uiDocument ?? null,
+                blueprintDocument: readBlueprintDocument(uiDocumentService),
+                widgetName: element => widgetModuleRegistry.get(element.type)?.displayName || element.type,
+            });
             for (const row of extractKeyTranslationRows(keysDocument ?? { schemaVersion: 1, keys: {} })) {
-                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.keyName });
+                collected.push({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    context: describeLocalizationKeyContext(row.keyName, keyUses.get(row.keyName)),
+                });
             }
             if (!disposed) {
                 setRows(collected);
@@ -251,6 +285,8 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         const unsubscribeKeys = localizationService.onKeysChanged(() => void recompute());
         const unsubscribeCharacters = characterService?.subscribe(() => void recompute());
         const unsubscribePluginWords = subscribePluginWords(() => void recompute());
+        // Blueprints decide where a key is used as much as widgets do.
+        const unsubscribeGraphs = subscribeToBlueprints(uiDocumentService, () => void recompute());
         return () => {
             disposed = true;
             unsubscribeLibrary();
@@ -258,6 +294,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             unsubscribeKeys();
             unsubscribeCharacters?.();
             unsubscribePluginWords();
+            unsubscribeGraphs();
         };
     }, [storyService, localizationService, characterService, uiDocumentService, uiDocumentRevision]);
 

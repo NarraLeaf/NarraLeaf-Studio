@@ -1424,7 +1424,7 @@ export const workspace = {
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 中搜索",
             building: "正在建立搜索索引…",
-            idle: "可搜索场景、角色、剧情文本、资产与蓝图",
+            idle: "可搜索场景、角色、剧情文本、界面文本、资产与蓝图",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 与场景查找栏共用的三个匹配开关，同一条查询在两处含义一致。
@@ -1449,6 +1449,7 @@ export const workspace = {
                 blueprint: "蓝图",
                 asset: "资产",
                 storyText: "剧情文本",
+                uiText: "界面文本",
                 variable: "变量",
                 uiTextKey: "翻译键",
                 blueprintNode: "蓝图节点",

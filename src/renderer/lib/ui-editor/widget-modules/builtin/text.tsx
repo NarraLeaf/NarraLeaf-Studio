@@ -8,6 +8,7 @@ import { createTextDockerBarItems } from "./text/dockerBar";
 import { defaultTextWidgetProps } from "./text/types";
 import { createInitialTextAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { formatBrandLink } from "@shared/brand/brandLink";
+import { INTERFACE_DEFAULT_WORDS } from "@/lib/ui-editor/widget-modules/defaultWords";
 
 export const TextWidgetModule: UIWidgetModule = {
     type: "nl.text",
@@ -17,14 +18,14 @@ export const TextWidgetModule: UIWidgetModule = {
     },
     icon: Type,
 
-    createDefaultElement: () => {
+    createDefaultElement: (words = INTERFACE_DEFAULT_WORDS) => {
         // `color` as a link, so a new text node is already the project's ink. Materialised here
         // rather than in `defaultTextWidgetProps`, which is the fallback every *existing* text node
         // reads through and must keep its literal - see `button.tsx` for the full reasoning.
         const props = {
             ...defaultTextWidgetProps,
             color: formatBrandLink("text.primary"),
-            text: translate("widgets.defaults.text.text"),
+            text: words.t("widgets.defaults.text.text"),
         };
         return {
             type: "nl.text",

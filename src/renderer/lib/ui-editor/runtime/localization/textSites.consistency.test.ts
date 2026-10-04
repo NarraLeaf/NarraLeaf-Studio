@@ -24,6 +24,7 @@ import {
 import { isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { extractUiTranslationRows } from "@/lib/workspace/services/localization/localizationModel";
+import { extractUITextEntries, type UITextExtractionInput } from "@/lib/workspace/services/search/sources/uiTextSource";
 
 /**
  * Every reader of interface text answers from the one table (`textSites.ts`).
@@ -164,6 +165,12 @@ function expectedSites(select: (site: UITextSite) => string | undefined): string
 }
 
 const words = (site: UITextSite) => (site.role === "words" ? site.textProp : undefined);
+
+const SEARCH_INPUT: UITextExtractionInput = {
+    keys: {},
+    writers: EMPTY_UI_TEXT_WRITER_INDEX,
+    labels: { sample: "Sample text", widgetName: element => element.type },
+};
 const sorted = (values: Iterable<string>) => [...new Set(values)].sort();
 
 describe("interface text sites", () => {
@@ -209,6 +216,22 @@ describe("interface text sites", () => {
     it("the localization panel lists an element's own words on exactly the sites a player reads", () => {
         const found = extractUiTranslationRows(PLAIN, EMPTY_UI_TEXT_WRITER_INDEX).map(row => `${typeOf(PLAIN, row.elementId)}.${row.prop}`);
         expect(sorted(found)).toEqual(expectedSites(words));
+    });
+
+    it("project search finds words on exactly the table's sites, sample sites included (extractUITextEntries)", () => {
+        const found = extractUITextEntries(PLAIN, SEARCH_INPUT).map(entry => {
+            const [elementId, prop] = entry.id.slice("uitext:".length).split(".");
+            return `${typeOf(PLAIN, elementId)}.${prop}`;
+        });
+        expect(sorted(found)).toEqual(expectedSites(site => site.textProp));
+    });
+
+    it("project search reads each site's key from the table's key prop", () => {
+        const keys = Object.fromEntries(CANDIDATE_KEY_PROPS.map(keyProp => [probeKey(keyProp), `Key words of ${keyProp}`]));
+        const found = extractUITextEntries(KEYED, { ...SEARCH_INPUT, keys })
+            .filter(entry => entry.text.startsWith("Key words of "))
+            .map(entry => `${typeOf(KEYED, entry.id.slice("uitext:".length).split(".")[0])}.${entry.text.slice("Key words of ".length)}`);
+        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" ? site.keyProp : undefined)));
     });
 
     it("elements arriving in a project that lacks their keys drop exactly the table's key props", () => {

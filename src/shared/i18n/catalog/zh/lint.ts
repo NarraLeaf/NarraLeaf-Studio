@@ -452,6 +452,8 @@ export const lint = {
                 other: "{count} 处",
             },
             messageInLanguage: "{language}中项目字体画不出“{character}”（{occurrences}）",
+            messageInState: "状态「{state}」中项目字体画不出“{character}”（{occurrences}）",
+            messageInLanguageInState: "{language}的状态「{state}」中项目字体画不出“{character}”（{occurrences}）",
             messageMore: "另有 {characters}项目字体画不出",
             moreCharacterCount: {
                 other: "{count} 个字符",

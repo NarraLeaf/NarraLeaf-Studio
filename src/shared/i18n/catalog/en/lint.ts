@@ -484,6 +484,10 @@ export const lint = {
                 other: "{count} times",
             },
             messageInLanguage: "No project font can draw “{character}” in {language} ({occurrences})",
+            // The widget draws the character in the state it rests in; `{state}` is the name of the
+            // state (appearance variant) whose font cannot.
+            messageInState: "No project font can draw “{character}” in the “{state}” state ({occurrences})",
+            messageInLanguageInState: "No project font can draw “{character}” in {language} in the “{state}” state ({occurrences})",
             messageMore: "{characters} no project font can draw",
             moreCharacterCount: {
                 one: "{count} more character",
