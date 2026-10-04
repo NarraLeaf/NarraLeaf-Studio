@@ -225,7 +225,6 @@ export const widgets = {
         start: "起始",
         center: "居中",
         end: "末端",
-        stretch: "拉伸",
         spaceBetween: "两端对齐",
         spaceAround: "环绕对齐",
         gapHint: "子级之间的间距",

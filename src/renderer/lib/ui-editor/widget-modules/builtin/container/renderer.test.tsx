@@ -260,3 +260,18 @@ describe("container stack wrap", () => {
         expect(inlineStyleOf(renderStack(plain), STACK_TAG)).not.toContain("block-size");
     });
 });
+
+describe("container stack cross-axis alignment", () => {
+    it("draws a stack written with the old stretch value exactly as one aligned to the start", () => {
+        const stretched = inlineStyleOf(renderStack(createStackDocument({ stackAlignItems: "stretch" as never })), STACK_TAG);
+        const start = inlineStyleOf(renderStack(createStackDocument({ stackAlignItems: "start" })), STACK_TAG);
+
+        // Every child of a stack has a fixed size, so stretch always drew as start; now it says so.
+        expect(stretched).toBe(start);
+        expect(start).toContain("align-items:flex-start");
+    });
+
+    it("starts a new stack at the start of the cross axis", () => {
+        expect(inlineStyleOf(renderStack(createStackDocument({})), STACK_TAG)).toContain("align-items:flex-start");
+    });
+});

@@ -230,7 +230,6 @@ export const widgets = {
         start: "Start",
         center: "Center",
         end: "End",
-        stretch: "Stretch",
         spaceBetween: "Space between",
         spaceAround: "Space around",
         gapHint: "Gap between children",

@@ -227,7 +227,6 @@ export const widgets = {
         start: "始端",
         center: "中央",
         end: "終端",
-        stretch: "引き伸ばし",
         spaceBetween: "均等配置（両端そろえ）",
         spaceAround: "均等配置（両端も空ける）",
         gapHint: "子要素どうしの間隔",
