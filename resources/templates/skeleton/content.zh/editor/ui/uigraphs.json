@@ -574,132 +574,6 @@
         },
         "bindings": {}
       },
-      "d16cbdba-237c-40f4-840c-1b5ddbd32e89": {
-        "id": "d16cbdba-237c-40f4-840c-1b5ddbd32e89",
-        "name": "当前指示条",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "21b58ced-62f0-4995-ae7e-e7904ba8b55c"
-        },
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "2677bcbd-8060-4967-883f-94fadb952bfa": {
-        "id": "2677bcbd-8060-4967-883f-94fadb952bfa",
-        "name": "返回",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "c76320a0-ab15-4d1d-82bb-a2e91bfe30a2"
-        },
-        "graphs": {
-          "eventIds": [
-            "b9f2fb12-c31f-4555-8945-a148e7375c9f"
-          ],
-          "events": {
-            "b9f2fb12-c31f-4555-8945-a148e7375c9f": {
-              "id": "b9f2fb12-c31f-4555-8945-a148e7375c9f",
-              "name": "回到打开本页面之前的位置",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "与本页面按 Esc 键的效果相同（页面蓝图的「关闭记录」图层）：「关闭全部页面」回到故事；没有正在运行的游戏时，由「返回上一页」回到下面的页面。这张图与其他导航条放置的「返回按钮」组件相同，这里保留为副本：本页面的「返回」显示导航条的点亮外观（文字更亮、更粗，旁边有指示条），而组件的每个实例都显示组件定义中的外观。",
-                      "width": 1100,
-                      "height": 160
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -600
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -400
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": -400
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": -400
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "2409712c-549c-47c3-a4ee-74010201e074": {
         "id": "2409712c-549c-47c3-a4ee-74010201e074",
         "name": "页面标题",
@@ -23761,7 +23635,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "与所在页面按 Esc 键的效果相同，离开该页面。游戏运行时，「关闭全部页面」关闭故事之上打开的所有页面，玩家回到故事中。没有正在运行的游戏时，「关闭全部页面」不起作用，由「返回上一页」回到打开本页面的那个页面。「保存」「加载」「设置」「鉴赏」页面放置的都是这一个按钮，所以「返回」的作用只需在这里改一次。",
+                      "text": "与所在页面按 Esc 键的效果相同，离开该页面。游戏运行时，「关闭全部页面」关闭故事之上打开的所有页面，玩家回到故事中。没有正在运行的游戏时，「关闭全部页面」不起作用，由「返回上一页」回到打开本页面的那个页面。「保存」「加载」「设置」「记录」「鉴赏」页面放置的都是这一个按钮，所以「返回」的作用只需在这里改一次。",
                       "width": 1100,
                       "height": 130
                     },
@@ -23869,12 +23743,6 @@
       },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:53035b8b-715e-4e50-9d5e-418d216f480a": {
         "blueprintId": "ba9553e9-2e72-46eb-8806-aaca284259a2"
-      },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:21b58ced-62f0-4995-ae7e-e7904ba8b55c": {
-        "blueprintId": "d16cbdba-237c-40f4-840c-1b5ddbd32e89"
-      },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:c76320a0-ab15-4d1d-82bb-a2e91bfe30a2": {
-        "blueprintId": "2677bcbd-8060-4967-883f-94fadb952bfa"
       },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:29fd091e-8a94-489b-9a95-2f5e2e659aa3": {
         "blueprintId": "2409712c-549c-47c3-a4ee-74010201e074"
@@ -24370,6 +24238,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T22:25:59.682Z"
+    "updatedAt": "2026-10-04T00:55:16.833Z"
   }
 }

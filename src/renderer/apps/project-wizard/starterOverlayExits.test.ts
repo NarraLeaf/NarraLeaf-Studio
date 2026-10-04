@@ -255,14 +255,11 @@ describe("every starter screen leaves a running game the same way", () => {
 
     it("places one Back button on every rail that can, rather than a copy per page", () => {
         // Back is the same press on every one of these pages, so the graph is written once, on a
-        // component, and a change to what Back does cannot reach some pages and miss others. The
-        // Log page keeps its own: there Back wears the rail's lit look, and every instance of a
-        // component draws its definition's look.
-        const placed = (["Save", "Load", "Config", "Extra"] as const).map(screenName =>
+        // component, and a change to what Back does cannot reach some pages and miss others.
+        const placed = SCREENS.map(screenName =>
             buttonsOn(screenName, "Back")[0]?.extra?.componentLink?.componentId);
         const component = document.components.find(candidate => candidate.id === placed[0]);
         expect(component?.name).toBe("Back button");
         expect(placed).toEqual(placed.map(() => component!.id));
-        expect(buttonsOn("Log", "Back")[0]?.extra?.componentLink).toBeUndefined();
     });
 });
