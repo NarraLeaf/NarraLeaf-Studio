@@ -162,6 +162,11 @@ export function deriveShownObjectName() {
         // An asset set answers with no file to strip an extension from, so the set's own name stands -
         // which is the word the author typed and the one they will look for on the row.
         const stem = assetBaseName(context, assetType, assetId) ?? name.trim() ?? assetType;
+        // A clip of that name playing this very file is the clip the line means: a second play of a
+        // file plays the clip the first one defined, rather than defining `intro2` beside it.
+        if (assetType === "video" && context.videoClips?.[stem.trim().toLowerCase()]?.assetId === assetId) {
+            return { name: { kind: "text", value: stem } };
+        }
         return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[assetType] ?? []) } };
     };
 }
