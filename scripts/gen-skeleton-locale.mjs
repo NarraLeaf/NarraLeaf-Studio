@@ -60,6 +60,7 @@
 // content (a literal per use), not here.
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,10 +78,24 @@ const RETURN = "return";
 const AMBIGUOUS = "ambiguous";
 
 /**
- * The prop a widget's own translation unit (`ui:<elementId>.<prop>`) carries, by widget type - the
- * same table the localization panel lists those units from (`localizationModel.ts`).
+ * Where each widget keeps the words a player reads, which prop names their translation key, and
+ * whether its own words have a translation unit (`ui:<elementId>.<prop>`) - the shared table the
+ * game, the localization panel and lint all read (`src/shared/types/ui-editor/textSites.ts`).
+ *
+ * Loaded from the TypeScript source rather than copied here: a copy is how a widget kind ends up
+ * translated one way by this script and resolved another way by the game. The table has no imports,
+ * so transforming that one file is enough.
  */
-const UNIT_TEXT_PROP_BY_WIDGET = { "nl.text": "text", "nl.button": "label" };
+const TEXT_SITES_PATH = resolve(HERE, "../src/shared/types/ui-editor/textSites.ts");
+const { UI_TEXT_SITES } = await import(
+    `data:text/javascript;base64,${Buffer.from(
+        createRequire(import.meta.url)("esbuild").transformSync(readFileSync(TEXT_SITES_PATH, "utf8"), {
+            loader: "ts",
+            format: "esm",
+        }).code,
+    ).toString("base64")}`
+);
+const TEXT_SITE_BY_WIDGET = new Map(UI_TEXT_SITES.map(site => [site.widgetType, site]));
 
 /**
  * What each node param holds, by node type and param key. A literal typed into a data pin is stored
@@ -478,10 +493,11 @@ function buildVariant(locale) {
         // key's text, and so does the canvas for a text widget. The widget's own words are written
         // as the key's in this language, so nothing reads one thing on the canvas and another in
         // the game - which is what a separate table entry for the same label produced.
-        const unitProp = UNIT_TEXT_PROP_BY_WIDGET[element.type];
-        const keyName = typeof props.localizationKey === "string" ? props.localizationKey.trim() : "";
+        const site = TEXT_SITE_BY_WIDGET.get(element.type);
+        const unitProp = site?.unitProp ? site.textProp : undefined;
+        const keyName = site?.keyProp && typeof props[site.keyProp] === "string" ? props[site.keyProp].trim() : "";
         const ownsUnit = unitProp !== undefined
-            && props.localizable === true
+            && props[site.unitProp] === true
             && !keyName
             && typeof props[unitProp] === "string"
             && props[unitProp].trim() !== "";

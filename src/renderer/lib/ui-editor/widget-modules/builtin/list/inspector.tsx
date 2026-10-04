@@ -935,7 +935,7 @@ export function createListInspector(ctx: InspectorContext) {
                                 type: "select",
                                 label: t("widgets.list.runtimeItems"),
                                 options: [
-                                    { value: "none", label: t("widgets.list.runtimePreviewOnly") },
+                                    { value: "none", label: t("widgets.list.runtimeListContent") },
                                     { value: "surfaceState", label: t("widgets.list.runtimePageState") },
                                     { value: "globalState", label: t("widgets.list.runtimeAppState") },
                                     { value: "pageProp", label: t("widgets.list.runtimePageProps") },

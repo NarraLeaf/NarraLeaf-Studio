@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { isInlineTextEditableElement, resolveInlineTextEditHost } from "./inlineTextEdit";
+import { setDesignTimeLocalizationKeys } from "@/lib/ui-editor/runtime/localization/designTimeKeys";
+import { boundTextSourceOf, isInlineTextEditableElement, resolveInlineTextEditHost } from "./inlineTextEdit";
 
 const stateService = {} as NonNullable<UIHostAdapter["editorStateService"]>;
 const documentService = {} as NonNullable<UIHostAdapter["editorDocumentService"]>;
@@ -56,5 +57,45 @@ describe("resolveInlineTextEditHost", () => {
     it("hands them back once the surface is writable again", () => {
         expect(resolveInlineTextEditHost(editorAdapter({ editorReadOnly: { active: false } })))
             .toEqual({ stateService, documentService });
+    });
+});
+
+describe("boundTextSourceOf", () => {
+    const text = (props: Record<string, unknown>, valueBindings?: UIElement["valueBindings"]) =>
+        ({ id: "t", type: "nl.text", props, ...(valueBindings ? { valueBindings } : {}) }) as UIElement;
+    const FIELD = { text: { kind: "listItemField", fieldId: "title" } } as UIElement["valueBindings"];
+    const BLUEPRINT = { text: { kind: "blueprintValue", blueprintId: "bp-1", valueType: "string" } } as UIElement["valueBindings"];
+
+    afterEach(() => setDesignTimeLocalizationKeys(null));
+
+    it("names the row field or the value blueprint that decides the words", () => {
+        expect(boundTextSourceOf(text({ text: "x" }, FIELD))).toEqual({ kind: "listItemField", fieldId: "title" });
+        expect(boundTextSourceOf(text({ text: "x" }, BLUEPRINT))).toEqual({ kind: "blueprintValue", blueprintId: "bp-1" });
+        expect(
+            boundTextSourceOf({ id: "b", type: "nl.button", props: { label: "x" }, valueBindings: { label: { kind: "listItemField", fieldId: "f" } } } as unknown as UIElement),
+        ).toEqual({ kind: "listItemField", fieldId: "f" });
+    });
+
+    it("is nothing for an element whose own words are typed", () => {
+        expect(boundTextSourceOf(text({ text: "x" }))).toBeNull();
+        expect(boundTextSourceOf(null)).toBeNull();
+    });
+
+    it("lets a key the canvas draws win over a binding, as it does in the game", () => {
+        setDesignTimeLocalizationKeys({ "menu.start": "Start" });
+        expect(boundTextSourceOf(text({ text: "x", localizationKey: "menu.start" }, BLUEPRINT))).toBeNull();
+    });
+
+    it("reports the binding when no key is drawn (the project ships no keys)", () => {
+        expect(boundTextSourceOf(text({ text: "x", localizationKey: "menu.start" }, BLUEPRINT))).toEqual({
+            kind: "blueprintValue",
+            blueprintId: "bp-1",
+        });
+    });
+
+    it("is nothing on a site the canvas never types on", () => {
+        expect(
+            boundTextSourceOf({ id: "d", type: "nl.dialog.sentence", props: { text: "x" }, valueBindings: BLUEPRINT } as unknown as UIElement),
+        ).toBeNull();
     });
 });

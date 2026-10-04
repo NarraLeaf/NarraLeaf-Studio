@@ -161,8 +161,12 @@ export type BlueprintValueBindingState = {
     clear: () => void;
 };
 
+/**
+ * The prop's Blueprint Value control state. A null config is a prop that offers no Blueprint Value -
+ * a text input's placeholder - and answers "nothing bound, nothing can be" without a second hook.
+ */
 export function useBlueprintValueBinding(
-    config: BlueprintValueFieldConfig,
+    config: BlueprintValueFieldConfig | null,
     data: UIInspectorData,
 ): BlueprintValueBindingState {
     const { t } = useTranslation();
@@ -172,7 +176,7 @@ export function useBlueprintValueBinding(
     const surfaceId = data.surfaceId;
     const isComponentEditorSurface = Boolean(parseComponentEditorSurfaceId(surfaceId));
     const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
-    const storedBinding = live.valueBindings?.[config.propPath];
+    const storedBinding = config ? live.valueBindings?.[config.propPath] : undefined;
     // This control speaks for the blueprint binding only. A prop bound to a list item field is
     // bound by a different control, and reading its field id as a blueprint id would have this
     // one report a blueprint that does not exist.
@@ -188,7 +192,7 @@ export function useBlueprintValueBinding(
     void blueprintRevision;
 
     const openValueBlueprint = (blueprintId: string, options?: BlueprintOpenOptions) => {
-        if (!surfaceId) {
+        if (!surfaceId || !config) {
             return;
         }
         openBlueprint({
@@ -208,7 +212,7 @@ export function useBlueprintValueBinding(
         binding,
         blueprintName: blueprint?.name,
         surfaceId,
-        createUnavailable: !surfaceId
+        createUnavailable: !surfaceId || !config
             ? ""
             : isComponentEditorSurface
               ? t("widgetChrome.blueprint.componentsUnavailable")
@@ -219,7 +223,7 @@ export function useBlueprintValueBinding(
             }
         },
         create: () => {
-            if (!surfaceId) {
+            if (!surfaceId || !config) {
                 return;
             }
             // Read again rather than from this render: a caller may have rewritten the element on
@@ -236,7 +240,11 @@ export function useBlueprintValueBinding(
             );
             openValueBlueprint(blueprintId);
         },
-        clear: () => data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath),
+        clear: () => {
+            if (config) {
+                data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath);
+            }
+        },
     };
 }
 

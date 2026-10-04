@@ -11,7 +11,11 @@ import {
     type LocalizedWidgetTextInput,
 } from "./GameLocalizationContext";
 import type { AssetVariantCarrier } from "@shared/types/assetSet";
+import { requireUITextSite } from "@shared/types/ui-editor/textSource";
 import { setDesignTimeLocalizationKeys } from "./designTimeKeys";
+
+const TEXT_SITE = requireUITextSite("nl.text");
+const BUTTON_SITE = requireUITextSite("nl.button");
 
 const bundle: GameLocalizationBundle = {
     sourceLocale: "en",
@@ -63,8 +67,8 @@ afterEach(cleanup);
 
 describe("useLocalizedWidgetText", () => {
     const localizableInput: LocalizedWidgetTextInput = {
+        site: TEXT_SITE,
         elementId: "el-1",
-        prop: "text",
         sourceText: "Start",
         localizable: true,
     };
@@ -99,8 +103,8 @@ describe("useLocalizedWidgetText", () => {
     it("prefers a named key over the implicit unit, falling back to its source text", () => {
         const runtime = createRuntime("zh-CN");
         const { getByTestId } = renderProbe(runtime, {
+            site: BUTTON_SITE,
             elementId: "el-2",
-            prop: "label",
             sourceText: "authored label",
             localizationKey: "menu.quit",
         });
@@ -171,11 +175,10 @@ describe("useLocalizedAssetId", () => {
 
 describe("useLocalizedWidgetText at design time", () => {
     const keyed: LocalizedWidgetTextInput = {
+        site: TEXT_SITE,
         elementId: "el-1",
-        prop: "text",
         sourceText: "Leave",
         localizationKey: "menu.quit",
-        resolveKeyAtDesignTime: true,
     };
 
     afterEach(() => {
@@ -202,9 +205,9 @@ describe("useLocalizedWidgetText at design time", () => {
         expect(getByTestId("text").textContent).toBe("Leave");
     });
 
-    it("leaves widgets that did not opt in on their own text", () => {
+    it("leaves a site that does not draw its key on the canvas on its own text", () => {
         setDesignTimeLocalizationKeys({ "menu.quit": "Quit" });
-        const { getByTestId } = renderProbe(null, { ...keyed, resolveKeyAtDesignTime: false });
+        const { getByTestId } = renderProbe(null, { ...keyed, site: { ...TEXT_SITE, canvasDrawsKey: false } });
         expect(getByTestId("text").textContent).toBe("Leave");
     });
 
