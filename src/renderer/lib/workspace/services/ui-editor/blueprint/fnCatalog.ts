@@ -12,6 +12,8 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { translate } from "@/lib/i18n";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS,
@@ -473,20 +475,43 @@ export function isBlueprintFnSnapshotStale(
 // Dropdown options
 // ---------------------------------------------------------------------------
 
-function fnScopeLabel(owner: BlueprintOwnerRef, uiDocument: UIDocument | undefined): string {
+/**
+ * Where a function is declared, in the words the rest of the editor names that owner with: the
+ * page, control or component element by the name the outline shows, the project's logic and an
+ * unnamed story blueprint by their owner label (`ownerLabels`).
+ *
+ * Never an internal word. This lands in brackets after the function's name on the `Call Fn` card,
+ * so an owner kind (`componentWidgetMain`), a widget type id or an English placeholder here was
+ * printed on the card verbatim, in every locale.
+ */
+function fnScopeLabel(decl: BlueprintFnDeclaration, doc: BlueprintDocument, uiDocument: UIDocument | undefined): string {
+    const { owner } = decl;
+    const ownerLabel = translate(ownerLabelKey(owner.kind));
     switch (owner.kind) {
         case "globalMain":
-            return "Global";
+            return ownerLabel;
         case "surfaceMain": {
             const surface = uiDocument?.surfaces.find(s => s.id === owner.surfaceId);
-            return surface?.name?.trim() || "Surface";
+            return surface?.name?.trim() || ownerLabel;
         }
-        case "widgetMain": {
+        case "widgetMain":
+        case "widgetValue": {
             const element = uiDocument?.elements[owner.elementId];
-            return element?.name?.trim() || element?.type || "Widget";
+            return element?.name?.trim() || ownerLabel;
         }
-        default:
-            return owner.kind;
+        case "componentWidgetMain": {
+            const component = uiDocument?.components?.find(item => item.id === owner.componentId);
+            const element = component?.elements[owner.elementId];
+            return element?.name?.trim() || component?.name?.trim() || ownerLabel;
+        }
+        case "storyAction": {
+            const name = doc.blueprints[decl.blueprintId]?.name?.trim();
+            return name && !isFactoryStoryBlueprintName(name) ? name : ownerLabel;
+        }
+        default: {
+            const unreachable: never = owner;
+            return unreachable;
+        }
     }
 }
 
@@ -499,7 +524,7 @@ export function listCallableBlueprintFnOptions(input: {
     return listCallableBlueprintFns(input.blueprintDocument, input.caller)
         .map(decl => ({
             value: decl.fnRef,
-            label: `${decl.name} (${fnScopeLabel(decl.owner, input.uiDocument)})`,
+            label: `${decl.name} (${fnScopeLabel(decl, input.blueprintDocument, input.uiDocument)})`,
         }))
         .sort((a, b) => a.label.localeCompare(b.label));
 }

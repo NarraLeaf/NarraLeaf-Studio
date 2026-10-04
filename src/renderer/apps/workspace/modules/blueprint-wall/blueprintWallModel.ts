@@ -8,7 +8,7 @@ import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/ty
 import type { StoryDocument, StoryId, StorySceneId } from "@shared/types/story/document";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
-import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
 import { getComponentEditorSurfaceId } from "../ui-editor/editors/componentEditorAdapter";
@@ -65,9 +65,6 @@ export type BlueprintWallInput = {
     stories: readonly BlueprintWallStory[];
     t: Translate;
 };
-
-/** The names Studio gives a story blueprint it creates; anything else is a name the author chose. */
-const DEFAULT_STORY_BLUEPRINT_NAMES = new Set(["Story Action", "Story Value", "Story Condition"]);
 
 type BlueprintContent = { nodeCount: number; graphCount: number; scriptCount: number };
 
@@ -346,7 +343,7 @@ export function buildBlueprintWall({ blueprints, ui, stories, t }: BlueprintWall
                     };
                     storyGroups.set(place.story.id, group);
                 }
-                const named = blueprint.name && !DEFAULT_STORY_BLUEPRINT_NAMES.has(blueprint.name);
+                const named = blueprint.name && !isFactoryStoryBlueprintName(blueprint.name);
                 const title = named ? blueprint.name : place.sceneName;
                 group.tiles.push({
                     ...base,

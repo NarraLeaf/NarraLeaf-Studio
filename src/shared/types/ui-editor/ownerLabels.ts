@@ -25,3 +25,17 @@ const LABEL_KEYS: Record<BlueprintOwnerRef["kind"], TranslationKey> = {
 export function ownerLabelKey(kind: BlueprintOwnerRef["kind"]): TranslationKey {
     return LABEL_KEYS[kind];
 }
+
+/**
+ * The names a story blueprint is created with, before an author names it.
+ *
+ * Stored English words rather than anything the author wrote, so a surface that names a story
+ * blueprint shows its owner label instead when the name is one of these - printing them would put
+ * English into every locale and say nothing an author chose.
+ */
+const FACTORY_STORY_BLUEPRINT_NAMES: ReadonlySet<string> = new Set(["Story Action", "Story Value", "Story Condition"]);
+
+/** Whether `name` is one a story blueprint is created with rather than one an author gave it. */
+export function isFactoryStoryBlueprintName(name: string | undefined): boolean {
+    return name !== undefined && FACTORY_STORY_BLUEPRINT_NAMES.has(name);
+}
