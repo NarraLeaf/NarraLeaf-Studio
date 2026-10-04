@@ -25,6 +25,7 @@ import {
     sceneVariableDefs,
     storyPersistentDefs,
     videoPlayHidesOnEnd,
+    videoPlayWaits,
 } from "@shared/types/story";
 import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
@@ -146,18 +147,16 @@ export type StageSnapshotVideo = {
     assetId?: string;
     muted?: boolean;
     /**
-     * On the stage at the target row: a row the walk ran declared it, and no row since hid it - the
-     * engine takes a hidden clip off the stage entirely. False for a clip only another arm, or a row
-     * at or past the target, declares; that one is registered for the tail and nothing more.
+     * On the stage at the target row, and only ever hidden there: a play the walk ran left the clip
+     * behind it, and no row since hid it - the engine takes a hidden clip off the stage entirely.
+     * False for a clip only another arm, or a row at or past the target, defines; that one is
+     * registered for the tail and nothing more.
+     *
+     * Never shown. The only clip a walk leaves on the stage is one that played to its end and held
+     * its last frame (`hide=false`), and a launch has no way to reproduce that frame without knowing
+     * the clip's length - the same approximation `videoSkipped` already reports for the preview.
      */
     staged: boolean;
-    /**
-     * Showing a frame nothing has moved past: revealed on the walked path, and neither hidden nor
-     * run since. A clip that played to its end shows its last frame in a full playthrough, which a
-     * launch has no way to reproduce without knowing the clip's length, so it arrives staged and
-     * hidden instead - the same approximation `videoSkipped` already reports for the preview.
-     */
-    visible: boolean;
 };
 
 export type StoryStageSnapshot = {
@@ -801,13 +800,23 @@ class SnapshotWalker {
     /**
      * A clip row on the walked path, read the way the compiler and the engine read it.
      *
-     * A declaring row builds the clip through the compiler's get-or-create, so the first declaration
-     * of a name is the one that stands and a later one only acts on it. What each operation leaves:
-     * `create` mounts the clip hidden; a reveal (`show`, or a `play` naming its own clip) puts it on
-     * screen; `hide` takes it off the stage altogether, and so does a `play` that clears its clip away
-     * when it ends; and anything else that runs or moves the clip leaves it showing a frame a launch
-     * cannot reproduce. A row addressing a clip nothing on the path declared changes nothing here -
-     * the compile of the tail reports it.
+     * A `play` builds the clip through the compiler's get-or-create, so the first play of a name is
+     * the one that stands and a later one plays that clip again. What each row leaves:
+     *
+     *  - **A play that waits** has finished by the time the next row runs. It leaves nothing when it
+     *    clears its clip away (the default), and leaves the clip holding its last frame when it does
+     *    not - which a launch can stage but not show (see {@link StageSnapshotVideo.staged}).
+     *  - **A play that does not wait is not restored at all.** The story moved on while the clip ran,
+     *    so at the target row the clip could be anywhere in its length, finished, or gone - nothing on
+     *    the walked path says which, and a launch that guessed would start a clip part-way through or
+     *    put back one a playthrough had already cleared away. The launch starts with no clip on the
+     *    stage, and a row in the tail that addresses it finds none, which is what a playthrough also
+     *    gives once the clip has ended.
+     *  - **A hide** takes the clip off the stage altogether.
+     *
+     * Anything else - `pause`, `resume`, `seek`, `stop` - acts on a running clip, which by the rules
+     * above is never one the record has on the stage. A row addressing a clip nothing on the path
+     * defined changes nothing here - the compile of the tail reports it.
      */
     private applyVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): void {
         const declares = declaresStageObject(payload);
@@ -818,46 +827,20 @@ class SnapshotWalker {
         if (!record) {
             return;
         }
-        switch (payload.operation) {
-            case "create":
-                record.staged = true;
-                return;
-            case "show":
-                record.staged = true;
-                record.visible = true;
-                return;
-            case "hide":
-                record.staged = false;
-                record.visible = false;
-                return;
-            case "play":
-                // A play that clears its clip away when it ends leaves the stage as a hide does:
-                // nothing to put back, however the clip got there.
-                if (videoPlayHidesOnEnd(payload)) {
-                    record.staged = false;
-                    record.visible = false;
-                    return;
-                }
-                // A play that names its own clip reveals it on the way in; it then runs to the end,
-                // which is a frame this record cannot describe either way.
-                record.staged = record.staged || declares;
-                record.visible = false;
-                return;
-            case "resume":
-            case "seek":
-                record.visible = false;
-                return;
-            // `pause` and `stop` hold whatever frame the clip is on.
-            default:
-                return;
+        if (payload.operation === "play") {
+            record.staged = videoPlayWaits(payload) && !videoPlayHidesOnEnd(payload);
+            return;
+        }
+        if (payload.operation === "hide") {
+            record.staged = false;
         }
     }
 
     /**
-     * The clip a declaring row builds - the existing record when an earlier row declared the name.
+     * The clip a play builds - the existing record when an earlier play defined the name.
      *
-     * An earlier declaration with no clip builds nothing in the compiler (it reports the row and
-     * moves on), so the first row that does name one is the one the clip is built from.
+     * An earlier play with no file builds nothing in the compiler (it reports the row and moves on),
+     * so the first row that does name one is the one the clip is built from.
      */
     private declareVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): StageSnapshotVideo {
         const name = normalizeObjectName(payload.objectName);
@@ -878,7 +861,6 @@ class SnapshotWalker {
             ...(payload.assetId ? { assetId: payload.assetId } : {}),
             ...(payload.muted !== undefined ? { muted: payload.muted } : {}),
             staged: false,
-            visible: false,
         };
         this.videos.set(name, record);
         return record;
