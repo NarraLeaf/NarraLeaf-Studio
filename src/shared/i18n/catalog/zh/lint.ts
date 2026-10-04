@@ -316,6 +316,16 @@ export const lint = {
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
         },
+        uiListTextUntranslated: {
+            title: "不会翻译的列表内容",
+            description: "项目已有第二种语言，列表内容中写有文字",
+            message: "{text} 等列表内容在所有语言中按原文显示",
+        },
+        uiLocalizationKeyMissing: {
+            title: "不存在的本地化键",
+            description: "控件的文字来自项目中不存在的键",
+            message: "文字来自键 {key}，该键在项目中不存在",
+        },
         uiGestureAnsweredTwice: {
             title: "被响应两次的手势",
             description: "控件自己有指针事件，而它所在页面的动作也响应同一个手势",

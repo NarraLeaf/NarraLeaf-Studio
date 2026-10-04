@@ -340,6 +340,16 @@ export const lint = {
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
         },
+        uiListTextUntranslated: {
+            title: "Untranslated list content",
+            description: "Words written into a list's content in a project that has a second language",
+            message: "{text} and the rest of this list's content show as written in every language",
+        },
+        uiLocalizationKeyMissing: {
+            title: "Missing localization key",
+            description: "A widget reading its words from a key the project does not have",
+            message: "Reads its words from {key}, which the project does not have",
+        },
         uiGestureAnsweredTwice: {
             title: "Gesture answered twice",
             description: "A widget with a pointer handler of its own, on a page whose action answers the same gesture",

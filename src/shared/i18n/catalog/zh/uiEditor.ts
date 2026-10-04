@@ -163,6 +163,8 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "未知控件",
         widgetRenderFailed: "控件绘制失败",
+        wordsFromRowField: "此文字来自列表行字段“{field}”",
+        wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
     },
     editor: {
         componentNotFound: "未找到组件",
