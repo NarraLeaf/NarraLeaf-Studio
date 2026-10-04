@@ -2,7 +2,7 @@
 
 除非额外声明，所有参数均为传出引脚值。事件 Head 节点没有执行入口，统一通过 `then` 执行出口继续后续逻辑。
 
-元素鼠标事件坐标使用当前元素的本地设计坐标系；Surface 鼠标事件坐标使用当前 Surface 的设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值按 `null` 处理。
+元素鼠标事件坐标使用当前元素的本地设计坐标系：事件从被点中的子元素冒泡到祖先元素时，祖先上的事件 Head 读到的是同一次按下在该祖先自己框内的坐标，而不是子元素的坐标；Surface 鼠标事件坐标使用当前 Surface 的设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值按 `null` 处理。
 
 键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。Surface 完成 prepaint 后，Page 进退场期间键盘事件仍会派发；需要屏蔽时在图里读取 Page 分类的 `Is Surface Entering`、`Is Surface Exiting` 或 `Is Surface Transitioning` 自行分支。
 
@@ -126,7 +126,7 @@
 
 `blueprint.event.head.mouseClick` - 鼠标点击事件
 
-当鼠标在元素上完成一次点击时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标点击，并输出 Surface 设计坐标。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
+当鼠标在元素上完成一次点击时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标点击，并输出 Surface 设计坐标。Page 控件（`nl.frame`）里显示的页面同样会收到自己的 Surface 点击：点击落在该页面的元素上时，该页面先收到，坐标是它自己的设计坐标，随后放置 Page 控件的 Surface 照常收到这次点击；点击落在该页面的空白处时，只算 Page 控件和外层 Surface 的点击。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标
@@ -202,7 +202,7 @@
 
 `blueprint.event.head.rightClick` - 鼠标右键点击事件
 
-当鼠标在元素上触发右键菜单事件时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标右键点击，并输出 Surface 设计坐标。事件成功派发时，默认上下文菜单会被阻止。
+当鼠标在元素上触发右键菜单事件时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标右键点击，并输出 Surface 设计坐标；Page 控件里显示的页面与 `Mouse Click` 相同，先于外层 Surface 收到自己的右键点击。事件成功派发时，默认上下文菜单会被阻止。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标

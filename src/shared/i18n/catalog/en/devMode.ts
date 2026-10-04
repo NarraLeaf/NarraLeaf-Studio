@@ -199,6 +199,8 @@ export const devMode = {
         layer: "Layer",
         // A Game UI surface stepped off the screen while a page is drawn over the stage.
         faded: "Faded out",
+        // The dialogue box put away with Hide Dialog: transparent, and still mounted.
+        dialogHidden: "Hidden",
         // A page the stack holds and the screen does not draw: hidden by the running game, or
         // under the page on screen.
         hiddenForGame: "Hidden while the game runs",

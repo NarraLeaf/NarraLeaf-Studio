@@ -23,6 +23,7 @@ import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/
 import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 import { createWidgetDrawingRegistry } from "./widgetDrawingRegistry";
 import { playUIElementInteractionSound } from "../interactionSounds";
+import { pointerPayloadFor } from "../elementPointerPosition";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -198,6 +199,11 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      * The propagation control still ends the walk. It is the DOM half of the same event, and it is
      * how something that really does own a pointer for the moment - a scroller mid-scroll, a drag in
      * progress - says so; "I am listening" never was that statement, which is the whole change here.
+     *
+     * Each element up the chain is handed the press in its own box: `x` / `y` are local to the
+     * element whose head reads them, as they are for the element that was hit, so a panel's click
+     * reads the same point whichever of its children was under the pointer. The positions were read
+     * once, as the press arrived (`elementPointerPosition`).
      */
     const dispatchElementBlueprintEventNow: UIHostAdapterBlueprintRuntime["dispatchElementBlueprintEvent"] = async (
         elementId,
@@ -224,7 +230,12 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             }
             visited.add(next.id);
             options = next.options;
-            await fireElementListeners(next.id, eventName, eventPayload, options);
+            await fireElementListeners(
+                next.id,
+                eventName,
+                pointerPayloadFor(eventPayload, next.id, options?.pointerPositions),
+                options,
+            );
             currentId = next.id;
         }
     };

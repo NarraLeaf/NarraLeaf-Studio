@@ -240,6 +240,12 @@ function GameUiSurfaceRow(props: { row: CompositeStackGameUiSurfaceRow }): React
                         <span>{t("devMode.layers.faded")}</span>
                     </>
                 ) : null}
+                {row.hidden ? (
+                    <>
+                        <Separator />
+                        <span>{t("devMode.layers.dialogHidden")}</span>
+                    </>
+                ) : null}
             </RowFacts>
             {row.takesInput ? (
                 <InputFacts interactive={row.interactive} keyboardOwner={false} />
