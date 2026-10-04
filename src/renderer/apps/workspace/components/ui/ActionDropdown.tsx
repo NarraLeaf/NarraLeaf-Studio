@@ -16,7 +16,7 @@ import {
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
 import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
-import { MenuShortcut } from "./MenuShortcut";
+import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useFreezeUnavailableReason } from "./freezeGuard";
 import { useShortcutLabels, type ShortcutLabels } from "../../hooks/useShortcutLabels";

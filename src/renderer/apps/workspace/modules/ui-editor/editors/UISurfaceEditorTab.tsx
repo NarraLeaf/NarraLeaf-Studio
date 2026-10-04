@@ -14,7 +14,7 @@ import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync"
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
-import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -22,6 +22,8 @@ import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
+import { UI_EDITOR_MENU_SHORTCUTS } from "@/lib/ui-editor/context-menu/menuShortcutBindings";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -931,7 +933,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                     )}
 
                     {/* Context menu */}
-                    <ContextMenu
+                    <ShortcutContextMenu
+                        shortcuts={UI_EDITOR_MENU_SHORTCUTS}
                         items={menuItems}
                         position={menuState.position}
                         visible={menuState.visible}
