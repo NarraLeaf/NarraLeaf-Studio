@@ -145,6 +145,18 @@ export function normalizeLocale(value: unknown): LocaleCode {
  * to get it.
  */
 export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
+    return matchCatalogLocale(tags) ?? DEFAULT_LOCALE;
+}
+
+/**
+ * The language Studio has a catalogue for that serves an ordered list of language tags, matched the
+ * way {@link resolvePreferredLocale} matches them, or null when none does.
+ *
+ * For a question that has its own answer when Studio speaks none of the reader's languages - the
+ * words a new widget is given in a project written in a language Studio has no catalogue for keep
+ * the interface's language, rather than turning English.
+ */
+export function matchCatalogLocale(tags: readonly string[]): LocaleCode | null {
     const builtIn: OfferedLocale<LocaleCode>[] = SUPPORTED_LOCALES.map(code => ({
         code,
         tags: [code, LOCALE_META[code].intl],
@@ -155,5 +167,6 @@ export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
             const intl = getOverlayMeta(code)?.intl;
             return { code, tags: intl ? [code, intl] : [code] };
         });
-    return matchPreferredLocale(tags, [builtIn, contributed], DEFAULT_LOCALE);
+    const matched = matchPreferredLocale<LocaleCode>(tags, [builtIn, contributed], "");
+    return matched || null;
 }

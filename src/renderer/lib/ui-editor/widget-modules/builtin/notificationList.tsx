@@ -17,7 +17,7 @@ export const NotificationListWidgetModule: UIWidgetModule = extendWidgetModule(L
     type: NOTIFICATION_LIST_TYPE,
     displayName: () => translate("widgets.defaults.notificationList.name"),
     icon: Bell,
-    defaultElement: inherited =>
+    defaultElement: (inherited, words) =>
         patchListWidgetDefaultElement(inherited, {
             layout: { width: 420, height: 360 },
             props: {
@@ -25,8 +25,8 @@ export const NotificationListWidgetModule: UIWidgetModule = extendWidgetModule(L
                 itemKeyFieldId: "id",
                 itemGap: 12,
                 items: [
-                    { id: "preview-1", message: translate("widgets.defaults.notificationList.message1") },
-                    { id: "preview-2", message: translate("widgets.defaults.notificationList.message2") },
+                    { id: "preview-1", message: words.t("widgets.defaults.notificationList.message1") },
+                    { id: "preview-2", message: words.t("widgets.defaults.notificationList.message2") },
                 ],
                 scrollbar: { enabled: false, visibility: "hidden" },
             },

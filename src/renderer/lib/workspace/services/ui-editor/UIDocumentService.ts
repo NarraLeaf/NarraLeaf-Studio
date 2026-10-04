@@ -62,6 +62,8 @@ import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { RendererError } from "@shared/utils/error";
 import { i18nStore, translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { widgetDefaultWordsFor } from "@/lib/ui-editor/widget-modules/defaultWords";
+import type { UIWidgetDefaultWords } from "@/lib/ui-editor/widget-modules/types";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -1288,6 +1290,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const changes = this.textSourceMigrationChanges;
         this.textSourceMigrationChanges = [];
         return changes;
+    }
+
+    /**
+     * The words a widget inserted into this project is given: in the project's source language, the
+     * language its game is written in (`widgetDefaultWordsFor`).
+     */
+    private widgetDefaultWords(): UIWidgetDefaultWords {
+        let sourceLocale: string | undefined;
+        try {
+            sourceLocale = this.getContext().services.get<LocalizationService>(Services.Localization).getConfiguration().sourceLocale;
+        } catch {
+            sourceLocale = undefined;
+        }
+        return widgetDefaultWordsFor(sourceLocale);
     }
 
     /** A fresh id for something this document will own. */
@@ -4116,7 +4132,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             const elementId = uuidService.generate();
-            const defaults = definition.createDefaultElement();
+            const defaults = definition.createDefaultElement(this.widgetDefaultWords());
             const element: UIElement = {
                 id: elementId,
                 type: definition.type,
@@ -4460,7 +4476,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const elementId = uuidService.generate();
 
-        const defaultElement = definition.createDefaultElement();
+        const defaultElement = definition.createDefaultElement(this.widgetDefaultWords());
         const baseLayout: UILayout = {
             x: defaultElement.layout?.x ?? 0,
             y: defaultElement.layout?.y ?? 0,
