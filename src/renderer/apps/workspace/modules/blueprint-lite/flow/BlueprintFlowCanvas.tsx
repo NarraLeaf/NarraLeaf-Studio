@@ -159,6 +159,7 @@ import {
     describeBlueprintWireEnd,
     formatBlueprintWireEnd,
     listBlueprintPinConnections,
+    nameBlueprintWire,
     numberRepeatedNames,
     pickFarBlueprintWireEnd,
     readBlueprintPinAt,
@@ -1013,6 +1014,8 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsSig: string;
         dynamicSelectOptionsByNodeSig: string;
         dynamicSelectOptionsSig: string;
+        /** The translator the wires were named with; a new one is a language switch. */
+        t: typeof t;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -1175,7 +1178,8 @@ function BlueprintFlowCanvasInner({
             prevStruct.elementPreviewsSig !== elementPreviewsSig ||
             prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
             prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig ||
-            prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig;
+            prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig ||
+            prevStruct.t !== t;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -1187,26 +1191,27 @@ function BlueprintFlowCanvasInner({
                 displayableTargetVariantsSig,
                 dynamicSelectOptionsByNodeSig,
                 dynamicSelectOptionsSig,
+                t,
             };
+            const base = blueprintIrToFlowNodes(
+                snap,
+                nodeCatalog,
+                stablePatchNodeParam,
+                blueprintMemberVariables,
+                blueprintPersistentVariables,
+                blueprintSavedVariables,
+                stableAddDynamicInputPin,
+                stableRemoveDynamicInputPin,
+                dynamicSelectOptions,
+                dynamicSelectOptionsByNodeId,
+                nodeDiagnosticsByNodeId,
+                elementPreviews,
+                displayableTargetVariantsByNodeId,
+                onBindElementLiteral,
+                openSaveSchemaEditor,
+                fitGroupFrame,
+            );
             setNodes(prevNodes => {
-                const base = blueprintIrToFlowNodes(
-                    snap,
-                    nodeCatalog,
-                    stablePatchNodeParam,
-                    blueprintMemberVariables,
-                    blueprintPersistentVariables,
-                    blueprintSavedVariables,
-                    stableAddDynamicInputPin,
-                    stableRemoveDynamicInputPin,
-                    dynamicSelectOptions,
-                    dynamicSelectOptionsByNodeId,
-                    nodeDiagnosticsByNodeId,
-                    elementPreviews,
-                    displayableTargetVariantsByNodeId,
-                    onBindElementLiteral,
-                    openSaveSchemaEditor,
-                    fitGroupFrame,
-                );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
                 if (pendingPlacementEntry) {
@@ -1230,7 +1235,15 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext));
+            // Each wire is named from the cards just built, so its accessible name is the one the
+            // hover tooltip would give its ends rather than React Flow's, which reads out node ids.
+            const cards = new Map(base.map(node => [node.id, node.data]));
+            setEdges(
+                blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext).map(edge => ({
+                    ...edge,
+                    ariaLabel: nameBlueprintWire(edge, nodeId => cards.get(nodeId), t),
+                })),
+            );
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
@@ -1254,10 +1267,10 @@ function BlueprintFlowCanvasInner({
             });
         }
 
-        const t = window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
             suppressSelectionEventsRef.current = false;
         }, 0);
-        return () => window.clearTimeout(t);
+        return () => window.clearTimeout(timer);
     }, [
         blueprintMemberVariables,
         blueprintPersistentVariables,
@@ -1287,6 +1300,7 @@ function BlueprintFlowCanvasInner({
         fitGroupFrame,
         setEdges,
         setNodes,
+        t,
     ]);
 
     /**

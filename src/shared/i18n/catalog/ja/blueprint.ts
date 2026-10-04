@@ -57,6 +57,7 @@ export const blueprint = {
         goTo: "{target} へ移動",
         goToNth: "{target}（{n}）へ移動",
         goToConnected: "接続先のノードへ移動",
+        name: "{from} から {to} への線",
     },
     crossProject: {
         pasted: {
