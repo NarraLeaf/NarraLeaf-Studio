@@ -54,6 +54,8 @@ import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
+import type { UIService } from "../core/UIService";
+import { isBlueprintEntryTabShowing } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
     applyPlannedMove,
@@ -1320,6 +1322,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const historyService = this.getHistoryService();
         const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const removedBlueprintId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
         localBp.removeWidgetValueBlueprint(surfaceId, elementId, propPath);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
@@ -1337,6 +1340,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 before: beforeHistory,
                 after: historyService.captureSnapshot(surfaceId),
             });
+        }
+        if (removedBlueprintId) {
+            this.closeTabsShowingBlueprint(removedBlueprintId);
+        }
+    }
+
+    /**
+     * Close the editor tabs showing a value blueprint that clearing its binding has just removed.
+     *
+     * The blueprint is the binding's own - minted for this element's prop and named for it - but the
+     * author writes their logic into it, so its removal is one step on the page's undo history above,
+     * blueprint included. A tab left open on it said only that the blueprint could not be found, and
+     * while it stayed the active editor the inspector's Ctrl+Z went to its stack instead of the page's,
+     * so the step that would bring the logic back was out of reach from where the author was. Closed,
+     * the page the binding belongs to is the editor the inspector edits again.
+     */
+    private closeTabsShowingBlueprint(blueprintId: string): void {
+        const ui = this.getContext().services.get<UIService>(Services.UI);
+        for (const tab of ui.editor.getAll()) {
+            if (isBlueprintEntryTabShowing(tab, blueprintId)) {
+                ui.editor.close(tab.id);
+            }
         }
     }
 
