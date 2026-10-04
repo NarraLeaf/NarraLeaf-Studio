@@ -89,9 +89,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "只在满足条件时才发声的按键使用这两种音效：已解锁的场景卡片、CG 或回想条目播放确认音，锁定的保持无声；确认对话框中执行操作的答案播放确认音，其余答案播放返回音。这些蓝图在判断之后用「调用函数」调用这里的函数。按下或悬停时总会播放的音效，在该元素的「音效」分区中设置，不需要蓝图。两者都在音效音轨上播放，音量由「设置」页面的「音效」滑块控制。",
+                      "text": "只在满足条件时才发声的按键使用这两种音效：已解锁的场景卡片、CG 或回想条目播放确认音，锁定的保持无声；确认对话框中执行操作的答案播放确认音，其余答案播放返回音。这些蓝图在判断之后用「调用函数」调用这里的函数；按 Esc 键退出问题时，「确认」页面也调用「界面返回音」，因为按键没有元素来承载音效。按下或悬停时总会播放的音效，在该元素的「音效」分区中设置，不需要蓝图。两者都在音效音轨上播放，音量由「设置」页面的「音效」滑块控制。",
                       "width": 560,
-                      "height": 230
+                      "height": 270
                     },
                     "meta": {
                       "editorLayout": {
@@ -109,7 +109,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 326
+                        "y": 366
                       }
                     }
                   },
@@ -123,7 +123,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 270
+                        "y": 310
                       }
                     }
                   },
@@ -136,7 +136,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 697
+                        "y": 737
                       }
                     }
                   },
@@ -150,7 +150,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 641
+                        "y": 681
                       }
                     }
                   }
@@ -10758,8 +10758,101 @@
           "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70"
         },
         "graphs": {
-          "eventIds": [],
-          "events": {},
+          "eventIds": [
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a"
+          ],
+          "events": {
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a": {
+              "id": "9495c770-4038-41e2-97b5-f39fdd6d2d7a",
+              "name": "按 Esc 键取消",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Esc 键绑定在「关闭」输入意图上（「输入意图」面板），本页面像「取消」那样响应它：播放返回音，然后「关闭本叠加页面」不带答案地关闭本页面，提问的「询问确认」于是从「已关闭」输出离开。本项目的问题在「取消」和「已关闭」之后都不做任何事；需要做事的问题，把两者接到同样的节点上。问题显示期间只有本页面接收按键，所以下层页面保持打开。",
+                      "width": 1000,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "backCue": {
+                    "id": "backCue",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "界面返回音",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.layer.closeSelf",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 740,
+                        "y": -341
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "dismiss",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "backCue",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "backCue",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
           "functionIds": [],
           "functions": {}
         },
@@ -24272,6 +24365,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T01:00:14.163Z"
+    "updatedAt": "2026-10-04T21:55:42.306Z"
   }
 }

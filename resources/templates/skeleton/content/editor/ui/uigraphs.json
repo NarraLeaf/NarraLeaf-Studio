@@ -89,9 +89,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the Sound effects slider on the Config page sets their volume.",
+                      "text": "Two sounds for the presses that sound only on a condition: an unlocked scene card, CG or recollection entry plays confirm and a locked one stays silent, and the confirm dialog plays confirm on the answer that acts and back on the others. Those blueprints call these functions with Call Fn after their check, and the Confirm page calls UI back cue when Escape backs out of a question, since a key has no element to carry a sound. A sound that always plays when an element is pressed or hovered is set in that element's Sound section instead and needs no blueprint. Both kinds play on the SFX track, so the Sound effects slider on the Config page sets their volume.",
                       "width": 560,
-                      "height": 230
+                      "height": 270
                     },
                     "meta": {
                       "editorLayout": {
@@ -109,7 +109,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 326
+                        "y": 366
                       }
                     }
                   },
@@ -123,7 +123,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 270
+                        "y": 310
                       }
                     }
                   },
@@ -136,7 +136,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 697
+                        "y": 737
                       }
                     }
                   },
@@ -150,7 +150,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 641
+                        "y": 681
                       }
                     }
                   }
@@ -10758,8 +10758,101 @@
           "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70"
         },
         "graphs": {
-          "eventIds": [],
-          "events": {},
+          "eventIds": [
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a"
+          ],
+          "events": {
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a": {
+              "id": "9495c770-4038-41e2-97b5-f39fdd6d2d7a",
+              "name": "Cancel on Escape",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Escape is bound to the Dismiss action (Input actions panel), and this page answers it the way Cancel backs out: the back sound plays, then Close This Layer closes the page without an answer, so the Show Confirm that asked leaves through Dismissed. No question in this project does anything after Cancel or Dismissed; one that should wires both to the same nodes. While a question is up only this page hears the keys, so the page under it stays open.",
+                      "width": 1000,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "backCue": {
+                    "id": "backCue",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "UI back cue",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.layer.closeSelf",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 740,
+                        "y": -341
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "dismiss",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "backCue",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "backCue",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
           "functionIds": [],
           "functions": {}
         },
@@ -24272,6 +24365,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T01:00:14.163Z"
+    "updatedAt": "2026-10-04T21:55:42.306Z"
   }
 }

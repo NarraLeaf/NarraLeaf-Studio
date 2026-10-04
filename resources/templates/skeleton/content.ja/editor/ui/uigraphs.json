@@ -89,9 +89,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "条件を満たしたときだけ鳴る操作は、この二つの効果音を使う。解放済みのシーンカード、CG、回想の項目は決定音を鳴らし、ロック中のものは鳴らさない。確認ダイアログでは、実行する答えで決定音を、それ以外の答えで戻る音を鳴らす。これらのブループリントは判定の後で「関数を呼ぶ」でここの関数を呼ぶ。押したときやホバーしたときに必ず鳴る効果音は、その要素の「効果音」セクションで設定し、ブループリントは要らない。どちらも効果音トラックで鳴るため、音量は「設定」ページの「効果音」スライダーで調整する。",
+                      "text": "条件を満たしたときだけ鳴る操作は、この二つの効果音を使う。解放済みのシーンカード、CG、回想の項目は決定音を鳴らし、ロック中のものは鳴らさない。確認ダイアログでは、実行する答えで決定音を、それ以外の答えで戻る音を鳴らす。これらのブループリントは判定の後で「関数を呼ぶ」でここの関数を呼ぶ。Esc キーで質問から抜けるときは、キーには効果音を持たせる要素がないので、「確認」ページも「UI 戻る音」を呼ぶ。押したときやホバーしたときに必ず鳴る効果音は、その要素の「効果音」セクションで設定し、ブループリントは要らない。どちらも効果音トラックで鳴るため、音量は「設定」ページの「効果音」スライダーで調整する。",
                       "width": 560,
-                      "height": 230
+                      "height": 270
                     },
                     "meta": {
                       "editorLayout": {
@@ -109,7 +109,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 326
+                        "y": 366
                       }
                     }
                   },
@@ -123,7 +123,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 270
+                        "y": 310
                       }
                     }
                   },
@@ -136,7 +136,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 697
+                        "y": 737
                       }
                     }
                   },
@@ -150,7 +150,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 641
+                        "y": 681
                       }
                     }
                   }
@@ -10758,8 +10758,101 @@
           "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70"
         },
         "graphs": {
-          "eventIds": [],
-          "events": {},
+          "eventIds": [
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a"
+          ],
+          "events": {
+            "9495c770-4038-41e2-97b5-f39fdd6d2d7a": {
+              "id": "9495c770-4038-41e2-97b5-f39fdd6d2d7a",
+              "name": "Esc キーでキャンセル",
+              "graph": {
+                "nodes": {
+                  "note": {
+                    "id": "note",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Esc キーは「閉じる」入力アクションに割り当てられており（「入力アクション」パネル）、このページは「キャンセル」と同じようにそれに応える。戻る音を鳴らし、「このレイヤーを閉じる」が答えを返さずにこのページを閉じるので、尋ねた「確認を求める」は「閉じられた」出力から出る。このプロジェクトの質問は「キャンセル」のあとも「閉じられた」のあとも何もしない。何かをする質問では、両方を同じノードにつなぐ。質問が表示されている間はこのページだけがキーを受け取るので、下のページは開いたままになる。",
+                      "width": 1000,
+                      "height": 160
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -600
+                      }
+                    }
+                  },
+                  "dismiss": {
+                    "id": "dismiss",
+                    "type": "blueprint.event.head.action",
+                    "params": {
+                      "actionId": "dismiss"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "backCue": {
+                    "id": "backCue",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "UI 戻る音",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 370,
+                        "y": -400
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.layer.closeSelf",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 740,
+                        "y": -341
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "dismiss",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "backCue",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "backCue",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
           "functionIds": [],
           "functions": {}
         },
@@ -24272,6 +24365,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T01:00:14.163Z"
+    "updatedAt": "2026-10-04T21:55:42.306Z"
   }
 }
