@@ -201,6 +201,8 @@ function screen(input: {
     /** The entries a running game hid, or null when no game is running. */
     gameHiddenKeys: readonly string[] | null;
     controller?: LayerStackController;
+    /** The player has put the dialogue box away (`showDialog` off). */
+    dialogHidden?: boolean;
 }) {
     const inGame = input.gameHiddenKeys !== null;
     const gameHiddenKeys = new Set(input.gameHiddenKeys ?? []);
@@ -238,6 +240,7 @@ function screen(input: {
                 storyOnScreen,
                 coveredByPage: isStageCoveredByPage(occlusion),
                 pointerLive: true,
+                dialogHidden: input.dialogHidden === true,
                 surfaces: listStageSurfaces({
                     live: STAGE_LIVE,
                     // The notifications are display-only and never register for the keys.
@@ -277,6 +280,19 @@ describe("the Layers panel over a playthrough", () => {
         ]);
         // The page the game hid is not on screen, and says why.
         expect(view.offScreenPages.map(row => [row.label, row.hiddenForGame])).toEqual([["Title", true]]);
+    });
+
+    it("with the dialogue box put away, says so on the dialogue surface alone, which still takes clicks", () => {
+        // The engine hides the box by making it transparent: it stays mounted and registered, and the
+        // next click on the stage brings it back - so the row stays, and says it is hidden.
+        const view = screen({ pageStack: [{ key: "title:1", surfaceId: "title" }], gameHiddenKeys: ["title:1"], dialogHidden: true });
+        expect(gameUiOf(view.rows).surfaces.map(ui => [ui.slotId, ui.hidden, ui.concealed, ui.interactive])).toEqual([
+            ["dialog", true, false, true],
+            ["onStage", false, false, true],
+            ["notification", false, false, false],
+        ]);
+        const shown = screen({ pageStack: [{ key: "title:1", surfaceId: "title" }], gameHiddenKeys: ["title:1"] });
+        expect(gameUiOf(shown.rows).surfaces.some(ui => ui.hidden)).toBe(false);
     });
 
     it("with a page open over the game, hands the page the keys and fades every slot but notifications", () => {

@@ -141,6 +141,7 @@ export const devMode = {
         page: "页面",
         layer: "叠加页面",
         faded: "暂时淡出",
+        dialogHidden: "已隐藏",
         hiddenForGame: "游戏进行中隐藏",
         returnsOnBack: "「返回」时重新显示",
         onScreenCount: "{total} 层中有 {onScreen} 层在屏幕上",
