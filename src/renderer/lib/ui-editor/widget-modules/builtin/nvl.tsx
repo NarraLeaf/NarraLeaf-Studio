@@ -4,7 +4,7 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { extendWidgetModule } from "@/lib/ui-editor/widget-modules/inheritance";
 import { patchTextWidgetDefaultElement } from "@/lib/ui-editor/widget-modules/shared/text/textWidgetDefaults";
 import { TextWidgetModule } from "./text";
-import { TextBlueprintValueField } from "./text/inspector";
+import { NvlTextsSampleTextField } from "./text/TextSourceField";
 import { NvlTextsRenderer } from "./nvl/renderer";
 
 const NVL_TEXTS_TYPE = "nl.nvl.texts";
@@ -32,7 +32,13 @@ export const NvlTextsWidgetModule: UIWidgetModule = extendWidgetModule(TextWidge
     render: NvlTextsRenderer,
     inspector: () => ({
         // Same as the dialog line: the entry the list scope supplies replaces this text at run time,
-        // so the text offers only its own words and a Blueprint Value.
-        patch: { "text.content": { component: TextBlueprintValueField } },
+        // so the field holds sample words and nothing else.
+        patch: {
+            "text.content": {
+                component: NvlTextsSampleTextField,
+                label: translate("widgets.sampleText.label"),
+                helpText: translate("widgets.sampleText.hint"),
+            },
+        },
     }),
 });

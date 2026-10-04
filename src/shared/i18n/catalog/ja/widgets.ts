@@ -65,6 +65,12 @@ export const widgets = {
         enableItalic: "イタリックにする",
         disableItalic: "イタリックをやめる",
     },
+    sampleText: {
+        label: "サンプルテキスト",
+        hint: "エディタでのみ表示。ゲームでは物語の現在の行を表示する",
+        bindingNoEffect: "このバインドは{slot}スロットでは効かない",
+        removeBinding: "解除",
+    },
     localization: {
         direct: "直接入力",
         translationKey: "翻訳キー",

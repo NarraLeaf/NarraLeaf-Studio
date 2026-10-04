@@ -64,6 +64,12 @@ export const widgets = {
         enableItalic: "启用斜体",
         disableItalic: "禁用斜体",
     },
+    sampleText: {
+        label: "示例文字",
+        hint: "仅在编辑器中显示，游戏中显示故事的当前对白",
+        bindingNoEffect: "此绑定在{slot}栏中不生效",
+        removeBinding: "移除",
+    },
     localization: {
         direct: "直接写",
         translationKey: "翻译键",

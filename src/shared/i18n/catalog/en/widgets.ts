@@ -67,6 +67,12 @@ export const widgets = {
         enableItalic: "Enable italic",
         disableItalic: "Disable italic",
     },
+    sampleText: {
+        label: "Sample text",
+        hint: "Shown in the editor only. The game shows the story's current line.",
+        bindingNoEffect: "This binding has no effect in the {slot} slot.",
+        removeBinding: "Remove",
+    },
     localization: {
         direct: "Direct",
         translationKey: "Translation key",
