@@ -63,6 +63,15 @@ function rowFieldLabel(document: UIDocument, element: UIElement, fieldId: string
 }
 
 /**
+ * The last explanation shown, so one double-click answered by more than one listener says it once.
+ *
+ * A selected element's double-click reaches the widget's own handler, the canvas's and the transform
+ * box's, and each of them asks to begin the edit. Beginning is idempotent; a notification is not.
+ */
+let lastExplanation: { elementId: string; at: number } | null = null;
+const EXPLANATION_REPEAT_WINDOW_MS = 800;
+
+/**
  * Begin typing an element's words on the canvas - or, when a binding decides them, say which one
  * instead. True either way, because the gesture was answered: the caller must not hand the same
  * double-click to anything else.
@@ -79,6 +88,11 @@ export function beginOrExplainInlineTextEdit(host: InlineTextEditHost, surfaceId
         beginInlineTextEdit(host.stateService, surfaceId, elementId);
         return true;
     }
+    const now = Date.now();
+    if (lastExplanation && lastExplanation.elementId === elementId && now - lastExplanation.at < EXPLANATION_REPEAT_WINDOW_MS) {
+        return true;
+    }
+    lastExplanation = { elementId, at: now };
     const services = host.documentService.getContext().services;
     let message: string;
     if (bound.kind === "listItemField") {
