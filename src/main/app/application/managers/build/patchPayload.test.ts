@@ -14,7 +14,14 @@ import {
 } from "@narraleaf/bindings";
 import { openAssetOverlay } from "@narraleaf/bindings/read";
 import { resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
-import { digestPayload, openPayload, patchCarriesEntry, resolvePayloadLocation } from "./patchPayload";
+import {
+    digestPayload,
+    openPayload,
+    patchCarriesEntry,
+    payloadReaderCopy,
+    resolvePayloadLocation,
+    summarizePayload,
+} from "./patchPayload";
 
 const TITLE = "com.example.patched";
 
@@ -280,6 +287,139 @@ describe("finding a build's payload", () => {
         await fs.mkdir(path.join(root, "elsewhere"), { recursive: true });
         await expect(resolvePayloadLocation(path.join(root, "elsewhere")))
             .rejects.toThrow(/does not look like a build/);
+    });
+});
+
+/**
+ * Reading a build leaves nothing of it held.
+ *
+ * The next thing an author does with a build that was read is build into the same folder again,
+ * which deletes everything in it first. On Windows a file a process has loaded as a module cannot be
+ * deleted, so a reader loaded from the folder would fail that build until Studio exited - and the
+ * deletes below are that check on Windows.
+ */
+describe("what reading a build holds", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-payload-held-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
+    });
+
+    /** A sealed app dir whose store was written with a reader elsewhere, so the test loads nothing from it. */
+    async function writeSealedApp(name: string): Promise<string> {
+        const material = createProjectToken();
+        const writerDir = path.join(root, `${name}-writer`);
+        await fs.mkdir(writerDir, { recursive: true });
+        await fs.copyFile(archiveReaderPath(), path.join(writerDir, ARCHIVE_READER_FILENAME));
+        const writer = await createAssetArchive(
+            path.join(writerDir, ASSET_ARCHIVE_FILENAME),
+            path.join(writerDir, ARCHIVE_READER_FILENAME),
+            { projectMaterial: material, titleId: TITLE },
+        );
+        await writer.add("pack", Buffer.from(JSON.stringify(fixturePack({ "asset-1": "assets/asset-1" }))));
+        await writer.add("assets/asset-1", Buffer.from("one"));
+        await writer.finalize();
+        const appDir = path.join(root, name);
+        await fs.cp(writerDir, appDir, { recursive: true });
+        return appDir;
+    }
+
+    it("loads a sealed payload's reader from Studio's own copy, so the app dir can be compiled into again", async () => {
+        const appDir = await writeSealedApp("sealed");
+        for (let read = 0; read < 2; read++) {
+            // Twice, as the dialog reopened or the next export does: the same copy serves both.
+            const payload = await openPayload(appDir);
+            try {
+                expect((await payload.read("assets/asset-1")).toString()).toBe("one");
+            } finally {
+                await payload.close();
+            }
+        }
+        await fs.rm(appDir, { recursive: true });
+    });
+
+    it("summarizes a build: the pack always, the digests only when asked", async () => {
+        const appDir = await writeSealedApp("summary");
+        const brief = await summarizePayload(appDir, { digests: false });
+        expect(brief.pack.assets?.items["asset-1"]?.relativePath).toBe("assets/asset-1");
+        expect(brief.digests).toBeUndefined();
+
+        const full = await summarizePayload(appDir, { digests: true });
+        const payload = await openPayload(appDir);
+        try {
+            expect(new Map(full.digests)).toEqual(await digestPayload(payload));
+        } finally {
+            await payload.close();
+        }
+        await fs.rm(appDir, { recursive: true });
+    });
+
+    /**
+     * Studio's main process never looks inside a packaged build: one look through Electron's patch
+     * keeps the archive open until Studio exits. It is refused before anything is read, and a
+     * compiled app directory - all the main process reads - still opens.
+     */
+    it("refuses a packaged build in Studio's main process, and still opens an app dir there", async () => {
+        const resources = path.join(root, "win-unpacked", "resources");
+        await fs.mkdir(resources, { recursive: true });
+        await fs.writeFile(path.join(resources, "app.asar"), "an archive, as far as the check is concerned");
+        const appDir = path.join(root, "staging", "app");
+        await fs.mkdir(appDir, { recursive: true });
+        await fs.writeFile(path.join(appDir, "pack.json"), JSON.stringify(fixturePack({})));
+
+        const processWithType = process as { type?: string };
+        const previous = processWithType.type;
+        processWithType.type = "browser";
+        try {
+            await expect(openPayload(path.join(root, "win-unpacked"))).rejects.toThrow(/readBuildPayloadInWorker/);
+            const payload = await openPayload(appDir);
+            expect(payload.names).toEqual(["pack"]);
+            await payload.close();
+        } finally {
+            processWithType.type = previous;
+        }
+    });
+});
+
+describe("the reader copy", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-reader-copies-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
+    });
+
+    it("is one file per reader, named by its bytes", async () => {
+        const first = await payloadReaderCopy(Buffer.from("reader one"), root);
+        expect(path.dirname(path.dirname(first))).toBe(root);
+        expect(path.basename(first)).toBe(ARCHIVE_READER_FILENAME);
+        expect((await fs.readFile(first)).toString()).toBe("reader one");
+        expect(await payloadReaderCopy(Buffer.from("reader one"), root)).toBe(first);
+        const second = await payloadReaderCopy(Buffer.from("reader two"), root);
+        expect(second).not.toBe(first);
+        expect(await fs.readdir(path.dirname(first))).toEqual([ARCHIVE_READER_FILENAME]);
+    });
+
+    it("sweeps copies nobody has used for an hour, and keeps the rest", async () => {
+        const stale = path.join(root, "0".repeat(32));
+        const recent = path.join(root, "1".repeat(32));
+        for (const dir of [stale, recent]) {
+            await fs.mkdir(dir, { recursive: true });
+            await fs.writeFile(path.join(dir, ARCHIVE_READER_FILENAME), "an older reader");
+        }
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        await fs.utimes(path.join(stale, ARCHIVE_READER_FILENAME), twoHoursAgo, twoHoursAgo);
+
+        await payloadReaderCopy(Buffer.from(`a reader first met at ${Date.now()}`), root);
+        await expect(fs.access(stale)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(fs.access(path.join(recent, ARCHIVE_READER_FILENAME))).resolves.toBeUndefined();
     });
 });
 
