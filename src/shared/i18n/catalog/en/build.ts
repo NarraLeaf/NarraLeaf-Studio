@@ -300,6 +300,15 @@ export const build = {
     mirror: {
         official: "official source",
         change: "Change",
+        /**
+         * Printed under a build that failed fetching a toolset, Electron or Zig. `{section}` is the
+         * settings category's own label, so the path reads the way the settings window does.
+         */
+        downloadFailed:
+            "A file the build needed could not be downloaded. If this network reaches github.com slowly or not at all, choose a mirror for the build's downloads in Settings › {section} and build again.",
+        /** Added after `downloadFailed` when the failure was a certificate that would not verify. */
+        certificateFailed:
+            "The download's certificate could not be verified. That usually means a proxy, network accelerator or antivirus program on this computer is intercepting HTTPS; turning it off may fix this without a mirror.",
     },
     preflight: {
         "no-targets": "Select at least one platform and format.",

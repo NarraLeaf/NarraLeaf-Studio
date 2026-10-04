@@ -134,6 +134,7 @@ import { readProjectDlcFromDir } from "../../utils/dlcFile";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
+import { downloadFailureHints } from "./downloadFailureHint";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
 import {
     createEmptyAppTagDocument,
@@ -3380,7 +3381,10 @@ export class GameBuildManager {
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
         // whose URL layout differs - so it is NOT synthesized from the same
-        // string; it is inherited from the environment if the user set it.
+        // string. It has a setting of its own, build.electronBuilderBinariesMirror,
+        // which travels in the config and which the worker turns into that variable
+        // around packaging (withBinariesMirrorEnv); with the setting empty, whatever
+        // the host's environment says is inherited here and used as before.
         return new Promise<string[]>((resolve, reject) => {
             if (session.cancelled) {
                 reject(new Error("Build cancelled"));
@@ -4104,6 +4108,9 @@ export class GameBuildManager {
         if (!session.cancelled) {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
+            for (const hint of downloadFailureHints(message, getMainTranslator(this.app))) {
+                this.emit(session, { level: "warning", source: "Build", message: hint });
+            }
         }
         // Not awaited, unlike the finished path: this is reached from synchronous callers - the
         // cancel handler answers with the snapshot it just set - and a failed run is not one anybody

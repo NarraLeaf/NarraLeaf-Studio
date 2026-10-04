@@ -136,8 +136,12 @@ export type UIHostAdapterBlueprintRuntime = {
          * The host the body runs on, when it is not this runtime's own adapter: a host standing in
          * front of this one (the global blueprint's, see `globalHost`) passes itself, so a fn its
          * graphs call reads the same host as the graph that called it. Absent everywhere else.
+         *
+         * Typed opaquely because this runtime type is part of the script API declarations that
+         * Studio writes into projects, and `UIHostAdapter` reaches React's types, which a project
+         * does not have. The one reader, the Dev Mode host adapter, narrows it back.
          */
-        hostAdapter?: UIHostAdapter;
+        hostAdapter?: unknown;
     }) => Promise<{ returns: Record<string, unknown> }>;
     frame?: {
         getParam: (key: string) => unknown;
