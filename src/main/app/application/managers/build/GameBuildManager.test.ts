@@ -24,6 +24,15 @@ import {
     toWorkerWindowsSigning,
 } from "./GameBuildManager";
 
+// A run that fails words its download hints in Studio's language, which asks whether this launch is
+// a command-line build or check and then reads the stored interface language. Every manager below
+// that can fail a run answers both, or the failure path throws after the test has finished.
+const answersLanguageQuestions = {
+    getCommandLineBuild: () => false,
+    getCommandLineCheck: () => false,
+    globalState: { get: () => "en" },
+};
+
 // The fail-fast tests below reach run()'s console emission before throwing;
 // keep it away from the window plumbing.
 vi.mock("../../utils/workspaceConsole", () => ({
@@ -146,6 +155,7 @@ describe("GameBuildManager.start fail-fast guards", () => {
         projectTrustManager: { isTrusted: () => true },
         getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         hasExperimentalCondition: () => false,
+        ...answersLanguageQuestions,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
 
@@ -173,6 +183,7 @@ describe("GameBuildManager.start while the workspace is frozen", () => {
         projectTrustManager: { isTrusted: () => true },
         getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         hasExperimentalCondition: () => false,
+        ...answersLanguageQuestions,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-project");
@@ -589,11 +600,7 @@ describe("the codec images a run leaves in the project", () => {
     };
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined, warn: () => undefined },
-        // A failed run words its download hints in Studio's language: whether this launch is a
-        // command-line build or check, then the stored interface language.
-        getCommandLineBuild: () => false,
-        getCommandLineCheck: () => false,
-        globalState: { get: () => "en" },
+        ...answersLanguageQuestions,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]) as unknown as Plumbing;
     const makeSession = (projectPath: string) => ({
         id: "run",
