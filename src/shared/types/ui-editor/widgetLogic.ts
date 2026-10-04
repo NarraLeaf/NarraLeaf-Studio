@@ -482,7 +482,7 @@ function createCollectionWidgetLogicApi(blueprintLabel: string): WidgetLogicApi 
             {
                 id: "refreshItems",
                 displayName: "Refresh items",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [
@@ -580,7 +580,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             {
                 id: "setSource",
                 displayName: "Set image source",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [
@@ -807,7 +807,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             {
                 id: "setPage",
                 displayName: "Set page",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [

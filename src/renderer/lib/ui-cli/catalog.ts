@@ -34,6 +34,8 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { queryNodes } from "../blueprint-cli/catalog";
 import { propAssignmentKey } from "./dsl/parse";
 import { cliPluginOwnerOf, listCliPluginWidgetModules } from "./plugins";
 import { nearest } from "./text";
@@ -81,6 +83,12 @@ export type WidgetDetail = WidgetSummary & {
     commands: { id: string; displayName: string; availability: string; description?: string }[];
     readableState: { id: string; displayName: string; description?: string }[];
     writableProps: { propPath: string; displayName: string; description?: string }[];
+    /**
+     * The palette categories of the nodes that act on this widget from its own blueprint - the ones
+     * offered there and nowhere else, event heads aside. They are what an author reaches `commands`,
+     * `readableState` and `writableProps` with; from any other blueprint it is the Element category.
+     */
+    ownBlueprintNodeCategories: string[];
     /** Parts the widget builds for itself when inserted, which an author must not delete. */
     parts: WidgetPartDoc[];
     /** States the widget's own state bar offers, for widgets whose states are not appearance variants. */
@@ -315,10 +323,34 @@ export function describeWidget(type: string): WidgetDetail | null {
         })),
         readableState: (logic?.readableState ?? []).map(state => ({ ...state })),
         writableProps: (logic?.writableProps ?? []).map(prop => ({ ...prop })),
+        ownBlueprintNodeCategories: ownBlueprintNodeCategories(module.type),
         parts: readParts(module),
         editorStates: readEditorStates(module),
         notes: [...(WIDGET_NOTES[module.type] ?? []), ...textSiteNotes(module.type)],
     };
+}
+
+/**
+ * The categories an author finds a widget's own nodes under in the add-node palette of its blueprint:
+ * Set Visible, Get Selected Index, Refresh List Items and the rest of the List category on a list, and
+ * the Displayable category on anything drawn.
+ *
+ * Read off the question `blueprint.js nodes --owner widgetMain --widget <type>` asks the palette: the
+ * nodes offered on a widget of this type and not on a widget of no particular type. Event heads are
+ * left to the `events` section, which names them one by one.
+ */
+function ownBlueprintNodeCategories(type: string): string[] {
+    registerCoreBlueprintNodes();
+    const onAnyWidget = new Set(queryNodes({ ownerKind: "widgetMain" }).map(node => node.type));
+    const categories = new Set<string>();
+    for (const node of queryNodes({ ownerKind: "widgetMain", widgetElementType: type })) {
+        const role = blueprintNodeRegistry.get(node.type)?.role;
+        if (onAnyWidget.has(node.type) || role === "eventHead" || role === "elementEventHead") {
+            continue;
+        }
+        categories.add(node.category);
+    }
+    return [...categories];
 }
 
 /**
@@ -496,6 +528,13 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
                 : "no private blueprint"
         }${detail.operable ? "; the player operates it, so panel gestures stand down over it" : ""}`,
     );
+    if (detail.commands.length + detail.readableState.length + detail.writableProps.length > 0) {
+        // Where the commands, state and props listed further down are reached from. No one node
+        // reaches them: each widget type has nodes of its own, under the categories named here.
+        const own = detail.ownBlueprintNodeCategories;
+        const inOwn = own.length > 0 ? `${own.join(", ")} in its own blueprint; ` : "";
+        lines.push(`  nodes      ${inOwn}Element in any blueprint`);
+    }
 
     if (detail.parts.length > 0) {
         lines.push("");
@@ -541,9 +580,9 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     }
 
     for (const [title, rows] of [
-        ["commands (Call Widget Command)", detail.commands.map(c => `${c.id}  ${c.displayName}${c.availability === "planned" ? "  (planned)" : ""}`)],
-        ["readable state (Get Widget State)", detail.readableState.map(s => `${s.id}  ${s.displayName}`)],
-        ["writable props (Set Widget Prop)", detail.writableProps.map(p => `${p.propPath}  ${p.displayName}`)],
+        ["commands", detail.commands.map(c => `${c.id}  ${c.displayName}${c.availability === "planned" ? "  (planned)" : ""}`)],
+        ["readable state", detail.readableState.map(s => `${s.id}  ${s.displayName}`)],
+        ["writable props", detail.writableProps.map(p => `${p.propPath}  ${p.displayName}`)],
         ["editor states", detail.editorStates.map(s => `${s.id ?? "(rest)"}  ${s.name}`)],
     ] as const) {
         if (rows.length > 0) {
