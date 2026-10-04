@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { UIElement } from "./document";
-import { uiTextSampleCauseOf } from "./textSample";
+import type { GameLocalizationBundle } from "../localization";
+import type { UIDocument, UIElement } from "./document";
+import { uiTextSampleCauseOf, withoutUITextSamples, withoutUITextSampleUnits } from "./textSample";
 import { requireUITextSite } from "./textSource";
-import type { UITextWriter } from "./textWriters";
+import type { UITextWriter, UITextWriterIndex } from "./textWriters";
 
 /**
- * Sample text: which words a player never reads.
+ * Sample text: which words a player never reads, and the promise that a package never carries them.
  */
 
 const TEXT = requireUITextSite("nl.text");
@@ -56,5 +57,74 @@ describe("uiTextSampleCauseOf", () => {
     it("is not asked about the dialogue line, whose site says it has sample words", () => {
         const sentence = requireUITextSite("nl.dialog.sentence");
         expect(uiTextSampleCauseOf(element("s", "nl.dialog.sentence", { text: "A line" }, BOUND), sentence, [writer("replace")])).toBeNull();
+    });
+});
+
+describe("withoutUITextSamples", () => {
+    function documentOf(elements: UIElement[], componentElements: UIElement[] = []): UIDocument {
+        return {
+            schemaVersion: 12,
+            id: "doc",
+            name: "Doc",
+            surfaces: [],
+            elements: Object.fromEntries(elements.map(entry => [entry.id, entry])),
+            components: componentElements.length
+                ? [{ id: "c", name: "Save slot", rootElementId: componentElements[0].id, elements: Object.fromEntries(componentElements.map(entry => [entry.id, entry])) }]
+                : [],
+        } as UIDocument;
+    }
+
+    it("never lets sample words reach the package, from either element table", () => {
+        const document = documentOf(
+            [
+                element("nametag", "nl.text", { text: "SAMPLE-NAME", rich: [{ text: "SAMPLE-NAME" }], localizable: true }, BOUND),
+                element("speaker", "nl.text", { text: "SAMPLE-ROW" }, { text: { kind: "listItemField", fieldId: "speaker" } }),
+                element("title", "nl.text", { text: "Your Game", localizable: true }),
+                element("log", "nl.text", { text: "Log: " }),
+            ],
+            [element("place", "nl.text", { text: "SAMPLE-PLACE", fontSize: 20 })],
+        );
+        const writers: UITextWriterIndex = new Map([
+            ["place", [writer("replace")]],
+            ["log", [writer("append")]],
+        ]);
+
+        const { document: shipped, unitIds } = withoutUITextSamples(document, writers);
+
+        expect(JSON.stringify(shipped)).not.toMatch(/SAMPLE-/);
+        expect(shipped.elements.nametag.props).toEqual({ text: "" });
+        expect(shipped.elements.speaker.props).toEqual({ text: "" });
+        // Emptied rather than removed: a widget reads a missing prop as its default words.
+        expect(shipped.components?.[0].elements.place.props).toEqual({ text: "", fontSize: 20 });
+        // What a player reads ships as written, the start of an appended line included.
+        expect(shipped.elements.title).toBe(document.elements.title);
+        expect(shipped.elements.log).toBe(document.elements.log);
+        expect([...unitIds].sort()).toEqual(["ui:nametag.text", "ui:place.text", "ui:speaker.text"]);
+        // The authored document is not touched.
+        expect(document.elements.nametag.props?.text).toBe("SAMPLE-NAME");
+    });
+
+    it("hands back the same document when nothing in it is sample", () => {
+        const document = documentOf([element("title", "nl.text", { text: "Your Game" })]);
+        expect(withoutUITextSamples(document, new Map()).document).toBe(document);
+    });
+});
+
+describe("withoutUITextSampleUnits", () => {
+    it("drops the translations of sample words and keeps every other one", () => {
+        const localization: GameLocalizationBundle = {
+            sourceLocale: "en",
+            locales: [],
+            tables: {
+                zh: { "ui:nametag.text": "示例名", "ui:title.text": "你的游戏", "key:menu.start": "开始" },
+                ja: { "key:menu.start": "はじめる" },
+            },
+        };
+        const out = withoutUITextSampleUnits(localization, new Set(["ui:nametag.text"]));
+        expect(out?.tables).toEqual({
+            zh: { "ui:title.text": "你的游戏", "key:menu.start": "开始" },
+            ja: { "key:menu.start": "はじめる" },
+        });
+        expect(withoutUITextSampleUnits(localization, new Set())).toBe(localization);
     });
 });
