@@ -1,10 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
-import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import {
+    UI_TEXT_SITES,
+    uiTextSiteOf,
+    uiTextSitesFromPluginDeclaration,
+    uiTextSitesOf,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
+import { registerContributedWidgetSource, type ContributedWidgetDeclaration } from "@shared/types/ui-editor/contributedWidgets";
 import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
 import { settleIncomingUITextSources } from "@shared/types/ui-editor/textSourceMigration";
@@ -28,7 +35,28 @@ import { extractUiTranslationRows } from "@/lib/workspace/services/localization/
  * hard-coded beside the table, a prop name the table does not list) reports a site the table does not
  * know, and this fails - which is the point: the alternative is another copy of the rules, and copies
  * that drifted are how a word came to read one way on the canvas and another in the game.
+ *
+ * A plugin's widget is on the page too, declaring two of its props as words the way a manifest does
+ * (`contributes.widgetText`), one with its own key prop and one with the default: every reader that
+ * walks a page's words has to find exactly those, and the readers only Studio's own widgets answer
+ * (typing in place, value bindings) have to find nothing on it.
  */
+
+/** A plugin widget, as its manifest declares it, answered behind the table as a loaded plugin's would be. */
+const PLUGIN_TYPE = "probe.plugin.badge";
+const PLUGIN_DECLARATION: ContributedWidgetDeclaration = {
+    type: PLUGIN_TYPE,
+    ownerPluginId: "probe.plugin",
+    textSites: uiTextSitesFromPluginDeclaration(PLUGIN_TYPE, [
+        { prop: "caption", keyProp: "captionKey" },
+        { prop: "hint", keyProp: "hintLocalizationKey" },
+    ]),
+};
+const removePluginSource = registerContributedWidgetSource({
+    get: type => (type === PLUGIN_TYPE ? PLUGIN_DECLARATION : undefined),
+    list: () => [PLUGIN_DECLARATION],
+});
+afterAll(removePluginSource);
 
 /** Props that might hold words on some widget, beyond each widget's own string defaults. */
 const CANDIDATE_TEXT_PROPS = ["text", "label", "placeholder", "title", "caption", "value", "hint", "tooltip", "alt"];
@@ -40,11 +68,15 @@ const CANDIDATE_KEY_PROPS = [
     "textLocalizationKey",
     "titleLocalizationKey",
     "valueLocalizationKey",
+    "captionKey",
+    "hintLocalizationKey",
 ];
 
 /** Every built-in widget type, specialisations included. */
-const WIDGET_TYPES = [...new Set([...BuiltinWidgetModules.map(module => module.type), ...Object.keys(WIDGET_TYPE_PARENTS)])]
+const BUILTIN_WIDGET_TYPES = [...new Set([...BuiltinWidgetModules.map(module => module.type), ...Object.keys(WIDGET_TYPE_PARENTS)])]
     .filter(type => type !== "nl.root");
+/** And the plugin's. */
+const WIDGET_TYPES = [...BUILTIN_WIDGET_TYPES, PLUGIN_TYPE];
 
 function defaultStringProps(type: string): string[] {
     const module = BuiltinWidgetModules.find(candidate => candidate.type === type);
@@ -114,14 +146,18 @@ function typeOf(document: UIDocument, elementId: string): string {
     return document.elements[elementId]?.type ?? "?";
 }
 
-/** `type.prop` for every built-in type whose site answers yes to `select`, read through inheritance. */
+/**
+ * `type.prop` for every site that answers yes to `select`: each built-in type's, read through
+ * inheritance, and each the plugin's widget declares.
+ */
 function expectedSites(select: (site: UITextSite) => string | undefined): string[] {
     const out: string[] = [];
     for (const type of WIDGET_TYPES) {
-        const site = uiTextSiteOf(type);
-        const prop = site ? select(site) : undefined;
-        if (prop) {
-            out.push(`${type}.${prop}`);
+        for (const site of uiTextSitesOf(type)) {
+            const prop = select(site);
+            if (prop) {
+                out.push(`${type}.${prop}`);
+            }
         }
     }
     return out.sort();
@@ -134,6 +170,16 @@ describe("interface text sites", () => {
     it("declares one site per widget type", () => {
         const types = UI_TEXT_SITES.map(site => site.widgetType);
         expect(new Set(types).size).toBe(types.length);
+    });
+
+    it("answers a plugin widget with the sites its manifest declares, and a built-in widget with its one", () => {
+        expect(uiTextSitesOf(PLUGIN_TYPE).map(site => [site.textProp, site.keyProp, site.role, site.valueBinding])).toEqual([
+            ["caption", "captionKey", "words", "none"],
+            ["hint", "hintLocalizationKey", "words", "none"],
+        ]);
+        expect(uiTextSiteOf(PLUGIN_TYPE)).toBeUndefined();
+        expect(uiTextSitesOf("nl.button")).toEqual([uiTextSiteOf("nl.button")]);
+        expect(uiTextSitesOf("probe.plugin.unloaded")).toEqual([]);
     });
 
     it("lint walks exactly the sites a player reads (listSurfaceTextSites)", () => {
@@ -247,8 +293,8 @@ describe("interface text sites", () => {
     });
 
     it("the interface CLI notes a key only where the table gives the site one", () => {
-        const keyed = WIDGET_TYPES.filter(type => (describeWidget(type)?.notes ?? []).some(note => note.includes("is read from that translation key")));
-        const expected = WIDGET_TYPES.filter(type => {
+        const keyed = BUILTIN_WIDGET_TYPES.filter(type => (describeWidget(type)?.notes ?? []).some(note => note.includes("is read from that translation key")));
+        const expected = BUILTIN_WIDGET_TYPES.filter(type => {
             const site = uiTextSiteOf(type);
             return site?.role === "words" && Boolean(site.keyProp) && site.canvasDrawsKey;
         });

@@ -274,6 +274,7 @@ describe("game runtime artifact compiler", () => {
                 runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
                 externalLinks: [],
                 network: [],
+                widgetText: {},
             },
             permissions: [],
         };
@@ -975,6 +976,7 @@ describe("game runtime artifact compiler", () => {
                 runtimeCapabilities: [], sidecars: [], buildDependencies: [], buildConfig: [],
                 externalLinks: [],
                 network: [],
+                widgetText: {},
             },
             permissions: [],
         };
@@ -1726,6 +1728,7 @@ async function writeSidecarPlugin(input: {
             buildConfig: [],
             externalLinks: [],
             network: [],
+            widgetText: {},
         },
         permissions: [],
     };
@@ -1772,6 +1775,7 @@ function buildConfigManifest(
             buildConfig,
             externalLinks: [],
             network: [],
+            widgetText: {},
         },
         permissions: [],
     };

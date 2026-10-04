@@ -28,7 +28,7 @@ import { translationDocumentFreezeScope } from "./localizationLiveSession";
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
-import { useTranslation } from "@/lib/i18n";
+import { i18nStore, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import {
     LocalizationService,
@@ -220,7 +220,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             const uiDocument = uiDocumentService?.getDocument();
             if (uiDocument && uiDocumentService) {
                 const writers = readProjectTextWriters(uiDocumentService.getContext().services);
-                for (const row of extractUiTranslationRows(uiDocument, writers)) {
+                for (const row of extractUiTranslationRows(uiDocument, writers, { locale: i18nStore.getLocale() })) {
                     collected.push({
                         unitId: row.unitId,
                         sourceText: row.sourceText,

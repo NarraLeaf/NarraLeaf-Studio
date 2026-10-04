@@ -32,6 +32,7 @@ import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/comp
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
 import { guardPluginWidgetModule } from "./pluginWidgetGuard";
+import { uiTextSitesFromPluginDeclaration } from "@shared/types/ui-editor/textSource";
 import type { PluginWidgetModule } from "./pluginWidgetApi";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -596,6 +597,9 @@ export function createPluginApp(
         module,
         nodeGame,
         { documentService: uiDocument, stateService: uiEditorState },
+        // Read off the manifest rather than the module: the runtime entry draws the same widget and
+        // reads the same declaration, so the two cannot disagree about which props are words.
+        uiTextSitesFromPluginDeclaration(module.type, descriptor.manifest.contributes.widgetText?.[module.type]),
     );
 
     // Every registration a plugin makes through this app object is recorded

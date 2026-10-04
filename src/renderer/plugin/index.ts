@@ -58,6 +58,8 @@ export type {
     PluginManifestEntries,
     PluginManifestLocalized,
     PluginManifestLocalizedText,
+    PluginContributes,
+    PluginWidgetTextContribution,
     PluginInstallRecord,
     PluginListItem,
     WorkspacePluginDescriptor,

@@ -24,7 +24,7 @@ import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
-import { uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import {
     UI_INTERACTION_SOUND_KINDS,
     UI_INTERACTION_SOUND_PROP,
@@ -131,23 +131,25 @@ const TEXT_SITE_NOUNS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The notes about a widget's words, read from its text site (`textSites.ts`) rather than written per
- * widget, so a widget whose words gain a key or marks gains the note with them.
+ * The notes about a widget's words, read from its text sites (`textSites.ts`, and for a plugin's widget
+ * the props its manifest declares) rather than written per widget, so a widget whose words gain a key
+ * or marks gains the note with them.
  */
 function textSiteNotes(type: string): string[] {
-    const site = uiTextSiteOf(type);
-    if (!site || site.role !== "words") {
-        return [];
-    }
     const notes: string[] = [];
-    if (site.marksProp) {
-        notes.push(markedLabelNote(site.textProp));
-    }
-    if (site.keyProp && site.canvasDrawsKey) {
-        notes.push(keyedWordsNote(TEXT_SITE_NOUNS[type] ?? type, site, site.keyProp));
-    }
-    if (site.valueBinding === "offered") {
-        notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+    for (const site of uiTextSitesOf(type)) {
+        if (site.role !== "words") {
+            continue;
+        }
+        if (site.marksProp) {
+            notes.push(markedLabelNote(site.textProp));
+        }
+        if (site.keyProp && site.canvasDrawsKey) {
+            notes.push(keyedWordsNote(TEXT_SITE_NOUNS[type] ?? type, site, site.keyProp));
+        }
+        if (site.valueBinding === "offered") {
+            notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+        }
     }
     return notes;
 }

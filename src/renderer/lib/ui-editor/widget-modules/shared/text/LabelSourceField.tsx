@@ -48,6 +48,11 @@ export type LabelSourceFieldConfig = {
     label: MarkedLabelProps;
     /** The words are one line: the boxes are single-line and carry no marks (a placeholder). */
     singleLine?: boolean;
+    /**
+     * The words carry no marks over several lines: the box is a plain multi-line one rather than the
+     * marks editor (a plugin widget's prop, which its renderer is handed as a string).
+     */
+    withoutMarks?: boolean;
 };
 
 function liveElementOf(data: UIInspectorData): UIElement {
@@ -56,8 +61,9 @@ function liveElementOf(data: UIInspectorData): UIElement {
 
 /**
  * A widget's words, and where they come from: the element's own, a translation key, or a Blueprint
- * Value - chosen in one field, one at a time. The text widget's text, the button's label and the
- * text input's placeholder (which offers no Blueprint Value) are all this field.
+ * Value - chosen in one field, one at a time. The text widget's text, the button's label, the
+ * text input's placeholder (which offers no Blueprint Value) and every prop a plugin's widget declares
+ * as words (`pluginTextSection.tsx`, no Blueprint Value either) are all this field.
  *
  * The choice is not stored; it is read off the element in the order the game resolves the words
  * (`uiTextSourceOf`). Choosing writes that order's answer: a key is set, or cleared, or a binding made.
@@ -221,6 +227,22 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             <DraftTextInput
                 className={`w-full ${FIELD_INPUT_CLASS}`}
                 value={ownWords(live)}
+                readOnly={readOnly}
+                draftResetKey={live.id}
+                readCommittedValue={() => ownWords(liveElementOf(data))}
+                onCommit={next =>
+                    data.documentService.updateElementProps(
+                        live.id,
+                        plainTextEditPatch(config.label, liveElementOf(data), next),
+                    )
+                }
+            />
+        ) : config.withoutMarks ? (
+            <DraftTextInput
+                multiline
+                className={LABEL_TEXT_AREA_CLASS}
+                value={ownWords(live)}
+                rows={4}
                 readOnly={readOnly}
                 draftResetKey={live.id}
                 readCommittedValue={() => ownWords(liveElementOf(data))}

@@ -59,6 +59,7 @@ async function writePlugin(
             buildConfig,
             externalLinks: [],
             network: [],
+            widgetText: {},
         },
         permissions: [],
     };

@@ -129,7 +129,7 @@ function isPendingReview(state: LocalizationUnitState): boolean {
 
 export function LocalizationEditorTab({ tabId, payload, active }: EditorComponentProps<LocalizationEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
-    const { t } = useTranslation();
+    const { t, locale: editorLocale } = useTranslation();
     const locale = payload?.locale ?? "";
 
     const localizationService = useMemo(
@@ -289,7 +289,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                 }
                 const uiDocument = uiDocumentService?.getDocument();
                 const uiRows: TableRow[] = uiDocument && uiDocumentService
-                    ? extractUiTranslationRows(uiDocument, readProjectTextWriters(uiDocumentService.getContext().services)).map(row => ({
+                    ? extractUiTranslationRows(uiDocument, readProjectTextWriters(uiDocumentService.getContext().services), { locale: editorLocale }).map(row => ({
                         unitId: row.unitId,
                         sourceText: row.sourceText,
                         interpolationCount: 0,
@@ -377,7 +377,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             disposed = true;
             unsubscribe();
         };
-    }, [storyService, localizationService, uiDocumentService, sourceValue, speakerNameFor, characters, uiDocumentRevision, t]);
+    }, [storyService, localizationService, uiDocumentService, sourceValue, speakerNameFor, characters, uiDocumentRevision, t, editorLocale]);
 
     // Translation document for this locale. Read again when the language comes back to the list,
     // since what is on disk then is what the table shows.

@@ -9,7 +9,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, getUIComponentParams } from "@shared/types/ui-editor/document";
-import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { readUITextSite, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { listBlueprintGraphSites } from "@/lib/lint/blueprintSites";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "@/lib/lint/rules/blueprint";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -41,11 +41,10 @@ export function listLocalizationKeyUses(input: {
 }): LocalizationKeyUses {
     const { uiDocument, blueprintDocument, keyName } = input;
     const elements: LocalizationKeyUses["elements"] = [];
-    const usesKey = (element: UIElement): boolean => {
-        const site = uiTextSiteOf(element.type);
-        return Boolean(site?.keyProp && site.role === "words" && !getUIComponentLink(element)
+    // Any of the element's sites: a plugin's widget can read several of its words from keys.
+    const usesKey = (element: UIElement): boolean => !getUIComponentLink(element)
+        && uiTextSitesOf(element.type).some(site => Boolean(site.keyProp) && site.role === "words"
             && readUITextSite(element, site).key === keyName);
-    };
     const nameOf = (element: UIElement) => element.name?.trim() || input.widgetName(element);
     /** The text parameters an instance reads from the key, as "widget › parameter". */
     const paramUses = (element: UIElement): string[] => {
