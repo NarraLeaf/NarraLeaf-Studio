@@ -178,6 +178,8 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "Unknown widget",
         widgetRenderFailed: "Widget failed to draw",
+        wordsFromRowField: "These words come from the list row field “{field}”.",
+        wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
     },
     editor: {
         componentNotFound: "Component not found",

@@ -20,6 +20,12 @@ import type { TranslationExchangeRow } from "@shared/utils/localizationExchange"
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
 import {
+    uiTextSiteOf,
+    uiTextUnitBindingOf,
+    uiTextUnitId,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
+import {
     countSegmentInterpolations,
     segmentHasMarkup,
     serializeSegmentMarkupText,
@@ -198,7 +204,7 @@ export function extractSceneTranslationRows(document: StoryDocument): SceneTrans
 export type UiTranslationRow = {
     unitId: string;
     elementId: string;
-    prop: "text" | "label";
+    prop: UITextSite["textProp"];
     /** Author-facing element name (never the raw element id). */
     elementName: string;
     /** Page (or component) the element lives on, for grouping. */
@@ -206,31 +212,23 @@ export type UiTranslationRow = {
     sourceText: string;
 };
 
-const LOCALIZABLE_WIDGETS: Record<string, "text" | "label"> = {
-    "nl.text": "text",
-    "nl.button": "label",
-};
-
-function getLocalizableWidgetText(element: UIElement): { prop: "text" | "label"; sourceText: string } | null {
-    const prop = LOCALIZABLE_WIDGETS[element.type];
-    if (!prop) {
+/**
+ * The words an element translates through its own unit, when it does - the site's prop, read the way
+ * the game reads it (`uiTextUnitBindingOf`). A named key translates through the key registry
+ * instead, and its row is the key's; a site with no unit switch has no unit at all.
+ */
+function getLocalizableWidgetText(element: UIElement): { prop: UITextSite["textProp"]; sourceText: string } | null {
+    const site = uiTextSiteOf(element.type);
+    if (!site || site.role !== "words") {
         return null;
     }
-    const props = element.props as Record<string, unknown> | undefined;
-    // Named-key references translate through the key registry, not an implicit unit.
-    if (!props || props.localizable !== true || (typeof props.localizationKey === "string" && props.localizationKey.trim())) {
-        return null;
-    }
-    const sourceText = props[prop];
-    if (typeof sourceText !== "string" || !sourceText.trim()) {
-        return null;
-    }
-    return { prop, sourceText };
+    const binding = uiTextUnitBindingOf(element, site);
+    return binding?.kind === "implicit" ? { prop: site.textProp, sourceText: binding.sourceText } : null;
 }
 
-/** Stable unit id for a widget's localizable text prop (mirrors the runtime resolver). */
+/** Stable unit id for a widget's localizable text prop - the runtime resolver's (`uiTextUnitId`). */
 export function uiTranslationUnitId(elementId: string, prop: string): string {
-    return `ui:${elementId}.${prop}`;
+    return uiTextUnitId(elementId, prop);
 }
 
 /**

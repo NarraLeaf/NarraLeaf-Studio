@@ -127,8 +127,11 @@ nl.switch
 ```
 
 The prop table is what a **new** widget of that type carries, not a closed set: a
-widget may hold keys its defaults do not name (`localizationKey` is the common
-one), which is why writing one is a note rather than a refusal.
+widget may hold keys its defaults do not name, which is why writing one is a note
+rather than a refusal. The props that say where a widget's words come from - its
+translation key (`localizationKey`, a text input's `placeholderLocalizationKey`),
+the switch that translates its own words (`localizable`) and its marks (`rich`) -
+are known for each widget that has them and are never reported.
 
 `hoverSound` and `clickSound` are on every type but `nl.root`, and are what the
 inspector's Sound section writes. Each holds an audio asset id or an asset set id,
@@ -147,6 +150,10 @@ the inspector offers as one choice: the element's own `text` (a button's
 `localizationKey`, and it wins over the other two - the game and the canvas both
 show the key's source text, so a keyed element's own `text` or `label` is never
 seen. Change the words of a keyed element by changing the key, not the prop.
+A text input's `placeholder` is the same choice without the Blueprint Value: its
+own words, or the key in `placeholderLocalizationKey`, whose text the canvas and
+the game both show. A dialogue line's or NVL line's `text` is sample words the
+canvas shows; in their slots the game draws the story's line instead.
 
 `--json` on any of these.
 
@@ -372,6 +379,17 @@ project warns **`ui.entry_missing`** when the stored entry names a page the
 document no longer has (the game starts on the fallback page, and Studio drops
 the pointer the next time it opens the project), and **`ui.no_entry_page`** when
 there is no page at all.
+
+One more is about words:
+
+- **`ui.words_two_sources`** - a block writes `text` or `label` on an element
+  that also names a translation key, with words that are neither the key's text
+  nor what the element already stores: an edit that cannot show, since the key's
+  text is what the game and the canvas draw. An error when the project has a
+  source language; a warning when it has none, because a project without one
+  ships no keys and the element's own words show until it gets one. What `show`
+  prints for a keyed element passes. Needs `--project` (the keys and the source
+  language are read from it).
 
 Three findings are notes rather than refusals, deliberately:
 

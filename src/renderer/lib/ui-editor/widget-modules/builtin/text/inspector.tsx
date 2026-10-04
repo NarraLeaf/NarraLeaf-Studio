@@ -31,14 +31,13 @@ import {
   patchTextAppearanceDefaultRows,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
-import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { i18nStore } from "@/lib/i18n";
 import {
   TATE_CHU_YOKO_MAX_LENGTH_LIMIT,
   isVerticalWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { getTextProps } from "./helpers";
-import { TEXT_BLUEPRINT_VALUE_CONFIG, TextSourceField } from "./TextSourceField";
+import { TextSourceField } from "./TextSourceField";
 import type {
   TextAlign,
   TextOrientation,
@@ -146,14 +145,6 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     />
   );
 }
-
-/**
- * The text field with only its own words and a Blueprint Value - the pair every other widget's
- * text offers. For the specialisations whose authored text is a design-time stand-in the story
- * replaces at run time (the dialog line, the NVL entry): a translation key there would translate
- * words no player sees.
- */
-export const TextBlueprintValueField = createBlueprintValueField(TEXT_BLUEPRINT_VALUE_CONFIG);
 
 type Translator = ReturnType<typeof i18nStore.getTranslator>["t"];
 

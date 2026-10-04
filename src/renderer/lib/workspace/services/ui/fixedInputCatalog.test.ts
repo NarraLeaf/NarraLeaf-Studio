@@ -118,8 +118,8 @@ const ANCHORS: Record<string, Anchor[]> = {
         { file: `${UI_INTERACTION}/useSurfaceInteractionEvents.ts`, present: ["const allowDrillIntoChild = detail >= 2 || rapidSameTarget;"] },
     ],
     "ui-editor.edit-text": [
-        { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);"] },
-        { file: `${UI_INTERACTION}/inlineTextEdit.ts`, present: ["return element?.type === \"nl.text\" || element?.type === \"nl.button\";"] },
+        { file: `${UI_INTERACTION}/UIEditorInteractionLayer.tsx`, present: ["beginOrExplainInlineTextEdit({ stateService, documentService }, surfaceId, liveSelectedSingleElementId);"] },
+        { file: `${UI_INTERACTION}/inlineTextEdit.ts`, present: ["return uiTextSiteOf(element?.type)?.typedOnCanvas === true;"] },
     ],
     "ui-editor.discard-text": [
         {

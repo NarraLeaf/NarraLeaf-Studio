@@ -6,6 +6,8 @@ import {
     normalizeTextInputProps,
     type UITextInputWidgetProps,
 } from "@shared/types/ui-editor/textInput";
+import { requireUITextSite } from "@shared/types/ui-editor/textSource";
+import type { MarkedLabelProps } from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "../button/types";
 
 /**
@@ -89,6 +91,21 @@ export function patchTextInputProps(
     }
     return next;
 }
+
+/** The placeholder's site (`textSites.ts`): its own words, or a translation key. */
+export const TEXT_INPUT_SITE = requireUITextSite("nl.textInput");
+
+/**
+ * A placeholder as the source field reads and writes it: a plain string with no marks, since the
+ * field it stands in is one line of plain text.
+ */
+export const TEXT_INPUT_PLACEHOLDER_LABEL: MarkedLabelProps = {
+    read: element => {
+        const props = getTextInputProps(element);
+        return { text: props.placeholder, rich: undefined, color: props.color };
+    },
+    write: text => ({ placeholder: text }),
+};
 
 /**
  * Widen text-input props to the `ButtonWidgetProps` shape the shared button appearance helpers

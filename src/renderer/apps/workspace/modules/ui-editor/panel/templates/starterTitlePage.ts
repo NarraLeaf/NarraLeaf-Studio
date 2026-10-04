@@ -16,9 +16,9 @@ import {
     type UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { isBuiltinWidgetLogicType } from "@shared/types/ui-editor/widgetLogic";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "@/lib/lint/rules/blueprint";
-import { LOCALIZABLE_TEXT_SITES } from "@/lib/lint/rules/ui";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { collectUiClipboardAssetIds } from "@/lib/ui-editor/commands/uiEditorForeignPaste";
@@ -442,20 +442,24 @@ function pointStartAt(blueprints: BlueprintDocument, target: StarterStartTarget 
  *
  * The template names its menu words by key because several of its screens say the same word, and a
  * key is how a project says one word once. One page brought into a project that has no such key
- * would show a word the inspector cannot change: a keyed widget draws its own text on the canvas
- * and the key's in the game. So the words stay what the template says in the project's language,
- * and they are translated the way a word an author typed is - by the widget's own unit.
+ * would name a key the project does not have: the inspector would offer a translation key missing
+ * from its own list, and nothing short of creating the key could change the words. So the words stay
+ * what the template says in the project's language - the template keeps them on the widget, equal to
+ * its key's text - and they are translated the way a word an author typed is: by the widget's own
+ * unit. Which widgets carry a key, and in which prop, is the shared text-site table's answer.
+ *
+ * Exported for the text-site consistency test.
  */
-function keepWordsOnWidgets(elements: Iterable<UIElement>): void {
+export function keepWordsOnWidgets(elements: Iterable<UIElement>): void {
     for (const element of elements) {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = uiTextSiteOf(element.type);
         const props = element.props as Record<string, unknown> | undefined;
-        if (!site || !props || typeof props[site.keyProp] !== "string") {
+        if (!site || site.role !== "words" || !site.keyProp || !props || typeof props[site.keyProp] !== "string") {
             continue;
         }
         delete props[site.keyProp];
-        if (site.optInProp) {
-            props[site.optInProp] = true;
+        if (site.unitProp) {
+            props[site.unitProp] = true;
         }
     }
 }

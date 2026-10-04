@@ -13,6 +13,7 @@ import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
+import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
@@ -211,9 +212,16 @@ type SupportedValueTarget = {
     write?: (element: UIElement, value: unknown) => UIElement;
 };
 
-const SUPPORTED_VALUE_TARGETS: SupportedValueTarget[] = [
-    { elementType: "nl.text", propPath: "text", valueType: "string" },
-    { elementType: "nl.button", propPath: "label", valueType: "string" },
+/**
+ * A widget's words as a value target: the string a binding resolves to, written to the prop that
+ * holds them. Which widgets' words take a binding is the text-site table's answer (`textSites.ts`).
+ */
+function textValueTarget(site: UITextSite): SupportedValueTarget {
+    return { elementType: site.widgetType, propPath: site.textProp, valueType: "string" };
+}
+
+/** Every bindable prop that is not a widget's words, matched through widget inheritance. */
+const NON_TEXT_VALUE_TARGETS: SupportedValueTarget[] = [
     {
         // What makes a save-slot thumbnail, a gallery cell and a backlog portrait possible: until
         // this existed, a picture that differs per row could not be expressed at all, because the
@@ -256,6 +264,22 @@ const SUPPORTED_VALUE_TARGETS: SupportedValueTarget[] = [
 ];
 
 /**
+ * The targets an element of this type resolves: its words, when its text site takes a binding (a
+ * specialisation reads its own site, or its parent's), then every other target its type is or
+ * specialises.
+ */
+function valueTargetsFor(type: string): SupportedValueTarget[] {
+    const site = uiTextSiteOf(type);
+    const targets = site && site.valueBinding !== "none" ? [textValueTarget(site)] : [];
+    for (const target of NON_TEXT_VALUE_TARGETS) {
+        if (isWidgetTypeOf(type, target.elementType)) {
+            targets.push(target);
+        }
+    }
+    return targets;
+}
+
+/**
  * Which prop of which widget type a value blueprint may drive, for tools that describe the seam
  * rather than run it.
  *
@@ -264,7 +288,8 @@ const SUPPORTED_VALUE_TARGETS: SupportedValueTarget[] = [
  * how a value lands, which is nobody else's business.
  */
 export function listBindableValueTargets(): { elementType: string; propPath: string; valueType: UIElementValueBindingValueType }[] {
-    return SUPPORTED_VALUE_TARGETS.map(target => ({
+    const offered = UI_TEXT_SITES.filter(site => site.valueBinding === "offered").map(textValueTarget);
+    return [...offered, ...NON_TEXT_VALUE_TARGETS].map(target => ({
         elementType: target.elementType,
         propPath: target.propPath,
         valueType: target.valueType,
@@ -658,16 +683,13 @@ export function mergeElementWithBlueprintValues(
             element = { ...element, layout: { ...element.layout, visible: coerceValue(raw, "boolean") !== false } };
         }
     }
-    // Matched through the inheritance chain: the specialisations inherit the text inspector, so a
-    // Dialog Sentence offers the same bind-to-blueprint control and has to resolve it too.
+    // Matched through the inheritance chain: a specialisation resolves what its parent does unless
+    // its own text site says otherwise, and a Dialog Sentence's site resolves a binding it carries.
     //
     // Every matching target is folded, not the first: one element may carry more than one bound
     // prop, and stopping at the first would make which one worked depend on table order.
     let out = element;
-    for (const target of SUPPORTED_VALUE_TARGETS) {
-        if (!isWidgetTypeOf(element.type, target.elementType)) {
-            continue;
-        }
+    for (const target of valueTargetsFor(element.type)) {
         const binding = bindings[target.propPath];
         if (!binding) {
             continue;

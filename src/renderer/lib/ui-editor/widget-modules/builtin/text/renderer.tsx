@@ -28,7 +28,7 @@ import {
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
@@ -55,7 +55,7 @@ import {
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import { getTextProps, textValuePatch } from "./helpers";
+import { getTextProps, TEXT_SITE, textValuePatch } from "./helpers";
 import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
@@ -63,7 +63,6 @@ import {
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
-const TEXT_VALUE_PROP_PATH = "text";
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -82,7 +81,7 @@ function assignMotionTransition(
  */
 function designTimeTextOfElement(element: UIElement): string {
     const props = getTextProps(element);
-    return designTimeTextOf(props.localizationKey, props.text);
+    return designTimeTextOf(TEXT_SITE, props.localizationKey, props.text);
 }
 
 function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
@@ -92,9 +91,6 @@ function commitTextEditValue(documentService: UIDocumentService, elementId: stri
     const key = docEl ? designTimeKeyOf(getTextProps(docEl).localizationKey) : null;
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
         return;
-    }
-    if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
-        documentService.clearElementBlueprintValueBinding(elementId, TEXT_VALUE_PROP_PATH);
     }
     documentService.updateElementProps(
         elementId,
@@ -211,9 +207,11 @@ export function TextRenderer({
             }
             e.preventDefault();
             e.stopPropagation();
-            beginInlineTextEdit(stateService, surface.id, element.id);
+            if (editHost) {
+                beginOrExplainInlineTextEdit(editHost, surface.id, element.id);
+            }
         },
-        [element.id, isEditing, stateService, surface.id],
+        [editHost, element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -245,12 +243,13 @@ export function TextRenderer({
     // Localized display text. At design time the source language's: the element's own words, or
     // its key's when it is read from one - the canvas shows what the game shows.
     const displayText = useLocalizedWidgetText({
+        // The text widget's site, for the dialogue line and the NVL line too: they draw through this
+        // renderer outside their slots and are read as text there.
+        site: TEXT_SITE,
         elementId: element.id,
-        prop: "text",
         sourceText: p.text,
         localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
-        resolveKeyAtDesignTime: true,
     });
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`

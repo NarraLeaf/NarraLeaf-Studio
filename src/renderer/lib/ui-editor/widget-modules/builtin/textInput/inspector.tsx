@@ -18,14 +18,16 @@ import {
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
-import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { createLabelSourceField } from "@/lib/ui-editor/widget-modules/shared/text/LabelSourceField";
 import type { TextAlign } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { i18nStore, translate } from "@/lib/i18n";
 import {
     getTextInputProps,
     patchTextInputProps,
+    TEXT_INPUT_PLACEHOLDER_LABEL,
+    TEXT_INPUT_SITE,
     textInputButtonBaselineProps,
     type TextInputWidgetProps,
 } from "./helpers";
@@ -105,9 +107,15 @@ const TextInputValueBlueprintField = createBlueprintValueField({
     ),
 });
 
-const TextInputPlaceholderLocalizationKeyField = createLocalizationKeyField({
-    getKey: element => getTextInputProps(element).placeholderLocalizationKey ?? "",
-    setKey: (data, value) => patchTextInput(data, { placeholderLocalizationKey: value ?? null }),
+/**
+ * The placeholder, and where it comes from: the field's own words or a translation key, chosen in one
+ * place (`createLabelSourceField`) as a text's words are. The canvas draws the key's text, as the
+ * game does.
+ */
+const TextInputPlaceholderSourceField = createLabelSourceField({
+    site: TEXT_INPUT_SITE,
+    label: TEXT_INPUT_PLACEHOLDER_LABEL,
+    singleLine: true,
 });
 
 export function createTextInputInspector(ctx: InspectorContext) {
@@ -138,17 +146,9 @@ export function createTextInputInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "textInput.placeholder",
-                                type: "text",
-                                label: t("widgets.textInput.placeholder"),
-                                getValue: (d: D) => getLiveTextInputProps(d).placeholder,
-                                setValue: (d: D, value: string) => patchTextInput(d, { placeholder: value }),
-                            }),
-                            defineField<D, any>({
-                                id: "textInput.placeholderLocalizationKey",
                                 type: "custom",
-                                label: t("widgets.textInput.placeholderKey"),
-                                helpText: t("widgets.textInput.placeholderKeyHint"),
-                                component: TextInputPlaceholderLocalizationKeyField,
+                                label: t("widgets.textInput.placeholder"),
+                                component: TextInputPlaceholderSourceField,
                             }),
                         ],
                     }),

@@ -143,9 +143,9 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
 /**
  * A binding keeps its source with no key yet: picking a source and naming it are two separate
  * moves in the inspector, and collapsing the half-made binding to nothing put the source dropdown
- * back on "Preview only" the instant it was changed, so the key field never appeared and no list
+ * back on "List content" the instant it was changed, so the key field never appeared and no list
  * could be bound at all. An unnamed binding reads nothing, which is what leaves the list on its
- * preview items until the key is typed.
+ * written content until the key is typed.
  */
 function normalizeItemsBinding(value: unknown): UIListItemsBinding | null {
     if (!value || typeof value !== "object") {

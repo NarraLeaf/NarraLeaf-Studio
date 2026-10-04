@@ -320,6 +320,16 @@ export const lint = {
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
             message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
         },
+        uiListTextUntranslated: {
+            title: "翻訳されないリストの内容",
+            description: "第二の言語があるプロジェクトで、リストの内容に書かれた文字",
+            message: "{text} などリストの内容はどの言語でも書かれたまま表示される",
+        },
+        uiLocalizationKeyMissing: {
+            title: "存在しないローカライズキー",
+            description: "プロジェクトにないキーから文字を読むウィジェット",
+            message: "文字を {key} から読むが、このキーはプロジェクトにない",
+        },
         uiGestureAnsweredTwice: {
             title: "二重に反応する操作",
             description: "独自のポインター処理を持つウィジェットが、同じ操作に反応するページに置かれている",

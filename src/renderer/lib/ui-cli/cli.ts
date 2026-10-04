@@ -53,6 +53,7 @@ import {
     findSurface,
     ProjectIoError,
     readBlueprintIndex,
+    readTextKeys,
     readUiDocument,
     resolveProjectDir,
     resolveUiFile,
@@ -428,7 +429,8 @@ function commandCheck(args: Args, io: CliIo): number {
     const blueprints = projectDir ? readBlueprintIndex(projectDir) : null;
     const file = resolveUiFile(given, { forWriting: false });
     const source = readSource(file);
-    const result = checkUiSource(source, { existing: documentFile?.document ?? null, blueprints });
+    const textKeys = projectDir ? readTextKeys(projectDir) : null;
+    const result = checkUiSource(source, { existing: documentFile?.document ?? null, blueprints, textKeys });
     io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
     if (!projectDir) {
         io.out(
@@ -449,7 +451,7 @@ function commandApply(args: Args, io: CliIo): number {
     const blueprints = readBlueprintIndex(projectDir);
     const file = resolveUiFile(given, { forWriting: false });
     const source = readSource(file);
-    const result = checkUiSource(source, { existing: documentFile.document, blueprints });
+    const result = checkUiSource(source, { existing: documentFile.document, blueprints, textKeys: readTextKeys(projectDir) });
     io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
     if (!result.ok || !result.compiled) {
         io.err("Nothing written.");

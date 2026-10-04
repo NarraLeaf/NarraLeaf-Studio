@@ -675,7 +675,7 @@ export const help = {
                 + "label, an image, a slider's value and a switch's state can each be answered by a Blueprint "
                 + "Value.\n"
                 + "\n"
-                + "- Text and button labels choose between Literal, Translation key and Blueprint Value. The other "
+                + "- Text and button labels choose between Direct, Translation key and Blueprint Value. The other "
                 + "properties have a Blueprint Value button.\n"
                 + "- Open Blueprint Value edits the graph, and a Return Value node hands back the result.\n"
                 + "- A Blueprint Value reads the variables of its page and of App logic directly. Other variables "

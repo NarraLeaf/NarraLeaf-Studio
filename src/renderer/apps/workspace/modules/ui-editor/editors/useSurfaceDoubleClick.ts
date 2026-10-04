@@ -4,7 +4,7 @@ import {
     consumeSuppressNextCanvasWidgetDoubleClick,
     hasSuppressNextCanvasWidgetDoubleClick,
 } from "@/lib/ui-editor/interaction/containerDrillSelection";
-import { beginInlineTextEdit, isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginOrExplainInlineTextEdit, isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { EditorDocumentService, EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
@@ -116,7 +116,7 @@ export function useSurfaceDoubleClick(params: {
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                beginInlineTextEdit(stateService, surfaceId, elementId);
+                beginOrExplainInlineTextEdit({ stateService, documentService }, surfaceId, elementId);
                 return true;
             };
 
