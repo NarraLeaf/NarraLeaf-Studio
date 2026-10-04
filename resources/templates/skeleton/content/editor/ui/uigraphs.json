@@ -7351,9 +7351,9 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Runs on the Advance action (a click, Space or Enter; Input actions panel), which this page answers while the story is on screen. With the dialogue box shown, Next moves the story on one line. With the box hidden (Hide on the quick menu, or a long press), the same press only brings the box back, so no line goes by unseen. An NVL passage reads on with the keys of the actions whose graph here reaches Next, so keep Next in a graph like this one, not in a script layer.",
+                      "text": "Runs on the Advance action (a click, Space or Enter; Input actions panel), which this page answers while the story is on screen. With the dialogue box shown, Next moves the story on one line. With the box hidden (Hide on the quick menu, or a long press), the same press only brings the box back, so no line goes by unseen. An NVL passage reads on with the keys of the actions that move the story on here. With Next in a graph like this one, that holds from the first line; with Next in a script layer, an action counts once one of its presses has moved the dialogue box on, and an NVL passage before that reads on with a click alone.",
                       "width": 1000,
-                      "height": 160
+                      "height": 180
                     },
                     "meta": {
                       "editorLayout": {
@@ -7371,7 +7371,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": -400
+                        "y": -380
                       }
                     }
                   },
@@ -7382,7 +7382,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 340,
-                        "y": -251
+                        "y": -231
                       }
                     }
                   },
@@ -7393,7 +7393,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 600,
-                        "y": -341
+                        "y": -321
                       }
                     }
                   },
@@ -7404,7 +7404,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": -341
+                        "y": -321
                       }
                     }
                   },
@@ -7415,7 +7415,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": -224
+                        "y": -204
                       }
                     }
                   }
