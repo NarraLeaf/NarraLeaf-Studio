@@ -3985,7 +3985,7 @@
     "ccd57b37-cc28-465e-8e13-e002e9f8dbe2": {
       "id": "ccd57b37-cc28-465e-8e13-e002e9f8dbe2",
       "type": "nl.container",
-      "name": "回想",
+      "name": "记录",
       "parentId": "6caa9353-a2bc-4553-b1df-20f020dcd305",
       "childrenIds": [
         "06eba888-e39e-45ec-9b7f-2b6fde3978a7",
@@ -49677,7 +49677,7 @@
     },
     "backlog": {
       "id": "backlog",
-      "name": "回想",
+      "name": "记录",
       "bindings": [
         {
           "kind": "pointer",
