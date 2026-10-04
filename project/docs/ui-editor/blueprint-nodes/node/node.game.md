@@ -82,11 +82,11 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `blueprint.game.isGameOverlay` - Is Game Overlay
 
-读取当前 Page / Game UI Surface runtime scope 是否以游戏上方 UI 叠层身份运行。通过 `Start Game` 或 `Load Save` 进入游戏状态后，继续用 `Go Page` 打开的 Page 会返回 `true`；内建 Game UI Surface（例如 Dialog slot）也返回 `true`；通过 `nl.frame` 嵌入的子 Page 会继承父 Page 的 overlay 状态。普通应用 Page、普通 Page 预览，以及 `Quit Game` 打开的返回 Page 返回 `false`。
+读取当前 Page / Game UI Surface runtime scope 是否以游戏上方 UI 叠层身份运行。通过 `Start Game` 或 `Load Save` 进入游戏状态后，继续用 `Go Page` 打开的 Page，以及这时用 `Show Layer` 显示的叠加页面，都会返回 `true`；内建 Game UI Surface（例如 Dialog slot）也返回 `true`；通过 `nl.frame` 嵌入的子 Page 会继承父 Page 的 overlay 状态。普通应用 Page、游戏外显示的叠加页面、普通 Page 预览，以及 `Quit Game` 打开的返回 Page 返回 `false`。
 
 - `isGameOverlay` - `boolean`（传出引脚），当前 Surface 实例是否是游戏 UI 叠层
 
-该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。它描述当前 Surface 实例的展示身份，并在 Page 实例创建时锁定；因此暂停菜单执行退出动画时，即使 `Quit Game` 已经开始清理游戏 session，该旧暂停菜单实例仍会返回 `true`。需要判断 live game runtime 是否仍可用时使用 `Is In Game`，需要判断共享 Page 应显示主页控件还是暂停菜单控件时优先使用 `Is Game Overlay`。
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。它描述当前 Surface 实例的展示身份，并在 Page 或叠加页面实例创建时锁定；因此暂停菜单执行退出动画时，即使 `Quit Game` 已经开始清理游戏 session，该旧暂停菜单实例仍会返回 `true`。需要判断 live game runtime 是否仍可用时使用 `Is In Game`，需要判断共享 Page 应显示主页控件还是暂停菜单控件时优先使用 `Is Game Overlay`。
 
 ## Quit Game
 
