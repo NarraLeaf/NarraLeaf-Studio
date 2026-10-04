@@ -37,7 +37,6 @@ export const NvlTextsWidgetModule: UIWidgetModule = extendWidgetModule(TextWidge
             "text.content": {
                 component: NvlTextsSampleTextField,
                 label: translate("widgets.sampleText.label"),
-                helpText: translate("widgets.sampleText.hint"),
             },
         },
     }),

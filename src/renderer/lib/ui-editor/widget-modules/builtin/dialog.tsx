@@ -43,7 +43,6 @@ export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(Tex
             "text.content": {
                 component: DialogSentenceSampleTextField,
                 label: translate("widgets.sampleText.label"),
-                helpText: translate("widgets.sampleText.hint"),
             },
         },
     }),

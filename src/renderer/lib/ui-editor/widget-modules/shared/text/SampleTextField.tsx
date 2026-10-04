@@ -83,6 +83,7 @@ export function createSampleTextField(config: SampleTextFieldConfig) {
                     label={config.label}
                     readOnly={readOnly}
                 />
+                <p className="text-xs text-fg-subtle">{t("widgets.sampleText.hint")}</p>
                 {binding && inSlot ? (
                     <div className="flex items-center gap-2 rounded-md border border-edge bg-surface px-3 py-2">
                         <CircleAlert className="h-4 w-4 shrink-0 text-warning" />
