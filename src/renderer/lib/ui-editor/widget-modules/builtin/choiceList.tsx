@@ -21,7 +21,7 @@ export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWid
     type: CHOICE_LIST_TYPE,
     displayName: () => translate("widgets.defaults.choiceList.name"),
     icon: ListChecks,
-    defaultElement: inherited =>
+    defaultElement: (inherited, words) =>
         patchListWidgetDefaultElement(inherited, {
             layout: { width: 640, height: 360 },
             props: {
@@ -29,9 +29,9 @@ export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWid
                 itemKeyFieldId: "index",
                 itemGap: 16,
                 items: [
-                    { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false, voiceId: "" },
-                    { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false, voiceId: "" },
-                    { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true, voiceId: "" },
+                    { text: words.t("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false, voiceId: "" },
+                    { text: words.t("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false, voiceId: "" },
+                    { text: words.t("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true, voiceId: "" },
                 ],
                 scrollbar: { enabled: false, visibility: "hidden" },
             },

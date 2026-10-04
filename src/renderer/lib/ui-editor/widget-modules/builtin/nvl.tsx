@@ -18,11 +18,11 @@ export const NvlTextsWidgetModule: UIWidgetModule = extendWidgetModule(TextWidge
     type: NVL_TEXTS_TYPE,
     displayName: () => translate("widgets.defaults.nvl.name"),
     icon: MessagesSquare,
-    defaultElement: inherited =>
+    defaultElement: (inherited, words) =>
         patchTextWidgetDefaultElement(inherited, {
             layout: { width: 760, height: 64 },
             props: {
-                text: translate("widgets.defaults.nvl.text"),
+                text: words.t("widgets.defaults.nvl.text"),
                 fontSize: 22,
                 color: "#f8fafc",
                 fontWeight: "normal",

@@ -13,6 +13,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, getUIComponentParams, isUIComponentTextParam } from "@shared/types/ui-editor/document";
+import { isAppearanceModel, type AppearanceValueRow } from "@shared/types/ui-editor/appearance";
 import {
     isOperableWidgetType,
     resolveSurfaceActionBindings,
@@ -205,7 +206,18 @@ function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
 }
 
 
-/** The literal a widget shows a player, with the unit that translates it and the face it chose. */
+/** A face a widget's words can be drawn in, and the state that shows them in it. */
+export type SurfaceTextFace = {
+    /** The widget's own typeface in this face. Absent means it follows the project. */
+    fontAssetId?: string;
+    /**
+     * The name of the widget's state (an appearance variant) that draws the words in this face.
+     * Absent for the state the widget rests in.
+     */
+    state?: string;
+};
+
+/** The literal a widget shows a player, with the unit that translates it and the faces it is drawn in. */
 export type SurfaceTextSite = {
     surface: UISurface;
     element: UIElement;
@@ -213,9 +225,52 @@ export type SurfaceTextSite = {
     unitId: string;
     /** The author's own words, which is what renders when nothing translated them. */
     text: string;
-    /** The widget's own typeface, when it named one. Absent means it follows the project. */
-    fontAssetId?: string;
+    /** Every face the words can be drawn in, the resting one first (`listWidgetTextFaces`). Never empty. */
+    faces: SurfaceTextFace[];
 };
+
+/** Whether an appearance row applies whatever state the widget is in. */
+function isUnconditionalRow(row: AppearanceValueRow): boolean {
+    return !row.conditions || Object.keys(row.conditions).length === 0;
+}
+
+/**
+ * Every face a widget's words can be drawn in: the one it rests in first, then each the widget's
+ * other states (appearance variants) switch to, each typeface once.
+ *
+ * A state draws the font its `fontAssetId` rows give - every row, since each applies in some
+ * condition (hovered, pressed, selected) - and the widget's own font wherever no row applies, the way
+ * the appearance resolver composes it. A widget with no appearance model draws its own font. A face
+ * a state shares with the resting one is the resting one's.
+ */
+export function listWidgetTextFaces(element: UIElement): SurfaceTextFace[] {
+    const props = elementProps(element);
+    const own = readStringProp(props, "fontAssetId").trim();
+    const faces: SurfaceTextFace[] = [];
+    const add = (fontAssetId: string, state: string | undefined): void => {
+        if (faces.some(face => (face.fontAssetId ?? "") === fontAssetId)) {
+            return;
+        }
+        faces.push({ ...(fontAssetId ? { fontAssetId } : {}), ...(state ? { state } : {}) });
+    };
+    const appearance = props.appearance;
+    if (!isAppearanceModel(appearance) || appearance.variants.length === 0) {
+        add(own, undefined);
+        return faces;
+    }
+    const resting = appearance.variants.find(variant => variant.id === appearance.defaultVariantId) ?? appearance.variants[0];
+    for (const variant of [resting, ...appearance.variants.filter(candidate => candidate !== resting)]) {
+        const state = variant === resting ? undefined : variant.name.trim() || undefined;
+        const rows = variant.propertyGroups.find(group => group.key === "fontAssetId")?.rows ?? [];
+        for (const row of rows) {
+            add(typeof row.value === "string" ? row.value.trim() : "", state);
+        }
+        if (!rows.some(isUnconditionalRow)) {
+            add(own, state);
+        }
+    }
+    return faces;
+}
 
 /**
  * Every literal on every page that a player will read.
@@ -229,8 +284,12 @@ export type SurfaceTextSite = {
  * which *words* render, not whether the widget shows any: an unresolved key falls back to exactly
  * this text.
  *
+ * Each site carries every face its words can be drawn in - the widget's resting one and those its
+ * other states switch to (`listWidgetTextFaces`) - because a typeface a state switches to has to be
+ * able to draw the words as much as the resting one does.
+ *
  * A component placement on the page puts on screen the words it gives its component's text
- * parameters, drawn in the face of each widget inside the definition that shows them; each of those
+ * parameters, drawn in the faces of each widget inside the definition that shows them; each of those
  * is a site too, under the placement's unit (`listUIPlacementTextValues`). A value that names a key
  * is the key's words, which are checked as keys.
  */
@@ -241,16 +300,14 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
             if (value.key || !value.text.trim()) {
                 continue;
             }
-            const faces = new Set(shownBy.map(shower => readStringProp(elementProps(shower), "fontAssetId").trim()));
-            for (const fontAssetId of faces) {
-                sites.push({
-                    surface,
-                    element,
-                    unitId: value.unitId,
-                    text: value.text,
-                    ...(fontAssetId ? { fontAssetId } : {}),
-                });
+            // Every face of every widget inside the definition that shows the value, each typeface once.
+            const faces: SurfaceTextFace[] = [];
+            for (const face of shownBy.flatMap(listWidgetTextFaces)) {
+                if (!faces.some(known => (known.fontAssetId ?? "") === (face.fontAssetId ?? ""))) {
+                    faces.push(face);
+                }
             }
+            sites.push({ surface, element, unitId: value.unitId, text: value.text, faces });
         }
         const site = playerWordsSiteOf(element);
         if (!site) {
@@ -260,13 +317,12 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
         if (!text.trim()) {
             continue;
         }
-        const fontAssetId = readStringProp(elementProps(element), "fontAssetId").trim();
         sites.push({
             surface,
             element,
             unitId: uiTextUnitId(element.id, site.textProp),
             text,
-            ...(fontAssetId ? { fontAssetId } : {}),
+            faces: listWidgetTextFaces(element),
         });
     }
     return sites;

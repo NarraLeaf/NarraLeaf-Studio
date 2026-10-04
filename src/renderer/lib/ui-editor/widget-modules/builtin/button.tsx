@@ -8,6 +8,7 @@ import { createButtonDockerBarItems } from "./button/dockerBar";
 import { defaultButtonWidgetProps } from "./button/types";
 import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { formatBrandLink } from "@shared/brand/brandLink";
+import { INTERFACE_DEFAULT_WORDS } from "@/lib/ui-editor/widget-modules/defaultWords";
 
 /**
  * The colours a *newly created* button starts with: links into the project palette, so that a fresh
@@ -38,14 +39,14 @@ export const ButtonWidgetModule: UIWidgetModule = {
     },
     icon: MousePointerClick,
 
-    createDefaultElement: () => {
+    createDefaultElement: (words = INTERFACE_DEFAULT_WORDS) => {
         // Built once and used for both halves: the appearance model's `default` variant is seeded
         // from these props, so the rows have to be the branded ones or the panel would show the old
         // literals the moment the author opened it.
         const props = {
             ...defaultButtonWidgetProps,
             ...BRANDED_BUTTON_COLORS,
-            label: translate("widgets.defaults.button.label"),
+            label: words.t("widgets.defaults.button.label"),
         };
         return {
             type: "nl.button",

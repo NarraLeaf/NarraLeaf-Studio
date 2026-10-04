@@ -118,10 +118,12 @@ export const help = {
             title: "Search",
             body:
                 "The Search panel and the search box in the title bar search the whole project: the names of "
-                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, UI text "
-                + "keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
+                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, interface "
+                + "text, UI text keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
+                + "- Interface text is searched in the project's source language. Selecting it opens the page or "
+                + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
@@ -496,6 +498,7 @@ export const help = {
                 + "back. The import reports how many lines it applied, how many were unchanged and how many it "
                 + "could not match.\n"
                 + "- Export and import are in the language row's More menu.\n"
+                + "- In an exported file, a translation key's row names the pages and components that use the key.\n"
                 + "- Words written directly on an interface widget are translated like a line: each widget's own "
                 + "words have a row in the translation table, except words made only of digits and symbols, and "
                 + "sample text.\n"
@@ -529,7 +532,9 @@ export const help = {
                 + "Studio reads the font file and fills the limit in if the font states which language "
                 + "it was made for; it leaves it empty otherwise.\n"
                 + "- The project check reports characters the script uses that no font in the list can "
-                + "draw, for each language.",
+                + "draw, for each language.\n"
+                + "- A widget is checked in the font of each of its states. A character only one state's font "
+                + "cannot draw is reported with the state's name.",
         },
         inputActions: {
             title: "Input actions",

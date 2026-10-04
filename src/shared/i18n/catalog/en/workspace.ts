@@ -1724,7 +1724,7 @@ export const workspace = {
             building: "Building search index…",
             // Shown before anything is typed. "Building" and "no results" both had a line; this
             // state fell through to an empty list and rendered a blank panel.
-            idle: "Search scenes, characters, story text, assets and blueprints.",
+            idle: "Search scenes, characters, story text, interface text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
             // Refined matching, shared with the scene find bar so the same query means one thing.
@@ -1754,6 +1754,7 @@ export const workspace = {
                 blueprint: "Blueprints",
                 asset: "Assets",
                 storyText: "Story Text",
+                uiText: "Interface Text",
                 variable: "Variables",
                 uiTextKey: "UI Text Keys",
                 blueprintNode: "Blueprint Nodes",

@@ -9,6 +9,8 @@ import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { createBlueprintEntryEditorTab, showBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
@@ -29,6 +31,26 @@ export interface SearchJumpDeps {
 
 const LOCALIZATION_PANEL_ID = "narraleaf-studio:localization";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
+
+/**
+ * Select a widget in the interface editor of `surfaceId` (a page's id, or a component editor's).
+ *
+ * Done before the editor tab opens, so the tab finds its own selection waiting rather than claiming
+ * the page for itself; the migration notice's Locate buttons open a widget the same way. A widget
+ * that has gone since the index was built is simply not found by the editor, which still opens.
+ */
+function selectUIElement(context: WorkspaceContext, surfaceId: string, elementId: string): void {
+    try {
+        context.services.get<UIEditorStateService>(Services.UIEditorState).setUIElementSelection({
+            editor: "ui",
+            surfaceId,
+            elementIds: [elementId],
+            primaryId: elementId,
+        });
+    } catch {
+        // Opening the page is still worth doing without the selection.
+    }
+}
 
 /**
  * Navigate to a search hit. Shared by the search panel and the command palette's search mode.
@@ -103,6 +125,9 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             if (!surface) {
                 return false;
             }
+            if (target.elementId) {
+                selectUIElement(context, surface.id, target.elementId);
+            }
             deps.openEditorTab(createSurfaceEditorTab(surface));
             return true;
         }
@@ -116,6 +141,9 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 .getComponent(target.componentId);
             if (!component) {
                 return false;
+            }
+            if (target.elementId) {
+                selectUIElement(context, buildUIComponentEditorSurfaceId(component.id), target.elementId);
             }
             deps.openEditorTab(createComponentEditorTab(component));
             return true;

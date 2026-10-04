@@ -1,18 +1,17 @@
 import { useEffect } from "react";
 import type { TranslationKey } from "@shared/i18n";
-import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UITextMigrationChange, UITextMigrationChangeKind } from "@shared/types/ui-editor/textSourceMigration";
 import { translate, translateN } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { SearchJumpTarget } from "@/lib/workspace/services/search/searchJumpTarget";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
-import { createComponentEditorTab, createSurfaceEditorTab } from "../modules/ui-editor/UISurfacesPanel";
+import { jumpToSearchTarget } from "../modules/search/searchJump";
 
 /**
  * Tell the author, once, what opening a project written before v13 changed that they can see.
@@ -103,30 +102,15 @@ export function useTextSourceMigrationNotice(): void {
         told = true;
         const places = describeTextSourceMigrationChanges(changes, documentService.getDocument());
 
+        // The same way into a widget a search hit takes: the page or component opens with it selected.
         const locate = (change: UITextMigrationChange): void => {
-            const document = documentService.getDocument();
-            const component = change.componentId ? documentService.getComponent(change.componentId) : undefined;
-            const surface = change.surfaceId ? document.surfaces.find(candidate => candidate.id === change.surfaceId) : undefined;
-            const selectionSurfaceId = component ? buildUIComponentEditorSurfaceId(component.id) : surface?.id;
-            if (!selectionSurfaceId) {
-                return;
-            }
-            // Selected before the tab opens, so the tab finds its own selection waiting rather than
-            // claiming the page for itself.
-            try {
-                context.services.get<UIEditorStateService>(Services.UIEditorState).setUIElementSelection({
-                    editor: "ui",
-                    surfaceId: selectionSurfaceId,
-                    elementIds: [change.elementId],
-                    primaryId: change.elementId,
-                });
-            } catch {
-                // Opening the page is still worth doing without the selection.
-            }
-            if (component) {
-                openEditorTab(createComponentEditorTab(component));
-            } else if (surface) {
-                openEditorTab(createSurfaceEditorTab(surface));
+            const target: SearchJumpTarget | null = change.componentId
+                ? { kind: "uiComponent", componentId: change.componentId, elementId: change.elementId }
+                : change.surfaceId
+                    ? { kind: "uiSurface", surfaceId: change.surfaceId, elementId: change.elementId }
+                    : null;
+            if (target) {
+                jumpToSearchTarget(target, { openEditorTab, setPanelVisibility: () => undefined, context });
             }
         };
 

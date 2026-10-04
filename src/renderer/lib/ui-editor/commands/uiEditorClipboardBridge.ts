@@ -23,6 +23,8 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { localizationKeyUnitId, type LocalizationUnit } from "@shared/types/localization";
 import { listUITextKeysNamed, type UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
+import { listUITextOwnUnits } from "@shared/types/ui-editor/textUnitCopies";
+import { readProjectTranslations, type CarriedTranslations } from "@/lib/workspace/services/localization/carriedTranslations";
 import {
     getUiEditorClipboard,
     readUiEditorClipboardPayload,
@@ -75,6 +77,11 @@ export type UiClipboardEnvironment = {
      * to carry or the keys cannot be read.
      */
     carryTextKeys: (names: readonly string[]) => Promise<UITextCarriedKeys | undefined>;
+    /**
+     * What every language of this project says about the given units - the words copied widgets
+     * write directly - for a copy that leaves this window. Undefined when nothing is translated.
+     */
+    carryTranslations: (unitIds: readonly string[]) => Promise<CarriedTranslations | undefined>;
 };
 
 /**
@@ -122,6 +129,7 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
         isFrozen: () => freezeService?.isFrozen() ?? false,
         resolveAssetPins: createCatalogAssetPinResolver(catalog),
         carryTextKeys: names => carryTextKeys(localization, names),
+        carryTranslations: async unitIds => (localization ? readProjectTranslations(localization, unitIds) : undefined),
     };
 }
 
@@ -187,12 +195,14 @@ export function publishUiClipboard(
             collectUiClipboardAssetIds(payload, environment.resolveAssetPins),
         );
         const textKeys = await environment.carryTextKeys(listUITextKeysNamed(payload.elements));
+        const translations = await environment.carryTranslations(listUITextOwnUnits(payload.elements).map(unit => unit.unitId));
         // The offer is folded into the payload the clipboard receives and into the one this window
         // holds, so a same-window paste and a cross-window paste describe the same copy.
         const published: UIEditorClipboardPayload = {
             ...payload,
             ...(assets ? { assets } : {}),
             ...(textKeys ? { textKeys } : {}),
+            ...(translations ? { translations } : {}),
         };
         if (getUiEditorClipboard()?.copyId === payload.copyId) {
             setUiEditorClipboard(published);

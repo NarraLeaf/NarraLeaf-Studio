@@ -17,7 +17,7 @@ export const NvlListWidgetModule: UIWidgetModule = extendWidgetModule(ListWidget
     type: NVL_LIST_TYPE,
     displayName: () => translate("widgets.defaults.nvlList.name"),
     icon: ScrollText,
-    defaultElement: inherited =>
+    defaultElement: (inherited, words) =>
         patchListWidgetDefaultElement(inherited, {
             layout: { width: 960, height: 620 },
             props: {
@@ -25,7 +25,7 @@ export const NvlListWidgetModule: UIWidgetModule = extendWidgetModule(ListWidget
                 itemKeyFieldId: "index",
                 itemGap: 18,
                 items: [
-                    { nametag: translate("widgets.defaults.nvlList.speaker"), index: 0, isActive: false },
+                    { nametag: words.t("widgets.defaults.nvlList.speaker"), index: 0, isActive: false },
                     { nametag: "", index: 1, isActive: true },
                 ],
             },
