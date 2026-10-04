@@ -1,4 +1,5 @@
 import { readUITextCarriedKeys, type UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
+import { readCarriedTranslations, type CarriedTranslations } from "@/lib/workspace/services/localization/carriedTranslations";
 import type { InterpolationParams, PluralKey, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -59,6 +60,12 @@ export type UISurfaceClipboardPayload = {
      * has every key it names.
      */
     textKeys?: UITextCarriedKeys;
+    /**
+     * What every language of the copying project says about the words the copied widgets write
+     * directly, by unit id under the originals' ids. Filled when the copy is published; the paste
+     * writes them under the ids the arriving widgets get.
+     */
+    translations?: CarriedTranslations;
     /** The copied surfaces and their elements, in the shape a template bundle's document has. */
     document: UIDocument;
     /** Their blueprints, in the shape a template bundle's graphs have. */
@@ -167,6 +174,7 @@ export function readUiSurfaceClipboardPayload(json: string): UISurfaceClipboardP
     const source = readSource(candidate.source);
     const assets = readAssets(candidate.assets);
     const textKeys = readUITextCarriedKeys(candidate.textKeys);
+    const translations = readCarriedTranslations(candidate.translations);
     return {
         v: UI_SURFACE_CLIPBOARD_VERSION,
         kind: UI_SURFACE_CLIPBOARD_KIND,
@@ -174,6 +182,7 @@ export function readUiSurfaceClipboardPayload(json: string): UISurfaceClipboardP
         ...(source ? { source } : {}),
         ...(assets ? { assets } : {}),
         ...(textKeys ? { textKeys } : {}),
+        ...(translations ? { translations } : {}),
         document,
         graphs: { blueprintDocument: readBlueprintDocument(candidate.graphs) },
     };

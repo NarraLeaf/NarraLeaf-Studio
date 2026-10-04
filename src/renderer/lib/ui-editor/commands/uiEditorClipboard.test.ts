@@ -111,4 +111,11 @@ describe("reading an interface selection off the clipboard", () => {
 
         expect(readUiEditorClipboardPayload(json)?.assets).toBeUndefined();
     });
+
+    it("keeps the translations the copied widgets' own words carry, under the originals' unit ids", () => {
+        const translations = { en: { "ui:card.label": { target: "Begin", sourceHash: "fnv1a:0001", status: "translated" as const } } };
+        expect(readUiEditorClipboardPayload(written({ translations }))?.translations).toEqual(translations);
+        expect(readUiEditorClipboardPayload(written({ translations: { en: { "ui:card.label": 5 } } as never }))?.translations)
+            .toBeUndefined();
+    });
 });

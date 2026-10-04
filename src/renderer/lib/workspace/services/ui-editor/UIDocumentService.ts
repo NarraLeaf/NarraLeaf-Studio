@@ -42,8 +42,18 @@ import {
 } from "@shared/types/ui-editor/textSourceMigration";
 import { readUITextSite, uiTextSiteOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
 import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
+import { mapCopiedUIComponentDefaultUnits, mapCopiedUITextUnits } from "@shared/types/ui-editor/textUnitCopies";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { LocalizationService } from "../localization/LocalizationService";
+import {
+    createCarriedTranslationPort,
+    planCarriedTranslations,
+    readProjectLocales,
+    readProjectTranslations,
+    writeCarriedTranslations,
+    type CarriedTranslations,
+} from "../localization/carriedTranslations";
+import type { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
@@ -726,6 +736,13 @@ export type ImportTemplateBundleInput = {
      * project lacks, which arrive holding those words themselves (`settleIncomingUITextSources`).
      */
     textKeys?: UITextCarriedKeys;
+    /**
+     * What every language says about the words the document's widgets write directly, by unit id
+     * under the ids the widgets have in `document` - a page copied in another window brings them.
+     * Without it, widgets whose ids this project already translates (a page copied in this window)
+     * take those translations.
+     */
+    translations?: CarriedTranslations;
 };
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
@@ -1203,6 +1220,62 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 } catch (error) {
                     console.warn(`[UIDocumentService] could not bring translations into ${code}`, error);
                 }
+            }
+        })();
+    }
+
+    /**
+     * Give copied widgets the translations their originals' own words have, under the copies' ids.
+     *
+     * A widget's own words are translated through a unit named after the widget, so a copy - pasted,
+     * duplicated, inside a duplicated page or component - would otherwise arrive translated in no
+     * language. `table` is the arriving elements under their old ids, `idMap` what each became; `skip`
+     * are the sites whose words came from a key this project lacks, which bring the key's translations
+     * instead (`adoptArrivingTranslations`). `extra` are units owned by something other than an element
+     * - a copied component's parameter defaults - already re-keyed, old id to new.
+     *
+     * `carried` is what a clipboard brought with it, which is what a paste from another project has
+     * to go on, and a copy as it was when it was made. Without it the originals are this project's own
+     * and their translations are read from its documents. Either way only languages this project
+     * declares are written, a review is not inherited, and the write is not part of the paste's undo
+     * step (`carriedTranslations.ts`).
+     */
+    private carryCopiedTranslations(
+        table: Readonly<Record<string, UIElement>>,
+        idMap: Readonly<Record<string, string>>,
+        skip: readonly { elementId: string; prop: string }[],
+        carried: CarriedTranslations | undefined,
+        extra?: ReadonlyMap<string, string>,
+    ): void {
+        const units = new Map([...mapCopiedUITextUnits(table, idMap, skip), ...(extra ?? [])]);
+        if (units.size === 0) {
+            return;
+        }
+        let localization: LocalizationService;
+        try {
+            localization = this.getContext().services.get<LocalizationService>(Services.Localization);
+        } catch {
+            return;
+        }
+        const isFrozen = (): boolean => {
+            try {
+                return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze).isFrozen();
+            } catch {
+                return false;
+            }
+        };
+        void (async () => {
+            try {
+                const translations = carried ?? await readProjectTranslations(localization, [...units.keys()]);
+                if (!translations) {
+                    return;
+                }
+                const plan = planCarriedTranslations(translations, units, new Set(readProjectLocales(localization)));
+                if (plan.carried > 0) {
+                    await writeCarriedTranslations(createCarriedTranslationPort(localization, isFrozen), plan);
+                }
+            } catch (error) {
+                console.warn("[UIDocumentService] could not carry the copied widgets' translations", error);
             }
         })();
     }
@@ -2716,6 +2789,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             normalizeFlowChildLayouts(document, Object.keys(duplicatedElements));
         });
+        // The copies' own words, translated as the originals' are.
+        this.carryCopiedTranslations(sourceDocument.elements, elementIdMap, [], undefined);
 
         return duplicatedSurface;
     }
@@ -2849,6 +2924,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .filter(site => arrivedIds[site.elementId])
                 .map(site => ({ ...site, elementId: arrivedIds[site.elementId] })),
             input.textKeys,
+        );
+        this.carryCopiedTranslations(
+            {
+                ...sourceDocument.elements,
+                ...Object.assign({}, ...(sourceDocument.components ?? []).map(component => component.elements)),
+            },
+            arrivedIds,
+            arrivals,
+            input.translations,
+            mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
         );
         return { importedSurfaces, skippedSlots, importedComponents };
     }
@@ -3649,6 +3734,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             document.components = [...(document.components ?? []), component];
         }, { history: false });
+        // The copy's own words and its parameters' defaults, translated as the original's are.
+        this.carryCopiedTranslations(
+            source.elements,
+            idMap,
+            [],
+            undefined,
+            mapCopiedUIComponentDefaultUnits([source], { [source.id]: newComponentId }),
+        );
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                 const sourceBp = bpDoc.blueprints[oldBpId];
@@ -4172,6 +4265,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .map(site => ({ ...site, elementId: elementIdMap[site.elementId] })),
             payload.textKeys,
         );
+        this.carryCopiedTranslations(payload.elements, elementIdMap, textArrival.converted, payload.translations);
         return { ok: true, newRootIds };
     }
 
@@ -4667,6 +4761,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .map(site => ({ ...site, elementId: elementIdMap[site.elementId] })),
             payload.textKeys,
         );
+        this.carryCopiedTranslations(payload.elements, elementIdMap, textArrival.converted, payload.translations);
         return { ok: true, newRootIds };
     }
 
