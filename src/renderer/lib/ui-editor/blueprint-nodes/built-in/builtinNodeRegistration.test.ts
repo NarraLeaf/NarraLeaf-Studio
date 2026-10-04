@@ -20,6 +20,7 @@ import { blueprintNodeRegistry, isBlueprintNodeAllowedInGraphContext } from "../
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY } from "@shared/types/blueprint/graph";
+import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintNodeDef, BlueprintPaletteContext } from "../types";
 
 function isBlueprintNodeDefArray(value: unknown): value is BlueprintNodeDef[] {
@@ -79,6 +80,26 @@ describe("built-in blueprint node registration", () => {
             const absent = defs.filter(def => !blueprintNodeRegistry.get(def.type)).map(def => def.type);
             return absent.length > 0 ? [`${name}: ${absent.join(", ")}`] : [];
         });
+
+        expect(unregistered).toEqual([]);
+    });
+
+    /**
+     * The widget logic table is a catalogue too: `ui.js widget`, the node palette and graph
+     * validation all list a widget's events from it. Video and Model once listed play / pause /
+     * ended and ready / error, whose heads were never registered and which the runtime never
+     * dispatched - an author could see the event and had no way to listen to it.
+     */
+    it("names only registered event heads for every built-in widget event", () => {
+        registerCoreBlueprintNodes();
+
+        const unregistered = Object.entries(BUILTIN_WIDGET_LOGIC_APIS).flatMap(([widgetType, api]) =>
+            api.events.flatMap(eventDef =>
+                (eventDef.headNodeTypes ?? [])
+                    .filter(head => !blueprintNodeRegistry.get(head))
+                    .map(head => `${widgetType} ${eventDef.id}: ${head}`),
+            ),
+        );
 
         expect(unregistered).toEqual([]);
     });

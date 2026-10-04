@@ -127,6 +127,24 @@ describe("automatic collecting", () => {
         expect(collected()).toEqual(["art.scene.v.1", "art.scene.v.2"]);
     });
 
+    it("collects a recollection that has no picture yet", async () => {
+        // "Add Recollection" creates the entry with nothing in it; the scene is all it needs.
+        const catalog = {
+            ...CATALOG,
+            items: [{
+                id: "art.bare",
+                name: "Rooftop",
+                kind: "scene",
+                scene: { storyId: "story.main", sceneId: "scene.b" },
+                variants: [],
+            }],
+        };
+        galleryRuntime.setup(fakeApp({ catalog }));
+        await emit("sceneEnter", { sceneId: "scene.b" });
+
+        expect(collected()).toEqual(["art.bare"]);
+    });
+
     it("ignores a scene no entry replays", async () => {
         galleryRuntime.setup(fakeApp());
         await emit("sceneEnter", { sceneId: "scene.unknown" });

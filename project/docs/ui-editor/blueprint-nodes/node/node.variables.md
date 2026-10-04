@@ -6,7 +6,7 @@ Variables 节点用于声明 blueprint-level 变量、读写当前蓝图可访�
 
 `blueprint.local.declareVar` - 声明变量
 
-无输入引脚、无输出引脚。它在除 Blueprint Value (`widgetValue`) 外的所有蓝图 owner 中出现，用于声明当前 blueprint-level 生命周期变量。运行时启动和执行前会扫描当前蓝图内所有 `Var` 节点，将它们作为 `Get Var` / `Set Var` 可访问的变量定义。变量 store 会随对应蓝图 owner/runtime scope 存活，并在多条事件链之间复用，直到该 owner 实例被释放或重新挂载。
+无输入引脚、无输出引脚。它在除 Blueprint Value (`widgetValue`) 外的所有蓝图 owner 中出现，用于声明当前 blueprint-level 生命周期变量。运行时启动和执行前会扫描当前蓝图内所有 `Var` 节点，将它们作为 `Get Var` / `Set Var` 可访问的变量定义。变量 store 会随对应蓝图 owner/runtime scope 存活，并在多条事件链之间复用，直到该 owner 实例被释放或重新挂载。故事行的蓝图例外：它的 `Var` 每次执行都从默认值开始，因为故事会存档、读档与回退，跨执行保留的值不会跟着这些操作走；需要跨行记住的值用 Scene Var 或 Saved Var。
 
 - `Name` - 变量名称
 - `Data type` - 变量类型
