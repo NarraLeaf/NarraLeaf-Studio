@@ -10,7 +10,6 @@ import {
     AlignVerticalSpaceBetween,
     Columns2,
     Rows2,
-    StretchHorizontal,
 } from "lucide-react";
 import { defineField } from "@/apps/workspace/modules/properties/framework";
 import type {
@@ -50,6 +49,14 @@ function ContainerEmptyChildrenHintField(props: CustomFieldProps<UIInspectorData
 function hiddenOutsideFlow(data: D): boolean {
     const kind = getContainerProps(data.element).layoutKind;
     return kind !== "stack" && kind !== "scroll";
+}
+
+/**
+ * The two alignments act on a stack only. A scroll container lays its children out from the start
+ * of both axes whatever they say, so offering them there is offering a choice that changes nothing.
+ */
+function hiddenOutsideStack(data: D): boolean {
+    return getContainerProps(data.element).layoutKind !== "stack";
 }
 
 export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknown[] {
@@ -131,12 +138,11 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     mode: "single",
                     label: t("widgets.container.alignCross"),
                     showLabels: false,
-                    hidden: hiddenOutsideFlow,
+                    hidden: hiddenOutsideStack,
                     options: [
                         { id: "start", icon: <AlignHorizontalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
                         { id: "center", icon: <AlignHorizontalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },
                         { id: "end", icon: <AlignHorizontalJustifyEnd className="w-4 h-4" />, label: t("widgets.container.end") },
-                        { id: "stretch", icon: <StretchHorizontal className="w-4 h-4" />, label: t("widgets.container.stretch") },
                     ],
                     getValue: (d: D) => getContainerProps(d.element).stackAlignItems,
                     setValue: (_d: D, value: IconButtonSelection) => {
@@ -150,7 +156,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     mode: "single",
                     label: t("widgets.container.justifyMain"),
                     showLabels: false,
-                    hidden: hiddenOutsideFlow,
+                    hidden: hiddenOutsideStack,
                     options: [
                         { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
                         { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },

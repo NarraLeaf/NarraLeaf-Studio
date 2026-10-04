@@ -20,7 +20,15 @@ export type ContainerScrollViewportOverflow = {
 
 export type ContainerStackDirection = "horizontal" | "vertical";
 
-export type ContainerStackAlignItems = "start" | "center" | "end" | "stretch";
+/**
+ * Where children sit across the stack direction.
+ *
+ * There is no "stretch": every child of a stack keeps the width and height it was given, so stretching
+ * across the stack could only ever draw as "start" - and offering it, as the default, made the choice
+ * look like it did something. Documents written while it existed carry `"stretch"`; it is read as
+ * `"start"` (see {@link normalizeContainerStackAlignItems}), which is exactly how it always drew.
+ */
+export type ContainerStackAlignItems = "start" | "center" | "end";
 
 export type ContainerStackJustifyContent =
     | "start"
@@ -118,7 +126,7 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
     stackPaddingRight: 0,
     stackPaddingBottom: 0,
     stackPaddingLeft: 0,
-    stackAlignItems: "stretch",
+    stackAlignItems: "start",
     stackJustifyContent: "start",
     stackWrap: false,
 
@@ -193,6 +201,11 @@ export function normalizeContainerClipContent(raw: unknown): boolean {
         return raw;
     }
     return defaultContainerWidgetProps.clipContent;
+}
+
+/** Normalize serialized `stackAlignItems`: anything but a current value, the old `"stretch"` included, is `"start"`. */
+export function normalizeContainerStackAlignItems(raw: unknown): ContainerStackAlignItems {
+    return raw === "center" || raw === "end" ? raw : "start";
 }
 
 /** Normalize serialized `stackWrap`, on the same terms as {@link normalizeContainerClipContent}. */

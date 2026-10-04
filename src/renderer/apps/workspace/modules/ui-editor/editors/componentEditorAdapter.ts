@@ -280,6 +280,16 @@ export class ComponentDocumentServiceAdapter {
         return this.base.moveComponentElements(this.componentId, movers, actualParentId, beforeChildId);
     }
 
+    public groupElements(_surfaceId: string, elementIds: readonly string[]): string | null {
+        const ids = elementIds.filter(id => !this.isVirtualRoot(id) && !this.isComponentRoot(id));
+        return ids.length > 0 ? this.base.groupComponentElements(this.componentId, ids) : null;
+    }
+
+    public ungroupContainers(_surfaceId: string, containerIds: string[]): string[] {
+        const ids = containerIds.filter(id => !this.isVirtualRoot(id) && !this.isComponentRoot(id));
+        return ids.length > 0 ? this.base.ungroupComponentContainers(this.componentId, ids) : [];
+    }
+
     public deleteElements(elementIds: string[]): void {
         const ids = elementIds.filter(id => !this.isVirtualRoot(id) && !this.isComponentRoot(id));
         this.base.deleteComponentElements(this.componentId, ids);
