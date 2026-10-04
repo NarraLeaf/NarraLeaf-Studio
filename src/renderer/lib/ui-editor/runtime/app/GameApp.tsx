@@ -175,6 +175,7 @@ import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audio
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import { legacyElementIdTableFor } from "./legacyElementIds";
 import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
 import { createGameMenuController, type GameMenuPort } from "./gameMenu";
 import {
@@ -3083,6 +3084,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     };
                 },
                 readStoryHash: () => activeLiveGame().story?.hash() ?? null,
+                // The story the save is about to be applied to, walked as a build without stable
+                // names for the camera and the sounds would have numbered it.
+                legacyElementIds: () => legacyElementIdTableFor(activeLiveGame().story),
                 snapshot: () => activeLiveGame().serialize(),
                 apply: savedGame => {
                     const game = activeLiveGame();

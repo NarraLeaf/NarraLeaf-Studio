@@ -35,6 +35,7 @@ import {
     type SaveCompatibilityStamp,
 } from "@shared/types/saveCompatibility";
 import { isReservedSaveId } from "@shared/types/saves";
+import { translateLegacyElementIds, type LegacyElementIdTable } from "./legacyElementIds";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -222,6 +223,12 @@ export type SaveLoadGameSeam = {
      * as it is on a title screen.
      */
     remountStory?: (target: SaveStoryTarget) => Promise<void>;
+    /**
+     * The running story's answer for names a save may hold from before the camera and the sounds
+     * had stable ones - see `legacyElementIds.ts`. Asked after any switch or remount, of the story
+     * the save will be applied to. Omitted, or null, the save is applied as written.
+     */
+    legacyElementIds?: () => LegacyElementIdTable | null;
 };
 
 /** The story a save belongs to, as its anchors name it. */
@@ -469,7 +476,7 @@ export function isRowLaunchSave(savedGame: SavedGame): boolean {
 }
 
 /** Element ids the compiler names under the scene that built them: `nl:<kind>:<scene id>:<name>`. */
-const SCENE_SCOPED_ELEMENT_KINDS = new Set(["image", "text", "layer", "video", "puppet"]);
+const SCENE_SCOPED_ELEMENT_KINDS = new Set(["image", "text", "layer", "video", "puppet", "bgm", "sound"]);
 
 /**
  * Every scene of the project a save's ids name, in no particular order.
@@ -1077,6 +1084,52 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         }
     }
 
+    /**
+     * The save under today's names for the camera and the sounds, which a build before they had
+     * stable ones wrote by position. Everything after this reads it rather than the record.
+     *
+     * The walk that reproduces the old numbering is trusted only for the story the save was written
+     * against: the same document, by the hash the record was stamped with, entered at the same
+     * scene, by the engine's own hash. Anything less and only the two rules that do not depend on
+     * the walk apply - see `legacyElementIds.ts`.
+     */
+    let restorable: SavedGame = savedGame;
+    let legacy: LegacyElementIdTable | null = null;
+    try {
+        legacy = game.legacyElementIds?.() ?? null;
+    } catch {
+        legacy = null;
+    }
+    if (legacy) {
+        const stamp = readSaveCompatibilityStamp(record.metadata?.compatibility);
+        const buildHash = stamp?.storyId ? options.build?.storyHashes[stamp.storyId] : undefined;
+        const sameDocument = Boolean(stamp?.storyHash && buildHash && stamp.storyHash === buildHash);
+        const translation = translateLegacyElementIds(savedGame, legacy, sameDocument && origin === "sameStory");
+        if (translation.unmappable.length > 0) {
+            // A save from a row launch is not applied anyway anywhere but in a launch of its own row,
+            // and is started again at its line instead - which needs none of these names.
+            const rowLaunchPosition = rowLaunchSave && game.relaunch ? readSavePosition(savedGame) : null;
+            if (rowLaunchPosition) {
+                return relaunchFromSave(rowLaunchPosition, {
+                    row: "game.saveLoad.rowLaunchRelaunchedRow",
+                    scene: "game.saveLoad.rowLaunchRelaunchedScene",
+                });
+            }
+            const line = readSaveLastLine(savedGame);
+            const what = translate("game.saveLoad.detail.unresolvedElement");
+            return refuse(
+                "unresolved",
+                line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,
+                {
+                    unresolvedIds: translation.unmappable,
+                    origin,
+                    ...(storyChanged || remounted ? { game: await putRunBack() } : {}),
+                },
+            );
+        }
+        restorable = translation.savedGame;
+    }
+
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
     // the snapshot, not a step of the load: a table that answers oddly must cost the pre-check and
     // nothing else, or the safety net becomes the thing that drops the load.
@@ -1084,7 +1137,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     try {
         const maps = game.resolveStoryMaps();
         if (maps) {
-            unresolved = collectUnresolvedSaveReferences(savedGame, maps);
+            unresolved = collectUnresolvedSaveReferences(restorable, maps);
         }
     } catch {
         unresolved = NO_UNRESOLVED_REFERENCES;
@@ -1119,7 +1172,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
 
     takeRollback();
     try {
-        game.apply(savedGame);
+        game.apply(restorable);
     } catch (error) {
         return refuse("engine", translate("game.saveLoad.detail.engine", { error: errorText(error) }), {
             origin,
