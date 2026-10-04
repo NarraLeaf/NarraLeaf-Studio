@@ -25,6 +25,8 @@ import {
     uiTextUnitId,
     type UITextSite,
 } from "@shared/types/ui-editor/textSource";
+import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import {
     countSegmentInterpolations,
     segmentHasMarkup,
@@ -216,10 +218,19 @@ export type UiTranslationRow = {
  * The words an element translates through its own unit, when it does - the site's prop, read the way
  * the game reads it (`uiTextUnitBindingOf`). A named key translates through the key registry
  * instead, and its row is the key's; a site with no unit switch has no unit at all.
+ *
+ * Sample words have no row (`textSample.ts`): a value binding or a blueprint decides what the game
+ * shows there, and a package carries neither the sample words nor a translation of them.
  */
-function getLocalizableWidgetText(element: UIElement): { prop: UITextSite["textProp"]; sourceText: string } | null {
+function getLocalizableWidgetText(
+    element: UIElement,
+    writers: UITextWriterIndex,
+): { prop: UITextSite["textProp"]; sourceText: string } | null {
     const site = uiTextSiteOf(element.type);
     if (!site || site.role !== "words") {
+        return null;
+    }
+    if (uiTextSampleCauseOf(element, site, writers.get(element.id))) {
         return null;
     }
     const binding = uiTextUnitBindingOf(element, site);
@@ -234,11 +245,15 @@ export function uiTranslationUnitId(elementId: string, prop: string): string {
 /**
  * Collect every opted-in UI widget text: top-level elements grouped by their
  * page, component-definition elements grouped by their component's name.
+ *
+ * `writers` are the project's writers of interface words (`indexUITextWriters`), which decide whose
+ * words are sample text. Required, so no caller can leave the words a blueprint writes over in the
+ * table by forgetting them.
  */
-export function extractUiTranslationRows(document: UIDocument): UiTranslationRow[] {
+export function extractUiTranslationRows(document: UIDocument, writers: UITextWriterIndex): UiTranslationRow[] {
     const rows: UiTranslationRow[] = [];
     const pushRow = (element: UIElement, groupName: string) => {
-        const text = getLocalizableWidgetText(element);
+        const text = getLocalizableWidgetText(element, writers);
         if (!text) {
             return;
         }

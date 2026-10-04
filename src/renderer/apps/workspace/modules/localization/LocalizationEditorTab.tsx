@@ -59,6 +59,7 @@ import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
+import { readProjectTextWriters } from "@/lib/workspace/services/ui-editor/blueprint/projectTextWriters";
 import {
     TranslationClaimsProvider,
     useLocalizationKeyClaimHold,
@@ -286,8 +287,8 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                     return;
                 }
                 const uiDocument = uiDocumentService?.getDocument();
-                const uiRows: TableRow[] = uiDocument
-                    ? extractUiTranslationRows(uiDocument).map(row => ({
+                const uiRows: TableRow[] = uiDocument && uiDocumentService
+                    ? extractUiTranslationRows(uiDocument, readProjectTextWriters(uiDocumentService.getContext().services)).map(row => ({
                         unitId: row.unitId,
                         sourceText: row.sourceText,
                         interpolationCount: 0,

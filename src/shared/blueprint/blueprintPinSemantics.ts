@@ -203,7 +203,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.element.list.isScrolledToEnd", "blueprint.element.list.isScrolledToStart",
     "blueprint.list.getScrollProgress", "blueprint.list.getScrollOffset",
     "blueprint.list.isScrolledToEnd", "blueprint.list.isScrolledToStart",
-    "blueprint.local.declareVar", "blueprint.local.get",
+    "blueprint.local.declareVar", "blueprint.local.get", "blueprint.localization.keyText",
     "blueprint.math.abs", "blueprint.math.add", "blueprint.math.ceil",
     "blueprint.math.decrement", "blueprint.math.divide", "blueprint.math.equal", "blueprint.math.floor",
     "blueprint.math.greater", "blueprint.math.greaterOrEqual", "blueprint.math.increment",

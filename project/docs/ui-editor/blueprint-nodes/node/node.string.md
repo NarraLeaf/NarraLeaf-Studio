@@ -25,10 +25,12 @@ String 节点用于处理和生成字符串，创建浮窗中归入 Data 分类�
 
 `blueprint.string.format` - 格式化字符串
 
-将模板字符串中的占位符替换为指定值。
+将模板字符串中的占位符替换为指定值。`values` 是数组时，`{0}`、`{1}`… 取数组的各项（`Make Array` 生成）；是对象时，`{name}` 取同名字段（`Make Object` 生成）。没有对应值的占位符替换为空。
 - `template` - 模板字符串
 - `values` - 用于替换占位符的数据
 - `result` - 格式化后的字符串（传出引脚）
+
+它是唯一的格式化节点，可用于 Blueprint Value 与 `function` 图。要随游戏语言变化的字，模板接 Localization 节点 `Translation Key Text`，译文里保留同样的占位符即可，见 `node.localization.md`。旧的 `Format Text` 已不在创建浮窗中提供。
 
 ## Length
 

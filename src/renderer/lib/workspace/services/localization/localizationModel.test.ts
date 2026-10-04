@@ -11,7 +11,10 @@ import {
     extractCharacterTranslationRows,
     extractSceneTranslationRows,
     extractStoryTranslationRows,
+    extractUiTranslationRows,
 } from "./localizationModel";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 
 function block(partial: Partial<StoryBlock> & Pick<StoryBlock, "id" | "kind" | "payload">): StoryBlock {
     return {
@@ -271,5 +274,51 @@ describe("buildTranslationExchangeRows", () => {
         const rows = buildTranslationExchangeRows(units, undefined, "pending");
         expect(rows).toHaveLength(units.length);
         expect(rows.every(row => row.target === "" && row.status === "")).toBe(true);
+    });
+});
+
+/**
+ * The interface half of the translation table. Sample words - under a value binding, or where a
+ * blueprint writes over them - have no row: no player reads them and no package carries them, so a
+ * translation of them would be work that never shows.
+ */
+describe("extractUiTranslationRows", () => {
+    function text(id: string, props: Record<string, unknown>, valueBindings?: UIElement["valueBindings"]): UIElement {
+        return {
+            id,
+            type: "nl.text",
+            name: id,
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 } as UIElement["layout"],
+            props,
+            ...(valueBindings ? { valueBindings } : {}),
+        };
+    }
+
+    const document = {
+        surfaces: [],
+        elements: {
+            title: text("title", { text: "Your Game", localizable: true }),
+            nametag: text("nametag", { text: "Narra", localizable: true }, {
+                text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" },
+            }),
+            place: text("place", { text: "The corridor", localizable: true }),
+            log: text("log", { text: "Log", localizable: true }),
+        },
+    } as unknown as UIDocument;
+    const writer = (effect: "replace" | "append") => ({
+        blueprintId: "bp-slot", graphKind: "event" as const, graphId: "init", nodeId: "n", nodeType: "t", effect, textProp: "text" as const,
+    });
+    const writers: UITextWriterIndex = new Map([
+        ["place", [writer("replace")]],
+        ["log", [writer("append")]],
+    ]);
+
+    it("lists the words a player reads and none of the sample words", () => {
+        expect(extractUiTranslationRows(document, writers).map(row => [row.unitId, row.sourceText])).toEqual([
+            ["ui:title.text", "Your Game"],
+            ["ui:log.text", "Log"],
+        ]);
     });
 });

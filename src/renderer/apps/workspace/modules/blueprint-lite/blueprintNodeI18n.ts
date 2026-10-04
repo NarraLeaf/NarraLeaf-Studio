@@ -525,6 +525,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Toggle": "blueprint.node.toggle",
     "Toggle Dialog Display": "blueprint.node.toggleDialogDisplay",
     "Toggle Switch": "blueprint.node.toggleSwitch",
+    "Translation Key Text": "blueprint.node.translationKeyText",
     "Trim": "blueprint.node.trim",
     "Trim End": "blueprint.node.trimEnd",
     "Trim Start": "blueprint.node.trimStart",

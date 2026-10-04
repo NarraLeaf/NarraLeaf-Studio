@@ -583,11 +583,14 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| Get Localized Text | `blueprint.localization.getText` | 按 key 获取本地化文本。 |
-| Format Localized Text | `blueprint.localization.formatText` | 获取本地化文本并格式化占位符。 |
-| Get Current Language | `blueprint.localization.getCurrentLanguage` | 获取当前语言。 |
+| Get Text | `blueprint.localization.getText` | **已实现**。按翻译键获取文本（latent）。 |
+| Translation Key Text | `blueprint.localization.keyText` | **已实现**。`Get Text` 的纯节点版本，可用于 Blueprint Value 与 function 图；绑定随玩家切换语言重新求值。 |
+| Format Text | `blueprint.localization.formatText` | **已实现，不在创建浮窗中提供**。格式化统一用 `Format`（`blueprint.string.format`）。 |
+| Get Current Language | `blueprint.localization.getCurrentLanguage` | **已实现**。获取当前语言。 |
+| Set Language | `blueprint.localization.setLanguage` | **已实现**。切换并保存玩家的游戏语言。 |
+| Get Available Languages | `blueprint.localization.getAvailableLanguages` | **已实现**。列出项目配置的语言。 |
 | Set Preview Language | `blueprint.localization.setPreviewLanguage` | 在 UI 预览或 Dev Mode 中切换预览语言。 |
-| Has Localized Text | `blueprint.localization.hasText` | 判断本地化 key 是否存在。 |
+| Has Text | `blueprint.localization.hasText` | **已实现**。判断翻译键是否存在。 |
 
 ## Theme
 
