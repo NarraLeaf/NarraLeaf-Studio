@@ -311,6 +311,12 @@ export const lint = {
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
         },
+        uiComponentParamMissing: {
+            title: "不存在的文字参数",
+            description: "组件内的控件显示的参数，组件没有声明为文字参数",
+            message: "这里显示的参数组件没有声明为文字参数，各放置处在此不显示文字",
+            messageOutside: "这里显示组件参数，但不在组件内，游戏中在此不显示文字",
+        },
         uiListTextUntranslated: {
             title: "不会翻译的列表内容",
             description: "项目已有第二种语言，列表内容中写有文字",

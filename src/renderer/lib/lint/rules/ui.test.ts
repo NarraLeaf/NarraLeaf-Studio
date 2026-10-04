@@ -863,6 +863,96 @@ describe("ui/list-item-field-missing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// A component's text parameters: ui/component-param-missing, and the units lint reads
+// ---------------------------------------------------------------------------
+
+describe("a component's text parameters", () => {
+    function navDocument(params: NonNullable<UIDocument["components"]>[number]["params"], placementLinks: Record<string, unknown>[]) {
+        const placements = placementLinks.map((link, index) => element({
+            id: `p${index + 1}`,
+            type: "nl.container",
+            name: `Nav ${index + 1}`,
+            parentId: "root",
+            extra: { componentLink: { componentId: "nav", linked: true, ...link } },
+        }));
+        return uiDocument({
+            surfaces: [{ id: "page", name: "Title", rootElementId: "root" }],
+            elements: [element({ id: "root", type: "nl.root", childrenIds: placements.map(item => item.id) }), ...placements],
+            components: [
+                {
+                    id: "nav",
+                    name: "Nav item",
+                    rootElementId: "nav-root",
+                    params,
+                    elements: {
+                        "nav-root": element({ id: "nav-root", type: "nl.container", childrenIds: ["nav-label"] }),
+                        "nav-label": element({
+                            id: "nav-label",
+                            type: "nl.text",
+                            name: "Label",
+                            parentId: "nav-root",
+                            props: { text: "Sample" },
+                            valueBindings: { text: { kind: "componentParam", paramId: "label" } },
+                        }),
+                    },
+                },
+            ],
+        });
+    }
+
+    it("says nothing when the bound parameter is a declared text parameter", async () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "" }], []);
+        expect(await run("ui/component-param-missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("reports a widget showing a parameter that is gone, or that is a string parameter", async () => {
+        for (const params of [[], [{ id: "label", name: "Label", type: "string" as const, defaultValue: "" }]]) {
+            const findings = await run(
+                "ui/component-param-missing",
+                createTestLintContext({ uiDocument: navDocument(params, []) }),
+            );
+            expect(findings).toHaveLength(1);
+            expect(findings[0]?.location).toMatchObject({ kind: "component", componentId: "nav", elementId: "nav-label" });
+        }
+    });
+
+    it("reports a widget on a page bound to a parameter, which no placement gives words", async () => {
+        const stray = element({
+            id: "stray",
+            type: "nl.text",
+            parentId: "root",
+            props: { text: "Sample" },
+            valueBindings: { text: { kind: "componentParam", paramId: "label" } },
+        });
+        const findings = await run("ui/component-param-missing", createTestLintContext({ uiDocument: onePage(stray) }));
+        expect(findings.map(finding => finding.messageKey)).toEqual(["lint.rule.uiComponentParamMissing.messageOutside"]);
+    });
+
+    it("reads each placement's words through its own unit and a keyed value through its key", () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "Item" }], [
+            { params: { label: "Start" } },
+            { paramKeys: { label: "nav.title" } },
+            {},
+        ]);
+        const sites = listInterfaceTextUnitSites(document, indexUITextWriters(null));
+        expect(sites.map(site => [site.element.id, site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId])).toEqual([
+            ["p1", "ui:p1.param.label"],
+            ["p2", "key:nav.title"],
+            ["p3", "ui:nav.param.label"],
+        ]);
+    });
+
+    it("reports a key a placement names that the project does not have", async () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "" }], [{ paramKeys: { label: "nav.gone" } }]);
+        const findings = await run(
+            "ui/localization-key-missing",
+            createTestLintContext({ uiDocument: document, localizationKeys: new Map([["nav.title", "Title"]]) }),
+        );
+        expect(findings.map(finding => finding.messageParams?.key)).toEqual(["nav.gone"]);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // ui/gesture-answered-twice
 // ---------------------------------------------------------------------------
 

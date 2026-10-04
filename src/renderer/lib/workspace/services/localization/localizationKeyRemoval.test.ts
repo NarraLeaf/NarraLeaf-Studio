@@ -60,6 +60,13 @@ describe("removeLocalizationKeyKeepingWords", () => {
         expect(documents.ja["ui:title.text"]).toBeUndefined();
     });
 
+    it("files the key's translations under a placement's own unit when a text parameter read it", async () => {
+        const { ports: given, documents } = ports();
+        given.interfaceDocument.giveKeyedWidgetsTheirWords = () => [{ elementId: "item", prop: "param.label" }];
+        await removeLocalizationKeyKeepingWords(given, "menu.start");
+        expect(documents["zh-CN"]["ui:item.param.label"]).toEqual(unit("开始"));
+    });
+
     it("removes a key nothing uses without touching any language", async () => {
         const { ports: given, calls } = ports();
         given.interfaceDocument.giveKeyedWidgetsTheirWords = () => [];

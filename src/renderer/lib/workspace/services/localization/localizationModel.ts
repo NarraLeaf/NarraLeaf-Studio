@@ -26,6 +26,7 @@ import {
     type UITextSite,
 } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import { listUIPlacementTextValues, uiComponentTextValueUnitBinding } from "@shared/types/ui-editor/componentTextParams";
 import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import {
     countSegmentInterpolations,
@@ -202,12 +203,18 @@ export function extractSceneTranslationRows(document: StoryDocument): SceneTrans
         }));
 }
 
-/** One widget's own words on an interface (implicit unit `ui:<elementId>.<prop>`). */
+/**
+ * One widget's own words on an interface (implicit unit `ui:<elementId>.<prop>`), or the words a
+ * component placement gives a text parameter (`ui:<placementId>.param.<paramId>`, or the
+ * definition's `ui:<componentId>.param.<paramId>` for a default).
+ */
 export type UiTranslationRow = {
     unitId: string;
+    /** The widget, or the placement whose parameter value this is. */
     elementId: string;
-    prop: UITextSite["textProp"];
-    /** Author-facing element name (never the raw element id). */
+    /** The prop holding the widget's words, or `param.<paramId>` for a parameter's value. */
+    prop: UITextSite["textProp"] | `param.${string}`;
+    /** Author-facing element name (never the raw element id); "placement › parameter" for a parameter. */
     elementName: string;
     /** Page (or component) the element lives on, for grouping. */
     groupName: string;
@@ -252,19 +259,40 @@ export function uiTranslationUnitId(elementId: string, prop: string): string {
  */
 export function extractUiTranslationRows(document: UIDocument, writers: UITextWriterIndex): UiTranslationRow[] {
     const rows: UiTranslationRow[] = [];
+    // A parameter's default is one unit however many placements fall back to it.
+    const paramUnits = new Set<string>();
     const pushRow = (element: UIElement, groupName: string) => {
         const text = getLocalizableWidgetText(element, writers);
-        if (!text) {
-            return;
+        if (text) {
+            rows.push({
+                unitId: uiTranslationUnitId(element.id, text.prop),
+                elementId: element.id,
+                prop: text.prop,
+                elementName: element.name || element.type,
+                groupName,
+                sourceText: text.sourceText,
+            });
         }
-        rows.push({
-            unitId: uiTranslationUnitId(element.id, text.prop),
-            elementId: element.id,
-            prop: text.prop,
-            elementName: element.name || element.type,
-            groupName,
-            sourceText: text.sourceText,
-        });
+        // A placement carries none of its definition's words - inside it they are sample text - but it
+        // puts the words it gives the definition's text parameters on screen, each in its own unit.
+        for (const { component, param, value } of listUIPlacementTextValues(document, element)) {
+            const binding = uiComponentTextValueUnitBinding(value);
+            if (binding?.kind !== "implicit" || paramUnits.has(binding.unitId)) {
+                continue;
+            }
+            paramUnits.add(binding.unitId);
+            const paramName = param.name.trim() || param.id;
+            rows.push({
+                unitId: binding.unitId,
+                elementId: element.id,
+                prop: `param.${param.id}`,
+                elementName: value.origin === "default"
+                    ? `${component.name || element.name || element.type} › ${paramName}`
+                    : `${element.name || component.name || element.type} › ${paramName}`,
+                groupName: value.origin === "default" ? component.name || groupName : groupName,
+                sourceText: binding.sourceText,
+            });
+        }
     };
     for (const element of Object.values(document.elements)) {
         const surfaceId = findUIElementSurfaceId(document, element.id);

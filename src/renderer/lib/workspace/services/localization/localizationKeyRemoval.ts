@@ -2,7 +2,8 @@
  * Removing a named key without leaving anything naming it.
  *
  * A widget that read its words from the key is turned into one that holds the key's words itself,
- * and the key's translations become that widget's own (`ui:<elementId>.<prop>`), so every widget
+ * and the key's translations become that widget's own (`ui:<elementId>.<prop>`; for a component
+ * placement whose text parameter read the key, `ui:<placementId>.param.<paramId>`), so every widget
  * shows in every language what it showed before the key went. A blueprint node naming the key is
  * left as it is - it is listed in the confirmation, reads as the key's name from now on, and the
  * project check reports it.

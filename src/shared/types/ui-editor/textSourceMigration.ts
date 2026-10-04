@@ -465,7 +465,7 @@ export function readUITextCarriedKeys(value: unknown): UITextCarriedKeys | undef
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** The keys a table of elements names on their text sites. */
+/** The keys a table of elements names on their text sites, and as instances' text parameter values. */
 export function listUITextKeysNamed(table: Readonly<Record<string, UIElement>>): string[] {
     const names = new Set<string>();
     for (const element of Object.values(table)) {
@@ -474,8 +474,47 @@ export function listUITextKeysNamed(table: Readonly<Record<string, UIElement>>):
         if (key) {
             names.add(key);
         }
+        for (const paramKey of Object.values(getUIComponentLink(element)?.paramKeys ?? {})) {
+            names.add(paramKey);
+        }
     }
     return [...names];
+}
+
+/**
+ * An instance whose text parameters name keys the project lacks, with each such value given as the
+ * key's words directly - the words the elements brought, else the key's name. Null when none does.
+ */
+function settleInstanceParamKeys(
+    element: UIElement,
+    input: { hasKey: (name: string) => boolean; carried?: UITextCarriedKeys },
+): { element: UIElement; converted: { paramId: string; keyName: string }[] } | null {
+    const link = getUIComponentLink(element);
+    const missing = Object.entries(link?.paramKeys ?? {}).filter(([, keyName]) => !input.hasKey(keyName));
+    if (!link || missing.length === 0) {
+        return null;
+    }
+    const params = { ...(link.params ?? {}) };
+    const paramKeys = { ...(link.paramKeys ?? {}) };
+    for (const [paramId, keyName] of missing) {
+        params[paramId] = input.carried?.[keyName]?.words ?? keyName;
+        delete paramKeys[paramId];
+    }
+    return {
+        element: {
+            ...element,
+            extra: {
+                ...(element.extra ?? {}),
+                componentLink: {
+                    componentId: link.componentId,
+                    linked: true,
+                    params,
+                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
+                },
+            },
+        },
+        converted: missing.map(([paramId, keyName]) => ({ paramId, keyName })),
+    };
 }
 
 /** A widget that arrived naming a key the project lacks, and now holds that key's words itself. */
@@ -489,7 +528,9 @@ export type UITextArrivalConversion = { elementId: string; prop: string; keyName
  * naming a key this project has keeps the key and nothing else, its words being the key's here. A
  * widget naming a key this project lacks becomes one that holds the key's words itself - the words
  * the elements brought with them when they did, else the copy an older document kept on the widget,
- * else the key's name - so nothing arrives pointing at a key that is not there.
+ * else the key's name - so nothing arrives pointing at a key that is not there. An instance's text
+ * parameter that names a key the project lacks is given the key's words the same way (prop
+ * `param.<paramId>`, whose unit is the instance's own).
  *
  * Returns the table (the same object when nothing changed) and the widgets it converted, by their
  * ids in `table`, for the translations a caller can bring with them.
@@ -508,15 +549,23 @@ export function settleIncomingUITextSources(
     };
     for (const [id, element] of Object.entries(table)) {
         const site = uiTextSiteOf(element.type);
-        if (!site) {
-            continue;
-        }
         if (getUIComponentLink(element)) {
-            // Drawn from its definition; its own copy is only brought to the v13 shape.
-            const settled = settleInstanceCopy(element, site);
+            // Drawn from its definition; its own copy is only brought to the v13 shape. What it gives
+            // the definition's text parameters is its own, and settled like a widget's words.
+            let settled = site ? settleInstanceCopy(element, site) : element;
+            const params = settleInstanceParamKeys(settled, input);
+            if (params) {
+                settled = params.element;
+                for (const { paramId, keyName } of params.converted) {
+                    converted.push({ elementId: id, prop: `param.${paramId}`, keyName });
+                }
+            }
             if (settled !== element) {
                 replace(id, settled);
             }
+            continue;
+        }
+        if (!site) {
             continue;
         }
         let next = element;

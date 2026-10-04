@@ -148,6 +148,7 @@ export type LintRuleId =
     | "ui/frame-target-missing"
     | "ui/frame-loop"
     | "ui/list-item-field-missing"
+    | "ui/component-param-missing"
     | "ui/gesture-answered-twice"
     | "ui/list-text-untranslated"
     | "ui/localization-key-missing"

@@ -321,4 +321,54 @@ describe("extractUiTranslationRows", () => {
             ["ui:log.text", "Log"],
         ]);
     });
+
+    describe("a component's text parameter", () => {
+        function placement(id: string, link: Record<string, unknown>): UIElement {
+            return {
+                id,
+                type: "nl.container",
+                name: `Nav ${id}`,
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 10, height: 10 } as UIElement["layout"],
+                extra: { componentLink: { componentId: "nav", linked: true, ...link } },
+            };
+        }
+        const withParams = {
+            surfaces: [{ id: "page", name: "Title", kind: "appSurface", rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", parentId: null, childrenIds: ["p1", "p2", "p3", "p4", "p5", "p6"], layout: {} },
+                p1: placement("p1", { params: { label: "Start" } }),
+                p2: placement("p2", { params: { label: "Continue" } }),
+                p3: placement("p3", { paramKeys: { label: "nav.title" } }),
+                p4: placement("p4", {}),
+                p5: placement("p5", {}),
+                p6: placement("p6", { params: { label: "03" } }),
+            },
+            components: [
+                {
+                    id: "nav",
+                    name: "Nav item",
+                    rootElementId: "nav-root",
+                    params: [
+                        { id: "label", name: "Label", type: "text", defaultValue: "Item" },
+                        { id: "hint", name: "Hint", type: "text", defaultValue: "Shown nowhere" },
+                    ],
+                    elements: {
+                        "nav-root": { id: "nav-root", type: "nl.container", parentId: null, childrenIds: ["nav-label"], layout: {} },
+                        "nav-label": text("nav-label", { text: "Sample" }, { text: { kind: "componentParam", paramId: "label" } }),
+                    },
+                },
+            ],
+        } as unknown as UIDocument;
+
+        it("lists each written value once as the placement's unit, a default once as the component's, and no sample", () => {
+            const rows = extractUiTranslationRows(withParams, new Map());
+            expect(rows.map(row => [row.unitId, row.sourceText, row.groupName, row.elementName])).toEqual([
+                ["ui:p1.param.label", "Start", "Title", "Nav p1 › Label"],
+                ["ui:p2.param.label", "Continue", "Title", "Nav p2 › Label"],
+                ["ui:nav.param.label", "Item", "Nav item", "Nav item › Label"],
+            ]);
+        });
+    });
 });
