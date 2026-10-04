@@ -532,7 +532,9 @@ export const help = {
                 + "Studio reads the font file and fills the limit in if the font states which language "
                 + "it was made for; it leaves it empty otherwise.\n"
                 + "- The project check reports characters the script uses that no font in the list can "
-                + "draw, for each language.",
+                + "draw, for each language.\n"
+                + "- A widget is checked in the font of each of its states. A character only one state's font "
+                + "cannot draw is reported with the state's name.",
         },
         inputActions: {
             title: "Input actions",
