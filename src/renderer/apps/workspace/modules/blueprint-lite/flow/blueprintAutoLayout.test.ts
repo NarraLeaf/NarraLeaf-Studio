@@ -554,13 +554,55 @@ describe("layoutBlueprintGraph", () => {
             expect(positions.d0!.y).toBeGreaterThan(pinY(g, positions, "walk.completed"));
         });
 
-        it("is laid out as a loop only when it is one", () => {
-            // The same card as an If would be offered the other arrangement, and here takes it.
-            const asBranch = layoutBlueprintGraph(graph(false)).positions;
-            const asLoop = layoutBlueprintGraph(graph(true)).positions;
+        it("keeps its body on from the loop even where moving it aside would untangle more", () => {
+            // Completed reads a value the body reads too and then joins the body's last card. As an
+            // If, this card's second output would go directly under it with the rest of the row
+            // pushed past it - fewer wires under cards - and does; as a loop, the body stays put.
+            const joined = (loop: boolean): BlueprintLayoutGraph => ({
+                cards: [
+                    head("start"),
+                    { ...card("walk", { in: true, out: ["loop", "completed"], data: ["end"] }), loop },
+                    step("b0", ["v"]),
+                    value("bf0"),
+                    step("b1", ["v"]),
+                    value("bf1"),
+                    step("b2"),
+                    step("d0", ["v"]),
+                ],
+                wires: [
+                    wire("start.then", "walk.in"),
+                    wire("walk.loop", "b0.in"),
+                    wire("bf0.result", "b0.v"),
+                    wire("b0.next", "b1.in"),
+                    wire("bf1.result", "b1.v"),
+                    wire("b1.next", "b2.in"),
+                    wire("walk.completed", "d0.in"),
+                    wire("b2.next", "walk.in"),
+                    wire("d0.next", "b2.in"),
+                    wire("bf0.result", "d0.v"),
+                ],
+            });
+            const asBranch = layoutBlueprintGraph(joined(false)).positions;
+            const asLoop = layoutBlueprintGraph(joined(true)).positions;
+            const g = joined(true);
 
-            expect(asBranch.b0!.x).toBeGreaterThan(asLoop.b0!.x);
+            expect(asBranch.b0!.x).toBeGreaterThan(asBranch.d0!.x);
+            expect(asLoop.b0!.x - rightOf(g, asLoop, "walk")).toBeLessThanOrEqual(90 + 200 + 60);
+            expect(pinY(g, asLoop, "walk.loop")).toBe(pinY(g, asLoop, "b0.in"));
         });
+    });
+
+    it("does not count a wire back along a row as crossing the row's own wires", () => {
+        // The wire closing a loop from the end of a row back to its start is drawn flat along the
+        // row's line, over the row's wires; lying on them is not crossing them.
+        const graph = {
+            cards: [head("start"), step("a"), step("b"), step("c")],
+            wires: [wire("start.then", "a.in"), wire("a.next", "b.in"), wire("b.next", "c.in"), wire("c.next", "a.in")],
+        };
+        const { measure } = untangled(graph);
+
+        expect(measure.crossings).toBe(0);
+        expect(measure.backwards).toBe(1);
     });
 
     it("places every card of a loop and runs only the wire that closes it backwards", () => {

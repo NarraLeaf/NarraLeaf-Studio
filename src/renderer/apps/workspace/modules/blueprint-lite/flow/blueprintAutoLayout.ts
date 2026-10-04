@@ -1809,9 +1809,17 @@ function sampleWire(start: { x: number; y: number }, end: { x: number; y: number
     return points;
 }
 
+/**
+ * Which side of the line through a and b the point c is on. Points on the line - within rounding -
+ * count as one side, so two wires running along the same line (a loop's wire back along its own row)
+ * are not counted as crossing at every sample the rounding happens to flip.
+ */
 function orient(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): boolean {
-    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) > 0;
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax) > COLLINEAR_EPSILON;
 }
+
+/** Far below any real crossing's cross product, far above the rounding of a straight sampled wire. */
+const COLLINEAR_EPSILON = 1e-6;
 
 function segmentsCross(p1: [number, number], p2: [number, number], q1: [number, number], q2: [number, number]): boolean {
     if (orient(q1[0], q1[1], q2[0], q2[1], p1[0], p1[1]) === orient(q1[0], q1[1], q2[0], q2[1], p2[0], p2[1])) {
