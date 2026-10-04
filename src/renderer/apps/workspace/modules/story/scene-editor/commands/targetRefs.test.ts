@@ -47,7 +47,7 @@ const DECLARATIONS: Record<string, StoryActionPayload> = {
     b_img: { action: "image", operation: "create", objectName: "hero", assetId: "i1" },
     b_txt: { action: "text", operation: "create", objectName: "title", text: "Hi" },
     b_layer: { action: "layer", operation: "create", objectName: "overlay" },
-    b_vid: { action: "video", operation: "create", objectName: "clip", assetId: "v1" },
+    b_vid: { action: "video", operation: "play", objectName: "clip", assetId: "v1" },
     b_snd: { action: "audio", operation: "playSound", objectName: "piano", assetId: "a1" },
     b_vfx: { action: "vfx", operation: "create", objectName: "petals", assetId: "v2" },
 };
@@ -187,13 +187,11 @@ describe("a character reference stores the stage key, not the cast name", () => 
 });
 
 describe("a row that addresses an actionable handle names the row that declared it", () => {
-    it("/play, /seek and /hide bind a clip", () => {
-        expect(build("/play clip")).toMatchObject({
-            action: "video",
-            operation: "play",
-            objectName: "clip",
-            target: { name: "clip", label: "clip", sourceBlockId: "b_vid" },
-        });
+    it("/seek and /hide bind the clip a play defined, and /play plays it again with its file", () => {
+        // A play defines its clip, so it carries the clip's file rather than a reference to it.
+        const again = build("/play clip");
+        expect(again).toMatchObject({ action: "video", operation: "play", objectName: "clip", assetId: "v1" });
+        expect(again).not.toHaveProperty("target");
         expect(build("/seek clip 12")).toMatchObject({
             action: "video",
             operation: "seek",

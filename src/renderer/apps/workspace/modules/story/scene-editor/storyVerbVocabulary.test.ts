@@ -23,7 +23,7 @@ describe("storyVerbVocabulary", () => {
             ["image", ["create", "setSource", "show", "hide"]],
             ["text", ["create", "setText", "show", "hide", "setFontSize", "setFontColor"]],
             ["layer", ["create", "setZIndex", "show", "hide", "transform"]],
-            ["video", ["create", "show", "hide", "play", "pause", "resume", "stop", "seek"]],
+            ["video", ["hide", "play", "pause", "resume", "stop", "seek"]],
             ["vfx", ["create", "show", "hide", "pause", "resume", "setRate"]],
             ["audio", ["setBgm", "playSound", "stopSound", "pauseSound", "resumeSound", "setVolume", "setRate", "seekSound"]],
             ["displayable", ["show", "hide", "transform"]],
@@ -55,7 +55,10 @@ describe("storyVerbVocabulary", () => {
         for (const action of ["character", "image", "text", "video", "layer", "vfx", "displayable"] as const) {
             const show = action === "character" ? "enter" : "show";
             const hide = action === "character" ? "exit" : "hide";
-            expect(storyVerbCommandId(payload({ action, operation: show })), action).toBe("show");
+            // A clip has no show: it comes on with its play.
+            if (action !== "video") {
+                expect(storyVerbCommandId(payload({ action, operation: show })), action).toBe("show");
+            }
             expect(storyVerbCommandId(payload({ action, operation: hide })), action).toBe("hide");
         }
     });
