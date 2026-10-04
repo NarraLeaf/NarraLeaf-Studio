@@ -643,3 +643,203 @@ describe("computeStoryStageSnapshot and the host's persistent store", () => {
             .toEqual([{ name: "cg0", visible: false }, { name: "cgElse", visible: false }]);
     });
 });
+
+/**
+ * The sound at the target row: the track on the music channel and every handle the scene's rows
+ * start, as the walk to the row left them. A row-precise launch opens on this, and so does a save
+ * put back at its row after the story changed - both used to open in silence.
+ */
+describe("computeStoryStageSnapshot and the sound at the target row", () => {
+    const audio = (id: string, payload: Record<string, unknown>, parentId: string | null = null) =>
+        block(id, "action", { action: "audio", ...payload }, parentId);
+    const rain = audio("rain", { operation: "playSound", objectName: "rain", assetId: "asset-rain", loop: true });
+    const theme = audio("theme", { operation: "setBgm", assetId: "asset-theme", fadeMs: 1200 });
+
+    function withSceneMusic(document: StoryDocument): StoryDocument {
+        document.scenes["scene-1"].bgm = { assetId: "asset-scene-music", fadeMs: 800 };
+        return document;
+    }
+
+    it("has the scene's own music playing at any row, and nothing when the scene has none", () => {
+        const rows = { before: say("before"), target: say("target") };
+        expect(snapshot(withSceneMusic(baseDocument(rows)), "target").music).toEqual({ playing: true, paused: false });
+        expect(snapshot(baseDocument(rows), "target").music).toBeNull();
+    });
+
+    it("puts the track of the last /bgm row before the target on the channel, and a /bgm with no file clears it", () => {
+        const document = withSceneMusic(baseDocument({
+            theme,
+            "after-theme": say("after-theme"),
+            clear: audio("clear", { operation: "setBgm" }),
+            "after-clear": say("after-clear"),
+        }));
+
+        expect(snapshot(document, "after-theme").music).toEqual({ setBy: "theme", playing: true, paused: false });
+        expect(snapshot(document, "after-clear").music).toBeNull();
+        // A /bgm at or after the target has not happened yet.
+        expect(snapshot(document, "theme").music).toEqual({ playing: true, paused: false });
+    });
+
+    it("follows the music channel through the controls that address it", () => {
+        const document = baseDocument({
+            theme,
+            quieter: audio("quieter", { operation: "setVolume", target: { builtin: "bgm" }, volume: 0.3 }),
+            pause: audio("pause", { operation: "pauseSound", objectName: "bgm" }),
+            target: say("target"),
+            stop: audio("stop", { operation: "stopSound", target: { builtin: "bgm" } }),
+            "after-stop": say("after-stop"),
+        });
+
+        expect(snapshot(document, "target").music).toEqual({ setBy: "theme", playing: true, paused: true, volumeBy: "quieter" });
+        expect(snapshot(document, "after-stop").music).toEqual({ setBy: "theme", playing: false, paused: false });
+    });
+
+    it("records a sound started before the target as playing, and one stopped since as not", () => {
+        const document = baseDocument({
+            rain,
+            "after-rain": say("after-rain"),
+            stop: audio("stop", { operation: "stopSound", target: { sourceBlockId: "rain", name: "rain" } }),
+            "after-stop": say("after-stop"),
+        });
+
+        expect(snapshot(document, "after-rain").sounds).toEqual([{ objectName: "rain", sourceBlockId: "rain", playing: true, paused: false }]);
+        expect(snapshot(document, "after-stop").sounds).toEqual([{ objectName: "rain", sourceBlockId: "rain", playing: false, paused: false }]);
+    });
+
+    it("lists a sound only a later row starts, so a launch can build it for that row", () => {
+        const document = baseDocument({ target: say("target"), rain });
+        expect(snapshot(document, "target").sounds).toEqual([{ objectName: "rain", sourceBlockId: "rain", playing: false, paused: false }]);
+    });
+
+    it("keeps what the engine keeps across a restart and forgets what it does not", () => {
+        const document = baseDocument({
+            rain,
+            mute: audio("mute", { operation: "muteSound", objectName: "rain", muted: true }),
+            quieter: audio("quieter", { operation: "setVolume", objectName: "rain", volume: 0.2 }),
+            faster: audio("faster", { operation: "setRate", objectName: "rain", rate: 1.5 }),
+            seek: audio("seek", { operation: "seekSound", objectName: "rain", timeMs: 4000 }),
+            "before-restart": say("before-restart"),
+            again: audio("again", { operation: "playSound", objectName: "rain" }),
+            "after-restart": say("after-restart"),
+        });
+
+        expect(snapshot(document, "before-restart").sounds[0]).toEqual({
+            objectName: "rain", sourceBlockId: "rain", playing: true, paused: false,
+            muted: true, volumeBy: "quieter", rate: 1.5, seekMs: 4000,
+        });
+        // A start is at the level the clip was built with and from its in point; the mute flag and
+        // the rate stay with the clip.
+        expect(snapshot(document, "after-restart").sounds[0]).toEqual({
+            objectName: "rain", sourceBlockId: "rain", playing: true, paused: false, muted: true, rate: 1.5,
+        });
+    });
+
+    it("lets a level, a rate, a seek or a pause on a clip that is not playing do nothing", () => {
+        const document = baseDocument({
+            rain,
+            stop: audio("stop", { operation: "stopSound", objectName: "rain" }),
+            quieter: audio("quieter", { operation: "setVolume", objectName: "rain", volume: 0.2 }),
+            faster: audio("faster", { operation: "setRate", objectName: "rain", rate: 2 }),
+            pause: audio("pause", { operation: "pauseSound", objectName: "rain" }),
+            target: say("target"),
+        });
+        expect(snapshot(document, "target").sounds[0]).toEqual({ objectName: "rain", sourceBlockId: "rain", playing: false, paused: false });
+    });
+
+    it("builds a handle from the first row that names a file in compile order, even on an arm the path did not take", () => {
+        // The compiler reads every arm, so the `/sound rain` in the option the reader did not pick is
+        // the row that builds the handle - and the row on the path plays that handle.
+        const document = baseDocument({
+            menu: block("menu", "nodeAction", { action: "choice" }, null, ["left", "right"]),
+            left: block("left", "nodeAction", { action: "choiceOption", text: { textId: "l", value: "Left" } }, "menu", ["rain-left"]),
+            "rain-left": audio("rain-left", { operation: "playSound", objectName: "rain", assetId: "asset-rain-left", loop: true }, "left"),
+            right: block("right", "nodeAction", { action: "choiceOption", text: { textId: "r", value: "Right" } }, "menu", ["rain-right", "target"]),
+            "rain-right": audio("rain-right", { operation: "playSound", objectName: "rain", assetId: "asset-rain-right" }, "right"),
+            target: say("target", "right"),
+        }, ["menu"]);
+
+        expect(snapshot(document, "target").sounds).toEqual([{ objectName: "rain", sourceBlockId: "rain-left", playing: true, paused: false }]);
+    });
+
+    it("gives a control row ahead of any row that builds the handle nothing to act on", () => {
+        const document = baseDocument({
+            early: audio("early", { operation: "muteSound", objectName: "rain", muted: true }),
+            rain,
+            target: say("target"),
+        });
+        expect(snapshot(document, "target").sounds[0]).toEqual({ objectName: "rain", sourceBlockId: "rain", playing: true, paused: false });
+    });
+
+    it("leaves a one-shot sound marked as started, for the launch to judge from the clip", () => {
+        const document = baseDocument({
+            hit: audio("hit", { operation: "playSound", objectName: "hit", assetId: "asset-hit" }),
+            target: say("target"),
+        });
+        expect(snapshot(document, "target").sounds).toEqual([{ objectName: "hit", sourceBlockId: "hit", playing: true, paused: false }]);
+    });
+
+    it("builds no handle from a disabled row, as the compiler drops it", () => {
+        const document = baseDocument({
+            rain: { ...rain, disabled: true } as StoryBlock,
+            later: audio("later", { operation: "playSound", objectName: "rain", assetId: "asset-rain-later" }),
+            target: say("target"),
+        });
+        expect(snapshot(document, "target").sounds).toEqual([{ objectName: "rain", sourceBlockId: "later", playing: true, paused: false }]);
+    });
+
+    it("ignores a disabled row on the way, as the compiler drops it", () => {
+        const document = withSceneMusic(baseDocument({
+            theme: { ...theme, disabled: true } as StoryBlock,
+            rain: { ...rain, disabled: true } as StoryBlock,
+            target: say("target"),
+        }));
+        const result = snapshot(document, "target");
+        expect(result.music).toEqual({ playing: true, paused: false });
+        expect(result.sounds).toEqual([]);
+    });
+});
+
+/**
+ * A disabled row is compiled out with everything under it, so the stage a playthrough reaches never
+ * saw it - and neither may the walk that reconstructs that stage.
+ */
+describe("computeStoryStageSnapshot and disabled rows", () => {
+    it("skips a disabled row and its subtree on the way to the target", () => {
+        const document = baseDocument({
+            bg: { ...block("bg", "action", { action: "setBackground", assetId: "asset-off" }), disabled: true } as StoryBlock,
+            group: { ...block("group", "control", { control: "repeat" }, null, ["show"]), disabled: true } as StoryBlock,
+            show: block("show", "action", { action: "image", operation: "show", objectName: "cg", assetId: "asset-cg" }, "group"),
+            target: say("target"),
+        }, ["bg", "group", "target"]);
+
+        const result = snapshot(document, "target");
+        expect(result.background).toBeNull();
+        expect(result.displayables).toEqual([]);
+        expect(result.declarations).toEqual([]);
+    });
+
+    it("never takes a disabled branch of a condition", () => {
+        const document = baseDocument({
+            cond: block("cond", "control", { control: "condition" }, null, ["yes", "otherwise"]),
+            yes: { ...block("yes", "control", { control: "conditionBranch", branch: "if", condition: { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isFalse" } }, "cond", ["bg-yes"]), disabled: true } as StoryBlock,
+            "bg-yes": block("bg-yes", "action", { action: "setBackground", assetId: "asset-yes" }, "yes"),
+            otherwise: block("otherwise", "control", { control: "conditionBranch", branch: "else" }, "cond", ["bg-else"]),
+            "bg-else": block("bg-else", "action", { action: "setBackground", assetId: "asset-else" }, "otherwise"),
+            target: say("target"),
+        }, ["cond", "target"]);
+
+        expect(snapshot(document, "target").background).toEqual({ assetId: "asset-else" });
+    });
+
+    it("still reaches a target under a disabled row, acting on nothing passed on the way", () => {
+        const document = baseDocument({
+            group: { ...block("group", "control", { control: "repeat" }, null, ["bg", "target"]), disabled: true } as StoryBlock,
+            bg: block("bg", "action", { action: "setBackground", assetId: "asset-off" }, "group"),
+            target: say("target", "group"),
+        }, ["group"]);
+
+        const result = snapshot(document, "target");
+        expect(result.background).toBeNull();
+        expect(result.diagnostics.map(entry => entry.message)).toEqual([]);
+    });
+});
