@@ -74,7 +74,7 @@ export const documentDiff = {
         characters: "角色",
         dictionaryTerms: "词典词条",
         transformPresets: "变换预设",
-        localizationKeys: "本地化键",
+        localizationKeys: "翻译键",
         projectLanguages: "语言",
         projectPlugins: "插件",
         saveFields: "存档字段",
@@ -209,9 +209,9 @@ export const documentDiff = {
      * 而键本身——项目里唯一一张键是人打出来的表——就是这一行的标识。
      */
     localizationKeys: {
-        added: "新增命名字符串",
-        removed: "删除命名字符串",
-        changed: "命名字符串改动",
+        added: "新增翻译键",
+        removed: "删除翻译键",
+        changed: "翻译键改动",
     },
     /**
      * 界面文档：界面与界面上的元素。
@@ -646,7 +646,7 @@ export const documentDiff = {
         saveSchema: "存档字段",
         assetSets: "资产集",
         localization: "译文",
-        localizationKeys: "译文键",
+        localizationKeys: "翻译键",
         voice: "语音",
         assetsMetadata: "资产库",
         assetsGroups: "资产文件夹",

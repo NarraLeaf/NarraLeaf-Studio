@@ -86,7 +86,7 @@ export const widgets = {
         translationKey: "Translation key",
         none: "None",
         createKey: "Create new key…",
-        createKeyTitle: "New localization key",
+        createKeyTitle: "New translation key",
         keyName: "Key name",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "Letters, digits, and dots/underscores/hyphens between them.",

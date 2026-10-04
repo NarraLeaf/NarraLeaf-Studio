@@ -242,7 +242,7 @@ export const lint = {
             messageChoice: "Names a choice that no longer exists",
             messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
-            messageTextKey: "Names a text key the project does not declare",
+            messageTextKey: "Names a translation key the project does not declare",
             messageDlc: "Names a DLC the project does not have",
             messageInputAction: "Names an input action the project does not declare",
         },
@@ -345,7 +345,7 @@ export const lint = {
             message: "{text} and the rest of this list's content show as written in every language",
         },
         uiLocalizationKeyMissing: {
-            title: "Missing localization key",
+            title: "Missing translation key",
             description: "A widget reading its words from a key the project does not have",
             message: "Reads its words from {key}, which the project does not have",
         },

@@ -86,7 +86,7 @@ export const workspace = {
         table: {
             storyLabel: "Source",
             sourceUi: "Interface text",
-            sourceKeys: "Named keys",
+            sourceKeys: "Translation keys",
             modeTranslate: "Translate",
             modeReview: "Review",
             filterAll: "All",
@@ -575,7 +575,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the named strings, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the translation keys, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -1755,7 +1755,7 @@ export const workspace = {
                 asset: "Assets",
                 storyText: "Story Text",
                 variable: "Variables",
-                uiTextKey: "UI Text Keys",
+                uiTextKey: "Translation Keys",
                 blueprintNode: "Blueprint Nodes",
             },
             // Trailing badge on a result row standing in for several identical ones.

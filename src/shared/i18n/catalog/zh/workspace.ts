@@ -71,7 +71,7 @@ export const workspace = {
         table: {
             storyLabel: "范围",
             sourceUi: "界面文本",
-            sourceKeys: "通用文本",
+            sourceKeys: "翻译键",
             modeTranslate: "翻译",
             modeReview: "审校",
             filterAll: "全部",
@@ -1450,7 +1450,7 @@ export const workspace = {
                 asset: "资产",
                 storyText: "剧情文本",
                 variable: "变量",
-                uiTextKey: "UI 文本 Key",
+                uiTextKey: "翻译键",
                 blueprintNode: "蓝图节点",
             },
             // 一行结果代表多条一模一样的结果时，行尾显示的角标。
