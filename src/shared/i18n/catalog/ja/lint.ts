@@ -325,6 +325,11 @@ export const lint = {
             description: "第二の言語があるプロジェクトで、リストの内容に書かれた文字",
             message: "{text} などリストの内容はどの言語でも書かれたまま表示される",
         },
+        uiLocalizationKeyMissing: {
+            title: "存在しないローカライズキー",
+            description: "プロジェクトにないキーから文字を読むウィジェット",
+            message: "文字を {key} から読むが、このキーはプロジェクトにない",
+        },
         uiGestureAnsweredTwice: {
             title: "二重に反応する操作",
             description: "独自のポインター処理を持つウィジェットが、同じ操作に反応するページに置かれている",

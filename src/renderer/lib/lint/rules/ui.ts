@@ -1023,6 +1023,43 @@ function runListTextUntranslated(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/localization-key-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A widget whose words are read from a translation key the project does not have.
+ *
+ * A key removed from the registry, or brought in on a pasted element, leaves the widget naming
+ * nothing: it shows its own stored words in the source language and whatever translation of the old
+ * key a language file still holds in the others, and nothing in the editor says the two came apart.
+ * Every place a widget names a key is checked - pages and component definitions - and each widget is
+ * reported, since each is fixed on its own.
+ *
+ * Quiet when the key registry was not read (`null`), which is not a project with no keys.
+ */
+function runLocalizationKeyMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    const keys = ctx.localizationKeys;
+    if (!document || !keys) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listInterfaceTextUnitSites(document)) {
+        if (site.binding.kind !== "key" || keys.has(site.binding.keyName)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/localization-key-missing",
+            messageKey: "lint.rule.uiLocalizationKeyMissing.message",
+            messageParams: { key: site.binding.keyName },
+            location: site.location,
+            target: site.target,
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/gesture-answered-twice
 // ---------------------------------------------------------------------------
 
@@ -1221,5 +1258,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "uiListTextUntranslated",
         run: ctx => runListTextUntranslated(ctx),
+    },
+    {
+        id: "ui/localization-key-missing",
+        category: "ui",
+        // A warning rather than an error: the widget still shows words - its own stored ones, or an
+        // old translation - so the page is whole; what is wrong is that they no longer come from
+        // where the author pointed them.
+        defaultSeverity: "warning",
+        slug: "uiLocalizationKeyMissing",
+        run: ctx => runLocalizationKeyMissing(ctx),
     },
 ];

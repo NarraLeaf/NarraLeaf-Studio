@@ -151,6 +151,7 @@ export type LintRuleId =
     | "ui/list-item-field-missing"
     | "ui/gesture-answered-twice"
     | "ui/list-text-untranslated"
+    | "ui/localization-key-missing"
     | "blueprint/save-field-empty"
     | "blueprint/start-scene-foreign"
     | "blueprint/required-input-unwired"

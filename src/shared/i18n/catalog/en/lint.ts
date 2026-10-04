@@ -345,6 +345,11 @@ export const lint = {
             description: "Words written into a list's content in a project that has a second language",
             message: "{text} and the rest of this list's content show as written in every language",
         },
+        uiLocalizationKeyMissing: {
+            title: "Missing localization key",
+            description: "A widget reading its words from a key the project does not have",
+            message: "Reads its words from {key}, which the project does not have",
+        },
         uiGestureAnsweredTwice: {
             title: "Gesture answered twice",
             description: "A widget with a pointer handler of its own, on a page whose action answers the same gesture",

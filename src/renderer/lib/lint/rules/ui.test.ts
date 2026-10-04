@@ -1165,3 +1165,39 @@ describe("ui/list-text-untranslated", () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// ui/localization-key-missing
+// ---------------------------------------------------------------------------
+
+describe("ui/localization-key-missing", () => {
+    const keyed = (key: string) => onePage(textWidget({ text: "Old words", localizationKey: key }));
+
+    it("reports a widget naming a key the project does not have", async () => {
+        const findings = await run(
+            "ui/localization-key-missing",
+            createTestLintContext({ uiDocument: keyed("menu.removed"), localizationKeys: new Map([["menu.start", "Start"]]) }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "ui/localization-key-missing",
+            messageKey: "lint.rule.uiLocalizationKeyMissing.message",
+            messageParams: { key: "menu.removed" },
+            location: { kind: "surface", elementId: "label", elementName: "Greeting" },
+        });
+    });
+
+    it("is silent for a key the project has, and while the registry has not been read", async () => {
+        const keys = new Map([["menu.start", "Start"]]);
+        expect(await run("ui/localization-key-missing", createTestLintContext({ uiDocument: keyed("menu.start"), localizationKeys: keys }))).toEqual([]);
+        expect(await run("ui/localization-key-missing", createTestLintContext({ uiDocument: keyed("menu.removed") }))).toEqual([]);
+    });
+
+    it("reads a text input's placeholder key too", async () => {
+        const input = element({ id: "field", type: "nl.textInput", props: { placeholder: "Name", placeholderLocalizationKey: "field.gone" } });
+        const findings = await run(
+            "ui/localization-key-missing",
+            createTestLintContext({ uiDocument: onePage(input), localizationKeys: new Map() }),
+        );
+        expect(findings.map(finding => finding.messageParams?.key)).toEqual(["field.gone"]);
+    });
+});
