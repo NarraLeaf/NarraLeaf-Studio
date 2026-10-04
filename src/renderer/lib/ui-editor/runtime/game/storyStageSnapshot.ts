@@ -461,6 +461,12 @@ class SnapshotWalker {
     private readonly soundStates = new Map<string, StageSnapshotSoundState>();
     /** The music channel as the walk has it so far; see {@link StoryStageSnapshot.music}. */
     private music: StageSnapshotMusic | null;
+    /**
+     * How many disabled rows the walk is inside. Only ever above zero on the way to a target row
+     * that sits under one: such a row is compiled out with everything beneath it, so nothing passed
+     * on the way down acts on the stage.
+     */
+    private inert = 0;
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
@@ -558,7 +564,8 @@ class SnapshotWalker {
     private collectDeclarations(blockIds: readonly string[]): void {
         for (const blockId of blockIds) {
             const block = this.scene.blocks[blockId];
-            if (!block) {
+            // A disabled row declares nothing: the compiler drops it with everything under it.
+            if (!block || block.disabled) {
                 continue;
             }
             if (block.kind === "action" && declaresStageObject(block.payload)) {
@@ -748,7 +755,25 @@ class SnapshotWalker {
             this.nvl = insideNvl;
             return;
         }
+        // A disabled row is compiled out with everything under it, so a playthrough never runs it.
+        // The walk only goes in when the target row is somewhere beneath, and then acts on nothing
+        // it passes on the way.
+        if (block.disabled) {
+            if (!this.pathBlockIds.has(block.id)) {
+                return;
+            }
+            this.inert += 1;
+            try {
+                this.visitLiveBlock(block, insideNvl);
+            } finally {
+                this.inert -= 1;
+            }
+            return;
+        }
+        this.visitLiveBlock(block, insideNvl);
+    }
 
+    private visitLiveBlock(block: StoryBlock, insideNvl: boolean): void {
         if (block.kind === "nodeAction") {
             if (block.payload.action === "choice") {
                 this.visitChoice(block, insideNvl);
@@ -829,7 +854,8 @@ class SnapshotWalker {
             }
         }
         for (const branch of branches) {
-            if (branch.payload.control !== "conditionBranch") {
+            // A disabled branch is compiled out of the condition, so the game never takes it.
+            if (branch.payload.control !== "conditionBranch" || branch.disabled) {
                 continue;
             }
             if (branch.payload.branch === "else" || this.evaluateCondition(branch.payload.condition, branch.id)) {
@@ -921,6 +947,9 @@ class SnapshotWalker {
     }
 
     private applyAction(block: StoryBlock, payload: StoryActionPayload): void {
+        if (this.inert > 0) {
+            return;
+        }
         switch (payload.action) {
             case "setBackground": {
                 if (payload.assetId) {

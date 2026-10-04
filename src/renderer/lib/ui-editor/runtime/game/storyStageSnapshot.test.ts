@@ -786,4 +786,60 @@ describe("computeStoryStageSnapshot and the sound at the target row", () => {
         });
         expect(snapshot(document, "target").sounds).toEqual([{ objectName: "rain", sourceBlockId: "later", playing: true, paused: false }]);
     });
+
+    it("ignores a disabled row on the way, as the compiler drops it", () => {
+        const document = withSceneMusic(baseDocument({
+            theme: { ...theme, disabled: true } as StoryBlock,
+            rain: { ...rain, disabled: true } as StoryBlock,
+            target: say("target"),
+        }));
+        const result = snapshot(document, "target");
+        expect(result.music).toEqual({ playing: true, paused: false });
+        expect(result.sounds).toEqual([]);
+    });
+});
+
+/**
+ * A disabled row is compiled out with everything under it, so the stage a playthrough reaches never
+ * saw it - and neither may the walk that reconstructs that stage.
+ */
+describe("computeStoryStageSnapshot and disabled rows", () => {
+    it("skips a disabled row and its subtree on the way to the target", () => {
+        const document = baseDocument({
+            bg: { ...block("bg", "action", { action: "setBackground", assetId: "asset-off" }), disabled: true } as StoryBlock,
+            group: { ...block("group", "control", { control: "repeat" }, null, ["show"]), disabled: true } as StoryBlock,
+            show: block("show", "action", { action: "image", operation: "show", objectName: "cg", assetId: "asset-cg" }, "group"),
+            target: say("target"),
+        }, ["bg", "group", "target"]);
+
+        const result = snapshot(document, "target");
+        expect(result.background).toBeNull();
+        expect(result.displayables).toEqual([]);
+        expect(result.declarations).toEqual([]);
+    });
+
+    it("never takes a disabled branch of a condition", () => {
+        const document = baseDocument({
+            cond: block("cond", "control", { control: "condition" }, null, ["yes", "otherwise"]),
+            yes: { ...block("yes", "control", { control: "conditionBranch", branch: "if", condition: { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isFalse" } }, "cond", ["bg-yes"]), disabled: true } as StoryBlock,
+            "bg-yes": block("bg-yes", "action", { action: "setBackground", assetId: "asset-yes" }, "yes"),
+            otherwise: block("otherwise", "control", { control: "conditionBranch", branch: "else" }, "cond", ["bg-else"]),
+            "bg-else": block("bg-else", "action", { action: "setBackground", assetId: "asset-else" }, "otherwise"),
+            target: say("target"),
+        }, ["cond", "target"]);
+
+        expect(snapshot(document, "target").background).toEqual({ assetId: "asset-else" });
+    });
+
+    it("still reaches a target under a disabled row, acting on nothing passed on the way", () => {
+        const document = baseDocument({
+            group: { ...block("group", "control", { control: "repeat" }, null, ["bg", "target"]), disabled: true } as StoryBlock,
+            bg: block("bg", "action", { action: "setBackground", assetId: "asset-off" }, "group"),
+            target: say("target", "group"),
+        }, ["group"]);
+
+        const result = snapshot(document, "target");
+        expect(result.background).toBeNull();
+        expect(result.diagnostics.map(entry => entry.message)).toEqual([]);
+    });
 });
