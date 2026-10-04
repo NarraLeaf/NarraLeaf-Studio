@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
-import { layoutBlueprintGraph } from "@/apps/workspace/modules/blueprint-lite/flow/blueprintAutoLayout";
+import { layoutBlueprintGraph, measureBlueprintLayout } from "@/apps/workspace/modules/blueprint-lite/flow/blueprintAutoLayout";
 import { registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { blueprintCardGeometry } from "./cardGeometry";
 import { compileBlueprintDocument } from "./dsl/compile";
@@ -130,6 +130,55 @@ describe("blueprint format", () => {
         expect(result.layers[0]).toMatchObject({ blueprint: "Quit", layer: "On boot", cards: 4 });
         expect(result.layers[0]!.after.crossings).toBe(0);
         expect(result.layers[0]!.after.backwards).toBe(0);
+    });
+
+    describe("one layout for every interface language", () => {
+        const LOOP = `blueprint "Volume" owner=globalMain
+
+event "Set it"
+    boot: blueprint.event.head.appBoot @0,0
+    walk: blueprint.flow.forLoop @300,0
+    set: blueprint.game.setTrackVolume @600,0
+    upper: blueprint.time.formatDuration @0,300
+    lower: blueprint.time.formatDuration @0,500
+
+    boot -> walk
+    walk.loop -> set
+    upper.result -> set.audioTrackId
+    lower.result -> set.volume
+`;
+        const formatted = () => {
+            const result = formatBlueprintSource(LOOP);
+            const compiled = compileBlueprintDocument(parseBlueprintText(result.text).document);
+            return layoutGraphOf(Object.values(compiled.blueprints[0]!.graphs.events)[0]!.graph!);
+        };
+
+        it("lays a card out as anything from the narrowest a card is drawn to the width it estimates", () => {
+            const graph = formatted();
+            for (const card of graph.cards) {
+                expect(card.minWidth, card.id).toBe(200);
+                expect(card.width, card.id).toBeGreaterThanOrEqual(200);
+            }
+        });
+
+        it("knows a loop from a branch", () => {
+            const graph = formatted();
+            expect(graph.cards.find(card => card.id === "walk")!.loop).toBe(true);
+            expect(graph.cards.find(card => card.id === "set")!.loop).toBe(false);
+        });
+
+        it("keeps a card's feeders' wires apart whatever width each turns out to be drawn at", () => {
+            const graph = formatted();
+            const positions = Object.fromEntries(graph.cards.map(card => [card.id, { x: card.x, y: card.y }]));
+            // Two cards that are 258 wide in the widest language and 200 in the narrowest.
+            for (const narrow of [[], ["upper"], ["lower"], ["upper", "lower"]]) {
+                const drawn = {
+                    ...graph,
+                    cards: graph.cards.map(card => (narrow.includes(card.id) ? { ...card, width: 200 } : card)),
+                };
+                expect(measureBlueprintLayout(drawn, positions).crossings, narrow.join("+")).toBe(0);
+            }
+        });
     });
 
     it("writes nothing for a file that does not parse", () => {
