@@ -30,6 +30,8 @@
 真正「进入游戏」只发生在玩家触发 `Start Game`（`Start Game` 蓝图节点）或读取存档时：此时才对**同一个已初始化的 `LiveGame`** 调用 `newGame()` / `deserialize()`。当 `Start Game` 的目标就是已预热的默认场景时为「秒开」，直接在同一环境上进入，**不会重复触发 `gameReady`**；仅当 `Start Game` 指定了不同的场景时才会重新挂载环境并再次触发 `gameReady`。
 
 该事件用于初始化需要活动游戏实例的 NarraLeaf Preference，例如 `Set Auto Forward`、`Set Game Speed`、`Set Voice Volume` 或 `Set Sentence Speed`；这些设置会在游戏进入前就绪。不要在 `App Boot` 中依赖活动 `LiveGame`；虽然 `gameReady` 现在先于 `App Boot` 触发，但请始终把依赖活动 `LiveGame` 的逻辑放在 `On Game Ready` 中。
+
+Global 蓝图里有多个 `On Game Ready` 事件头时（同一图层或不同图层、图或脚本），它们在事件触发时同时开始，彼此不等待；启动等待其中最晚结束的那一个。任何事件都是如此：监听同一事件的所有事件头同时开始。
 - `then` - 执行出口
 
 ## Surface Init
