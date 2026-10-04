@@ -43,6 +43,7 @@ import {
 } from "@/lib/components/elements";
 import type { AssetSelectorProps } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { WordsSourceField } from "@/lib/ui-editor/widget-modules/shared/text/WordsSourceField";
 
 type DivProps = React.HTMLAttributes<HTMLDivElement>;
 
@@ -287,6 +288,14 @@ export const pluginUi = Object.freeze({
     CardFooter,
     InteractiveCard,
     AssetSelector: PluginAssetSelector,
+    /**
+     * Words a player reads, written directly or read from one of the project's translation keys - the
+     * same choice, key list and in-place key editing as Studio's own text and button labels. Controlled:
+     * `value` is `{ text, key }` with `key` null for words written directly, and `onChange` is
+     * handed the next one. Words written directly are translated when the plugin offers them with
+     * `app.services.localization.registerWords`; words read from a key are translated as the key.
+     */
+    WordsField: WordsSourceField,
     Panel: Object.freeze({
         Root: PluginPanelRoot,
         Header: PluginPanelHeader,

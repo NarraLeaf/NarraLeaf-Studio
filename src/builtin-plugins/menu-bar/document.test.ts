@@ -5,6 +5,7 @@ import {
     EMPTY_MENU_BAR_DOCUMENT,
     createMenuBarLabel,
     isMenuBarItemComplete,
+    menuBarWords,
     normalizeMenuBarDocument,
     toGameMenuSpec,
     type MenuBarDocument,
@@ -70,7 +71,7 @@ describe("toGameMenuSpec", () => {
         expect(item?.kind === "action" && item.label).toEqual({ key: "menu.settings", text: "Settings" });
     });
 
-    it("carries the typed text as the fallback when the row has no key", () => {
+    it("names the words of a row with no key, for the game to translate as it draws", () => {
         const document: MenuBarDocument = {
             version: 1,
             enabled: true,
@@ -81,7 +82,9 @@ describe("toGameMenuSpec", () => {
             }],
         };
         const spec = toGameMenuSpec(document);
-        expect(spec.menus[0]?.label).toEqual({ key: null, text: "Help" });
+        expect(spec.menus[0]?.label).toEqual({ key: null, text: "Help", words: "m.label" });
+        const item = spec.menus[0]?.items[0];
+        expect(item?.kind === "action" && item.label).toEqual({ key: null, text: "Site", words: "i.label" });
     });
 
     it("drops the rows the player would not be able to use", () => {
@@ -129,6 +132,40 @@ describe("toGameMenuSpec", () => {
         };
         expect(toGameMenuSpec(document).menus[0]?.items)
             .toEqual([{ kind: "dynamic", source: "textLanguage" }]);
+    });
+});
+
+describe("menuBarWords", () => {
+    it("offers every label written directly for translation, under the row's id, with the path to it", () => {
+        const document: MenuBarDocument = {
+            version: 1,
+            enabled: false,
+            menus: [{
+                id: "menu-game",
+                label: createMenuBarLabel("Game"),
+                items: [
+                    { id: "item-next", kind: "action", label: createMenuBarLabel("Next"), action: { type: "next" } },
+                    { id: "item-sep", kind: "separator" },
+                    {
+                        id: "item-more",
+                        kind: "submenu",
+                        label: { key: "menu.more", text: "More" },
+                        items: [{ id: "item-skip", kind: "action", label: createMenuBarLabel("Skip"), action: { type: "toggleSkipping" } }],
+                    },
+                    { id: "item-lang", kind: "dynamic", source: "textLanguage" },
+                ],
+            }],
+        };
+        // Listed while the bar is off too, and a keyed label is translated as its key instead.
+        expect(menuBarWords(document)).toEqual([
+            { id: "menu-game.label", text: "Game", context: "Game" },
+            { id: "item-next.label", text: "Next", context: "Game › Next" },
+            { id: "item-skip.label", text: "Skip", context: "Game › More › Skip" },
+        ]);
+    });
+
+    it("lists nothing for a label with no words", () => {
+        expect(menuBarWords({ version: 1, enabled: true, menus: [{ id: "m", label: createMenuBarLabel(" "), items: [] }] })).toEqual([]);
     });
 });
 

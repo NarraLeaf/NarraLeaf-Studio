@@ -4,15 +4,17 @@
  * Two documents are in play and they are deliberately not the same shape:
  *
  *  - This one is *authored*. Every row carries an id (so the panel can select and reorder it) and
- *    a label that is a **localization key** rather than a string, because a menu bar is read by the
- *    player and everything else the player reads travels through the project's own translation
- *    tables. The key is optional and the fallback beside it is not: a project that has not set up
- *    localization still gets a menu, and a key that no longer exists still gets a word.
+ *    a label written directly or read from one of the project's **translation keys**, because a
+ *    menu bar is read by the player and everything else the player reads travels through the
+ *    project's own translation tables. Words written directly are offered for translation under the
+ *    row's id (`menuBarWords`), so they reach the translation table like words on the interface; a
+ *    key's words are translated as the key, and the words beside a key are what shows when the key
+ *    no longer exists.
  *  - `GameMenuSpec` (`@shared/types/gameMenu`) is what the running game is handed - the same tree
  *    with the panel's ids dropped and the unfinished rows left out, because what the game needs to
  *    know is what a row says and does, never which row of a panel it came from. The labels travel
- *    with their keys intact: the running game is the only side that can resolve one, and it does
- *    that on every redraw so the bar follows a language change.
+ *    with their keys, or the id of their own words, intact: the running game is the only side that
+ *    can resolve either, and it does that on every redraw so the bar follows a language change.
  *
  * Comments in English per project convention.
  */
@@ -21,6 +23,7 @@ import type {
     GameMenuAction,
     GameMenuDynamicSource,
     GameMenuItemSpec,
+    GameMenuLabel,
     GameMenuSpec,
 } from "@shared/types/gameMenu";
 
@@ -46,15 +49,16 @@ export const MENU_BAR_DOCUMENT_VERSION = 1 as const;
 /**
  * What a row says.
  *
- * The key is the answer and the text is the safety net, never the other way round: an author who
- * picks a key gets a row that follows the player's language, and one who has not set localization
- * up yet gets the word they typed. `text` is also what the panel shows, so a menu is readable in
- * the editor without resolving anything.
+ * Words written directly (no key) or read from a translation key, one of the two, as the panel's
+ * words field writes them. Words written directly are translated through their own unit, under the
+ * row's id; a key's words are translated as the key, and `text` beside a key - the key's words when
+ * it was chosen - is the net a running game shows if the key is not in it. `text` is also what the
+ * panel titles a row by, so a menu is readable in the editor without resolving anything.
  */
 export type MenuBarLabel = {
-    /** A project localization key, or null while the author has not chosen one. */
+    /** A project translation key, or null for words written directly. */
     key: string | null;
-    /** Shown when there is no key, or when the key is not in the running build. */
+    /** The words written directly; beside a key, what shows when the key is not in the running build. */
     text: string;
 };
 
@@ -107,6 +111,46 @@ export function createMenuBarId(prefix: string): string {
 
 export function createMenuBarLabel(text: string): MenuBarLabel {
     return { key: null, text };
+}
+
+/** The id a row's own words are offered for translation under (`plugin:narraleaf.menu-bar/<id>`). */
+export function menuBarWordsId(rowId: string): string {
+    return `${rowId}.label`;
+}
+
+/** One of the menu's own words, as the studio entry offers it for translation. */
+export type MenuBarWordsEntry = { id: string; text: string; context: string };
+
+/**
+ * Every label the author wrote directly, as words to translate: one per menu and per row, under the
+ * row's id, with the path the player follows to it as the context ("File › Save"). Labels read from a
+ * key are translated as the key and are not listed; separators and automatic lists say nothing of
+ * their own. Listed whether or not the bar is shown - switching it off loses nothing.
+ */
+export function menuBarWords(document: MenuBarDocument): MenuBarWordsEntry[] {
+    const out: MenuBarWordsEntry[] = [];
+    const visit = (id: string, label: MenuBarLabel, path: string[], items: MenuBarItem[]): void => {
+        const here = [...path, label.text.trim() || "…"];
+        if (!label.key && label.text.trim()) {
+            out.push({ id: menuBarWordsId(id), text: label.text, context: here.join(" › ") });
+        }
+        for (const item of items) {
+            if (item.kind === "action") {
+                visit(item.id, item.label, here, []);
+            } else if (item.kind === "submenu") {
+                visit(item.id, item.label, here, item.items);
+            }
+        }
+    };
+    for (const menu of document.menus) {
+        visit(menu.id, menu.label, [], menu.items);
+    }
+    return out;
+}
+
+/** A row's label as the game is handed it: its key, or the id its own words are translated under. */
+function toGameMenuLabel(id: string, label: MenuBarLabel): GameMenuLabel {
+    return label.key ? { key: label.key, text: label.text } : { key: null, text: label.text, words: menuBarWordsId(id) };
 }
 
 function normalizeLabel(value: unknown): MenuBarLabel {
@@ -357,15 +401,15 @@ export function toGameMenuSpec(document: MenuBarDocument): GameMenuSpec {
         if (item.kind === "submenu") {
             const children = convert(item.items);
             return children.length > 0
-                ? [{ kind: "submenu", label: item.label, items: children }]
+                ? [{ kind: "submenu", label: toGameMenuLabel(item.id, item.label), items: children }]
                 : [];
         }
-        return [{ kind: "action", label: item.label, action: item.action }];
+        return [{ kind: "action", label: toGameMenuLabel(item.id, item.label), action: item.action }];
     });
     return {
         menus: document.menus.flatMap(menu => {
             const items = convert(menu.items);
-            return items.length > 0 ? [{ label: menu.label, items }] : [];
+            return items.length > 0 ? [{ label: toGameMenuLabel(menu.id, menu.label), items }] : [];
         }),
     };
 }

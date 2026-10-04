@@ -365,6 +365,25 @@ app.services.widgets.register({
 写了 `partSlots` 就不用再写 `acceptsChildren`；两个都写时按 `partSlots` 算（有部件的控件不收别的），并在控制台说明。
 插件停用时部件原样留在文档里，和 `acceptsChildren` 一样。
 
+### 插件自己写给玩家的字（`registerWords`）
+
+插件的编辑器里作者写给玩家看的字（菜单项的名字、画廊条目的标题），用 `app.services.localization.registerWords` 交给项目的译表：
+
+```ts
+const unregister = app.services.localization.registerWords({
+  list: () => store.entries().map(entry => ({ id: `entry.${entry.id}.name`, text: entry.name, context: entry.group })),
+  subscribe: listener => store.subscribe(listener),
+});
+```
+
+- 每段有字母的字在译表「界面文本」里占一行，按插件名分组，也进导出与翻译进度；翻译单元是 `plugin:<插件 ID>/<id>`。
+- `id` 用插件自己的、稳定的 id（字母、数字，中间可用 `.` `_` `-`）：译文挂在 id 上，用字本身拼 id 会让作者改一个字就丢掉全部译文。
+- 列表变了就调用 `subscribe` 收到的 listener；插件卸载时登记自动收回。
+- 游戏里用 runtime 入口的 `app.game.locale.words(id, text)` 取回当前语言的字（要声明 `runtimeCapabilities: ["locale"]`）；
+  菜单栏标签写 `words: id`，由游戏在画菜单时取译文，见 [runtime-api.md](./runtime-api.md#gamemenu)。
+- 作者选用翻译键的字跟着键翻译，不用再登记。让作者在「直接写」与「翻译键」之间选，用插件 UI 的 `ui.WordsField`：
+  与内建文本、按钮的同一个字段，值是 `{ text, key }`（`key` 为 `null` 表示直接写）。
+
 ### 控件里玩家读的字（`widgetText`）
 
 控件里有玩家读的字（标题、说明、按钮上的字）时，在 manifest 里按 widget type 列出这些 prop：

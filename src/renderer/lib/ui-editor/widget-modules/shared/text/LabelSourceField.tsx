@@ -11,7 +11,6 @@ import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldControlClass";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
-import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { useTranslation } from "@/lib/i18n";
@@ -33,6 +32,7 @@ import {
 import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 import { LABEL_TEXT_AREA_CLASS, TextRunMarksEditor } from "./TextRunMarks";
 import { TextWritersList, useElementTextWriters } from "./TextWritersList";
+import { TextSourceSegments } from "./WordsSourceField";
 
 /** What a widget tells the source field about where its words live. */
 export type LabelSourceFieldConfig = {
@@ -299,42 +299,11 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             <div className="space-y-2">
                 {paramRow}
                 {fieldRow}
-                {/* Words without icons: up to three worded segments have to share the inspector's column
-                    in every interface language, and "Translation key" with an icon beside it wraps. */}
-                <IconButtonSegGroup
-                    mode="single"
-                    density="compact"
-                    segmentWidth="content"
+                <TextSourceSegments
                     value={shown}
+                    onChange={choose}
                     disabled={readOnly}
-                    onChange={next => {
-                        if (typeof next === "string") {
-                            choose(next as UITextSource);
-                        }
-                    }}
-                    options={[
-                        {
-                            id: "literal",
-                            icon: null,
-                            label: t("widgets.localization.direct"),
-                        },
-                        {
-                            id: "key",
-                            icon: null,
-                            label: t("widgets.localization.translationKey"),
-                        },
-                        ...(config.blueprint
-                            ? [{
-                                id: "blueprint",
-                                icon: null,
-                                label: t("widgetChrome.blueprint.blueprintValue"),
-                                disabled: shown !== "blueprint" && blueprintState.createUnavailable !== null,
-                                tip: shown !== "blueprint" && blueprintState.createUnavailable
-                                    ? blueprintState.createUnavailable
-                                    : undefined,
-                            }]
-                            : []),
-                    ]}
+                    blueprint={config.blueprint ? { unavailable: blueprintState.createUnavailable } : undefined}
                 />
                 {shown === "literal" && sampleCause === "written" ? sampleBlock("widgets.sampleText.hintWritten") : null}
                 {shown === "literal" && sampleCause !== "written" ? ownWordsEditor : null}
