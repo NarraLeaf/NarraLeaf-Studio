@@ -20,6 +20,8 @@
  * Comments in English per project convention.
  */
 
+import { resolveUITextWords, type UITextSite } from "@shared/types/ui-editor/textSource";
+
 /** Key name → source-language text, or null when nothing is published. */
 let keys: Readonly<Record<string, string>> | null = null;
 let writer: ((name: string, sourceText: string) => void) | null = null;
@@ -69,12 +71,12 @@ export function designTimeKeyOf(localizationKey: string | undefined): string | n
 
 /**
  * The words the canvas shows for a widget that may be read from a key, and what an in-place edit
- * starts from. A keyed widget shows its key's source text, as the game does; a key the registry does
- * not hold falls back to the widget's own words there too.
+ * starts from (`resolveUITextWords` on the canvas). A keyed widget on a site that draws its key shows
+ * the key's source text, as the game does; a key the registry does not hold falls back to the
+ * widget's own words there too.
  */
-export function designTimeTextOf(localizationKey: string | undefined, ownText: string): string {
-    const key = designTimeKeyOf(localizationKey);
-    return key ? keys?.[key] ?? ownText : ownText;
+export function designTimeTextOf(site: UITextSite, localizationKey: string | undefined, ownText: string): string {
+    return resolveUITextWords({ site, elementId: "", sourceText: ownText, localizationKey }, { kind: "canvas", keys });
 }
 
 /** Write a key's source text through the registered writer. False when there is none. */

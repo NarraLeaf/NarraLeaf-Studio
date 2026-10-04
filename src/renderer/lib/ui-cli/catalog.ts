@@ -24,6 +24,7 @@ import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
+import { uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import {
     UI_INTERACTION_SOUND_KINDS,
     UI_INTERACTION_SOUND_PROP,
@@ -100,13 +101,42 @@ function markedLabelNote(stringProp: string): string {
         + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
 }
 
-/** A translation key replaces a text's or a button's own words - in the game and on the canvas alike. */
-function keyedWordsNote(widget: string, stringProp: string): string {
-    return `A ${widget} with \`localizationKey\` is read from that translation key - in the game, and on the `
+/** A translation key replaces a widget's own words - in the game and on the canvas alike. */
+function keyedWordsNote(widget: string, site: UITextSite, keyProp: string): string {
+    const stringProp = site.textProp;
+    return `A ${widget} with \`${keyProp}\` is read from that translation key - in the game, and on the `
         + `canvas in the project's source language - and its own \`${stringProp}\` is not shown at all. Its `
         + "words are the key's source text in `editor/localization/keys.json`; writing "
-        + `\`${stringProp}\` changes nothing a player sees. Without the key, \`localizable = true\` translates `
-        + `\`${stringProp}\` through the element's own unit.`;
+        + `\`${stringProp}\` changes nothing a player sees.`
+        + (site.unitProp
+            ? ` Without the key, \`${site.unitProp} = true\` translates \`${stringProp}\` through the element's own unit.`
+            : "");
+}
+
+/** What a widget is called in a note about its words. */
+const TEXT_SITE_NOUNS: Readonly<Record<string, string>> = {
+    "nl.text": "text",
+    "nl.button": "button",
+    "nl.textInput": "text input",
+};
+
+/**
+ * The notes about a widget's words, read from its text site (`textSites.ts`) rather than written per
+ * widget, so a widget whose words gain a key or marks gains the note with them.
+ */
+function textSiteNotes(type: string): string[] {
+    const site = uiTextSiteOf(type);
+    if (!site || site.role !== "words") {
+        return [];
+    }
+    const notes: string[] = [];
+    if (site.marksProp) {
+        notes.push(markedLabelNote(site.textProp));
+    }
+    if (site.keyProp && site.canvasDrawsKey) {
+        notes.push(keyedWordsNote(TEXT_SITE_NOUNS[type] ?? type, site, site.keyProp));
+    }
+    return notes;
 }
 
 /**
@@ -131,16 +161,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     "nl.button": [
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
             + "flat prop alone leaves the variant row holding the old one; see the container note.",
-        markedLabelNote("label"),
-        keyedWordsNote("button", "label"),
     ],
     "nl.image": [
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
             + "image prop a value blueprint can drive, which is what makes per-row thumbnails possible.",
-    ],
-    "nl.text": [
-        markedLabelNote("text"),
-        keyedWordsNote("text", "text"),
     ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "
@@ -293,7 +317,7 @@ export function describeWidget(type: string): WidgetDetail | null {
         writableProps: (logic?.writableProps ?? []).map(prop => ({ ...prop })),
         parts: readParts(module),
         editorStates: readEditorStates(module),
-        notes: [...(WIDGET_NOTES[module.type] ?? [])],
+        notes: [...(WIDGET_NOTES[module.type] ?? []), ...textSiteNotes(module.type)],
     };
 }
 

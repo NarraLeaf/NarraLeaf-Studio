@@ -1,4 +1,5 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -9,8 +10,9 @@ export type InlineTextEditHost = {
     documentService: UIDocumentService;
 };
 
+/** Whether a double-click on the canvas types this element's words in place (`textSites.ts`). */
 export function isInlineTextEditableElement(element: UIElement | null | undefined): element is UIElement {
-    return element?.type === "nl.text" || element?.type === "nl.button";
+    return uiTextSiteOf(element?.type)?.typedOnCanvas === true;
 }
 
 /**

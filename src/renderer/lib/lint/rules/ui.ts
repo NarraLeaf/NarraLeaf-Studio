@@ -9,7 +9,14 @@ import {
     resolveSurfaceActionBindings,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
-import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
+import {
+    readUITextSite,
+    uiTextSiteOf,
+    uiTextUnitBindingOf,
+    uiTextUnitId,
+    type UITextSite,
+    type UITextUnitBinding,
+} from "@shared/types/ui-editor/textSource";
 import {
     buildUIFrameGraph,
     getUIFrameWidgetProps,
@@ -169,24 +176,17 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Widget text an author writes and a player reads, with the two ways of binding it.
- *
- * The same three sites `useLocalizedWidgetText` resolves at run time, which is what makes the answer
- * checkable: a prop this table did not list would be translated by the runtime and reported as
- * unlocalized here, and a prop it listed by mistake would be reported while nothing can translate
- * it. `optInProp` is the implicit unit (`ui:<elementId>.<prop>`); a text input has no such flag on
- * its props at all, so its placeholder is bound by a named key or not at all.
- *
- * Exported for the page a template hands a project (`starterTitlePage`), which rebinds a keyed
- * widget to its own unit and has to know the same three sites to do it.
+ * The site of an element's words a player reads, when it has one - read from the shared table
+ * (`textSites.ts`), the one `useLocalizedWidgetText` resolves at run time. That is what makes the
+ * answers here checkable: a prop the table did not list would be translated by the runtime and
+ * reported as unlocalized here, and a prop it listed by mistake would be reported while nothing can
+ * translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
+ * replaces with the story's, so no player reads them and nothing here looks at them.
  */
-export const LOCALIZABLE_TEXT_SITES: Readonly<
-    Record<string, { readonly textProp: string; readonly keyProp: string; readonly optInProp?: string }>
-> = {
-    "nl.text": { textProp: "text", keyProp: "localizationKey", optInProp: "localizable" },
-    "nl.button": { textProp: "label", keyProp: "localizationKey", optInProp: "localizable" },
-    "nl.textInput": { textProp: "placeholder", keyProp: "placeholderLocalizationKey" },
-};
+function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
+    const site = uiTextSiteOf(element.type);
+    return site?.role === "words" ? site : undefined;
+}
 
 
 /** The literal a widget shows a player, with the unit that translates it and the face it chose. */
@@ -216,16 +216,15 @@ export type SurfaceTextSite = {
 export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     const sites: SurfaceTextSite[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site) {
             continue;
         }
-        const props = elementProps(element);
-        const text = readStringProp(props, site.textProp);
+        const text = readUITextSite(element, site).text;
         if (!text.trim()) {
             continue;
         }
-        const fontAssetId = readStringProp(props, "fontAssetId").trim();
+        const fontAssetId = readStringProp(elementProps(element), "fontAssetId").trim();
         sites.push({
             surface,
             element,
@@ -237,16 +236,8 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     return sites;
 }
 
-/**
- * The translation unit a widget's text is read through at run time, when it has one.
- *
- * `key` is a named key (`key:<name>`), whose source words live in the key registry rather than on
- * the widget; `implicit` is the widget's own unit (`ui:<elementId>.<prop>`), whose source words are
- * the literal the author typed.
- */
-export type InterfaceTextUnitBinding =
-    | { kind: "key"; keyName: string }
-    | { kind: "implicit"; unitId: string; sourceText: string };
+/** The translation unit a widget's text is read through at run time (`uiTextUnitBindingOf`). */
+export type InterfaceTextUnitBinding = UITextUnitBinding;
 
 /** One widget whose words a target locale is expected to translate, and where it lives. */
 export type InterfaceTextUnitSite = {
@@ -262,8 +253,8 @@ export type InterfaceTextUnitSite = {
  * Every widget on a page or in a component definition that reads its words through a translation
  * unit, in the order the pages and then the definitions are listed.
  *
- * The same precedence `useLocalizedWidgetText` applies: a named key wins over the opt-in, and the
- * opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
+ * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins over the opt-in, and
+ * the opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
  * the localization panel leaves it out - there is no row for it to be translated in. Component
  * definitions are walked once each, under the definition, for the reason the Page widget rules give;
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
@@ -271,25 +262,13 @@ export type InterfaceTextUnitSite = {
 export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
             return;
         }
-        const props = elementProps(element);
-        const literal = readStringProp(props, site.textProp);
-        const keyName = readStringProp(props, site.keyProp).trim();
-        if (keyName) {
-            sites.push({ element, location, target, literal, binding: { kind: "key", keyName } });
-            return;
-        }
-        if (site.optInProp !== undefined && props[site.optInProp] === true && literal.trim()) {
-            sites.push({
-                element,
-                location,
-                target,
-                literal,
-                binding: { kind: "implicit", unitId: uiTextUnitId(element.id, site.textProp), sourceText: literal },
-            });
+        const binding = uiTextUnitBindingOf(element, site);
+        if (binding) {
+            sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
         }
     };
     for (const { surface, element } of listSurfaceElements(document)) {
@@ -363,21 +342,18 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     }
     const findings: LintFinding[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
             continue;
         }
-        const props = elementProps(element);
-        const text = readStringProp(props, site.textProp);
-        if (!hasTranslatableWord(text)) {
+        const reading = readUITextSite(element, site);
+        if (!hasTranslatableWord(reading.text)) {
             continue;
         }
-        const boundToKey = readStringProp(props, site.keyProp).trim().length > 0;
-        const boundToUnit = site.optInProp !== undefined && props[site.optInProp] === true;
-        const boundToValue = element.valueBindings?.[site.textProp] !== undefined;
-        if (boundToKey || boundToUnit || boundToValue) {
+        if (reading.key || reading.localizable || reading.binding !== undefined) {
             continue;
         }
+        const text = reading.text;
         findings.push({
             ruleId: "ui/unlocalized-text",
             messageKey: "lint.rule.uiUnlocalizedText.message",

@@ -55,7 +55,7 @@ import {
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import { getTextProps, textValuePatch } from "./helpers";
+import { getTextProps, TEXT_SITE, textValuePatch } from "./helpers";
 import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
@@ -63,7 +63,9 @@ import {
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
-const TEXT_VALUE_PROP_PATH = "text";
+// The text widget's site. The dialogue line and the NVL line draw through this renderer outside
+// their slots, and are read the same way there.
+const TEXT_VALUE_PROP_PATH = TEXT_SITE.textProp;
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -82,7 +84,7 @@ function assignMotionTransition(
  */
 function designTimeTextOfElement(element: UIElement): string {
     const props = getTextProps(element);
-    return designTimeTextOf(props.localizationKey, props.text);
+    return designTimeTextOf(TEXT_SITE, props.localizationKey, props.text);
 }
 
 function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
@@ -245,12 +247,11 @@ export function TextRenderer({
     // Localized display text. At design time the source language's: the element's own words, or
     // its key's when it is read from one - the canvas shows what the game shows.
     const displayText = useLocalizedWidgetText({
+        site: TEXT_SITE,
         elementId: element.id,
-        prop: "text",
         sourceText: p.text,
         localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
-        resolveKeyAtDesignTime: true,
     });
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`

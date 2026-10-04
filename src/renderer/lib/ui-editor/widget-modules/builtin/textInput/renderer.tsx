@@ -36,8 +36,12 @@ import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/Gam
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
+import { requireUITextSite } from "@shared/types/ui-editor/textSource";
 import { getTextInputProps } from "./helpers";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+
+/** The placeholder's site (`textSites.ts`). */
+const TEXT_INPUT_SITE = requireUITextSite("nl.textInput");
 
 /**
  * `number` constrains the accepted characters only; `type="number"` is deliberately not used because
@@ -230,8 +234,8 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     );
 
     const displayPlaceholder = useLocalizedWidgetText({
+        site: TEXT_INPUT_SITE,
         elementId: element.id,
-        prop: "placeholder",
         sourceText: p.placeholder,
         localizationKey: p.placeholderLocalizationKey ?? undefined,
     });

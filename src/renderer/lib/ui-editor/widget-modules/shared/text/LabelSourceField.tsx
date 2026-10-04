@@ -1,6 +1,12 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { TranslationKey } from "@shared/i18n";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import {
+    readUITextSite,
+    uiTextSourceOf,
+    type UITextSite,
+    type UITextSource,
+} from "@shared/types/ui-editor/textSource";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
@@ -22,12 +28,16 @@ import {
     useBlueprintValueBinding,
     type BlueprintValueFieldConfig,
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
-import { labelSourceOf, type LabelSource } from "./labelSource";
 import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 import { LABEL_TEXT_AREA_CLASS, TextRunMarksEditor } from "./TextRunMarks";
 
 /** What a widget tells the source field about where its words live. */
 export type LabelSourceFieldConfig = {
+    /**
+     * The site the words sit on (`textSites.ts`): the prop holding them, the prop naming their key,
+     * and the switch that translates the element's own words.
+     */
+    site: UITextSite;
     /**
      * The words' Blueprint Value, as the widget offers it. Its `propPath` is the prop holding the
      * words (`text`, `label`) - the prop a value binding writes and a key replaces.
@@ -35,10 +45,6 @@ export type LabelSourceFieldConfig = {
     blueprint: BlueprintValueFieldConfig;
     /** How the words and their marks are read and written. */
     label: MarkedLabelProps;
-    /** The element's translation key, as the widget reads it. */
-    getLocalizationKey: (element: UIElement) => string | undefined;
-    /** Whether the element's own words are translated through its own unit. */
-    getLocalizable: (element: UIElement) => boolean;
     /** The switch that turns that on, under "Literal" (`Localize text`, `Localize label`). */
     localizeLabel: TranslationKey;
 };
@@ -64,7 +70,10 @@ function liveElementOf(data: UIInspectorData): UIElement {
  * the key list still opens to be read and a bound blueprint still opens to be looked at.
  */
 export function createLabelSourceField(config: LabelSourceFieldConfig) {
-    const propPath = config.blueprint.propPath;
+    const { site } = config;
+    const propPath = site.textProp;
+    const keyProp = site.keyProp ?? "localizationKey";
+    const keyOf = (element: UIElement) => readUITextSite(element, site).key;
     const ownWords = (element: UIElement) => config.label.read(element).text;
 
     /**
@@ -76,11 +85,11 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
      */
     function leaveKeyPatch(data: UIInspectorData): Record<string, unknown> {
         const live = liveElementOf(data);
-        const key = config.getLocalizationKey(live)?.trim();
+        const key = keyOf(live);
         const keyText = key ? getDesignTimeLocalizationKeys()?.[key] : undefined;
         return {
             ...(keyText !== undefined ? plainTextEditPatch(config.label, live, keyText) : {}),
-            localizationKey: undefined,
+            [keyProp]: undefined,
         };
     }
 
@@ -91,7 +100,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
      * shows.
      */
     function leaveLiteralPatch(data: UIInspectorData): Record<string, unknown> {
-        return config.getLocalizable(liveElementOf(data)) ? { localizable: undefined } : {};
+        return site.unitProp && readUITextSite(liveElementOf(data), site).localizable ? { [site.unitProp]: undefined } : {};
     }
 
     /** Pick a key: the words are read from it from now on, and from nothing else. */
@@ -106,11 +115,11 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         } else if (binding?.kind === "listItemField") {
             data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
         }
-        data.documentService.updateElementProps(live.id, { ...leaveLiteralPatch(data), localizationKey: name });
+        data.documentService.updateElementProps(live.id, { ...leaveLiteralPatch(data), [keyProp]: name });
     }
 
     const KeyPicker = createLocalizationKeyField({
-        getKey: element => config.getLocalizationKey(element) ?? "",
+        getKey: keyOf,
         setKey: chooseKey,
         // Choosing no key is choosing another source, which the row above the picker does.
         allowNone: false,
@@ -131,13 +140,13 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         const keysApply = keys !== null;
         const blueprintState = useBlueprintValueBinding(config.blueprint, data);
         const live = blueprintState.live;
-        const source = labelSourceOf(live, propPath, config.getLocalizationKey(live), keysApply);
+        const source = uiTextSourceOf(live, site, keysApply);
 
         // "Translation key" picked before a key is: nothing is written until one is chosen, so the
         // element goes on being read from where it was. Forgotten on another element.
         const [pickingKey, setPickingKey] = useState(false);
         useEffect(() => setPickingKey(false), [live.id]);
-        const shown: LabelSource | null = source === "key" ? "key" : pickingKey && source !== null ? "key" : source;
+        const shown: UITextSource | null = source === "key" ? "key" : pickingKey && source !== null ? "key" : source;
 
         const fieldRow = (
             <ListItemFieldBindingRow
@@ -160,7 +169,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             return <div className="space-y-2">{fieldRow}</div>;
         }
 
-        const choose = (next: LabelSource) => {
+        const choose = (next: UITextSource) => {
             if (next === shown) {
                 return;
             }
@@ -185,7 +194,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             blueprintState.create();
         };
 
-        const key = config.getLocalizationKey(live)?.trim() ?? "";
+        const key = keyOf(live);
         const keyText = source === "key" ? keys?.[key] ?? ownWords(live) : "";
 
         return (
@@ -201,7 +210,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     disabled={readOnly}
                     onChange={next => {
                         if (typeof next === "string") {
-                            choose(next as LabelSource);
+                            choose(next as UITextSource);
                         }
                     }}
                     options={[
@@ -239,11 +248,11 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                         <div className="flex items-center gap-2">
                             <Switch
                                 size="sm"
-                                checked={config.getLocalizable(live)}
+                                checked={readUITextSite(live, site).localizable}
                                 disabled={readOnly}
                                 aria-label={t(config.localizeLabel)}
                                 onCheckedChange={checked =>
-                                    data.documentService.updateElementProps(live.id, { localizable: checked })
+                                    data.documentService.updateElementProps(live.id, { [site.unitProp ?? "localizable"]: checked })
                                 }
                             />
                             <span className="text-sm text-fg-muted">{t(config.localizeLabel)}</span>
