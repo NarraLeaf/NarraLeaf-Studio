@@ -155,6 +155,8 @@ export const build = {
             artifactReadVersioned: "{product} {version}，构建于 {date}",
             artifactVariantStated: "读取自该构建目录",
             artifactVariantUnknown: "该构建未标明变体，请在下方选择",
+            // 项目有密钥之前做出的构建。只说明，不阻止：导出仍然可以进行。
+            artifactNoKey: "该构建不含分发密钥，游戏会忽略为它导出的补丁",
             artifactVariantMismatch: "该构建是 {build}，而此 DLC 依附于 {variant}",
             artifactWholeGame: "补丁将包含整份游戏",
             contentLabel: "内容取自的变体",
@@ -305,6 +307,8 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
         "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
+        // 旁边有「创建」按钮，所以句子只说后果，补救交给按钮。
+        "distribution-key-missing": "尚未创建分发密钥；本次构建产出的游戏以后不接受补丁",
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",

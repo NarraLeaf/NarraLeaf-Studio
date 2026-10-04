@@ -258,6 +258,13 @@ export type BuildPreflightCode =
      */
     | "mobile-unprotected"
     /**
+     * The build has a desktop target and the project has no distribution key. The game it produces
+     * can never read a patch, and that cannot be changed after it ships - so it is said here, the
+     * last moment it can still be acted on, rather than when a patch is first attempted. Not a
+     * refusal: a game its author never means to patch is a legitimate build.
+     */
+    | "distribution-key-missing"
+    /**
      * The project carries progress between editions, and this target's shell cannot: a page has no
      * shared file to write, and the mobile shells serve that same page.
      */

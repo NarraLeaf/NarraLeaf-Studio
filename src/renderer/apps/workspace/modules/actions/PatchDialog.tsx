@@ -81,6 +81,8 @@ type BaselineReading = {
     productName: string | null;
     version: string | null;
     builtAt: string | null;
+    /** False for a build made without a distribution key: the game reads no patch at all. */
+    acceptsPatches: boolean;
 };
 
 export type PatchDialogChoice = {
@@ -393,7 +395,14 @@ function PatchDialogContent({
                                 )}
                             </span>
                         )}
-                        {reading && !reading.appTagId && (
+                        {/* Said, not refused, like every other "this patch will not do what you
+                            want" line here. It takes the variant line's place: a build that reads
+                            no patch states no variant either, and which variant it is no longer
+                            matters. */}
+                        {reading && !reading.acceptsPatches && (
+                            <span className="text-2xs text-warning">{t("build.patch.artifactNoKey")}</span>
+                        )}
+                        {reading && reading.acceptsPatches && !reading.appTagId && (
                             <span className="text-2xs text-warning">{t("build.patch.artifactVariantUnknown")}</span>
                         )}
                         {dlcVariantMismatch && (

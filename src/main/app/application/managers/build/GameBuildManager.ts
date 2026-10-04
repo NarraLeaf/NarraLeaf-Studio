@@ -906,6 +906,12 @@ export class GameBuildManager {
         if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
         }
+        // Read through the same reader the build applies the key with, so the dialog and the build
+        // cannot disagree about whether there is one. Desktop targets only: the web export and the
+        // mobile packages read no patch whether or not there is a key.
+        if (desktopTargets.length > 0 && !readDistributionKey(projectConfig?.app)) {
+            findings.push({ code: "distribution-key-missing", severity: "warning", section: "content" });
+        }
         findings.push(...await collectProgressCarryFindings({
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
