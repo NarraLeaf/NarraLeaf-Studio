@@ -3218,7 +3218,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -3283,7 +3283,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": -382
                       }
                     }
@@ -3298,7 +3298,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": -243
                       }
                     }
@@ -3309,7 +3309,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 8
                       }
                     }
@@ -3456,7 +3456,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -3516,7 +3516,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1442,
+                        "x": 1452,
                         "y": 178
                       }
                     }
@@ -3531,7 +3531,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1172,
+                        "x": 1154,
                         "y": 317
                       }
                     }
@@ -3542,7 +3542,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1154,
+                        "x": 1164,
                         "y": 568
                       }
                     }
@@ -5513,7 +5513,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -5578,7 +5578,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": 218
                       }
                     }
@@ -5593,7 +5593,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": 357
                       }
                     }
@@ -5604,7 +5604,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 608
                       }
                     }
@@ -5751,7 +5751,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -5827,7 +5827,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": 178
                       }
                     }
@@ -5842,7 +5842,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": 317
                       }
                     }
@@ -5853,7 +5853,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 568
                       }
                     }
@@ -6281,8 +6281,8 @@
                       "text": "Apply the setting",
                       "frame": true,
                       "color": "slate",
-                      "width": 676,
-                      "height": 551
+                      "width": 688,
+                      "height": 817
                     },
                     "meta": {
                       "editorLayout": {
@@ -6298,12 +6298,12 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 542
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1286,
+                        "x": 1298,
                         "y": 259
                       }
                     }
@@ -6336,7 +6336,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 930,
                         "y": 248
                       }
                     }
@@ -6350,7 +6350,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 578,
-                        "y": 445
+                        "y": 712
                       }
                     }
                   },
@@ -6365,8 +6365,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 646,
-                        "y": 622
+                        "x": 658,
+                        "y": 888
                       }
                     }
                   },
@@ -6376,7 +6376,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1602,
+                        "x": 1624,
                         "y": 307
                       }
                     }
@@ -6391,7 +6391,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1332,
+                        "x": 1326,
                         "y": 445
                       }
                     }
@@ -6402,7 +6402,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1314,
+                        "x": 1336,
                         "y": 696
                       }
                     }
@@ -6559,7 +6559,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -6648,7 +6648,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1874,
+                        "x": 1884,
                         "y": 178
                       }
                     }
@@ -6663,7 +6663,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1604,
+                        "x": 1586,
                         "y": 317
                       }
                     }
@@ -6674,7 +6674,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1586,
+                        "x": 1596,
                         "y": 568
                       }
                     }
@@ -13985,7 +13985,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 11020
+                        "y": 10971
                       }
                     }
                   },
@@ -13998,7 +13998,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 210,
-                        "y": 10983
+                        "y": 10934
                       }
                     }
                   },
@@ -14413,7 +14413,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 5518,
+                        "x": 5528,
                         "y": 10952
                       }
                     }
@@ -14424,7 +14424,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 5837,
+                        "x": 5847,
                         "y": 10611
                       }
                     }
@@ -14439,7 +14439,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 5567,
+                        "x": 5518,
                         "y": 10701
                       }
                     }
@@ -14450,7 +14450,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 6437,
+                        "x": 6447,
                         "y": 10611
                       }
                     }
@@ -14463,7 +14463,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 6097,
+                        "x": 6107,
                         "y": 10701
                       }
                     }
@@ -14474,7 +14474,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 6773,
+                        "x": 6793,
                         "y": 10952
                       }
                     }
@@ -14485,7 +14485,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 7091,
+                        "x": 7111,
                         "y": 10611
                       }
                     }
@@ -14500,7 +14500,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 6821,
+                        "x": 6783,
                         "y": 10701
                       }
                     }
@@ -14511,7 +14511,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 7691,
+                        "x": 7711,
                         "y": 10611
                       }
                     }
@@ -14524,7 +14524,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 7351,
+                        "x": 7371,
                         "y": 10701
                       }
                     }
@@ -14535,7 +14535,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 8296,
+                        "x": 8316,
                         "y": 10611
                       }
                     }
@@ -14550,7 +14550,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 8026,
+                        "x": 8046,
                         "y": 10745
                       }
                     }
@@ -15415,7 +15415,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 410,
+                        "x": 330,
                         "y": 10541
                       }
                     }
@@ -15586,7 +15586,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1162,
-                        "y": 10754
+                        "y": 10705
                       }
                     }
                   },
@@ -15599,7 +15599,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 822,
-                        "y": 10717
+                        "y": 10668
                       }
                     }
                   },
@@ -15718,7 +15718,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   },
@@ -15731,7 +15731,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   },
@@ -15747,7 +15747,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 11002
+                        "y": 10999
                       }
                     }
                   },
@@ -15760,7 +15760,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 11211
+                        "y": 11207
                       }
                     }
                   },
@@ -15778,7 +15778,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1239,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   }
@@ -16099,7 +16099,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1162,
-                        "y": 10754
+                        "y": 10705
                       }
                     }
                   },
@@ -16112,7 +16112,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 822,
-                        "y": 10717
+                        "y": 10668
                       }
                     }
                   },
@@ -16523,7 +16523,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 10756
+                        "y": 10707
                       }
                     }
                   },
@@ -16536,7 +16536,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 210,
-                        "y": 10719
+                        "y": 10670
                       }
                     }
                   },
@@ -19505,7 +19505,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -19522,12 +19522,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -19575,7 +19575,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -19590,7 +19590,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -19601,7 +19601,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -19616,7 +19616,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -19632,7 +19632,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -19645,7 +19645,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -19658,7 +19658,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -19671,7 +19671,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -19695,7 +19695,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -19706,7 +19706,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -19721,7 +19721,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -19732,7 +19732,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -19973,7 +19973,7 @@
                       "frame": true,
                       "color": "slate",
                       "width": 2686,
-                      "height": 503
+                      "height": 454
                     },
                     "meta": {
                       "editorLayout": {
@@ -19989,7 +19989,7 @@
                       "text": "Show the picture",
                       "frame": true,
                       "color": "slate",
-                      "width": 1126,
+                      "width": 1136,
                       "height": 712
                     },
                     "meta": {
@@ -20124,7 +20124,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -3512,
-                        "y": -2439
+                        "y": -2488
                       }
                     }
                   },
@@ -20140,7 +20140,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -3172,
-                        "y": -2426
+                        "y": -2475
                       }
                     }
                   },
@@ -20191,7 +20191,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1996,
+                        "x": -1986,
                         "y": -2282
                       }
                     }
@@ -20206,7 +20206,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1926,
+                        "x": -1996,
                         "y": -2533
                       }
                     }
@@ -20217,7 +20217,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -1656,
+                        "x": -1646,
                         "y": -2671
                       }
                     }
@@ -20232,7 +20232,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1396,
+                        "x": -1386,
                         "y": -2581
                       }
                     }
@@ -20246,7 +20246,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1126,
+                        "x": -1116,
                         "y": -2782
                       }
                     }
@@ -20528,7 +20528,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -20545,12 +20545,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -20598,7 +20598,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -20613,7 +20613,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -20624,7 +20624,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -20639,7 +20639,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -20655,7 +20655,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -20668,7 +20668,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -20681,7 +20681,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -20694,7 +20694,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -20718,7 +20718,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -20729,7 +20729,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -20744,7 +20744,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -20755,7 +20755,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -21062,7 +21062,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4770,
+                        "x": -4690,
                         "y": -2466
                       }
                     }
@@ -21075,7 +21075,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4770,
+                        "x": -4610,
                         "y": -2289
                       }
                     }
@@ -21086,7 +21086,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -4430,
+                        "x": -4270,
                         "y": -2850
                       }
                     }
@@ -21238,7 +21238,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -21255,12 +21255,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -21308,7 +21308,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -21323,7 +21323,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -21334,7 +21334,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -21349,7 +21349,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -21365,7 +21365,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -21378,7 +21378,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -21391,7 +21391,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -21404,7 +21404,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -21428,7 +21428,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -21439,7 +21439,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -21454,7 +21454,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -21465,7 +21465,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -21876,7 +21876,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -21893,12 +21893,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -21946,7 +21946,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -21961,7 +21961,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -21972,7 +21972,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -21987,7 +21987,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -22003,7 +22003,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -22016,7 +22016,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -22029,7 +22029,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -22042,7 +22042,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -22066,7 +22066,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -22077,7 +22077,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -22092,7 +22092,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -22103,7 +22103,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -24238,6 +24238,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-04T00:55:16.833Z"
+    "updatedAt": "2026-10-04T00:57:01.007Z"
   }
 }
