@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DocumentChange } from "@shared/documents/diff";
+import { compileDocumentPathPattern, matchDocumentPath } from "@shared/documents/documentPath";
+import { ASSETS_METADATA_DOCUMENT_PATH } from "@shared/documents/specs/assetsMetadata";
 import type { TranslationKey } from "@shared/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
-import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetCategory, AssetType, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { readLibraries } from "./nameSources";
 import { comparisonSideKey, type ComparisonSide, type ComparisonSides } from "./presenters/comparisonSide";
@@ -26,6 +28,16 @@ import { comparisonSideKey, type ComparisonSide, type ComparisonSides } from "./
  * happened. A value its own side does not list is looked up in the other side, which covers a group
  * deleted in the very change that moved the asset out of it. A group neither side lists is a record
  * pointing at nothing; it reads as a missing group rather than as its id.
+ *
+ * ## No group is a place too
+ *
+ * An asset with no group sits at the top of its category, and the panel calls that place by the
+ * category's name - the root of its folder tree, the first step of its path, the location of every
+ * such asset in its search results ("Images"). So a move out of a group, or into one from the top,
+ * names that end the same way: `Backgrounds → Images`, not `Backgrounds` alone, which said where the
+ * asset came from and left out where it went (or the reverse). Named from the shard's path, which is
+ * where the comparison says what type of asset it holds. With both ends named the row is a move, not
+ * an addition or a removal, and it is marked as one.
  *
  * Group lists are read per category (`assets/assets.groups.<category>.json`) and folded into one
  * lookup per side. Ids are unique across categories, so the fold loses nothing, and it saves knowing
@@ -126,9 +138,29 @@ export function assetFolderPath(folders: AssetFolderMap, id: string): string | n
     return names.join(PATH_SEPARATOR);
 }
 
+const ASSETS_METADATA_PATTERN = compileDocumentPathPattern(ASSETS_METADATA_DOCUMENT_PATH);
+
+const ASSET_TYPES: ReadonlySet<string> = new Set(Object.values(AssetType));
+
+/**
+ * What the assets panel calls the top of the category whose records `documentPath` holds - the
+ * category's own name, e.g. "Images" for `assets/assets.metadata.image.json` - or undefined for a
+ * path that is not an asset shard, or a shard of a type this Studio does not know.
+ */
+export function assetTopLevelName(documentPath: string, t: (key: TranslationKey) => string): string | undefined {
+    const type = matchDocumentPath(ASSETS_METADATA_PATTERN, documentPath)?.type;
+    if (type === undefined || !ASSET_TYPES.has(type)) {
+        return undefined;
+    }
+    return t(`assets.categories.${categoryOfAssetType(type as AssetType)}` as TranslationKey);
+}
+
 /**
  * The same changes, with every change of an asset's group naming the field and both groups the way
  * the assets panel does.
+ *
+ * `topLevel` is what an asset with no group is said to be in (see {@link assetTopLevelName});
+ * without it, that end of a move is left unnamed.
  *
  * A rewritten parameter rather than a second way of drawing a row, for the reason
  * `nameCharacterFields` gives: what a change says has one implementation and one wording. Both
@@ -139,18 +171,25 @@ export function nameAssetFields(
     changes: readonly DocumentChange[],
     t: (key: TranslationKey) => string,
     folders: AssetFolderNames | null,
+    topLevel?: string,
 ): DocumentChange[] {
     return changes.map(change => {
-        const children = change.children === undefined ? undefined : nameAssetFields(change.children, t, folders);
+        const children = change.children === undefined
+            ? undefined
+            : nameAssetFields(change.children, t, folders, topLevel);
         const params = change.label.params;
         if (change.label.key !== ASSET_FIELD_LABEL || params?.field !== GROUP_FIELD) {
             return children === undefined ? change : { ...change, children };
         }
         // Until the lists are read there is no name to give, and an id is not one: the values are
-        // left off for that moment rather than drawn as ids or claimed missing.
+        // left off for that moment rather than drawn as ids or claimed missing - the top level
+        // included, so a move never shows one end before the other.
         const name = (value: string | number | undefined, own: AssetFolderMap, other: AssetFolderMap) => {
-            if (value === undefined || folders === null) {
+            if (folders === null) {
                 return undefined;
+            }
+            if (value === undefined) {
+                return topLevel;
             }
             const id = String(value);
             return assetFolderPath(own, id) ?? assetFolderPath(other, id) ?? t(MISSING_GROUP_KEY);
@@ -165,6 +204,8 @@ export function nameAssetFields(
         }
         return {
             ...change,
+            // Both ends named: the asset moved, whichever end was the top level.
+            ...(from !== undefined && to !== undefined ? { kind: "changed" as const } : {}),
             ...(children === undefined ? {} : { children }),
             label: {
                 ...change.label,
