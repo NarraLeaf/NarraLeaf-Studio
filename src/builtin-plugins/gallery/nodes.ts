@@ -27,8 +27,9 @@
  * `image`, `name`), so an item template never needs a per-cell gallery lookup.
  *
  * The unlock record is read and written through `app.game.store`, the
- * capability-gated plugin storage declared as `store` in the manifest. No other
- * host power is touched.
+ * capability-gated plugin storage declared as `store` in the manifest, and only
+ * ever through `unlockRecord.ts`, which runs one change at a time against the
+ * runtime's own collecting. No other host power is touched.
  */
 
 import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
@@ -42,15 +43,14 @@ import {
     type GalleryEntryKind,
     projectGalleryEntries,
     projectGalleryVariants,
-    readUnlockedVariantIds,
     resolveCoverVariant,
     shownGalleryName,
     toImageAssetValue,
     type GalleryArtwork,
     type GalleryStoreData,
     PLUGIN_ID,
-    RUNTIME_UNLOCKED_KEY,
 } from "./catalog";
+import { readUnlockRecord, replaceUnlockRecord, updateUnlockRecord } from "./unlockRecord";
 
 export { PLUGIN_ID, RUNTIME_UNLOCKED_KEY, GALLERY_STORE_NAMESPACE } from "./catalog";
 
@@ -330,25 +330,21 @@ function readIndex(value: unknown): number {
 }
 
 /**
- * Read the persisted unlock record.
+ * The plugin storage the unlock record lives in, or null.
  *
  * `app.game.store` is the plugin's own persistent area beside the player's saves
  * - it survives starting a new game, which is exactly what unlocked CGs need. It
  * is absent wherever the environment cannot back the `store` capability, notably
  * the editor, where there is no player at all. Reading then degrades to "nothing
- * unlocked" so a gallery previews as a locked grid instead of throwing.
+ * unlocked" so a gallery previews as a locked grid instead of throwing, and a
+ * write is dropped with a warning.
  */
-async function readStoredUnlocked(ctx: ExecuteCtx): Promise<unknown> {
-    return ctx.game.store ? await ctx.game.store.get(RUNTIME_UNLOCKED_KEY) : null;
+function unlockStore(ctx: ExecuteCtx) {
+    return ctx.game.store ?? null;
 }
 
-/** Writes are dropped with a warning when the store is absent; see readStoredUnlocked. */
-async function writeStoredUnlocked(ctx: ExecuteCtx, variantIds: string[]): Promise<void> {
-    if (!ctx.game.store) {
-        ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
-        return;
-    }
-    await ctx.game.store.set(RUNTIME_UNLOCKED_KEY, variantIds);
+function warnUnpersisted(ctx: ExecuteCtx): void {
+    ctx.game.log("warning", "gallery unlocks are not persisted here: plugin storage is unavailable");
 }
 
 /**
@@ -420,26 +416,37 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
     const readUnlocked = async (ctx: ExecuteCtx, artworks: GalleryArtwork[]): Promise<Set<string>> => {
-        return readUnlockedVariantIds(await readStoredUnlocked(ctx), artworks);
-    };
-
-    const writeUnlocked = async (ctx: ExecuteCtx, unlocked: Set<string>): Promise<void> => {
-        await writeStoredUnlocked(ctx, Array.from(unlocked));
+        const backing = unlockStore(ctx);
+        return backing ? await readUnlockRecord(backing, artworks) : new Set();
     };
 
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
         const data = store();
         const artwork = requireArtwork(ctx, data.items);
         const targets = resolveTargetIds(ctx, artwork);
-        const unlocked = await readUnlocked(ctx, data.items);
-        for (const id of targets) {
-            if (mode === "add") {
-                unlocked.add(id);
-            } else {
-                unlocked.delete(id);
-            }
+        const backing = unlockStore(ctx);
+        if (!backing) {
+            warnUnpersisted(ctx);
+            return;
         }
-        await writeUnlocked(ctx, unlocked);
+        await updateUnlockRecord(backing, data.items, unlocked => {
+            for (const id of targets) {
+                if (mode === "add") {
+                    unlocked.add(id);
+                } else {
+                    unlocked.delete(id);
+                }
+            }
+        });
+    };
+
+    const replaceUnlocked = async (ctx: ExecuteCtx, ids: string[]) => {
+        const backing = unlockStore(ctx);
+        if (!backing) {
+            warnUnpersisted(ctx);
+            return;
+        }
+        await replaceUnlockRecord(backing, ids);
     };
 
     return [
@@ -632,11 +639,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // The "you cleared the game, here is everything" reward, and the
             // fastest way to eyeball a gallery screen while building it.
             execute: async ctx => {
-                const data = store();
-                await writeStoredUnlocked(
-                    ctx,
-                    data.items.flatMap(artworkUnlockIds),
-                );
+                await replaceUnlocked(ctx, store().items.flatMap(artworkUnlockIds));
                 return { nextPort: "next" };
             },
         },
@@ -650,7 +653,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             isLatent: true,
             pins: [execIn, execNext],
             execute: async ctx => {
-                await writeStoredUnlocked(ctx, []);
+                await replaceUnlocked(ctx, []);
                 return { nextPort: "next" };
             },
         },
