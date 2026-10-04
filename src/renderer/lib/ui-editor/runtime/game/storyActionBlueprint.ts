@@ -2,7 +2,8 @@
  * Compiles a Story Action Blueprint (a graph blueprint bound 1:1 to a story action) into an awaited
  * NLR action (`storyAwaitedAction.ts`). Its handler runs the blueprint's "On Call" graph through the
  * shared behavior-graph interpreter, mapping variable scopes onto NLR stores:
- *   - Var        -> ephemeral graph execution locals
+ *   - Var        -> the row's own Vars start from their declared defaults on every run; a Var of
+ *                   the project blueprint is the live record the interface reads and writes
  *   - Scene var  -> NLR `Scene.local` (per-scene, in-save)
  *   - Saved var  -> NLR `Storable` namespace (per save-file)
  *   - Persistent -> shared host persistence bridge (app-level, cross-save)
@@ -28,10 +29,12 @@ import type {
     StorySceneVariableDefinition,
 } from "@shared/types/story";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
+import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
 import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
+import { acquireBlueprintExecutionLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -262,7 +265,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: input.persistentVariables,
@@ -442,30 +445,60 @@ function buildStoryActionHostAdapter(
     return adapter as UIHostAdapter;
 }
 
+/**
+ * The variables one run of a story-row graph reads and writes through `Get Var` / `Set Var`.
+ *
+ * The same accessor a Surface blueprint's run is given, with no surface: the row's own Vars at their
+ * declared defaults, and the project blueprint's Vars as the live records. Each graph run gets a
+ * fresh object, because the node-output values a run writes into it are that run's alone.
+ */
+function storyActionLocals(document: BlueprintDocument, blueprintId: string): Record<string, unknown> {
+    return acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
+}
+
+/**
+ * Run every `On Call` head of the row's blueprint, all of them together, and wait for all of them -
+ * the story waits on the row until its last head is done.
+ *
+ * A head that fails stops none of the others. The row reports a failure the way it reports a lone
+ * head's, by rejecting - once every head has settled, with the first failure in head order. The value
+ * answered is still the last head's in head order to set one, not whichever happened to finish last.
+ */
 async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unknown> {
     const bp = resolveActiveStoryActionBlueprint(env.input.blueprintDocument, env.input.blueprintId);
     if (!bp) {
         return undefined;
     }
-    let lastReturn: unknown;
+    const runs: Array<() => Promise<{ returnValueSet: boolean; returnValue?: unknown }>> = [];
     for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
         const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("storyAction", bp.id, eventGraph.id));
         for (const headId of headIds) {
-            const result = await executeGraph({
+            runs.push(() => executeGraph({
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter: env.hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(env.input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: env.input.persistentVariables,
                 signal: env.signal,
-            });
-            if (result.returnValueSet) lastReturn = result.returnValue;
+            }));
         }
+    }
+    let lastReturn: unknown;
+    let firstFailure: { reason: unknown } | null = null;
+    for (const outcome of await startTogether(runs)) {
+        if (outcome.status === "rejected") {
+            firstFailure ??= { reason: outcome.reason };
+            continue;
+        }
+        if (outcome.value.returnValueSet) lastReturn = outcome.value.returnValue;
+    }
+    if (firstFailure) {
+        throw firstFailure.reason;
     }
     return lastReturn;
 }
@@ -496,7 +529,7 @@ async function invokeStoryActionFn(options: {
     if (!visible) {
         throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
-    const blueprintLocals: Record<string, unknown> = {};
+    const blueprintLocals = storyActionLocals(input.blueprintDocument, decl.blueprintId);
     const seededArgs: Record<string, unknown> = {};
     for (const param of decl.params) {
         seededArgs[param.pinId] = args[param.pinId];

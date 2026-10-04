@@ -218,8 +218,9 @@ export function TextInputRenderer(props: WidgetRendererProps) {
             if (isImeKeyEvent(event)) {
                 return;
             }
-            // No stopPropagation: the widget's own `keyDown` event is dispatched from a window
-            // listener and must keep firing for authors who wired it alongside Submit.
+            // No stopPropagation, because nothing downstream needs stopping: every keyboard
+            // listener the game puts on `window`, this widget's own `On Key Down` included, already
+            // ignores a key typed into a text field (`isTextEntryTarget`).
             event.preventDefault();
             void dispatchEvent("submit", {
                 value: valueRef.current,

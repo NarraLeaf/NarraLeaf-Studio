@@ -673,6 +673,12 @@ export type GameAppCompositeGameUi = {
     slotId: UIStageSlotId;
     /** Stepped off the screen, still mounted, because a page is drawn over the stage. */
     concealed: boolean;
+    /**
+     * The dialogue box put away by the player or a graph (`Hide Dialog`): transparent and still
+     * mounted, until the engine brings it back on the next click on the stage. Always false for the
+     * other slots.
+     */
+    hidden: boolean;
     /** Whether its controls take pointer input this frame. */
     interactive: boolean;
     /**

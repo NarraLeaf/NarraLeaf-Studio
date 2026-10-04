@@ -118,7 +118,7 @@ describe("buildCompositeView", () => {
             controller: new LayerStackController(),
             gameHiddenKeys: ["menu:1"],
             keyboardLane: { kind: "stage" },
-            stage: { storyOnScreen: true, coveredByPage: false, pointerLive: true, surfaces: [] },
+            stage: { storyOnScreen: true, coveredByPage: false, pointerLive: true, dialogHidden: false, surfaces: [] },
         });
         expect(view.page).toBeNull();
         expect(view.offScreenPages).toEqual([
@@ -136,6 +136,7 @@ describe("buildCompositeView", () => {
                 storyOnScreen: false,
                 coveredByPage: true,
                 pointerLive: true,
+                dialogHidden: false,
                 surfaces: [
                     { runtimeScopeId: "s:notification", surface: stageSurface("toasts", "notification"), takesInput: false },
                     { runtimeScopeId: "s:onStage", surface: stageSurface("quick", "onStage"), takesInput: true },
@@ -162,6 +163,7 @@ describe("buildCompositeView", () => {
                 storyOnScreen: false,
                 coveredByPage: false,
                 pointerLive: true,
+                dialogHidden: false,
                 surfaces: [
                     { runtimeScopeId: "s:dialog", surface: stageSurface("box", "dialog"), takesInput: true },
                     { runtimeScopeId: "s:onStage", surface: stageSurface("quick", "onStage"), takesInput: true },

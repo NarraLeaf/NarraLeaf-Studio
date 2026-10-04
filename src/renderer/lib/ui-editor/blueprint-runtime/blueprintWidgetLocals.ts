@@ -180,8 +180,16 @@ export function acquireBlueprintExecutionLocals(input: {
 
     // Acquired up front rather than as a side effect of the variable loop below: a blueprint that
     // declares no variables contributes no options, and its Memo nodes would have nowhere to live.
+    //
+    // A story row's own variables start from their defaults on every run instead of living in the
+    // store. The row runs inside the story, which saves, loads and rolls back, and a record kept here
+    // would do none of those: a counter would carry on from another playthrough after a load. What a
+    // row has to remember between runs belongs in a scene or saved variable. The page and project
+    // variables it can also reach are the live records, the same ones the interface reads.
     const currentKey = blueprintVariableStoreKey(current, input.runtimeScopeId, input.elementInstanceKey);
-    const currentRecord = acquireVariableStore(currentKey, current);
+    const currentRecord = current.owner.kind === "storyAction"
+        ? defaultLocalsFromBlueprint(current)
+        : acquireVariableStore(currentKey, current);
     storesByBlueprintId.set(input.currentBlueprintId, { key: currentKey, record: currentRecord });
     Object.defineProperty(out, BLUEPRINT_MEMO_RECORD_KEY, {
         enumerable: false,

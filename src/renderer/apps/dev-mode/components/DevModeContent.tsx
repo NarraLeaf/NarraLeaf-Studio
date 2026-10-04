@@ -70,6 +70,7 @@ import {
     runtimePluginFailureIssue,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
+import { reportableRuntimePluginExclusions } from "./runtimePluginExclusions";
 import { AssetResolutionLedger, type AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
@@ -1800,21 +1801,32 @@ export function DevModeContent(props: DevModeContentProps) {
     });
 
     /**
-     * Say which plugins this project leaves out, and why.
+     * Say which plugins this project uses and leaves out, and why.
      *
      * The session runs the set a build carries, which means a plugin the project does not depend on
      * does not run here either - and the only thing an author would otherwise see is the node they
      * placed drawn as an unknown-node stub. The report names the plugin and the panel this is fixed
      * from, because the fix is a dependency rescan and not anything in the graph.
      *
-     * Waits for the bundle: reports are located against it, and the plugin list is answered before
-     * the payload arrives about as often as after it.
+     * Only for a plugin the project actually refers to (see `reportableRuntimePluginExclusions`). An
+     * enabled plugin the project has nothing to do with is left out without a word: there is nothing
+     * missing from the game, and nothing a rescan could change.
+     *
+     * Waits for the bundle: whether the project uses a plugin is read off it, reports are located
+     * against it, and the plugin list is answered before the payload arrives about as often as after
+     * it. Read again for every bundle, so a plugin the author starts using during the session is
+     * reported by the reload that carries it.
      */
     useEffect(() => {
         if (!bundle) {
             return;
         }
-        for (const entry of runtimePlugins.excluded) {
+        const reportable = reportableRuntimePluginExclusions({
+            excluded: runtimePlugins.excluded,
+            runningPluginIds: runtimePlugins.running,
+            bundle,
+        });
+        for (const entry of reportable) {
             const pluginName = pluginDisplayName({ name: entry.pluginName, localized: entry.localized }, locale);
             reportIssue({
                 level: "warning",
@@ -1828,7 +1840,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 ),
             });
         }
-    }, [bundle, locale, reportIssue, runtimePlugins.excluded, t]);
+    }, [bundle, locale, reportIssue, runtimePlugins.excluded, runtimePlugins.running, t]);
 
     /**
      * Say which of the plugins this project does run failed to load.

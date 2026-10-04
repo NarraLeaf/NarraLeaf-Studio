@@ -269,8 +269,8 @@ export async function dispatchGameKey(
     event: KeyboardEvent,
 ): Promise<void> {
     // Typing into a text field must not also drive the game's keys - otherwise entering a name would
-    // advance dialogue on space and open the menu on Escape. The widget's own keyboard event still
-    // fires: it arrives through DOM bubbling, not here.
+    // advance dialogue on space and open the menu on Escape. Widget key heads stand down for the
+    // same key on their own (see `isTextEntryTarget`); the field reports Value Changed and Submit.
     if (isTextEntryTarget(event.target)) {
         return;
     }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_LOCKED_NAME_MASK,
+    GALLERY_ENTRY_KINDS,
+    GALLERY_ROW_FIELDS_BY_KIND,
     collectAudioAssetVariantIds,
     collectSceneVariantIds,
     collectVoiceUnitVariantIds,
@@ -551,7 +553,7 @@ describe("v4 kinds", () => {
             sceneId: "scene-7",
             startBlockId: "block-3",
         });
-        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1" });
+        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1", lineText: "Good morning!" });
     });
 
     it("withholds the clip, the unit id and the scene coordinates while locked", () => {
@@ -566,6 +568,7 @@ describe("v4 kinds", () => {
         expect(rows[1]!.sceneId).toBe("");
         expect(rows[1]!.startBlockId).toBe("");
         expect(rows[2]!.voiceUnitId).toBe("");
+        expect(rows[2]!.lineText).toBe("");
     });
 
     it("carries the line text onto an unlocked voice member and withholds it when locked", () => {
@@ -574,6 +577,21 @@ describe("v4 kinds", () => {
         expect(projectGalleryVariants(store, line, new Set(["vo.v.1"]))[0])
             .toMatchObject({ lineText: "Good morning!", voiceUnitId: "text-uuid-1" });
         expect(projectGalleryVariants(store, line, new Set())[0]!.lineText).toBe("");
+    });
+
+    it("hands out every row field the editor names for a column", () => {
+        // The idle inspector lists these as what an item template can read off a Get Gallery row,
+        // so a name that is not on the row sends the author after a field that is always empty.
+        const store = storeOf({ items: [track, recollection, line, artwork({
+            id: "cg",
+            variants: [{ id: "cg.v", name: "A", imageAssetId: "i" }],
+        })] });
+        for (const kind of GALLERY_ENTRY_KINDS) {
+            const [row] = projectGalleryEntries(store, new Set(), { kind });
+            for (const field of GALLERY_ROW_FIELDS_BY_KIND[kind]) {
+                expect(row, `${kind}.${field}`).toHaveProperty(field);
+            }
+        }
     });
 
     it("filters entries and progress by kind", () => {
@@ -597,6 +615,53 @@ describe("v4 kinds", () => {
         }] });
 
         expect("durationSec" in store.items[0]!.variants[0]!).toBe(false);
+    });
+});
+
+describe("an entry with no members yet", () => {
+    // What "Add Recollection" creates: a scene to point at and nothing to import.
+    const empty = artwork({
+        id: "recall",
+        name: "The Confession",
+        kind: "scene",
+        variants: [],
+        scene: { storyId: "story-1", sceneId: "scene-7" },
+    });
+
+    it("is collected whole by reaching its scene, under its own id", () => {
+        const items = normalizeGalleryStore({ items: [empty] }).items;
+
+        expect(collectSceneVariantIds(items, "scene-7")).toEqual(["recall"]);
+    });
+
+    it("reads as unlocked by that id, and shows its scene once it is", () => {
+        const store = storeOf({ items: [empty] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect(isArtworkUnlocked(store.items[0]!, unlocked)).toBe(true);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({
+            name: "The Confession",
+            unlocked: true,
+            sceneId: "scene-7",
+            image: null,
+        });
+        expect(computeGalleryStats(store, unlocked)).toMatchObject({ total: 1, unlocked: 1 });
+    });
+
+    it("stays unlocked once its first picture is added", () => {
+        // The player got there before the art did; the art must not lock it again.
+        const withArt = { ...empty, variants: [{ id: "recall.v.1", name: "Cover", imageAssetId: "asset-shot" }] };
+        const store = storeOf({ items: [withArt] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect([...unlocked]).toEqual(["recall.v.1"]);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({ unlocked: true, assetId: "asset-shot" });
+    });
+
+    it("is locked while nothing has collected it", () => {
+        const store = storeOf({ items: [empty] });
+
+        expect(projectGalleryEntries(store, new Set())[0]).toMatchObject({ locked: true, name: "???", sceneId: "" });
     });
 });
 
