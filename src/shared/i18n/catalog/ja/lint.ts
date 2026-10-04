@@ -200,6 +200,11 @@ export const lint = {
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
         },
+        storyVideoControlAfterEnd: {
+            title: "再生を終えた動画",
+            description: "終了を待つ再生の後で、その動画を一時停止・再開・シーク・停止する行",
+            message: "{object} はこの行ではすでに再生を終えている。再生中に先へ進むには、再生の行の「再生の終了を待つ」をオフにする",
+        },
         storyCharacterMissing: {
             title: "存在しないキャラクター",
             description: "プロジェクトに存在しないキャラクターを指定した行",

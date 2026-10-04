@@ -418,8 +418,7 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        // "Play" waits for the clip to finish before the story continues; "Resume" does not.
-        play: "Play (wait for end)",
+        play: "Play",
         pause: "Pause",
         resume: "Resume",
         stop: "Stop",
@@ -516,6 +515,8 @@ export const storyInspector = {
         seekTime: "Seek to",
         hideOnEnd: "Hide when finished",
         leave: "Exit",
+        waitForEnd: "Wait for the video",
+        skipHint: "The player can end the video early by clicking or pressing the skip key.",
     },
 
     nvl: {

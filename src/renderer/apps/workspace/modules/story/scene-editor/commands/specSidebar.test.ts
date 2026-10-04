@@ -42,12 +42,15 @@ const commandsIn = (groupId: StoryCommandGroupId): string[] =>
     sidebar().find(entry => entry.group.id === groupId)?.commands.map(command => command.id) ?? [];
 
 describe("accepts-driven classification (§4.2)", () => {
-    it("files a generic verb under every subject it accepts - /show reaches all six", () => {
-        expect(groupIds("show")).toEqual(["character", "image", "text", "video", "layer", "vfx"]);
+    it("files a generic verb under every subject it accepts - /hide reaches all six, /show all but video", () => {
+        // A clip comes on with `/play` and nowhere else, so `/show` refuses one and files nowhere near it.
+        expect(groupIds("show")).toEqual(["character", "image", "text", "layer", "vfx"]);
         expect(groupIds("hide")).toEqual(["character", "image", "text", "video", "layer", "vfx"]);
-        for (const group of ["character", "image", "text", "video", "layer", "vfx"] as const) {
+        for (const group of ["character", "image", "text", "layer", "vfx"] as const) {
             expect(commandsIn(group)).toContain("show");
         }
+        expect(commandsIn("video")).not.toContain("show");
+        expect(commandsIn("video")).toContain("play");
     });
 
     it("does not file a verb under a subject it cannot act on", () => {
@@ -110,11 +113,11 @@ describe("accepts-driven classification (§4.2)", () => {
 describe("browse walk stops (§4.2, interaction rule 2)", () => {
     const stops = () => browseMenuStops(sidebar());
 
-    it("files /show under all six subjects, once per subject, in the order they render", () => {
+    it("files /hide under all six subjects, once per subject, in the order they render", () => {
         // Sidebar/group order (STORY_COMMAND_GROUPS), not `accepts` order: the walk order is the order
         // the eye reads down the menu, so the two must be the same thing.
-        const showStops = stops().filter(stop => stop.command.id === "show");
-        expect(showStops.map(stop => stop.group.id)).toEqual(["character", "image", "text", "layer", "video", "vfx"]);
+        const hideStops = stops().filter(stop => stop.command.id === "hide");
+        expect(hideStops.map(stop => stop.group.id)).toEqual(["character", "image", "text", "layer", "video", "vfx"]);
     });
 
     it("gives every rendered row a distinct key, so the highlight never double-hits", () => {
@@ -123,12 +126,12 @@ describe("browse walk stops (§4.2, interaction rule 2)", () => {
     });
 
     it("walks one row per keypress: a verb under six subjects is six separate stops", () => {
-        // Six `/show` rows means six presses to pass them all - not one press that skips five. Each key
+        // Six `/hide` rows means six presses to pass them all - not one press that skips five. Each key
         // is `group:id`, so the same command id never merges two rows into one stop.
-        const showStops = stops().filter(stop => stop.command.id === "show");
-        expect(showStops).toHaveLength(6);
-        expect(new Set(showStops.map(stop => stop.key)).size).toBe(6);
-        expect(showStops.every(stop => stop.command.id === "show")).toBe(true);
+        const hideStops = stops().filter(stop => stop.command.id === "hide");
+        expect(hideStops).toHaveLength(6);
+        expect(new Set(hideStops.map(stop => stop.key)).size).toBe(6);
+        expect(hideStops.every(stop => stop.command.id === "hide")).toBe(true);
     });
 
     it("walks the stops in sidebar order, section by section", () => {

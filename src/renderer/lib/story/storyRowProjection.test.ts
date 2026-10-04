@@ -206,7 +206,7 @@ describe("a row that addresses a renamed stage object", () => {
     const declarations = [
         action({ action: "image", operation: "create", objectName: "bg" }, "d_img"),
         action({ action: "text", operation: "create", objectName: "chapter" }, "d_txt"),
-        action({ action: "video", operation: "create", objectName: "opening" }, "d_vid"),
+        action({ action: "video", operation: "play", objectName: "opening", assetId: "v1" }, "d_vid"),
         action({ action: "vfx", operation: "create", objectName: "rain" }, "d_vfx"),
         action({ action: "audio", operation: "playSound", objectName: "keys" }, "d_snd"),
     ];
@@ -219,8 +219,8 @@ describe("a row that addresses a renamed stage object", () => {
             .toBe("Show image bg");
         expect(storyRowSentence(action({ action: "text", operation: "setText", objectName: "title", text: "Hi", target: { kind: "text", name: "title", label: "title", sourceBlockId: "d_txt" } }), lookups))
             .toBe("Swap text chapter");
-        expect(storyRowSentence(action({ action: "video", operation: "play", objectName: "intro", target: { name: "intro", label: "intro", sourceBlockId: "d_vid" } }), lookups))
-            .toBe("Play video opening");
+        expect(storyRowSentence(action({ action: "video", operation: "pause", objectName: "intro", target: { name: "intro", label: "intro", sourceBlockId: "d_vid" } }), lookups))
+            .toBe("Pause video opening");
         expect(storyRowSentence(action({ action: "vfx", operation: "pause", objectName: "petals", target: { name: "petals", label: "petals", sourceBlockId: "d_vfx" } }), lookups))
             .toBe("Pause ambience rain");
         expect(storyRowSentence(action({ action: "audio", operation: "stopSound", objectName: "piano", target: { name: "piano", label: "piano", sourceBlockId: "d_snd" } }), lookups))

@@ -369,7 +369,7 @@ export const storyInspector = {
         setZIndex: "设置层级",
     },
     videoOperation: {
-        play: "播放（等待结束）",
+        play: "播放",
         pause: "暂停",
         resume: "继续",
         stop: "停止",
@@ -451,6 +451,8 @@ export const storyInspector = {
         seekTime: "跳到",
         hideOnEnd: "播放结束后隐藏",
         leave: "退场",
+        waitForEnd: "等待播放结束",
+        skipHint: "玩家可点击或按跳过键提前结束视频",
     },
     nvl: {
         hint: "子行在 NVL 模式下运行；下方的变换在 NVL 图层进入时播放",
