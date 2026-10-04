@@ -11,7 +11,6 @@
  * Comments in English per project convention.
  */
 
-import { AudioWaveform, FastForward, Fullscreen, Gauge, Hourglass, MicVocal, Music4, Speaker, VolumeX } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines, WIDGET_OWNERS } from "./templateText";
 
@@ -63,7 +62,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "masterVolumeSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: Speaker,
         featured: 4,
         text: {
             en: { title: "Master volume slider", description: "Shows the master volume when the page opens and changes it when moved." },
@@ -76,7 +74,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "musicVolumeSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: Music4,
         featured: 1,
         text: {
             en: { title: "Music volume slider", description: "Shows the music volume when the page opens and changes it when moved." },
@@ -89,7 +86,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "sfxVolumeSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: AudioWaveform,
         featured: 2,
         text: {
             en: { title: "SFX volume slider", description: "Shows the sound effect volume when the page opens and changes it when moved." },
@@ -102,7 +98,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "voiceVolumeSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: MicVocal,
         text: {
             en: { title: "Voice volume slider", description: "Shows the voice volume when the page opens and changes it when moved." },
             zh: { title: "语音音量滑块", description: "页面打开时显示语音音量，拖动时更改语音音量" },
@@ -114,7 +109,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "textSpeedSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: Gauge,
         featured: 3,
         text: {
             en: { title: "Text speed slider", description: "Shows the text speed when the page opens and changes it when moved." },
@@ -142,7 +136,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "autoForwardWaitSlider",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: Hourglass,
         text: {
             en: { title: "Auto forward wait slider", description: "Shows the auto forward wait when the page opens and changes it when moved." },
             zh: { title: "自动前进等待时间滑块", description: "页面打开时显示自动前进的等待时间，拖动时更改等待时间" },
@@ -172,7 +165,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "fullscreenSwitch",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: Fullscreen,
         featured: 1,
         text: {
             en: { title: "Fullscreen switch", description: "Shows whether the game is fullscreen and turns fullscreen on or off when switched." },
@@ -204,7 +196,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "skipReadTextSwitch",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: FastForward,
         featured: 2,
         text: {
             en: {
@@ -220,7 +211,6 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "muteWhenUnfocusedSwitch",
         category: "settings",
         owners: WIDGET_OWNERS,
-        icon: VolumeX,
         featured: 3,
         text: {
             en: {
@@ -231,5 +221,62 @@ export const SETTINGS_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             ja: { title: "非アクティブ時ミュートのスイッチ", description: "ページを開くと非アクティブ時にミュートするかを表示し、切り替えると変更する" },
         },
         graph: () => preferenceSwitchGraph("getMuteOnWindowBlur", "setMuteOnWindowBlur", "muteOnWindowBlur"),
+    },
+    {
+        id: "autoForwardSwitch",
+        category: "settings",
+        owners: WIDGET_OWNERS,
+        featured: 4,
+        text: {
+            en: {
+                title: "Auto forward switch",
+                description: "Shows whether auto forward is on when the page opens, and turns it on or off when switched.",
+            },
+            zh: { title: "自动前进开关", description: "页面打开时显示自动前进是否开启，切换时开启或关闭自动前进" },
+            ja: { title: "自動送りのスイッチ", description: "ページを開くと自動送りがオンかを表示し、切り替えるとオンとオフを変更する" },
+        },
+        // Auto forward is kept with the player's settings, so what the switch sets is still set in
+        // the next game, as it is when the A key or an auto forward button turns it on.
+        graph: () => preferenceSwitchGraph("getAutoForward", "setAutoForward", "autoForward"),
+    },
+    {
+        id: "skipSpeedSlider",
+        category: "settings",
+        owners: WIDGET_OWNERS,
+        text: {
+            en: { title: "Skip speed slider", description: "Shows how fast skipping goes when the page opens and changes it when moved." },
+            zh: { title: "跳过速度滑块", description: "页面打开时显示跳过的速度，拖动时更改速度" },
+            ja: { title: "スキップ速度スライダー", description: "ページを開くとスキップの速さを表示し、動かすと変更する" },
+        },
+        // The game holds the time between two skipped lines in milliseconds, where less is faster, so
+        // the slider runs the other way: its default 0 to 100 is 200 down to 0 milliseconds, with the
+        // engine's own 100 in the middle. The far end writes 10 instead, since an interval has to be
+        // more than zero and a skip has to leave time to draw the line it passes.
+        graph: () => lines(
+            "    init: blueprint.event.head.init @0,0",
+            "    show: blueprint.slider.setValue @780,0",
+            "    interval: blueprint.game.getSkipInterval @0,140",
+            "    fromSlow: blueprint.math.subtract @260,140",
+            "        a = 200",
+            "    toSlider: blueprint.math.divide @520,140",
+            "        b = 2",
+            "    changed: blueprint.event.head.sliderValueChanged @0,340",
+            "    set: blueprint.game.setSkipInterval @780,340",
+            "    doubled: blueprint.math.multiply @260,480",
+            "        b = 2",
+            "    toInterval: blueprint.math.subtract @520,480",
+            "        a = 200",
+            "    atLeastTen: blueprint.math.max @780,480",
+            "        b = 10",
+            "    init -> show",
+            "    interval.skipInterval -> fromSlow.b",
+            "    fromSlow.result -> toSlider.a",
+            "    toSlider.result -> show.value",
+            "    changed -> set",
+            "    changed.value -> doubled.a",
+            "    doubled.result -> toInterval.b",
+            "    toInterval.result -> atLeastTen.a",
+            "    atLeastTen.result -> set.skipInterval",
+        ),
     },
 ];

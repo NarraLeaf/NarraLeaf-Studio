@@ -4,7 +4,6 @@
  * Comments in English per project convention.
  */
 
-import { ArrowLeft, ArrowRight, CornerUpLeft, ExternalLink, Layers, SquareX } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines, WIDGET_OWNERS } from "./templateText";
 
@@ -13,7 +12,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "openPage",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: ArrowRight,
         featured: 11,
         text: {
             en: { title: "Open a page", description: "Opens a page when clicked." },
@@ -31,7 +29,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "goBack",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: ArrowLeft,
         featured: 12,
         text: {
             en: { title: "Go back", description: "Closes the current page when clicked and returns to the page beneath it." },
@@ -48,7 +45,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "overlayPage",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: Layers,
         text: {
             en: { title: "Page on top", description: "Opens a page on top of the current one when clicked." },
             zh: { title: "叠加页面", description: "点击时在当前页面上叠加一个页面" },
@@ -67,7 +63,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "closeLayer",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: SquareX,
         text: {
             en: {
                 title: "Close the page on top",
@@ -88,7 +83,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "backToGame",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: CornerUpLeft,
         text: {
             en: {
                 title: "Back to the game",
@@ -111,7 +105,6 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "openLink",
         category: "navigation",
         owners: WIDGET_OWNERS,
-        icon: ExternalLink,
         text: {
             en: { title: "Open a link", description: "Opens a web page in the browser when clicked." },
             zh: { title: "打开链接", description: "点击时在浏览器中打开网页" },
@@ -123,5 +116,46 @@ export const NAVIGATION_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             "    click -> open",
         ),
         choices: { open: ["url"] },
+    },
+    {
+        id: "replacePage",
+        category: "navigation",
+        owners: WIDGET_OWNERS,
+        text: {
+            en: {
+                title: "Replace with a page",
+                description: "Opens a page in place of the current one when clicked. Going back does not return to the current page.",
+            },
+            zh: { title: "替换为页面", description: "点击时打开指定页面并关闭当前页面，返回时不会再回到当前页面" },
+            ja: { title: "ページを置き換える", description: "クリックで現在のページを閉じて指定したページを開き、戻っても現在のページには戻らない" },
+        },
+        // For pages read one after another - a prologue, the steps of a tutorial - where Go Page would
+        // stack every step and Go back would walk back through all of them.
+        graph: () => lines(
+            "    click: blueprint.event.head.mouseClick @0,0",
+            "    replace: blueprint.page.replace @260,0",
+            "    click -> replace",
+        ),
+        choices: { replace: ["surfaceId"] },
+    },
+    {
+        id: "frameTab",
+        category: "navigation",
+        owners: WIDGET_OWNERS,
+        text: {
+            en: { title: "Tab button", description: "Shows a page in a Page widget when clicked. A few side by side work as tabs." },
+            zh: { title: "选项卡按钮", description: "点击时让页面控件显示指定的页面，几个并排即可当作选项卡" },
+            ja: { title: "タブボタン", description: "クリックでページウィジェットに指定したページを表示し、いくつか並べるとタブになる" },
+        },
+        // The Page widget is named on an Element node rather than being the owner, so the tabs stay
+        // separate widgets beside the one they switch, each with its own page picked.
+        graph: () => lines(
+            "    click: blueprint.event.head.mouseClick @0,0",
+            "    frame: blueprint.element.ref @0,160",
+            "    show: blueprint.element.frame.setTargetPage @260,0",
+            "    click -> show",
+            "    frame.element -> show.element",
+        ),
+        choices: { frame: ["elementId"], show: ["targetSurfaceId"] },
     },
 ];

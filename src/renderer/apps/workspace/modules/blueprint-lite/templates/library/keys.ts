@@ -7,7 +7,6 @@
  * Comments in English per project convention.
  */
 
-import { ArrowLeft, Camera, EyeOff, Maximize, PanelsTopLeft, TimerReset } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines } from "./templateText";
 
@@ -20,10 +19,12 @@ import { lines } from "./templateText";
  * asked of the page the player is looking at, which is whose host the game's blueprint runs on -
  * keeps it off a menu opened over the story: H pressed in the settings would otherwise hide the
  * dialogue box behind them, and the player would come back to a story with no box until they clicked.
+ *
+ * `head` is the key head's type and fields: one key, or any key for a layer that reads which.
  */
-function storyOnScreenGate(key: string): string {
+function storyOnScreenGate(head: string): string {
     return lines(
-        `    key: blueprint.event.head.keyDown key=${key} @0,0`,
+        `    key: ${head} @0,0`,
         "    playing: blueprint.game.isInGame @0,160",
         "    overlay: blueprint.game.isGameOverlay @0,300",
         "    uncovered: blueprint.boolean.not @260,300",
@@ -42,7 +43,6 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "escapeBack",
         category: "keys",
         owners: ["surfaceMain"],
-        icon: ArrowLeft,
         featured: 4,
         text: {
             en: { title: "Back on Escape", description: "Escape closes this page and returns to the page beneath it." },
@@ -59,7 +59,6 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "escapeMenu",
         category: "keys",
         owners: ["surfaceMain"],
-        icon: PanelsTopLeft,
         text: {
             en: { title: "Menu on Escape", description: "Escape opens a page on top of this one." },
             zh: { title: "Esc 打开菜单", description: "按 Esc 在当前页面上叠加一个页面" },
@@ -78,7 +77,6 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "fullscreenKey",
         category: "keys",
         owners: ["globalMain"],
-        icon: Maximize,
         featured: 2,
         text: {
             en: { title: "Fullscreen key", description: "F11 turns fullscreen on and off." },
@@ -95,7 +93,6 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "screenshotKey",
         category: "keys",
         owners: ["globalMain"],
-        icon: Camera,
         featured: 3,
         text: {
             en: { title: "Screenshot key", description: "S saves a screenshot." },
@@ -112,14 +109,13 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "autoForwardKey",
         category: "keys",
         owners: ["globalMain"],
-        icon: TimerReset,
         text: {
             en: { title: "Auto forward key", description: "A turns auto forward on and off while the story is on screen." },
             zh: { title: "自动前进快捷键", description: "剧情画面中按 A 开启或关闭自动前进" },
             ja: { title: "自動送りキー", description: "ストーリー画面で A を押すと自動送りを切り替える" },
         },
         graph: () => lines(
-            storyOnScreenGate("A"),
+            storyOnScreenGate("blueprint.event.head.keyDown key=A"),
             "    current: blueprint.game.getAutoForward @780,160",
             "    flip: blueprint.boolean.not @1040,160",
             "    set: blueprint.game.setAutoForward @1040,0",
@@ -132,16 +128,56 @@ export const KEY_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "hideDialogKey",
         category: "keys",
         owners: ["globalMain"],
-        icon: EyeOff,
         text: {
             en: { title: "Hide dialog key", description: "H hides and shows the dialog box while the story is on screen." },
             zh: { title: "隐藏对话框快捷键", description: "剧情画面中按 H 隐藏或显示对话框" },
             ja: { title: "ダイアログ非表示キー", description: "ストーリー画面で H を押すとダイアログの表示を切り替える" },
         },
         graph: () => lines(
-            storyOnScreenGate("H"),
+            storyOnScreenGate("blueprint.event.head.keyDown key=H"),
             "    toggle: blueprint.game.toggleDialogDisplay @780,0",
             "    gate.true -> toggle",
+        ),
+    },
+    {
+        id: "numberKeyChoices",
+        category: "keys",
+        owners: ["globalMain"],
+        text: {
+            en: { title: "Number keys pick choices", description: "1 to 9 pick the first to the ninth choice while choices are on screen." },
+            zh: { title: "数字键选择选项", description: "出现选项时，按 1 到 9 选择第一到第九个选项" },
+            ja: { title: "数字キーで選択肢を選ぶ", description: "選択肢が表示されているとき、1 から 9 で一番目から九番目の選択肢を選ぶ" },
+        },
+        // Any Key Down rather than nine key heads, reading the key as a number: a letter reads as no
+        // number and fails both comparisons, and so does a digit past the last choice, which is also
+        // what keeps every key away from the story while no choice is showing - the count is zero.
+        // The index is held in a Memo because three nodes read it, and a node's own output feeds one.
+        graph: () => lines(
+            storyOnScreenGate("blueprint.event.head.anyKeyDown"),
+            "    number: blueprint.data.parseInt @260,460",
+            "    index: blueprint.math.decrement @520,460",
+            "    keep: blueprint.data.memo @780,0",
+            "    count: blueprint.game.getChoiceCount @780,340",
+            "    fromFirst: blueprint.compare.greaterThanOrEqual @1040,200",
+            "        b = 0",
+            "    toLast: blueprint.compare.lessThan @1040,340",
+            "    inRange: blueprint.boolean.and @1300,200",
+            "    exists: if @1300,0",
+            "    whole: blueprint.data.toInteger @1300,460",
+            "    choose: blueprint.game.choose @1560,0",
+            "    gate.true -> keep -> exists",
+            "    key.key -> number.value",
+            "    number.result -> index.value",
+            "    index.result -> keep.value",
+            "    keep.result -> fromFirst.a",
+            "    keep.result -> toLast.a",
+            "    count.count -> toLast.b",
+            "    fromFirst.result -> inRange.a",
+            "    toLast.result -> inRange.b",
+            "    inRange.result -> exists.condition",
+            "    exists.true -> choose",
+            "    keep.result -> whole.value",
+            "    whole.result -> choose.index",
         ),
     },
 ];

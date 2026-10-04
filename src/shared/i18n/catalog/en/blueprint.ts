@@ -359,6 +359,7 @@ export const blueprint = {
             keys: "Keys",
             window: "Window",
             display: "Display",
+            conditions: "Conditions",
         },
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.

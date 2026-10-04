@@ -322,6 +322,7 @@ export const blueprint = {
             keys: "キー操作",
             window: "ウィンドウ",
             display: "表示",
+            conditions: "表示条件",
         },
     },
     // ブループリントがぶら下がっている先の名前。ノードがどこにあるかを言う検索結果で使う。
