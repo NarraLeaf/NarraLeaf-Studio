@@ -77,9 +77,9 @@ describe("withoutUITextSamples", () => {
     it("never lets sample words reach the package, from either element table", () => {
         const document = documentOf(
             [
-                element("nametag", "nl.text", { text: "SAMPLE-NAME", rich: [{ text: "SAMPLE-NAME" }], localizable: true }, BOUND),
+                element("nametag", "nl.text", { text: "SAMPLE-NAME", rich: [{ text: "SAMPLE-NAME" }] }, BOUND),
                 element("speaker", "nl.text", { text: "SAMPLE-ROW" }, { text: { kind: "listItemField", fieldId: "speaker" } }),
-                element("title", "nl.text", { text: "Your Game", localizable: true }),
+                element("title", "nl.text", { text: "Your Game" }),
                 element("log", "nl.text", { text: "Log: " }),
             ],
             [element("place", "nl.text", { text: "SAMPLE-PLACE", fontSize: 20 })],

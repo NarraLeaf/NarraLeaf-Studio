@@ -22,7 +22,7 @@ const TEXT_BINDING = { text: { kind: "blueprintValue", blueprintId: "bp", valueT
 describe("buttonLabelSourceOf", () => {
     it("reads a button with its own label as literal, translated through its own unit or not", () => {
         expect(buttonLabelSourceOf(button({}), true)).toBe("literal");
-        expect(buttonLabelSourceOf(button({ localizable: true }), true)).toBe("literal");
+        expect(buttonLabelSourceOf(button({}), true)).toBe("literal");
         expect(buttonLabelSourceOf(button({}, TEXT_BINDING), true)).toBe("literal");
     });
 

@@ -248,7 +248,6 @@ export function TextRenderer({
         site: TEXT_SITE,
         elementId: element.id,
         sourceText: p.text,
-        localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
     });
 

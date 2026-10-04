@@ -284,7 +284,6 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         site: BUTTON_SITE,
         elementId: element.id,
         sourceText: p.label,
-        localizable: p.localizable,
         localizationKey: p.localizationKey,
     });
     const showLabel = displayLabel.trim().length > 0;

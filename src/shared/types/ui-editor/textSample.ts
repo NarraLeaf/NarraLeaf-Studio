@@ -34,9 +34,9 @@ export type UITextSampleCause = "blueprintValue" | "listItemField" | "written";
 /**
  * Why an element's words on a site are sample text, or null when they are what a player reads.
  *
- * A translation key wins over all three, as it does in the game: the element's own words under a key
- * are the key's stored copy, which the game falls back to when the key cannot be read. A writer that
- * only appends keeps the element's own words - they are the start of what the game shows.
+ * A translation key wins over all three, as it does in the game: a keyed element holds no words of
+ * its own, so there is nothing to call sample. A writer that only appends keeps the element's own
+ * words - they are the start of what the game shows.
  *
  * `writers` are the element's own (`UITextWriterIndex.get(element.id)`).
  */
@@ -67,23 +67,19 @@ export function uiTextSampleCauseOf(
 }
 
 /**
- * An element's props with its sample words taken out: the words emptied, and the marks and the switch
- * that would translate them dropped. Null when there is nothing to take out.
+ * An element's props with its sample words taken out: the words emptied, and the marks on them
+ * dropped. Null when there is nothing to take out.
  */
 function strippedProps(element: UIElement, site: UITextSite): Record<string, unknown> | null {
     const props = (element.props ?? {}) as Record<string, unknown>;
     const holdsWords = typeof props[site.textProp] === "string" && props[site.textProp] !== "";
     const holdsMarks = site.marksProp !== undefined && props[site.marksProp] !== undefined;
-    const holdsUnit = site.unitProp !== undefined && props[site.unitProp] !== undefined;
-    if (!holdsWords && !holdsMarks && !holdsUnit) {
+    if (!holdsWords && !holdsMarks) {
         return null;
     }
     const next: Record<string, unknown> = { ...props, [site.textProp]: "" };
     if (site.marksProp) {
         delete next[site.marksProp];
-    }
-    if (site.unitProp) {
-        delete next[site.unitProp];
     }
     return next;
 }
@@ -99,9 +95,10 @@ export type UITextSampleStrip = {
  * The interface document a package carries: every element's sample words emptied.
  *
  * Emptied rather than deleted, because a widget reads a missing prop as its default words. The marks
- * go with the words they mark, and the switch that translated them goes too, so no translation of
- * words nobody reads can take the place of what the binding or the blueprint shows. Both element
- * tables are read - the document's and every component definition's.
+ * go with the words they mark, and the translations of those words stay behind with them
+ * (`withoutUITextSampleUnits`), so no translation of words nobody reads can take the place of what the
+ * binding or the blueprint shows. Both element tables are read - the document's and every component
+ * definition's.
  *
  * Returns the input unchanged (same object) when nothing in it is sample text.
  */
@@ -146,9 +143,9 @@ export function withoutUITextSamples(document: UIDocument, writers: UITextWriter
 /**
  * A localization payload without the translations of sample words.
  *
- * A language file keeps a unit after the words it translated stopped being shown - an element opted
- * in, translated, then bound or written over. The element no longer reads its unit, and the
- * translation of words nobody reads has no place in the package either.
+ * A language file keeps a unit after the words it translated stopped being shown - an element's words
+ * translated, then bound or written over. The element no longer reads its unit, and the translation
+ * of words nobody reads has no place in the package either.
  */
 export function withoutUITextSampleUnits(
     localization: GameLocalizationBundle | undefined,

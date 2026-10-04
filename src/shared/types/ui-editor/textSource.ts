@@ -2,9 +2,11 @@
  * Where a site's words come from, and what they resolve to - the one implementation every reader of
  * interface text goes through (the table itself is `textSites.ts`).
  *
- * The order is the game's: a translation key wins over everything the element carries, the
- * element's own unit translates its own words, and otherwise the element shows the words it was
- * handed - which a value binding or a runtime write may already have replaced before they got here.
+ * The order is the game's: a translation key wins over everything the element carries, and otherwise
+ * the element's own unit translates its own words. A site has one source of words and stores only
+ * that one: a keyed element holds no words of its own, and an element's own words are translated
+ * whenever the project has a second language - nothing opts them in (see `textSourceMigration.ts`
+ * for the v13 step that removed the switch that used to).
  *
  * Pure: no service, no React. The game's hook (`useLocalizedWidgetText`) and the canvas hand it the
  * locale and the registry they hold; lint, the localization panel and the CLIs read the stored half.
@@ -53,8 +55,6 @@ export type UITextSiteReading = {
     text: string;
     /** The translation key it names, trimmed ("" when none, or the site takes none). */
     key: string;
-    /** Whether its own words are translated through its own unit. */
-    localizable: boolean;
     /** The value binding on the words' prop, when there is one. */
     binding: UIElementValueBinding | undefined;
 };
@@ -66,7 +66,6 @@ export function readUITextSite(element: UIElement, site: UITextSite): UITextSite
     return {
         text: typeof text === "string" ? text : "",
         key: typeof key === "string" ? key.trim() : "",
-        localizable: site.unitProp !== undefined && props[site.unitProp] === true,
         binding: element.valueBindings?.[site.textProp],
     };
 }
@@ -74,7 +73,7 @@ export function readUITextSite(element: UIElement, site: UITextSite): UITextSite
 /**
  * Where an element's words come from, as its inspector offers the choice.
  *
- * - `literal`: the element's own words (translated through its own unit when it opted in).
+ * - `literal`: the element's own words, translated through its own unit.
  * - `key`: a named translation key; the game shows the key's text and never the element's own.
  * - `blueprint`: a value blueprint writes the words.
  */
@@ -105,12 +104,24 @@ export function uiTextSourceOf(element: UIElement, site: UITextSite, keysApply: 
 }
 
 /**
+ * Whether words are prose at all: one letter, in any script.
+ *
+ * Words without one - "", "1,250", "100%", "12:30", "→" - read the same in every language. They are
+ * not offered for translation and nothing reports them untranslated; a translation they already carry
+ * is still read.
+ */
+export function uiTextHasWords(text: string): boolean {
+    return /\p{L}/u.test(text);
+}
+
+/**
  * The translation unit an element's words are read through at run time, when they have one.
  *
  * `key` is a named key (`key:<name>`), whose source words live in the key registry rather than on
  * the element; `implicit` is the element's own unit (`ui:<elementId>.<prop>`), whose source words are
- * the ones the author typed. The key wins over the opt-in, as it does in the game; an opted-in
- * element with no words has no unit, because there is nothing to translate.
+ * the ones the author typed. Every element's own words have one, unless they have no letter in them
+ * (`uiTextHasWords`). Whether the words are sample text - which have no unit either - is the
+ * caller's question to ask, of `uiTextSampleCauseOf`, because it needs the blueprint document.
  */
 export type UITextUnitBinding =
     | { kind: "key"; keyName: string }
@@ -121,7 +132,7 @@ export function uiTextUnitBindingOf(element: UIElement, site: UITextSite): UITex
     if (reading.key) {
         return { kind: "key", keyName: reading.key };
     }
-    if (reading.localizable && reading.text.trim()) {
+    if (site.role === "words" && uiTextHasWords(reading.text)) {
         return { kind: "implicit", unitId: uiTextUnitId(element.id, site.textProp), sourceText: reading.text };
     }
     return null;
@@ -133,7 +144,6 @@ export type UITextWordsInput = {
     elementId: string;
     /** The words the element was handed - its own, or what a binding or a runtime write put there. */
     sourceText: string;
-    localizable?: boolean;
     localizationKey?: string;
 };
 
@@ -152,9 +162,9 @@ export type UITextWordsHost =
  * The words a site shows.
  *
  * In a game: the key's translation, then the key's source text, then the words handed in; without a
- * key, the element's own unit when it opted in, then the words handed in. On the canvas: a site that
- * draws its key shows the key's source text, and every other case shows the words handed in. A key
- * the registry does not hold falls back to the words handed in, in both.
+ * key, the element's own unit, then the words handed in. On the canvas: a site that draws its key
+ * shows the key's source text, and every other case shows the words handed in. A key the registry
+ * does not hold falls back to the words handed in, in both.
  */
 export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHost): string {
     const keyName = input.localizationKey?.trim();
@@ -167,9 +177,6 @@ export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHos
         return resolveLocalizedUnitText(host.bundle, host.locale, localizationKeyUnitId(keyName))
             ?? host.bundle.keys?.[keyName]
             ?? input.sourceText;
-    }
-    if (!input.localizable) {
-        return input.sourceText;
     }
     return resolveLocalizedUnitText(host.bundle, host.locale, uiTextUnitId(input.elementId, input.site.textProp))
         ?? input.sourceText;

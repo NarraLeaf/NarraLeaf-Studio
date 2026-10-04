@@ -101,16 +101,18 @@ function markedLabelNote(stringProp: string): string {
         + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
 }
 
-/** A translation key replaces a widget's own words - in the game and on the canvas alike. */
+/**
+ * Where a widget's words come from: one source, stored once. A translation key replaces the words -
+ * in the game and on the canvas alike - and a keyed widget holds none of its own; without a key the
+ * widget's own words are shown and translated through its own unit.
+ */
 function keyedWordsNote(widget: string, site: UITextSite, keyProp: string): string {
     const stringProp = site.textProp;
     return `A ${widget} with \`${keyProp}\` is read from that translation key - in the game, and on the `
-        + `canvas in the project's source language - and its own \`${stringProp}\` is not shown at all. Its `
-        + "words are the key's source text in `editor/localization/keys.json`; writing "
-        + `\`${stringProp}\` changes nothing a player sees.`
-        + (site.unitProp
-            ? ` Without the key, \`${site.unitProp} = true\` translates \`${stringProp}\` through the element's own unit.`
-            : "");
+        + `canvas - and holds no \`${stringProp}\` of its own. Its words are the key's source text in `
+        + "`editor/localization/keys.json`, translated as the key; `show` prints them as a comment. "
+        + `Without the key, the ${widget}'s own \`${stringProp}\` is shown, and translated through the `
+        + `element's own unit (\`ui:<elementId>.${stringProp}\`) whenever the project has a second language.`;
 }
 
 /** What a widget is called in a note about its words. */

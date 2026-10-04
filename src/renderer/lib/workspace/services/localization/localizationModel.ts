@@ -202,7 +202,7 @@ export function extractSceneTranslationRows(document: StoryDocument): SceneTrans
         }));
 }
 
-/** One localizable UI widget text (implicit unit `ui:<elementId>.<prop>`). */
+/** One widget's own words on an interface (implicit unit `ui:<elementId>.<prop>`). */
 export type UiTranslationRow = {
     unitId: string;
     elementId: string;
@@ -216,8 +216,8 @@ export type UiTranslationRow = {
 
 /**
  * The words an element translates through its own unit, when it does - the site's prop, read the way
- * the game reads it (`uiTextUnitBindingOf`). A named key translates through the key registry
- * instead, and its row is the key's; a site with no unit switch has no unit at all.
+ * the game reads it (`uiTextUnitBindingOf`): every element's own words with a letter in them. A named
+ * key translates through the key registry instead, and its row is the key's.
  *
  * Sample words have no row (`textSample.ts`): a value binding or a blueprint decides what the game
  * shows there, and a package carries neither the sample words nor a translation of them.
@@ -237,14 +237,14 @@ function getLocalizableWidgetText(
     return binding?.kind === "implicit" ? { prop: site.textProp, sourceText: binding.sourceText } : null;
 }
 
-/** Stable unit id for a widget's localizable text prop - the runtime resolver's (`uiTextUnitId`). */
+/** Stable unit id for a widget's own words - the runtime resolver's (`uiTextUnitId`). */
 export function uiTranslationUnitId(elementId: string, prop: string): string {
     return uiTextUnitId(elementId, prop);
 }
 
 /**
- * Collect every opted-in UI widget text: top-level elements grouped by their
- * page, component-definition elements grouped by their component's name.
+ * Collect every widget's own words: top-level elements grouped by their page,
+ * component-definition elements grouped by their component's name.
  *
  * `writers` are the project's writers of interface words (`indexUITextWriters`), which decide whose
  * words are sample text. Required, so no caller can leave the words a blueprint writes over in the

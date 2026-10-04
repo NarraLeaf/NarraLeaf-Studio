@@ -1398,10 +1398,10 @@ describe("bundleAssembler sample text", () => {
                 surfaces: [],
                 elements: {
                     // A value blueprint answers the name tag; its own words are a sample.
-                    nametag: text("nametag", { text: "SAMPLE-NAMETAG", localizable: true }, {
+                    nametag: text("nametag", { text: "SAMPLE-NAMETAG" }, {
                         valueBindings: { text: { kind: "blueprintValue", blueprintId: "bp-value", valueType: "string" } },
                     }),
-                    title: text("title", { text: "Your Game", localizable: true }),
+                    title: text("title", { text: "Your Game" }),
                 },
                 components: [{
                     id: "slot",
@@ -1479,7 +1479,7 @@ describe("bundleAssembler sample text", () => {
         expect(bundle.ui.uidoc.components?.[0].elements.place.props).toEqual({ text: "" });
         // The binding and the write are untouched: they are what the game shows there.
         expect(bundle.ui.uidoc.elements.nametag.valueBindings?.text).toMatchObject({ kind: "blueprintValue" });
-        expect(bundle.ui.uidoc.elements.title.props).toEqual({ text: "Your Game", localizable: true });
+        expect(bundle.ui.uidoc.elements.title.props).toEqual({ text: "Your Game" });
         expect(bundle.localization?.tables["zh-CN"]).toEqual({ "ui:title.text": "你的游戏" });
     });
 });

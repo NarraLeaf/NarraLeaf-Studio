@@ -296,13 +296,6 @@ export const lint = {
             messageUnloadedNode: "\"{pin}\" on \"{node}\" receives an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
             messageUnloadedNodeBinding: "\"{prop}\" on \"{element}\" is bound to an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
         },
-        uiUnlocalizedText: {
-            title: "Unlocalized text",
-            description: "Text written straight onto a widget in a project that has a second language",
-            // The literal, because the locator names the page and the widget but nothing can carry
-            // the words themselves - and on a page of forty labels they are what tells them apart.
-            message: "{text} is not bound to a localization key",
-        },
         uiPageUnreachable: {
             title: "Unreachable page",
             description: "A page nothing opens, embeds, or starts on",

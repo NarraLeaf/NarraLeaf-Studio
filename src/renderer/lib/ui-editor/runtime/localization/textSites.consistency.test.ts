@@ -8,8 +8,7 @@ import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-e
 import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
 import { keepWordsOnWidgets } from "@/apps/workspace/modules/ui-editor/panel/templates/starterTitlePage";
-import { createTestLintContext } from "@/lib/lint/testContext";
-import { listInterfaceTextUnitSites, listSurfaceTextSites, UI_LINT_RULES } from "@/lib/lint/rules/ui";
+import { listInterfaceTextUnitSites, listSurfaceTextSites } from "@/lib/lint/rules/ui";
 import { describeWidget } from "@/lib/ui-cli/catalog";
 import {
     listBindableValueTargets,
@@ -70,7 +69,7 @@ function probeKey(keyProp: string): string {
     return `probe.${keyProp}`;
 }
 
-type ProbeShape = { keys: boolean; localizable: boolean };
+type ProbeShape = { keys: boolean };
 
 function probeElement(type: string, index: number, shape: ProbeShape): UIElement {
     const props: Record<string, unknown> = {};
@@ -81,9 +80,6 @@ function probeElement(type: string, index: number, shape: ProbeShape): UIElement
         for (const keyProp of CANDIDATE_KEY_PROPS) {
             props[keyProp] = probeKey(keyProp);
         }
-    }
-    if (shape.localizable) {
-        props.localizable = true;
     }
     return {
         id: `probe-${index}`,
@@ -111,9 +107,8 @@ function probeDocument(shape: ProbeShape): UIDocument {
     } as unknown as UIDocument;
 }
 
-const PLAIN = probeDocument({ keys: false, localizable: false });
-const KEYED = probeDocument({ keys: true, localizable: false });
-const OPTED_IN = probeDocument({ keys: false, localizable: true });
+const PLAIN = probeDocument({ keys: false });
+const KEYED = probeDocument({ keys: true });
 
 function typeOf(document: UIDocument, elementId: string): string {
     return document.elements[elementId]?.type ?? "?";
@@ -156,35 +151,18 @@ describe("interface text sites", () => {
         expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" ? site.keyProp : undefined)));
     });
 
-    it("lint reads an element's own unit only where the table gives the site one", () => {
-        const found = listInterfaceTextUnitSites(OPTED_IN, EMPTY_UI_TEXT_WRITER_INDEX).map(site =>
+    it("lint reads an element's own words through its own unit on exactly the sites a player reads", () => {
+        const found = listInterfaceTextUnitSites(PLAIN, EMPTY_UI_TEXT_WRITER_INDEX).map(site =>
             site.binding.kind === "implicit"
                 ? `${site.element.type}.${site.binding.unitId.split(".").pop()}`
                 : `${site.element.type}.(not a unit)`,
         );
-        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" && site.unitProp ? site.textProp : undefined)));
-    });
-
-    it("ui/unlocalized-text reports exactly the sites a player reads", async () => {
-        const unlocalized = UI_LINT_RULES.find(rule => rule.id === "ui/unlocalized-text");
-        const findings = await unlocalized!.run(
-            createTestLintContext({
-                uiDocument: PLAIN,
-                localization: { sourceLocale: "en", targetLocales: ["zh"], documents: new Map() },
-            }),
-            {},
-        );
-        const found = findings.map(finding => {
-            const location = finding.location as { elementId?: string };
-            const literal = String(finding.messageParams?.text ?? "");
-            return `${typeOf(PLAIN, location.elementId ?? "")}.${literal.slice("Probe words in ".length)}`;
-        });
         expect(sorted(found)).toEqual(expectedSites(words));
     });
 
-    it("the localization panel lists an element's own unit only where the table gives the site one", () => {
-        const found = extractUiTranslationRows(OPTED_IN, EMPTY_UI_TEXT_WRITER_INDEX).map(row => `${typeOf(OPTED_IN, row.elementId)}.${row.prop}`);
-        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" && site.unitProp ? site.textProp : undefined)));
+    it("the localization panel lists an element's own words on exactly the sites a player reads", () => {
+        const found = extractUiTranslationRows(PLAIN, EMPTY_UI_TEXT_WRITER_INDEX).map(row => `${typeOf(PLAIN, row.elementId)}.${row.prop}`);
+        expect(sorted(found)).toEqual(expectedSites(words));
     });
 
     it("the page a template hands a project drops exactly the table's key props", () => {
@@ -202,7 +180,7 @@ describe("interface text sites", () => {
     });
 
     it("the canvas types in place exactly where the table says", () => {
-        const found = WIDGET_TYPES.filter(type => isInlineTextEditableElement(probeElement(type, 0, { keys: false, localizable: false })));
+        const found = WIDGET_TYPES.filter(type => isInlineTextEditableElement(probeElement(type, 0, { keys: false })));
         expect(sorted(found.map(type => `${type}.${uiTextSiteOf(type)?.textProp}`))).toEqual(
             expectedSites(site => (site.typedOnCanvas ? site.textProp : undefined)),
         );
@@ -216,7 +194,7 @@ describe("interface text sites", () => {
         const item = Object.fromEntries(CANDIDATE_TEXT_PROPS.map(prop => [prop, `Bound ${prop}`]));
         const found: string[] = [];
         WIDGET_TYPES.forEach((type, index) => {
-            const element = probeElement(type, index, { keys: false, localizable: false });
+            const element = probeElement(type, index, { keys: false });
             element.valueBindings = Object.fromEntries(
                 CANDIDATE_TEXT_PROPS.map(prop => [prop, { kind: "listItemField" as const, fieldId: `f-${prop}` }]),
             );

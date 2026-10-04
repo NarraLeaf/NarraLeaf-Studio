@@ -193,11 +193,9 @@ export const widgets = {
         sectionColor: "色",
         sectionBehavior: "ふるまい",
         interactionDisabled: "操作を無効化",
-        localizeLabel: "ラベルをローカライズ",
     },
     text: {
         title: "テキスト",
-        localizeText: "テキストをローカライズ",
     },
     /**
      * ラベルの文字に付く装飾。上のテキストボックスで選んだ文字に対して設定する。ボタンの名前は

@@ -458,9 +458,6 @@ export function keepWordsOnWidgets(elements: Iterable<UIElement>): void {
             continue;
         }
         delete props[site.keyProp];
-        if (site.unitProp) {
-            props[site.unitProp] = true;
-        }
     }
 }
 

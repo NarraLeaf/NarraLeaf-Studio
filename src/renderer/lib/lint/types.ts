@@ -141,7 +141,6 @@ export type LintRuleId =
     | "blueprint/dlc-entrance-unguarded"
     | "blueprint/unknown-node"
     | "blueprint/assembled-asset-name"
-    | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
     | "ui/unknown-widget"

@@ -20,7 +20,7 @@ const FIELD = { text: { kind: "listItemField", fieldId: "name" } } as UIElement[
 describe("textSourceOf", () => {
     it("reads an element with its own words as literal, translated through its own unit or not", () => {
         expect(textSourceOf(text({}), true)).toBe("literal");
-        expect(textSourceOf(text({ localizable: true }), true)).toBe("literal");
+        expect(textSourceOf(text({}), true)).toBe("literal");
     });
 
     it("reads an element with both its own words and a key as keyed, which is what the game shows", () => {

@@ -496,6 +496,9 @@ export const help = {
                 + "back. The import reports how many lines it applied, how many were unchanged and how many it "
                 + "could not match.\n"
                 + "- Export and import are in the language row's More menu.\n"
+                + "- Words written directly on an interface widget are translated like a line: each widget's own "
+                + "words have a row in the translation table, except words made only of digits and symbols, and "
+                + "sample text.\n"
                 + "- Changing language during a game restarts it and returns the player to the line they "
                 + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",

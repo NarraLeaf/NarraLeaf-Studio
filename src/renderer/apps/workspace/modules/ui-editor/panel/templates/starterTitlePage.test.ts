@@ -179,7 +179,6 @@ describe.each(LANGUAGES)("the starter title page, in $name", language => {
             const props = (element.props ?? {}) as Record<string, unknown>;
             expect(props.localizationKey).toBeUndefined();
             if (element.type === "nl.button") {
-                expect(props.localizable).toBe(true);
                 expect(String(props.label ?? "").trim()).not.toBe("");
             }
         }

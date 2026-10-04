@@ -20,6 +20,7 @@ import {
 } from "@shared/types/ui-editor/inputAction";
 import {
     readUITextSite,
+    uiTextHasWords,
     uiTextSiteOf,
     uiTextUnitBindingOf,
     uiTextUnitId,
@@ -183,15 +184,14 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// ui/unlocalized-text
+// Interface words and their translation units
 // ---------------------------------------------------------------------------
 
 /**
  * The site of an element's words a player reads, when it has one - read from the shared table
  * (`textSites.ts`), the one `useLocalizedWidgetText` resolves at run time. That is what makes the
  * answers here checkable: a prop the table did not list would be translated by the runtime and
- * reported as unlocalized here, and a prop it listed by mistake would be reported while nothing can
- * translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
+ * missed here, and a prop it listed by mistake would be reported while nothing can translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
  * replaces with the story's, so no player reads them and nothing here looks at them.
  */
 function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
@@ -264,9 +264,9 @@ export type InterfaceTextUnitSite = {
  * Every widget on a page or in a component definition that reads its words through a translation
  * unit, in the order the pages and then the definitions are listed.
  *
- * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins over the opt-in, and
- * the opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
- * the localization panel leaves it out - there is no row for it to be translated in. Component
+ * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins, and otherwise the
+ * widget's own words are read through its own unit. Words with no letter in them are left out, as the
+ * localization panel leaves them out - they read the same in every language and have no row. Component
  * definitions are walked once each, under the definition, for the reason the Page widget rules give;
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
  *
@@ -303,94 +303,11 @@ export function listInterfaceTextUnitSites(document: UIDocument, writers: UIText
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;
 
-/**
- * Whether a literal is prose at all.
- *
- * One letter, in any script, is the test - which covers the three exclusions this rule owes
- * ("", "1,250", "…") with one predicate rather than three that would each miss the combinations of
- * the others ("100%", "12:30", "→"). A label with no letter in it reads the same in every language,
- * and reporting one is how a rule teaches an author that its findings are not worth reading.
- */
-function hasTranslatableWord(text: string): boolean {
-    return /\p{L}/u.test(text);
-}
-
 export function clipLiteral(text: string): string {
     const flattened = text.replace(/\s+/g, " ").trim();
     return flattened.length > TEXT_EXCERPT_MAX_CHARS
         ? `${flattened.slice(0, TEXT_EXCERPT_MAX_CHARS - 1)}…`
         : flattened;
-}
-
-/**
- * A literal on a page that no locale can ever change.
- *
- * **Silent until the project has a second language.** In a single-language project writing the words
- * straight onto the button is not a defect, it is the whole point of a text field, so a rule that
- * fired there would open with one finding per label on a project that has nothing wrong with it -
- * and the author's only move would be to switch the rule off for good, taking the day they add a
- * locale with them. `localization` is `null` until the project configures one, and a target list
- * holding only the source locale is not a second language either.
- *
- * A widget that opted in through `localizable` is bound just as firmly as one naming a key: the
- * implicit unit `ui:<elementId>.<prop>` is a row in every target locale's document. Both are
- * "translatable"; neither is reported.
- *
- * **Nor is a prop whose words come from a value binding** - a list row's field or a value blueprint.
- * The binding writes the prop before the widget draws it, so the literal is a placeholder no player
- * reads (the inspector hides it for a row field for that reason), and the words that do arrive are
- * translated where they come from: a backlog row's line is a story line, a choice row's text a
- * choice. Following this rule's advice there would break the widget, not translate it: a key or the
- * implicit unit is resolved after the binding has written the prop, so it replaces the bound words
- * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
- * no list draws the element, or the list no longer declares the field - leaves the literal on
- * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
- *
- * **Nor is a widget a blueprint writes over** (`Set Text`, `Set Label`, `Clear Text`): its literal is
- * sample text, which no package carries (`textSample.ts`), and the words the game shows are the ones
- * the blueprint writes.
- */
-function runUnlocalizedText(ctx: LintContext): LintFinding[] {
-    const document = ctx.uiDocument;
-    const localization = ctx.localization;
-    if (!document || !localization) {
-        return [];
-    }
-    const secondLanguages = localization.targetLocales.filter(
-        locale => locale && locale !== localization.sourceLocale,
-    );
-    if (secondLanguages.length === 0) {
-        return [];
-    }
-    const findings: LintFinding[] = [];
-    const writers = indexUITextWriters(ctx.blueprintDocument);
-    for (const { surface, element } of listSurfaceElements(document)) {
-        const site = playerWordsSiteOf(element);
-        if (!site || getUIComponentLink(element)) {
-            continue;
-        }
-        const reading = readUITextSite(element, site);
-        if (!hasTranslatableWord(reading.text)) {
-            continue;
-        }
-        if (reading.key || reading.localizable || reading.binding !== undefined) {
-            continue;
-        }
-        if (uiTextSampleCauseOf(element, site, writers.get(element.id))) {
-            continue;
-        }
-        const text = reading.text;
-        findings.push({
-            ruleId: "ui/unlocalized-text",
-            messageKey: "lint.rule.uiUnlocalizedText.message",
-            // The literal itself, because nothing in the location can carry it and it is the only
-            // thing that tells forty findings on one page apart.
-            messageParams: { text: clipLiteral(text) },
-            location: surfaceLocation(surface, element),
-            target: surfaceTarget(surface),
-        });
-    }
-    return findings;
 }
 
 // ---------------------------------------------------------------------------
@@ -983,7 +900,7 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
         }
         for (const key of shownKeys) {
             const value = (item as Record<string, unknown>)[key];
-            if (typeof value === "string" && hasTranslatableWord(value)) {
+            if (typeof value === "string" && uiTextHasWords(value)) {
                 return value;
             }
         }
@@ -999,7 +916,8 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
  * list, with the first such word, at info severity - the words are shown as written, which is what
  * the author wrote; what the note adds is that no locale changes them.
  *
- * Silent until the project has a second language, for the reason `ui/unlocalized-text` is. A list
+ * Silent until the project has a second language: in a single-language project words written as
+ * they are shown are the whole point of the list, and nothing there is missing a translation. A list
  * fed by the engine in its stage slot (the choice, notification and NVL lists), bound to a data
  * source, or named by any graph is left out: its written content is a layout placeholder there.
  */
@@ -1186,13 +1104,6 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
 }
 
 export const UI_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "ui/unlocalized-text",
-        category: "ui",
-        defaultSeverity: "warning",
-        slug: "uiUnlocalizedText",
-        run: ctx => runUnlocalizedText(ctx),
-    },
     {
         id: "ui/page-unreachable",
         category: "ui",

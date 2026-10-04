@@ -8,11 +8,11 @@
 // only thing that differs is the words.
 //
 // Two sources of words per variant, and neither is invented here:
-//   - the story, the character names, the named keys and any widget text that opted into its own
-//     translation unit come from the template's OWN translation file for that language
-//     (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
-//   - everything the localization system never covered - button labels, screen text, confirm
-//     dialogs, element and blueprint names - comes from that variant's table beside this script.
+//   - the story, the character names, the named keys and the widget words the template carries a
+//     translation of (their own unit) come from the template's OWN translation file for that
+//     language (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
+//   - everything else - the sample words a canvas shows, confirm dialogs, element and blueprint
+//     names - comes from that variant's table beside this script.
 //
 // The English text becomes `editor/localization/en.json`, so a project made in Chinese ships an
 // English translation exactly as one made in English ships a Chinese one, and the other languages'
@@ -78,9 +78,9 @@ const RETURN = "return";
 const AMBIGUOUS = "ambiguous";
 
 /**
- * Where each widget keeps the words a player reads, which prop names their translation key, and
- * whether its own words have a translation unit (`ui:<elementId>.<prop>`) - the shared table the
- * game, the localization panel and lint all read (`src/shared/types/ui-editor/textSites.ts`).
+ * Where each widget keeps the words a player reads, and which prop names their translation key - the
+ * shared table the game, the localization panel and lint all read
+ * (`src/shared/types/ui-editor/textSites.ts`).
  *
  * Loaded from the TypeScript source rather than copied here: a copy is how a widget kind ends up
  * translated one way by this script and resolved another way by the game. The table has no imports,
@@ -483,37 +483,35 @@ function buildVariant(locale) {
     const translateElement = element => {
         element.name = say(element.name);
         const props = element.props ?? {};
-        // A widget that opted into its own translation unit (`ui:<elementId>.<prop>`, the inspector's
-        // "Localize text") is translated by the project, like a story line: its words come from that
-        // unit, and the English goes into the English translation file. Through the table instead,
-        // the unit would keep the English as its source and every other language's translation of
-        // it would arrive stale. The prop is the one the runtime resolves for the widget type.
+        // A widget's own words on a site a player reads are translated by the project, like a story
+        // line, whenever the template carries their translation (`ui:<elementId>.<prop>`): their words
+        // come from that unit, and the English goes into the English translation file. Through the
+        // table instead, the unit would keep the English as its source and every other language's
+        // translation of it would arrive stale. The prop is the one the runtime resolves for the
+        // widget type, read from the shared site table.
         //
-        // A named key wins over the unit there, and over the widget's own words: the game shows the
-        // key's text, and so does the canvas for a text widget. The widget's own words are written
-        // as the key's in this language, so nothing reads one thing on the canvas and another in
-        // the game - which is what a separate table entry for the same label produced.
+        // A named key wins over the widget's own words: the game and the canvas show the key's text.
+        // A keyed widget's own words, where a document older than v13 still holds a copy, are
+        // written as the key's in this language, so nothing reads one thing on the canvas and another
+        // in the game.
         const site = TEXT_SITE_BY_WIDGET.get(element.type);
-        const unitProp = site?.unitProp ? site.textProp : undefined;
+        const wordsProp = site?.role === "words" ? site.textProp : undefined;
         const keyName = site?.keyProp && typeof props[site.keyProp] === "string" ? props[site.keyProp].trim() : "";
-        const ownsUnit = unitProp !== undefined
-            && props[site.unitProp] === true
-            && !keyName
-            && typeof props[unitProp] === "string"
-            && props[unitProp].trim() !== "";
-        for (const key of ["text", "label"]) {
+        for (const key of new Set(["text", "label", ...(wordsProp ? [wordsProp] : [])])) {
             if (typeof props[key] !== "string") {
                 continue;
             }
-            if (ownsUnit && key === unitProp) {
+            if (key === wordsProp) {
+                if (keyName) {
+                    props[key] = unitTarget(`key:${keyName}`);
+                    continue;
+                }
                 const unitId = `ui:${element.id}.${key}`;
-                flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
-                props[key] = unitTarget(unitId);
-                continue;
-            }
-            if (keyName && key === unitProp) {
-                props[key] = unitTarget(`key:${keyName}`);
-                continue;
+                if (translations.units?.[unitId]) {
+                    flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
+                    props[key] = unitTarget(unitId);
+                    continue;
+                }
             }
             props[key] = say(props[key]);
         }

@@ -276,11 +276,6 @@ export const lint = {
             messageUnloadedNode: "“{node}”的“{pin}”收到的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
             messageUnloadedNodeBinding: "“{element}”的“{prop}”绑定的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
         },
-        uiUnlocalizedText: {
-            title: "未本地化的文本",
-            description: "项目已有第二种语言，文本仍直接写在控件上",
-            message: "{text} 未绑定本地化键",
-        },
         uiPageUnreachable: {
             title: "无法到达的页面",
             description: "没有任何位置打开或嵌入该页面，它也不是启动页",

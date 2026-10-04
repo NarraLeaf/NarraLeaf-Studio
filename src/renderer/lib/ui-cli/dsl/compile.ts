@@ -20,6 +20,7 @@ import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/str
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
     CONTRIBUTED_WIDGET_PART_SLOT_KEY,
     getContributedWidgetPartSlots,
@@ -406,7 +407,7 @@ class CompileContext {
             // Where the words come from is stated by props a new widget leaves unset - its key, its
             // own-unit switch, its marks - and the text-site table names them for each widget.
             const site = uiTextSiteOf(node.type);
-            for (const sourceProp of [site?.keyProp, site?.unitProp, site?.marksProp]) {
+            for (const sourceProp of [site?.keyProp, site?.marksProp, site ? LEGACY_UI_TEXT_UNIT_PROP : undefined]) {
                 if (sourceProp) {
                     declared.add(sourceProp);
                 }

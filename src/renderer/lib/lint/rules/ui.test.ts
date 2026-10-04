@@ -23,7 +23,8 @@ import type { LintContext, LintLocalizationContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
-import { UI_LINT_RULES } from "./ui";
+import { listInterfaceTextUnitSites, UI_LINT_RULES } from "./ui";
+import { indexUITextWriters } from "@shared/types/ui-editor/textWriters";
 
 /**
  * The `ui` category.
@@ -96,7 +97,7 @@ function localization(targetLocales: string[]): LintLocalizationContext {
 }
 
 // ---------------------------------------------------------------------------
-// ui/unlocalized-text
+// The words a player reads, and the unit each is translated through
 // ---------------------------------------------------------------------------
 
 /** A text widget carrying `text`, plus whatever binding props the case is about. */
@@ -104,47 +105,31 @@ function textWidget(props: Record<string, unknown>): UIElement {
     return element({ id: "label", type: "nl.text", name: "Greeting", props });
 }
 
-function unlocalizedContext(document: UIDocument, locales = ["zh"]): LintContext {
-    return createTestLintContext({ uiDocument: document, localization: localization(locales) });
+/** The units a document's words are read through, as `unitId` or `key:<name>`. */
+function unitsOf(document: UIDocument, blueprints: BlueprintDocument = NO_GRAPHS): string[] {
+    return listInterfaceTextUnitSites(document, indexUITextWriters(blueprints)).map(site =>
+        site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId,
+    );
 }
 
-describe("ui/unlocalized-text", () => {
-    it("reports a literal on a page of a project that has a second language", async () => {
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(onePage(textWidget({ text: "Start Game" }))));
-
-        expect(findings).toHaveLength(1);
-        expect(findings[0]).toMatchObject({
-            ruleId: "ui/unlocalized-text",
-            messageKey: "lint.rule.uiUnlocalizedText.message",
-            messageParams: { text: "Start Game" },
-            location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, surfaceName: "Main Page", elementName: "Greeting" },
-            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
-        });
+describe("listInterfaceTextUnitSites", () => {
+    it("reads a widget's own words through its own unit, with no switch to opt them in", () => {
+        // Since v13 the element's own words are translated whenever the project has a second
+        // language, as a scene's name or a character's is; there is nothing to forget to turn on.
+        expect(unitsOf(onePage(textWidget({ text: "Start Game" })))).toEqual(["ui:label.text"]);
     });
 
-    it("says nothing in a single-language project", async () => {
-        // The case that decides whether this rule survives contact with a real project: writing the
-        // words on the widget is not a defect until there is a second language to write them in.
-        const document = onePage(textWidget({ text: "Start Game" }));
-
-        expect(await run("ui/unlocalized-text", createTestLintContext({ uiDocument: document }))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(document, []))).toEqual([]);
-        // A "target" list that names only the source locale is not a second language either.
-        expect(await run("ui/unlocalized-text", unlocalizedContext(document, ["en"]))).toEqual([]);
+    it("reads a keyed widget through its key", () => {
+        expect(unitsOf(onePage(textWidget({ localizationKey: "menu.start" })))).toEqual(["key:menu.start"]);
     });
 
-    it("says nothing about text that is bound either way", async () => {
-        const byKey = onePage(textWidget({ text: "Start Game", localizationKey: "menu.start" }));
-        const byImplicitUnit = onePage(textWidget({ text: "Start Game", localizable: true }));
-
-        expect(await run("ui/unlocalized-text", unlocalizedContext(byKey))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(byImplicitUnit))).toEqual([]);
+    it("leaves out words with no letter in them", () => {
+        for (const text of ["", "   ", "1,250", "12:30", "…", "→", "100%"]) {
+            expect(unitsOf(onePage(textWidget({ text }))), `${JSON.stringify(text)} was listed`).toEqual([]);
+        }
     });
 
-    it("says nothing about a placeholder whose words come from a value binding", async () => {
-        // A backlog row's line, a choice row's text, an auto-save row's quote: the binding writes the
-        // prop before the widget draws it, so the literal is never read - and a key or the implicit
-        // unit put there would be resolved after the binding and replace the bound words.
+    it("leaves out sample words: a value binding or a row field decides what the game shows there", () => {
         const rowField = onePage(textWidget({ text: "Speaker" }));
         rowField.elements.label.valueBindings = { text: { kind: "listItemField", fieldId: "character" } };
         const valueBlueprint = onePage(
@@ -154,13 +139,13 @@ describe("ui/unlocalized-text", () => {
             label: { kind: "blueprintValue", blueprintId: "bp-label", valueType: "string" },
         };
 
-        expect(await run("ui/unlocalized-text", unlocalizedContext(rowField))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(valueBlueprint))).toEqual([]);
+        expect(unitsOf(rowField)).toEqual([]);
+        expect(unitsOf(valueBlueprint)).toEqual([]);
     });
 
-    it("says nothing about words a blueprint writes over, and still reports words it only appends to", async () => {
-        // The save slot's place name, written by the slot's own graph: the literal is sample text,
-        // which no package carries. An append keeps the literal on screen as the start of the line.
+    it("leaves out words a blueprint writes over, and keeps words it only appends to", () => {
+        // The save slot's place name, written by the slot's own graph: the words are sample text,
+        // which no package carries. An append keeps them on screen as the start of the line.
         const document = onePage(textWidget({ text: "The corridor" }));
         const writtenBy = (nodeType: string): BlueprintDocument => blueprintDocument({
             [encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID })]: {
@@ -175,52 +160,30 @@ describe("ui/unlocalized-text", () => {
                 edges: [{ from: { nodeId: "ref", port: "element" }, to: { nodeId: "write", port: "element" } }],
             },
         });
-        const context = (nodeType: string) => createTestLintContext({
-            uiDocument: document,
-            localization: localization(["zh"]),
-            blueprintDocument: writtenBy(nodeType),
-        });
 
-        expect(await run("ui/unlocalized-text", context("blueprint.element.text.setText"))).toEqual([]);
-        const appended = await run("ui/unlocalized-text", context("blueprint.element.text.appendText"));
-        expect(appended.map(finding => finding.messageParams?.text)).toEqual(["The corridor"]);
+        expect(unitsOf(document, writtenBy("blueprint.element.text.setText"))).toEqual([]);
+        expect(unitsOf(document, writtenBy("blueprint.element.text.appendText"))).toEqual(["ui:label.text"]);
     });
 
-    it("still reports a literal when only some other prop of the widget is bound", async () => {
+    it("still reads words when only some other prop of the widget is bound", () => {
         // Binding whether a row shows the text is not binding what it says.
         const document = onePage(textWidget({ text: "Locked" }));
         document.elements.label.valueBindings = { "layout.visible": { kind: "listItemField", fieldId: "locked" } };
-
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
-
-        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Locked"]);
+        expect(unitsOf(document)).toEqual(["ui:label.text"]);
     });
 
-    it("says nothing about strings with no words in them", async () => {
-        for (const text of ["", "   ", "1,250", "12:30", "…", "→", "100%"]) {
-            expect(
-                await run("ui/unlocalized-text", unlocalizedContext(onePage(textWidget({ text })))),
-                `${JSON.stringify(text)} was reported`,
-            ).toEqual([]);
-        }
-    });
-
-    it("reads a button's label and a text field's placeholder, each by its own binding prop", async () => {
+    it("reads a button's label and a text field's placeholder, each by its own site", () => {
         const document = onePage(
             element({ id: "start", type: "nl.button", name: "Start", props: { label: "Play" } }),
             element({ id: "name", type: "nl.textInput", name: "Name", props: { placeholder: "Your name" } }),
-            // A text input has no implicit-unit flag on its props, so only its named key binds it.
             element({
                 id: "bound",
                 type: "nl.textInput",
                 name: "Bound",
-                props: { placeholder: "Your name", placeholderLocalizationKey: "form.name" },
+                props: { placeholderLocalizationKey: "form.name" },
             }),
         );
-
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
-
-        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Play", "Your name"]);
+        expect(unitsOf(document)).toEqual(["ui:start.label", "ui:name.placeholder", "key:form.name"]);
     });
 });
 
