@@ -508,9 +508,33 @@ function buildVariant(locale) {
     // --- The interface: names, labels, screen text, the placeholder rows of list previews.
     const uidocPath = "editor/ui/uidoc.json";
     const uidoc = readJson(join(contentDir, uidocPath));
+    // Words a text parameter is given - a placement's value, a definition's default - are a player's
+    // words like a widget's own, translated through their own unit (`ui:<placementId>.param.<paramId>`,
+    // `ui:<componentId>.param.<paramId>`) whenever the template carries it, and through the table
+    // otherwise. A string parameter's value is something a blueprint reads, and stays as it is.
+    const textParamIds = new Map(
+        (uidoc.value.components ?? []).map(component => [
+            component.id,
+            new Set((component.params ?? []).filter(param => param.type === "text").map(param => param.id)),
+        ]),
+    );
+    const translateTextParamWords = (unitId, words) => {
+        if (translations.units?.[unitId]) {
+            flipped.set(unitId, { source: words, translated: unitTarget(unitId) });
+            return unitTarget(unitId);
+        }
+        return say(words);
+    };
     const translateElement = element => {
         element.name = say(element.name);
         const props = element.props ?? {};
+        const link = element.extra?.componentLink;
+        const linkTextParams = link ? textParamIds.get(link.componentId) : undefined;
+        for (const [paramId, value] of Object.entries(link?.params ?? {})) {
+            if (linkTextParams?.has(paramId) && typeof value === "string") {
+                link.params[paramId] = translateTextParamWords(`ui:${element.id}.param.${paramId}`, value);
+            }
+        }
         // A widget's own words on a site a player reads are translated by the project, like a story
         // line, whenever the template carries their translation (`ui:<elementId>.<prop>`): their words
         // come from that unit, and the English goes into the English translation file. Through the
@@ -573,9 +597,13 @@ function buildVariant(locale) {
     for (const component of uidoc.value.components ?? []) {
         component.name = say(component.name);
         // A param's name labels its field in the instance's inspector. Its id is what Get Component
-        // Param names and its default is a value a blueprint reads, so both stay as they are.
+        // Param names and stays as it is, as does a string param's default - a value a blueprint
+        // reads. A text param's default is words a player reads.
         for (const param of component.params ?? []) {
             param.name = say(param.name);
+            if (param.type === "text" && typeof param.defaultValue === "string") {
+                param.defaultValue = translateTextParamWords(`ui:${component.id}.param.${param.id}`, param.defaultValue);
+            }
         }
         for (const element of Object.values(component.elements ?? {})) {
             translateElement(element);

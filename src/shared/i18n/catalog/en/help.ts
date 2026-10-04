@@ -627,7 +627,13 @@ export const help = {
                 + "- The library states how many placements each component has.\n"
                 + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
-                + "unlinked.",
+                + "unlinked.\n"
+                + "- Parameters are declared on the component and set on each placement. A String parameter is "
+                + "read by the component's blueprints with Get Component Param.\n"
+                + "- A Text parameter holds words a player reads. Inside the component, a text or a button picks it "
+                + "under Parameter, and each placement shows its own words on the canvas and in the game, written "
+                + "directly or from a translation key. Words written directly on a placement are translated as that "
+                + "placement's own, one row each in the translation table.",
         },
         blueprints: {
             title: "Blueprints",
@@ -691,6 +697,8 @@ export const help = {
                 + "- Translation Key Text gives a translation key's text in the player's language, and Format fills "
                 + "values into it. When the player changes language, the widget shows the new language.\n"
                 + "- A widget inside a list row can also show one field of that row, chosen under Field.\n"
+                + "- A widget inside a component can show one of the component's Text parameters, chosen under "
+                + "Parameter. Its own words are then sample text, drawn only while the component is edited.\n"
                 + "- Under a Blueprint Value, the widget's own words are sample text. They are drawn in the editor "
                 + "only, are not part of the built game and are not translated.\n"
                 + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
