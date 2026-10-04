@@ -215,6 +215,29 @@ describe("interface text sites", () => {
         expect(sorted(found)).toEqual(expectedSites(site => (site.valueBinding !== "none" ? site.textProp : undefined)));
     });
 
+    it("a component's text parameter shows words exactly where the table takes a binding a player reads", () => {
+        const found: string[] = [];
+        WIDGET_TYPES.forEach((type, index) => {
+            const element = probeElement(type, index, { keys: false });
+            element.valueBindings = Object.fromEntries(
+                CANDIDATE_TEXT_PROPS.map(prop => [prop, { kind: "componentParam" as const, paramId: `p-${prop}` }]),
+            );
+            const texts = Object.fromEntries(CANDIDATE_TEXT_PROPS.map(prop => [
+                `p-${prop}`,
+                { origin: "placement" as const, text: `Given ${prop}`, key: "", unitId: `ui:placement.param.p-${prop}` },
+            ]));
+            const merged = mergeElementWithBlueprintValues(element, MAIN_APP_SURFACE_ID, null, null, "", texts);
+            for (const prop of CANDIDATE_TEXT_PROPS) {
+                if ((merged.props as Record<string, unknown>)[prop] === `Given ${prop}`) {
+                    found.push(`${type}.${prop}`);
+                }
+            }
+        });
+        expect(sorted(found)).toEqual(
+            expectedSites(site => (site.role === "words" && site.valueBinding !== "none" ? site.textProp : undefined)),
+        );
+    });
+
     it("the interface CLI offers to bind words exactly where the table does", () => {
         const found = listBindableValueTargets()
             .filter(target => target.valueType === "string" && CANDIDATE_TEXT_PROPS.includes(target.propPath))

@@ -19,6 +19,7 @@ export const componentBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
         assetNames: "written",
         displayName: "Get Component Param",
+        description: "blueprint.nodeDescription.getComponentParam",
         category: "Component",
         keywords: ["component", "param", "parameter", "instance", "input", "property"],
         graphKinds: ["event", "macro"],

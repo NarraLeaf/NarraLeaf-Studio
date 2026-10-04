@@ -258,6 +258,28 @@ describe("ButtonRenderer marked label", () => {
         expect(container.querySelector("p")!.textContent).toBe("Save 3");
     });
 
+    it("shows a component parameter's words, translated through the placement's unit in a game", () => {
+        const document = createDocument({ label: RUBY_LABEL, rich: RUBY_RUNS });
+        document.elements.button.valueBindings = { label: { kind: "componentParam", paramId: "label" } };
+        const drawn = mergeElementWithBlueprintValues(document.elements.button, SURFACE.id, null, null, "", {
+            label: { origin: "placement", text: "はじめから", key: "", unitId: "ui:p1.param.label" },
+        });
+        const runtime: GameLocalizationRuntime = {
+            bundle: { sourceLocale: "ja", locales: [{ code: "ja" }, { code: "en" }] as never, tables: { en: { "ui:p1.param.label": "New game", "ui:button.label": "Mr Yamada" } } },
+            getLocale: () => "en",
+            subscribe: () => () => undefined,
+        };
+        const wrap = (node: ReactNode) => <GameLocalizationContext.Provider value={runtime}>{node}</GameLocalizationContext.Provider>;
+
+        const game = renderButton(drawn, document, { host: "app" }, wrap);
+        expect(game.container.querySelector("ruby")).toBeNull();
+        expect(game.container.querySelector("p")!.textContent).toBe("New game");
+        game.unmount();
+
+        const canvas = renderButton(drawn, document);
+        expect(canvas.container.querySelector("p")!.textContent).toBe("はじめから");
+    });
+
     it("keeps the marks an inline edit on the canvas did not reach", () => {
         const document = createDocument({ label: "Hello world", rich: [{ text: "Hello " }, { text: "world", marks: { bold: true } }] });
         const services = { stateService: createStateService(), documentService: createDocumentService(document) };

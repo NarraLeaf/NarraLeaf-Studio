@@ -26,7 +26,9 @@ import {
     getContributedWidgetPartSlots,
 } from "@shared/types/ui-editor/contributedWidgets";
 import {
+    getUIComponentParams,
     getUIStructuralChildSlot,
+    isUIComponentTextParam,
     uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
     type UIComponentDefinition,
@@ -41,6 +43,7 @@ import type { BpDiagnostic } from "../../blueprint-cli/dsl/ast";
 import { describeWidget, listWidgetModules, nearestWidgetTypes } from "../catalog";
 import { collectTree, deriveElementId, elementPathSegments, findComponent, findSurface, type TextKeys } from "../project";
 import type { UiAssignment, UiElementNode, UiFile, UiStatement } from "./ast";
+import { PARAM_KEY_SUFFIX } from "./parse";
 
 export type CompiledSurface = {
     surface: UISurface;
@@ -75,6 +78,13 @@ export type UiCompileOptions = {
 
 export function compileUiFile(file: UiFile, options: UiCompileOptions = {}): UiCompileResult {
     const context = new CompileContext(options.existing ?? null, options.textKeys ?? null);
+    // A placement may be written above the component it places, so the params of every component
+    // this file declares are known before any element is compiled.
+    for (const statement of file.statements) {
+        if (statement.kind === "component" && statement.id) {
+            context.declareFileComponent(statement.id, statement.params);
+        }
+    }
     for (const statement of file.statements) {
         context.statement(statement);
     }
@@ -94,12 +104,28 @@ class CompileContext {
     private readonly seenUnknownProps = new Set<string>();
     /** Whether this file's `localizable` has been noted, which is said once per file. */
     private notedLegacyUnitProp = false;
+    /** The params of the components this file declares, by component id. */
+    private readonly fileComponentParams = new Map<string, readonly DeclaredParam[]>();
 
     public constructor(
         private readonly existing: UIDocument | null,
         private readonly textKeys: TextKeys | null = null,
     ) {
         this.knownTypes = new Set(listWidgetModules().map(module => module.type));
+    }
+
+    public declareFileComponent(componentId: string, params: readonly DeclaredParam[]): void {
+        this.fileComponentParams.set(componentId, params);
+    }
+
+    /** A component's params as this file declares them, else as the project has them; null when unknown. */
+    private paramsOfComponent(componentId: string): readonly DeclaredParam[] | null {
+        const declared = this.fileComponentParams.get(componentId);
+        if (declared) {
+            return declared;
+        }
+        const component = this.existing ? findComponent(this.existing, componentId) : undefined;
+        return component ? getUIComponentParams(component) : null;
     }
 
     public result(): UiCompileResult {
@@ -312,6 +338,7 @@ class CompileContext {
             // that row to everything it draws - so a field binding here is read against the row
             // the card sits in, and whether there is one is a fact about the placement.
             rowFromPlacement: true,
+            componentParams: statement.params,
         });
         this.components.push({
             component: {
@@ -327,7 +354,7 @@ class CompileContext {
                         params: statement.params.map(param => ({
                             id: param.id,
                             name: param.name,
-                            type: "string" as const,
+                            type: param.type,
                             defaultValue: param.defaultValue,
                         })),
                     }
@@ -362,6 +389,8 @@ class CompileContext {
             inListTemplate: boolean;
             /** Inside a component definition, whose row (if any) is the one its placement is drawn in. */
             rowFromPlacement: boolean;
+            /** Inside a component definition: the params it declares, which a binding may show. */
+            componentParams?: readonly DeclaredParam[];
         },
     ): string {
         const label = node.name ?? node.type;
@@ -445,14 +474,21 @@ class CompileContext {
                     node.componentLink.line,
                 );
             }
+            this.checkPlacementParams(node.componentLink, label);
             (extra as Record<string, unknown>).componentLink = {
                 componentId: node.componentLink.componentId,
                 linked: true,
                 ...(Object.keys(node.componentLink.params).length > 0 ? { params: node.componentLink.params } : {}),
+                ...(Object.keys(node.componentLink.paramKeys).length > 0 ? { paramKeys: node.componentLink.paramKeys } : {}),
             };
         }
 
-        const valueBindings = this.bindings(node, detail, context.inListTemplate || context.rowFromPlacement);
+        const valueBindings = this.bindings(
+            node,
+            detail,
+            context.inListTemplate || context.rowFromPlacement,
+            context.componentParams ?? null,
+        );
 
         const element: UIElement = {
             id,
@@ -561,6 +597,66 @@ class CompileContext {
     }
 
     /**
+     * The values a placement gives its component's params, against what the component declares.
+     *
+     * A key is read only for a text parameter, and a text parameter's value is one of the two - words
+     * written directly or a key - so naming both is refused, as words beside a widget's own key are: the
+     * tool cannot tell which was meant. A key the project does not have is reported, as on a widget. A
+     * param the component does not declare is a warning: the value is kept, and read again if a param
+     * by that id comes back.
+     */
+    private checkPlacementParams(link: NonNullable<UiElementNode["componentLink"]>, label: string): void {
+        const declared = this.paramsOfComponent(link.componentId);
+        const byId = new Map((declared ?? []).map(param => [param.id, param]));
+        for (const paramId of new Set([...Object.keys(link.params), ...Object.keys(link.paramKeys)])) {
+            const param = byId.get(paramId);
+            if (declared && !param) {
+                this.report(
+                    "warning",
+                    "ui.param_unknown",
+                    `"${label}" gives a value to "${paramId}", which the component does not declare.`,
+                    link.line,
+                    `Declared: ${declared.map(item => item.id).join(", ") || "none"}.`,
+                );
+                continue;
+            }
+            const keyName = link.paramKeys[paramId]?.trim();
+            if (!keyName) {
+                continue;
+            }
+            if (param && !isUIComponentTextParam(param)) {
+                this.report(
+                    "error",
+                    "ui.param_key_not_text",
+                    `"${label}" names key "${keyName}" for "${paramId}", which is not a text parameter.`,
+                    link.line,
+                    `Only a text parameter (\`param ${paramId} <name> type=text\`) reads a key; write \`${paramId}=<value>\` instead.`,
+                );
+                continue;
+            }
+            if (paramId in link.params) {
+                this.report(
+                    "error",
+                    "ui.words_two_sources",
+                    `"${label}" gives "${paramId}" both words and key "${keyName}".`,
+                    link.line,
+                    `Keep \`${paramId}${PARAM_KEY_SUFFIX}=${keyName}\` to show the key's words, or \`${paramId}=…\` to show these.`,
+                );
+                continue;
+            }
+            if (this.textKeys && !this.textKeys.keys.has(keyName)) {
+                this.report(
+                    "warning",
+                    "ui.key_missing",
+                    `"${label}" names key "${keyName}" for "${paramId}", which the project does not have: the placement shows the key's name.`,
+                    link.line,
+                    "Add the key - the localization panel, or editor/localization/keys.json - or write the words directly.",
+                );
+            }
+        }
+    }
+
+    /**
      * Whether these children are allowed to be here.
      *
      * Three answers, not two. A leaf takes nothing. A widget like the slider or the switch builds its
@@ -643,6 +739,7 @@ class CompileContext {
         node: UiElementNode,
         detail: ReturnType<typeof describeWidget>,
         inListTemplate: boolean,
+        componentParams: readonly DeclaredParam[] | null,
     ): Record<string, UIElementValueBinding> {
         const out: Record<string, UIElementValueBinding> = {};
         for (const binding of node.bindings) {
@@ -687,6 +784,48 @@ class CompileContext {
                 out[binding.propPath] = { kind: "listItemField", fieldId: binding.source.fieldId };
                 continue;
             }
+            if (binding.source.kind === "componentParam") {
+                const paramId = binding.source.paramId;
+                // A parameter's value is words: only the prop holding a widget's words shows one.
+                const site = uiTextSiteOf(node.type);
+                if (!site || site.role !== "words" || site.textProp !== binding.propPath) {
+                    this.report(
+                        "error",
+                        "ui.prop_not_bindable",
+                        `"${binding.propPath}" on ${node.type} cannot show a component parameter.`,
+                        binding.line,
+                        site?.role === "words"
+                            ? `Only \`bind ${site.textProp} = param <paramId>\` reads one here.`
+                            : "A parameter is shown by a text's `text` or a button's `label`.",
+                    );
+                    continue;
+                }
+                if (!componentParams) {
+                    this.report(
+                        "error",
+                        "ui.param_outside_component",
+                        `"${binding.propPath}" is bound to parameter "${paramId}", but this element is not inside a component definition.`,
+                        binding.line,
+                        "A parameter is given by each placement of a component, so only an element inside the component's own block reads one.",
+                    );
+                    continue;
+                }
+                const param = componentParams.find(candidate => candidate.id === paramId);
+                if (!param || !isUIComponentTextParam(param)) {
+                    this.report(
+                        "error",
+                        "ui.param_not_text",
+                        param
+                            ? `"${paramId}" is not a text parameter, so no placement gives words for it.`
+                            : `The component declares no parameter "${paramId}".`,
+                        binding.line,
+                        `Declare it as \`param ${paramId} <name> type=text\`.`,
+                    );
+                    continue;
+                }
+                out[binding.propPath] = { kind: "componentParam", paramId };
+                continue;
+            }
             out[binding.propPath] = {
                 kind: "blueprintValue",
                 blueprintId: binding.source.blueprintId,
@@ -700,6 +839,9 @@ class CompileContext {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** A component param as a file or a project declares it - all a placement and a binding are checked against. */
+type DeclaredParam = { id: string; type?: string };
 
 /** The one bindable path that belongs to every widget type rather than to a row of the target table. */
 const ROW_VISIBILITY_PROP_PATH = "layout.visible";

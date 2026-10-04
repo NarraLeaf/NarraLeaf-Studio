@@ -15,7 +15,7 @@ import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
-import { uiTextRuntimeOriginOf } from "@shared/types/ui-editor/textSource";
+import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -259,6 +259,7 @@ export function TextRenderer({
         sourceText: p.text,
         localizationKey: flatProps.localizationKey,
         origin: uiTextRuntimeOriginOf(element),
+        unitId: uiTextRuntimeUnitOf(element),
     });
     useRecordDrawnBoundWords(element.id, displayText, uiTextRuntimeOriginOf(element) === "bound");
 

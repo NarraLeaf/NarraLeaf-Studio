@@ -14,7 +14,7 @@ import {
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
-import { uiTextRuntimeOriginOf } from "@shared/types/ui-editor/textSource";
+import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -295,6 +295,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         sourceText: p.label,
         localizationKey: p.localizationKey,
         origin: uiTextRuntimeOriginOf(element),
+        unitId: uiTextRuntimeUnitOf(element),
     });
     useRecordDrawnBoundWords(element.id, displayLabel, uiTextRuntimeOriginOf(element) === "bound");
     const showLabel = displayLabel.trim().length > 0;

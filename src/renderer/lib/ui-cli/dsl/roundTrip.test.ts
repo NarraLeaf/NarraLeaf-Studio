@@ -50,6 +50,55 @@ describe("the .ui text format", () => {
         expect(elements.start.props).toEqual({ localizationKey: "menu.start" });
     });
 
+    it("prints a component's text parameter, the widget that shows it and its placements, and reads them back the same", () => {
+        const layout = { x: 0, y: 0, width: 10, height: 10 };
+        const document = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "d",
+            name: "D",
+            surfaces: [{ id: "home", name: "Home", host: "app", kind: "appSurface", designSize: { width: 64, height: 36 }, rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", name: "Root", parentId: null, childrenIds: ["p1", "p2", "p3"], layout },
+                p1: { id: "p1", type: "nl.container", name: "Start", parentId: "root", childrenIds: [], layout, extra: { componentLink: { componentId: "nav", linked: true, params: { label: "开始" } } } },
+                p2: { id: "p2", type: "nl.container", name: "Title", parentId: "root", childrenIds: [], layout, extra: { componentLink: { componentId: "nav", linked: true, paramKeys: { label: "nav.title" } } } },
+                p3: { id: "p3", type: "nl.container", name: "Default", parentId: "root", childrenIds: [], layout, extra: { componentLink: { componentId: "nav", linked: true } } },
+            },
+            components: [{
+                id: "nav",
+                name: "Nav item",
+                rootElementId: "nav-root",
+                params: [
+                    { id: "label", name: "Label", type: "text", defaultValue: "项目" },
+                    { id: "target", name: "Target", type: "string", defaultValue: "title" },
+                ],
+                elements: {
+                    "nav-root": { id: "nav-root", type: "nl.container", name: "Root", parentId: null, childrenIds: ["nav-label"], layout },
+                    "nav-label": {
+                        id: "nav-label",
+                        type: "nl.text",
+                        name: "Label",
+                        parentId: "nav-root",
+                        childrenIds: [],
+                        layout,
+                        props: { text: "示例" },
+                        valueBindings: { text: { kind: "componentParam", paramId: "label" } },
+                    },
+                },
+            }],
+        } as unknown as UIDocument;
+        const text = printUiDocument(document, { keyWords: new Map([["nav.title", "标题"]]) });
+        expect(text).toContain("param label Label type=text = 项目");
+        expect(text).toContain("bind text = param label");
+        expect(text).toContain("component nav label.key=nav.title\n            # label words: 标题");
+        const compiled = compileUiFile(parseUiFile(text), { existing: document });
+        expect(compiled.diagnostics.filter(item => item.severity !== "info")).toEqual([]);
+        expect(compiled.components[0].component.params).toEqual(document.components![0].params);
+        expect(compiled.components[0].component.elements["nav-label"]).toEqual(document.components![0].elements["nav-label"]);
+        for (const id of ["p1", "p2", "p3"]) {
+            expect(compiled.surfaces[0].elements[id].extra).toEqual(document.elements[id].extra);
+        }
+    });
+
     it("prints the shipped skeleton and compiles the result back into the same document", () => {
         const document = loadSkeleton();
         const text = printUiDocument(document);

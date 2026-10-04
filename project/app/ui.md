@@ -175,6 +175,19 @@ answers, or that a blueprint writes over while the game runs (`Set Text`,
 `Clear Text`, `Set Label` - `Append Text` keeps the words it adds to): the
 canvas shows them, a build carries none of them, and nothing translates them.
 
+Inside a component definition a text's `text` or a button's `label` can show
+one of the component's text parameters instead - `bind text = param <paramId>`,
+the component's counterpart of a row field. Each placement gives the parameter
+its own words, written directly or as a translation key, and both the canvas and
+the game draw every placement with its own, with no graph involved. Words a
+placement writes directly are translated through the placement's own unit,
+`ui:<placementId>.param.<paramId>`; a placement that gives none shows the
+parameter's default, translated once through the component's unit,
+`ui:<componentId>.param.<paramId>`. The element's own words are then sample
+text, drawn only while the component itself is edited. A blueprint's
+`Get Component Param` still reads the value as a string - a keyed value as the
+key's name.
+
 `--json` on any of these.
 
 ```sh
@@ -266,7 +279,10 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   `answers <actionId> [consume=false]` says which of the project's actions this
   surface answers.
 - **`component <name> [id=] [size=WxH]`** opens a component definition, with
-  `param <id> <name> = <default>` lines for the values each instance supplies.
+  `param <id> <name> [type=text] = <default>` lines for the values each instance
+  supplies. Without `type=` a param is a string, which a blueprint reads with
+  `Get Component Param`; `type=text` makes it words a player reads, which a
+  widget inside the definition shows with `bind <prop> = param <id>`.
 - **`struct <id>`** and **`action <id> <name>`** declare the two document-wide
   tables: item shapes, and what a gesture means.
 - **`document <name> [id=] [entry=]`** names the document itself. `entry=` makes
@@ -298,8 +314,15 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   <fieldId>`, whether the element is drawn at all for this row - the lock on a
   gallery cell, say. It reads a row's field and nothing else; a value blueprint
   for it is refused, because nothing would evaluate one.
+  **`bind <prop> = param <paramId>`** shows a text parameter of the component
+  the element is inside, as each placement gives it. Only the prop holding a
+  text's or a button's words takes one, only inside a `component` block, and
+  only for a parameter declared `type=text`.
 - **`component <componentId> [param=value …]`** makes the element an instance of
-  a component definition.
+  a component definition. A text parameter's value is either words,
+  `label="Start"`, or a translation key, `label.key=menu.start` - one or the
+  other, as on a widget. `show` prints a keyed value's words as a comment under
+  the line (`# label words: Start`).
 
 Values are JSON where JSON is unambiguous and a bare word otherwise: `cover`,
 `1.5`, `true`, `null`, `"a string"`, `["a", "b"]`, `{"k": 1}`. A bare word is
@@ -409,7 +432,21 @@ Two more are about words, and need `--project` (the keys are read from it):
   what `show` printed before v13 - are left out with a note
   (**`ui.words_dropped`**), since a keyed element holds no words of its own.
 - **`ui.key_missing`** - a block names a key the project does not have. A warning:
-  the widget shows the key's name until the key exists.
+  the widget shows the key's name until the key exists. A placement's
+  `<paramId>.key=` is checked the same way, and naming both words and a key for
+  one parameter is `ui.words_two_sources`.
+
+A component's parameters are checked against what the component declares, in the
+file or in the project:
+
+- **`ui.param_outside_component`**, **`ui.param_not_text`** - a `bind … = param`
+  outside a component block, or naming a parameter the component does not declare
+  as `type=text`. Errors: no placement would give the widget any words.
+- **`ui.param_key_not_text`** - a placement names a key for a string parameter,
+  which reads no key. An error.
+- **`ui.param_unknown`** - a placement gives a value to a parameter the component
+  does not declare. A warning: the value is kept, and read again if a parameter by
+  that id comes back.
 
 Three findings are notes rather than refusals, deliberately:
 
