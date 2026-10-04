@@ -267,6 +267,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
 import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
+import { useStageCoverCapture } from "./stageCoverCapture";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -1026,6 +1027,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         pageEntries: navStack,
         pagesHiddenForGame: studioPageHiddenForGame,
         gameHiddenKeys: gameHiddenNavKeys,
+    });
+    /**
+     * The screen as it was when the page now covering the stage opened, for the saves written under
+     * it - and the Game UI waits on the stage while that picture is taken (see `stageCoverCapture`).
+     * Nothing to picture before the game has been entered, which is every page opened from the title.
+     */
+    const stageCover = useStageCoverCapture({
+        covered: stageCoveredByPage,
+        capture: () => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                return null;
+            }
+            return liveGame.capturePng();
+        },
     });
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
@@ -2888,10 +2904,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeLanguageChangeConfiguration(bundle.languageChange),
         [bundle.languageChange],
     );
+    const readStageCoverPicture = stageCover.readPicture;
     const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         let capture: string | undefined;
-        if (screenshot === true) {
+        // Under a page the stage's Game UI has stepped off, so the picture is the one taken as that
+        // page opened: the screen the player left to save, as an auto-save a moment earlier shows it.
+        const underPage = screenshot === true ? await (readStageCoverPicture() ?? null) : null;
+        if (underPage !== null) {
+            try {
+                capture = await shrinkSaveCapture(underPage);
+            } catch (error) {
+                reportSaveCaptureFailure(id, normalizeError(error));
+            }
+        } else if (screenshot === true) {
             if (typeof liveGame.capturePng !== "function") {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
@@ -2921,6 +2947,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         playtime,
         pluginHost,
+        readStageCoverPicture,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
     ]);
@@ -6358,7 +6385,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onContextMenu={offerSyntheticPointerInputToGlobal}
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
-                <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
+                <StageCoveredByPageContext.Provider value={stageCover.concealed}>
                     <StageCoveredContext.Provider value={stageCovered}>
                         {nlrStageLayer}
                     </StageCoveredContext.Provider>
