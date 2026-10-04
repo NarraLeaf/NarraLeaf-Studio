@@ -155,12 +155,21 @@ describe("getVariant", () => {
         });
     });
 
-    it("returns a null image for a locked variant, but still names it", async () => {
-        // The UI draws a silhouette from the null image and labels the slot.
+    it("returns a null image and the locked title for a locked variant", async () => {
+        // The UI draws a silhouette from the null image and labels the slot with the mask, the same
+        // title Get Gallery Variants gives that row - the real name is as much a spoiler as the art.
         const result = await run(V2_CATALOG, `${P}.getVariant`, { galleryItemId: "art.a" }, { index: 0 });
 
         expect(result.outputValues?.image).toBeNull();
         expect(result.outputValues?.unlocked).toBe(false);
+        expect(result.outputValues?.name).toBe("???");
+    });
+
+    it("names a locked variant by its real name when the catalog sets no mask", async () => {
+        const unmasked = { ...V2_CATALOG, settings: { lockedImageAssetId: null, lockedNameMask: "" } };
+
+        const result = await run(unmasked, `${P}.getVariant`, { galleryItemId: "art.a" }, { index: 0 });
+
         expect(result.outputValues?.name).toBe("Day");
     });
 
@@ -196,11 +205,12 @@ describe("getCover", () => {
         expect(result.outputValues?.name).toBe("Alpha");
     });
 
-    it("hides the cover image while it is locked", async () => {
+    it("hides the cover image and the title while it is locked", async () => {
         const result = await run(V2_CATALOG, `${P}.getCover`, { galleryItemId: "art.a" });
 
         expect(result.outputValues?.image).toBeNull();
         expect(result.outputValues?.unlocked).toBe(false);
+        expect(result.outputValues?.name).toBe("???");
     });
 });
 
@@ -218,6 +228,12 @@ describe("artwork iteration", () => {
             unlocked: true,
             variantCount: 1,
         });
+    });
+
+    it("masks the title of an artwork the player has not unlocked", async () => {
+        const first = await run(LEGACY_CATALOG, `${P}.getArtworkAt`, {}, { index: 0 });
+
+        expect(first.outputValues).toMatchObject({ artworkId: "art.a", name: "???", unlocked: false });
     });
 
     it("returns empty outputs past the end", async () => {
@@ -409,6 +425,36 @@ describe("unlockAll", () => {
             "art.b.v.1",
             "art.secret.v.1",
         ]);
+    });
+});
+
+describe("an entry with no variants yet", () => {
+    const EMPTY_RECOLLECTION = {
+        version: 4,
+        items: [{
+            id: "art.r",
+            name: "Rooftop",
+            kind: "scene",
+            variants: [],
+            scene: { storyId: "story-1", sceneId: "scene-1" },
+        }],
+    };
+
+    it("is unlocked, asked about and locked again as a whole", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.add`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
+
+        const asked = await run(EMPTY_RECOLLECTION, `${P}.isUnlocked`, { galleryItemId: "art.r" });
+        expect(asked.outputValues?.unlocked).toBe(true);
+
+        await run(EMPTY_RECOLLECTION, `${P}.remove`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual([]);
+    });
+
+    it("is included when the whole gallery is unlocked", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.unlockAll`);
+
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
     });
 });
 
