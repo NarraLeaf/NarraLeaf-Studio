@@ -296,6 +296,27 @@ type StageSlotTemplate = {
     configure: (surfaceId: UISurfaceId) => void;
 };
 
+/**
+ * A component definition seen as a document of its own - one surface rooted at the component's root
+ * - so the tree planners written for surfaces can read and edit its elements table in place.
+ */
+function componentAsDocument(document: UIDocument, component: UIComponentDefinition, surfaceId: string): UIDocument {
+    return {
+        ...document,
+        surfaces: [
+            {
+                id: surfaceId,
+                name: component.name,
+                host: "app",
+                kind: "appSurface",
+                designSize: getComponentPreviewDesignSize(component),
+                rootElementId: component.rootElementId,
+            },
+        ],
+        elements: component.elements,
+    };
+}
+
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
     return {
         width: component.previewMeta?.width ?? DEFAULT_COMPONENT_SIZE.width,
@@ -3539,6 +3560,35 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             liveComponent.updatedAt = new Date().toISOString();
         }, { history: false });
         return { ok: true };
+    }
+
+    /**
+     * `ungroupContainers` for a component definition's elements, over a document made of the
+     * component alone. Returns the ids that were lifted out.
+     */
+    public ungroupComponentContainers(componentId: string, containerIds: readonly string[]): string[] {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        const surfaceId = `component:${componentId}`;
+        if (
+            !component ||
+            !containerIds.some(id => canUngroupContainer(componentAsDocument(document, component, surfaceId), surfaceId, id))
+        ) {
+            return [];
+        }
+        const lifted: string[] = [];
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            const view = componentAsDocument(doc, liveComponent, surfaceId);
+            for (const containerId of containerIds) {
+                lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
+            }
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return lifted;
     }
 
     public createComponentElement(
