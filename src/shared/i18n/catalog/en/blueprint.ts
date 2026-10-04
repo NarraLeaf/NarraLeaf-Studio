@@ -1518,6 +1518,7 @@ export const blueprint = {
         toggle: "Toggle",
         toggleDialogDisplay: "Toggle Dialog Display",
         toggleSwitch: "Toggle Switch",
+        translationKeyText: "Translation Key Text",
         trim: "Trim",
         trimEnd: "Trim End",
         trimStart: "Trim Start",
@@ -1578,6 +1579,8 @@ export const blueprint = {
         goBack: "Closes the current page and returns to the page beneath it. On the bottom page it does nothing.",
         replacePage: "Opens a page in place of the current page, and closes the current page. Go back and Go Page set to None do not return to it.",
         isGameOverlay: "True when this page, layer or Game UI is shown over a running game. In the global blueprint, true while a page or a modal layer covers the story.",
+        localizationGetText: "Gets a translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. Translation Key Text gives the same text and can also be used in Blueprint Value and functions.",
+        translationKeyText: "A translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. The same text as Get Text, and also usable in Blueprint Value and functions. A Blueprint Value that shows it updates when the player changes language.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

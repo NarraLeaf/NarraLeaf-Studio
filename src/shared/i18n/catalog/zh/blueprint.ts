@@ -1461,6 +1461,7 @@ export const blueprint = {
         toggle: "切换",
         toggleDialogDisplay: "切换对话框显示",
         toggleSwitch: "切换开关",
+        translationKeyText: "翻译键文本",
         trim: "去除首尾空白",
         trimEnd: "去除尾部空白",
         trimStart: "去除首部空白",
@@ -1516,6 +1517,8 @@ export const blueprint = {
         goBack: "关闭当前页面，回到它下面的页面；已在最底层的页面上时不执行任何操作",
         replacePage: "打开页面以代替当前页面，并关闭当前页面；「返回上一页」与页面为「无」的「前往页面」都不会回到该页面",
         isGameOverlay: "所在的页面、叠加页面或游戏 UI 显示在进行中的游戏之上时为真。在全局蓝图中，有页面或模态叠加页面覆盖剧情画面时为真",
+        localizationGetText: "获取翻译键在玩家当前语言中的文本；该语言没有译文时获取源文本。不存在的键得到键名本身。「翻译键文本」结果相同，并且可用于蓝图值与函数",
+        translationKeyText: "翻译键在玩家当前语言中的文本；该语言没有译文时为源文本。不存在的键得到键名本身。与「获取文本」结果相同，并且可用于蓝图值与函数。显示它的蓝图值会在玩家切换语言时更新",
     },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",

@@ -12,15 +12,16 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
-import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { hasLocalizationKey, resolveLocalizationKeyText } from "./localizationKeyText";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
@@ -36,13 +37,10 @@ function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
 async function resolveNamedKeyText(ctx: NodeExecuteContext, keyName: string): Promise<string | null> {
     const api = requireHostApi(ctx);
     const config = api.localization.getConfig();
-    if (!config || !(keyName in (config.keys ?? {}))) {
+    if (!hasLocalizationKey(config, keyName)) {
         return null;
     }
-    const bundle = { ...config, tables: config.tables ?? {}, keys: config.keys ?? {} };
-    const locale = await api.localization.getLocale();
-    const translated = resolveLocalizedUnitText(bundle, locale, localizationKeyUnitId(keyName));
-    return translated ?? bundle.keys[keyName] ?? null;
+    return resolveLocalizationKeyText(config, await api.localization.getLocale(), keyName);
 }
 
 export const localizationBlueprintNodes: BlueprintNodeDef[] = [
@@ -128,6 +126,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
         assetNames: "written",
         displayName: "Get Text",
+        description: "blueprint.nodeDescription.localizationGetText",
         category: "Localization",
         keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup"],
         graphKinds: ["event", "macro"],
@@ -174,6 +173,42 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
                 },
             };
         },
+    },
+    {
+        // `Get Text` with no execution pins. A Blueprint Value and a function accept only nodes that
+        // compute their outputs from their inputs, so while the only way to read a key was latent, a
+        // bound label could not show a translated word at all and a multi-language project had to
+        // write every such label from an event graph. Same pins, same answer, same unknown-key rule
+        // (see `localizationKeyText.ts`); the value is computed where it is read, in
+        // `graphParamResolvers.ts`, which is also where reading it records the player's language.
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
+        assetNames: "written",
+        displayName: "Translation Key Text",
+        description: "blueprint.nodeDescription.translationKeyText",
+        category: "Localization",
+        keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup", "pure", "value"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        pins: [
+            {
+                id: "key",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Key",
+            },
+            {
+                id: "value",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Text",
+            },
+        ],
+        inspectorParams: [
+            { key: "key", label: "Key", kind: "select", dynamicOptionsSource: "localizationKeys" },
+        ],
+        execute: () => ({}),
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,

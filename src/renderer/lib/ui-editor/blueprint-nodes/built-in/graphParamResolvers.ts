@@ -249,6 +249,7 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
     BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
     BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
     BLUEPRINT_NODE_TYPE_VOICE_PLAY,
@@ -407,6 +408,8 @@ import {
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
 import { BLUEPRINT_SOUND_PARAM_TRACK, readBlueprintAudioTrackParam } from "./audioTrackParams";
+import { readKeyTextLocale, resolveLocalizationKeyText } from "./localizationKeyText";
+import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
 import {
     readBlueprintDurationStyle,
     readBlueprintRelativeStyle,
@@ -1595,6 +1598,40 @@ function resolveComponentParamNodeOutput(
     }
     const supplied = runtime?.executionOwner?.componentParams?.[paramId];
     return typeof supplied === "string" ? supplied : "";
+}
+
+/**
+ * What `Translation Key Text` gives: the key's text in the player's language, as `Get Text` gives it.
+ *
+ * The three misses answer the way the latent node does, so swapping one node for the other changes
+ * nothing on screen. No key picked is the empty string - the latent node fails the run there, which a
+ * value read cannot, and blank is what a label with nothing chosen shows. A key the game does not know
+ * is the key's name, so the defect is visible where it is; and that includes every key of a project
+ * with no source language, whose build carries no localization to look in.
+ *
+ * Reading it inside a value binding records the player's language as something the binding read
+ * (`GAME_LOCALE_STATE_KEY`), so switching language re-runs the binding and the label changes with
+ * every key-bound label beside it.
+ */
+function resolveLocalizationKeyTextNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "value") {
+        return undefined;
+    }
+    const keyName = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
+    if (!keyName) {
+        return "";
+    }
+    runtime?.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
+    const config = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.localization?.getConfig() ?? null;
+    return resolveLocalizationKeyText(config, readKeyTextLocale(config), keyName) ?? keyName;
 }
 
 function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
@@ -3637,6 +3674,9 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM) {
         return resolveComponentParamNodeOutput(portId, selfNode.params ?? {}, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT) {
+        return resolveLocalizationKeyTextNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
