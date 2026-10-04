@@ -372,6 +372,239 @@ describe("layoutBlueprintGraph", () => {
         });
     });
 
+    describe("a frame is in the way as a whole", () => {
+        type Box = { x: number; y: number; width: number; height: number };
+        const meets = (a: Box, b: Box) =>
+            Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 0.5 &&
+            Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 0.5;
+
+        /** Every card a frame is drawn over without holding it, and every two frames drawn over each other. */
+        function intrusions(graph: BlueprintLayoutGraph): string[] {
+            const { positions, frames } = layoutBlueprintGraph(graph);
+            const framed = (graph.comments ?? []).filter(comment => comment.frame);
+            const out: string[] = [];
+            for (const frame of framed) {
+                for (const c of graph.cards) {
+                    const at = positions[c.id]!;
+                    if (!frame.members!.includes(c.id) && meets(frames[frame.id]!, { ...at, width: c.width, height: c.height })) {
+                        out.push(`${c.id} in ${frame.id}`);
+                    }
+                }
+                for (const other of framed) {
+                    if (other.id > frame.id && meets(frames[frame.id]!, frames[other.id]!)) {
+                        out.push(`${frame.id} over ${other.id}`);
+                    }
+                }
+            }
+            return out;
+        }
+
+        // An If whose true side opens with a framed section: a card reading two values, the first of
+        // them computed from a third card further left. The lowest framed card is right of where the
+        // false row starts, so clearing the cards above it is not enough to clear the frame.
+        const framedTrue: BlueprintLayoutGraph = {
+            cards: [
+                head("start"),
+                card("if", { in: true, out: ["true", "false"], data: ["condition"] }),
+                step("yes", ["a", "b"]),
+                value("near", ["a"]),
+                value("far"),
+                value("low"),
+                step("after"),
+                step("no"),
+            ],
+            wires: [
+                wire("start.then", "if.in"),
+                wire("if.true", "yes.in"),
+                wire("near.result", "yes.a"),
+                wire("far.result", "near.a"),
+                wire("low.result", "yes.b"),
+                wire("yes.next", "after.in"),
+                wire("if.false", "no.in"),
+            ],
+            comments: [{ id: "work", x: 0, y: 0, width: 10, height: 10, frame: true, members: ["yes", "near", "far", "low"] }],
+        };
+
+        it("keeps a branch's next row out of a frame on the side it leaves", () => {
+            expect(intrusions(framedTrue)).toEqual([]);
+            expect(untangled(framedTrue).measure).toEqual({ crossings: 0, backwards: 0, throughCards: 0, overlaps: 0 });
+        });
+
+        it("never draws two frames over each other", () => {
+            const twoFrames: BlueprintLayoutGraph = {
+                cards: [...framedTrue.cards.filter(c => c.id !== "no"), step("no", ["v"]), value("noFeed")],
+                wires: [...framedTrue.wires, wire("noFeed.result", "no.v")],
+                comments: [
+                    ...framedTrue.comments!,
+                    { id: "otherwise", x: 0, y: 0, width: 10, height: 10, frame: true, members: ["no", "noFeed"] },
+                ],
+            };
+
+            expect(intrusions(twoFrames)).toEqual([]);
+        });
+
+        it("keeps what follows a frame across rows past its right edge, in each row it holds", () => {
+            // The frame holds the If and the first card of each output; the false one is wider, so
+            // the frame reaches further right than anything in the true row before the card after it.
+            const acrossRows: BlueprintLayoutGraph = {
+                cards: [
+                    head("start"),
+                    card("if", { in: true, out: ["true", "false"], data: ["condition"] }),
+                    step("yes"),
+                    step("yes2", ["v"]),
+                    value("yes2Feed"),
+                    { ...step("no"), width: 280 },
+                    step("no2", ["v"]),
+                    value("no2Feed"),
+                ],
+                wires: [
+                    wire("start.then", "if.in"),
+                    wire("if.true", "yes.in"),
+                    wire("yes.next", "yes2.in"),
+                    wire("yes2Feed.result", "yes2.v"),
+                    wire("if.false", "no.in"),
+                    wire("no.next", "no2.in"),
+                    wire("no2Feed.result", "no2.v"),
+                ],
+                comments: [{ id: "choose", x: 0, y: 0, width: 10, height: 10, frame: true, members: ["if", "yes", "no"] }],
+            };
+
+            expect(intrusions(acrossRows)).toEqual([]);
+            expect(untangled(acrossRows).measure.overlaps).toBe(0);
+        });
+    });
+
+    describe("a card whose width is only known as a range", () => {
+        // The command line lays one template out for every interface language, and a card is as wide
+        // as its words: here an Element card and a card of text feed one card, each anything from 200
+        // wide to the width given.
+        const element = {
+            ...value("element"),
+            width: 210,
+            minWidth: 200,
+            height: 211,
+            pins: [{ id: "result", side: "out" as const, kind: "data" as const, offset: 194 }],
+        };
+        const words = { ...value("words"), width: 280, minWidth: 200 };
+        const graph: BlueprintLayoutGraph = {
+            cards: [head("start"), step("show", ["element", "text"]), element, words],
+            wires: [wire("start.then", "show.in"), wire("element.result", "show.element"), wire("words.result", "show.text")],
+        };
+
+        it("keeps stacked feeders' wires apart however wide each turns out", () => {
+            const { positions } = layoutBlueprintGraph(graph);
+            for (const [elementWidth, wordsWidth] of [[210, 280], [200, 200], [210, 200], [200, 280]] as const) {
+                const drawn = {
+                    ...graph,
+                    cards: graph.cards.map(c =>
+                        c.id === "element" ? { ...c, width: elementWidth } : c.id === "words" ? { ...c, width: wordsWidth } : c,
+                    ),
+                };
+
+                expect(measureBlueprintLayout(drawn, positions)).toEqual({ crossings: 0, backwards: 0, throughCards: 0, overlaps: 0 });
+                expect(positions.element!.x + elementWidth).toBeLessThanOrEqual(positions.words!.x + wordsWidth);
+            }
+        });
+
+        it("still leaves the widest a feeder can be its gap before the card it feeds", () => {
+            const { positions } = layoutBlueprintGraph(graph);
+
+            expect(positions.show!.x - rightOf(graph, positions, "words")).toBe(60);
+        });
+    });
+
+    describe("a loop", () => {
+        // For, For Each and While: the body first, Completed second. This body ends by going round
+        // again, the shape that made putting Completed directly under the loop look like it untangled
+        // something - with the whole body pushed past it and one long wire back across all of it.
+        const graph = (loop: boolean): BlueprintLayoutGraph => ({
+            cards: [
+                head("start"),
+                { ...card("walk", { in: true, out: ["loop", "completed"], data: ["end"] }), loop },
+                step("b0", ["v"]),
+                value("bf0"),
+                step("b1", ["v"]),
+                value("bf1"),
+                step("b2", ["v"]),
+                value("bf2"),
+                step("d0", ["v"]),
+                value("df0"),
+            ],
+            wires: [
+                wire("start.then", "walk.in"),
+                wire("walk.loop", "b0.in"),
+                wire("bf0.result", "b0.v"),
+                wire("b0.next", "b1.in"),
+                wire("bf1.result", "b1.v"),
+                wire("b1.next", "b2.in"),
+                wire("bf2.result", "b2.v"),
+                wire("walk.completed", "d0.in"),
+                wire("df0.result", "d0.v"),
+                wire("b2.next", "walk.in"),
+            ],
+        });
+
+        it("continues its body straight from the loop, as a branch's first output does", () => {
+            const g = graph(true);
+            const { positions } = layoutBlueprintGraph(g);
+
+            expect(pinY(g, positions, "walk.loop")).toBe(pinY(g, positions, "b0.in"));
+            // Its feeder's column and the Completed wire's corridor, nothing more.
+            expect(positions.b0!.x - rightOf(g, positions, "walk")).toBeLessThanOrEqual(90 + 200 + 60);
+            expect(positions.d0!.y).toBeGreaterThan(pinY(g, positions, "walk.completed"));
+        });
+
+        it("keeps its body on from the loop even where moving it aside would untangle more", () => {
+            // Completed reads a value the body reads too and then joins the body's last card. As an
+            // If, this card's second output would go directly under it with the rest of the row
+            // pushed past it - fewer wires under cards - and does; as a loop, the body stays put.
+            const joined = (loop: boolean): BlueprintLayoutGraph => ({
+                cards: [
+                    head("start"),
+                    { ...card("walk", { in: true, out: ["loop", "completed"], data: ["end"] }), loop },
+                    step("b0", ["v"]),
+                    value("bf0"),
+                    step("b1", ["v"]),
+                    value("bf1"),
+                    step("b2"),
+                    step("d0", ["v"]),
+                ],
+                wires: [
+                    wire("start.then", "walk.in"),
+                    wire("walk.loop", "b0.in"),
+                    wire("bf0.result", "b0.v"),
+                    wire("b0.next", "b1.in"),
+                    wire("bf1.result", "b1.v"),
+                    wire("b1.next", "b2.in"),
+                    wire("walk.completed", "d0.in"),
+                    wire("b2.next", "walk.in"),
+                    wire("d0.next", "b2.in"),
+                    wire("bf0.result", "d0.v"),
+                ],
+            });
+            const asBranch = layoutBlueprintGraph(joined(false)).positions;
+            const asLoop = layoutBlueprintGraph(joined(true)).positions;
+            const g = joined(true);
+
+            expect(asBranch.b0!.x).toBeGreaterThan(asBranch.d0!.x);
+            expect(asLoop.b0!.x - rightOf(g, asLoop, "walk")).toBeLessThanOrEqual(90 + 200 + 60);
+            expect(pinY(g, asLoop, "walk.loop")).toBe(pinY(g, asLoop, "b0.in"));
+        });
+    });
+
+    it("does not count a wire back along a row as crossing the row's own wires", () => {
+        // The wire closing a loop from the end of a row back to its start is drawn flat along the
+        // row's line, over the row's wires; lying on them is not crossing them.
+        const graph = {
+            cards: [head("start"), step("a"), step("b"), step("c")],
+            wires: [wire("start.then", "a.in"), wire("a.next", "b.in"), wire("b.next", "c.in"), wire("c.next", "a.in")],
+        };
+        const { measure } = untangled(graph);
+
+        expect(measure.crossings).toBe(0);
+        expect(measure.backwards).toBe(1);
+    });
+
     it("places every card of a loop and runs only the wire that closes it backwards", () => {
         const graph = {
             cards: [head("start"), step("body"), step("again")],

@@ -875,7 +875,6 @@ function layerShape(
 }
 
 const VIDEO_TRANSPORT = {
-    play: "videoPlay",
     pause: "videoPause",
     resume: "videoResume",
     stop: "videoStop",
@@ -888,16 +887,16 @@ function videoShape(
 ): NarralangShape {
     const subject = asName(actionableSubjectWord(ctx.scene, payload.target, "video", payload.objectName));
     // How a clip leaves - whether a play clears it away, and the fade a play or a hide leaves with -
-    // has no slot in the script grammar. A row that states either is reported rather than written as
-    // a line that would read back without it.
-    if (payload.hideOnEnd !== undefined || payload.durationMs !== undefined) {
+    // and whether the story waits on a play have no slot in the script grammar. A row that states any
+    // of them is reported rather than written as a line that would read back without it.
+    if (payload.hideOnEnd !== undefined || payload.durationMs !== undefined || payload.waitForEnd !== undefined) {
         ctx.report(block.id, "customTransition");
     }
     switch (payload.operation) {
-        case "create":
+        case "play":
             return {
                 form: "statement",
-                verb: "videoCreate",
+                verb: "videoPlay",
                 slots: {
                     subject,
                     source: assetName(ctx, block.id, payload.assetId),
@@ -906,13 +905,8 @@ function videoShape(
             };
         case "seek":
             return { form: "statement", verb: "videoSeek", slots: { subject, time: asSeconds(payload.timeMs ?? 0) } };
-        case "show":
         case "hide":
-            return {
-                form: "statement",
-                verb: payload.operation === "show" ? "videoShow" : "videoHide",
-                slots: { subject },
-            };
+            return { form: "statement", verb: "videoHide", slots: { subject } };
         default:
             return { form: "statement", verb: VIDEO_TRANSPORT[payload.operation], slots: { subject } };
     }

@@ -276,7 +276,21 @@ export type StoryCommandContext = {
     characterSources?: StoryCommandCharacterSources;
     /** Which row declares each ambience overlay, across the whole story. See the type. */
     vfxSources?: StoryCommandVfxSources;
+    /** The file each clip in this scene plays, from the play that defines it. See the type. */
+    videoClips?: StoryCommandVideoClips;
 };
+
+/**
+ * The file and mute flag of each clip a `/play` in this scene defines, keyed by the clip's name
+ * lower-cased - the first play of a name that names a file, which is the clip the scene plays.
+ *
+ * What lets `/play intro` play a clip again: the row it builds has to carry the clip's file, as every
+ * play row does, and the line only gave the clip's name. Optional on the same terms as
+ * `stageObjectSources`; absent, a play written by name alone builds a row with no file, which the
+ * line reports.
+ */
+export type StoryCommandVideoClips =
+    Readonly<Record<string, { assetId: string; muted?: boolean }>>;
 
 /**
  * The row that declares each ambience overlay, keyed by name, across the WHOLE story.

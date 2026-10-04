@@ -29,11 +29,10 @@ function action(id: string, payload: StoryActionPayload): StoryBlock {
 
 describe("actionableSourceIdentity", () => {
     it("answers for the row that creates the handle, and only that row", () => {
-        expect(actionableSourceIdentity(action("a", { action: "video", operation: "create", objectName: "intro" })))
+        // Every `play` defines its clip; the other verbs address one.
+        expect(actionableSourceIdentity(action("a", { action: "video", operation: "play", objectName: "intro", assetId: "asset-intro" })))
             .toEqual({ kind: "video", name: "intro", label: "intro" });
-        // `play` addresses a clip that already exists; anchoring a reference here would bind it to a
-        // row that does not define the object.
-        expect(actionableSourceIdentity(action("b", { action: "video", operation: "play", objectName: "intro" })))
+        expect(actionableSourceIdentity(action("b", { action: "video", operation: "stop", objectName: "intro" })))
             .toBeNull();
         expect(actionableSourceIdentity(action("c", { action: "vfx", operation: "create", objectName: "rain" })))
             .toEqual({ kind: "vfx", name: "rain", label: "rain" });
@@ -41,14 +40,13 @@ describe("actionableSourceIdentity", () => {
             .toBeNull();
     });
 
-    it("answers for a play row that names its own clip, which builds what it runs", () => {
-        // The one-row cutscene declares exactly as a `/video` row does, so a later `/stop` or `/hide`
-        // anchors to it. The asset is the whole of the difference from the transport-only `play`
-        // above - a `play` that names a clip and no source still only addresses one.
+    it("answers for every play row, which is the one row a clip comes on with", () => {
+        // A later `/stop` or `/hide` anchors to it. A play missing its file still defines the clip -
+        // the compile is what reports the missing file - so the reference does not fall to a guess.
         expect(actionableSourceIdentity(action("a", { action: "video", operation: "play", objectName: "cutscene", assetId: "asset-cutscene" })))
             .toEqual({ kind: "video", name: "cutscene", label: "cutscene" });
         expect(actionableSourceIdentity(action("b", { action: "video", operation: "play", objectName: "cutscene", assetId: "  " })))
-            .toBeNull();
+            .toEqual({ kind: "video", name: "cutscene", label: "cutscene" });
         // The other transport verbs never build, asset or not: nothing reads one there.
         expect(actionableSourceIdentity(action("c", { action: "video", operation: "pause", objectName: "cutscene", assetId: "asset-cutscene" })))
             .toBeNull();
@@ -82,7 +80,7 @@ describe("actionableSourceIdentity", () => {
 
 describe("resolveActionableTargetRef", () => {
     it("reports the declaring row's current name, so the reference follows a rename", () => {
-        const document = scene([action("create-1", { action: "video", operation: "create", objectName: "opening" })]);
+        const document = scene([action("create-1", { action: "video", operation: "play", objectName: "opening", assetId: "asset-opening" })]);
         // The reference still carries the name the row had when it was written.
         const resolved = resolveActionableTargetRef(document, { name: "intro", sourceBlockId: "create-1" }, "video");
         expect(resolved).toEqual({ name: "opening", label: "opening", resolved: true });
@@ -151,7 +149,7 @@ describe("actionableSubjectWord", () => {
     });
 
     it("leaves a document written before references exactly as it read", () => {
-        const document = scene([action("create-1", { action: "video", operation: "create", objectName: "opening" })]);
+        const document = scene([action("create-1", { action: "video", operation: "play", objectName: "opening", assetId: "asset-opening" })]);
         expect(actionableSubjectWord(document, undefined, "video", "intro")).toBe("intro");
     });
 
