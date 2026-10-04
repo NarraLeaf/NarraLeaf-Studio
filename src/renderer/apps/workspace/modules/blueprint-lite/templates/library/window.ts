@@ -4,7 +4,6 @@
  * Comments in English per project convention.
  */
 
-import { Aperture, Expand, FolderOpen, MessageSquareWarning, Power } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { lines, quitConfirmNode, WIDGET_OWNERS } from "./templateText";
 
@@ -13,7 +12,6 @@ export const WINDOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "confirmClose",
         category: "window",
         owners: ["globalMain"],
-        icon: MessageSquareWarning,
         featured: 1,
         text: {
             en: { title: "Confirm before closing", description: "Asks the player before the game window closes." },
@@ -40,7 +38,6 @@ export const WINDOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "quitApp",
         category: "window",
         owners: WIDGET_OWNERS,
-        icon: Power,
         featured: 14,
         text: {
             en: { title: "Quit button", description: "Asks for confirmation when clicked, then quits the game." },
@@ -60,7 +57,6 @@ export const WINDOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "fullscreenButton",
         category: "window",
         owners: WIDGET_OWNERS,
-        icon: Expand,
         text: {
             en: { title: "Fullscreen button", description: "Turns fullscreen on and off when clicked." },
             zh: { title: "全屏按钮", description: "点击时进入或退出全屏" },
@@ -76,7 +72,6 @@ export const WINDOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "screenshotButton",
         category: "window",
         owners: WIDGET_OWNERS,
-        icon: Aperture,
         text: {
             en: { title: "Screenshot button", description: "Saves a screenshot when clicked." },
             zh: { title: "截图按钮", description: "点击时保存截图" },
@@ -92,7 +87,6 @@ export const WINDOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "screenshotsFolder",
         category: "window",
         owners: WIDGET_OWNERS,
-        icon: FolderOpen,
         text: {
             en: { title: "Open the screenshots folder", description: "Opens the folder screenshots are saved to when clicked." },
             zh: { title: "打开截图文件夹", description: "点击时打开截图文件夹" },
