@@ -30,6 +30,22 @@ vi.mock("../../utils/workspaceConsole", () => ({
     emitWorkspaceConsoleLog: () => undefined,
 }));
 
+// The real file system, except that an entry named `held-*` refuses to be removed - the way a codec
+// image this process has loaded refuses on Windows. Only the codec scratch tests name one.
+vi.mock("../../../../utils/unpatchedFs", async () => {
+    const real = await vi.importActual<typeof import("fs")>("fs");
+    const promises = {
+        ...real.promises,
+        rm: async (target: string, options?: Parameters<typeof real.promises.rm>[1]) => {
+            if ((target.split(/[\\/]/).pop() ?? "").startsWith("held-")) {
+                throw Object.assign(new Error(`EBUSY: resource busy or locked, rm '${target}'`), { code: "EBUSY" });
+            }
+            return real.promises.rm(target, options);
+        },
+    };
+    return { unpatchedFs: real, unpatchedFsPromises: promises };
+});
+
 describe("deriveGameAppId", () => {
     it("uses a reverse-domain identifier verbatim", () => {
         expect(deriveGameAppId("com.studio.my-game", "My Game")).toBe("com.studio.my-game");
@@ -648,6 +664,33 @@ describe("the codec images a run leaves in the project", () => {
 
         expect(await exists(path.join(staging, "win32-x64", "bindings.node"))).toBe(true);
         expect(await exists(path.join(staging, "nlc-1-abc", "bindings.node"))).toBe(true);
+    });
+
+    it("removes what it can when one entry is held, and leaves that one for a later run", async () => {
+        const warn = vi.fn();
+        const manager = new GameBuildManager({
+            logger: { error: () => undefined, warn },
+        } as unknown as ConstructorParameters<typeof GameBuildManager>[0]) as unknown as Plumbing;
+        const session = makeSession(projectPath);
+        const patch = await seedImages("patch");
+        // The codec a patch is sealed with, still loaded by this process.
+        await fs.mkdir(path.join(patch, "held-nlc-2-def"), { recursive: true });
+        await fs.writeFile(path.join(patch, "held-nlc-2-def", "bindings.node"), "loaded");
+        manager.noteCodecScratch(session, { codecImageDir: patch });
+
+        await manager.finishSession(session, {
+            status: "done",
+            progress: null,
+            startedAt: 1,
+            finishedAt: 2,
+            platforms: [],
+            artifacts: [],
+        });
+
+        expect(await exists(path.join(patch, "win32-x64"))).toBe(false);
+        expect(await exists(path.join(patch, "nlc-1-abc"))).toBe(false);
+        expect(await exists(path.join(patch, "held-nlc-2-def", "bindings.node"))).toBe(true);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining("held-nlc-2-def"));
     });
 
     it("is satisfied by a root whose compile needed no images", async () => {

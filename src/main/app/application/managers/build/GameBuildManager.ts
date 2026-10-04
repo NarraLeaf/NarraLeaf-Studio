@@ -1352,6 +1352,7 @@ export class GameBuildManager {
         const summary = await this.sealPatch(
             session,
             artifact.appDir,
+            artifact.codecImageDir,
             request,
             baselineAppDir,
             outputFile,
@@ -1517,6 +1518,7 @@ export class GameBuildManager {
             const summary = await this.sealPatch(
                 session,
                 artifact.appDir,
+                artifact.codecImageDir,
                 { outputFile, name: dlc.name },
                 options.baselineAppDir,
                 outputFile,
@@ -1718,6 +1720,11 @@ export class GameBuildManager {
     private async sealPatch(
         session: BuildSession,
         appDir: string,
+        /**
+         * Where the codec this process seals with is compiled: the codec image directory of the
+         * compile that produced `appDir`, which the run removes once it has succeeded.
+         */
+        codecScratchDir: string,
         request: GamePatchExportRequest,
         /**
          * The build being updated, already resolved: the folder the author named, or the one the
@@ -1791,11 +1798,18 @@ export class GameBuildManager {
              * to read, with no sign of trouble at the point it was made. The two
              * halves have to be built the same way or the patch is dead on
              * arrival.
+             *
+             * Compiled in this run's scratch directory, never beside the file.
+             * The folder the file is written into is the folder the author
+             * ships, and the codec compiled here stays loaded in this process,
+             * so on Windows it cannot be deleted until Studio exits: left beside
+             * the patch, it went out to players inside the zipped folder.
              */
+            await fs.mkdir(codecScratchDir, { recursive: true });
             const writer = await createAssetOverlay(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
-            }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
+            }, await this.titleCompileOptions(codecScratchDir, "Exporting a patch"));
             // Zero is the default the reader already applies, so it is left unsaid rather than
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
@@ -3975,20 +3989,37 @@ export class GameBuildManager {
     /**
      * Remove the codec images a successful run produced.
      *
-     * Best effort and silent on the build console: the run has already succeeded, and a directory
-     * that will not go (a file some other program still holds) is not a fact about the game. It is
-     * written to the application log instead, and the next successful run under the same root
-     * removes it.
+     * Best effort and silent on the build console: the run has already succeeded, and a file that
+     * will not go is not a fact about the game. It is written to the application log instead, and
+     * the next successful run under the same root removes it.
+     *
+     * Entry by entry rather than in one recursive call, because one entry can be refused while the
+     * rest can go: the codec a patch is sealed with is compiled in this process and stays loaded in
+     * it, and on Windows a loaded image cannot be deleted until the process exits. One recursive
+     * removal stops at the first refusal and leaves the entries after it behind as well.
      */
     private async discardCodecScratch(session: BuildSession): Promise<void> {
         for (const dir of session.codecScratch) {
+            let entries: string[];
             try {
-                await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-            } catch (error) {
-                this.app.logger.warn(
-                    `[Build] could not remove ${dir}: ${error instanceof Error ? error.message : String(error)}`,
-                );
+                entries = await fs.readdir(dir);
+            } catch {
+                // Nothing there: a compile that needed no images, or a directory already gone.
+                continue;
             }
+            const refused: string[] = [];
+            for (const entry of entries) {
+                try {
+                    await fs.rm(path.join(dir, entry), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+                } catch {
+                    refused.push(entry);
+                }
+            }
+            if (refused.length > 0) {
+                this.app.logger.warn(`[Build] left in ${dir} until nothing holds it: ${refused.join(", ")}`);
+                continue;
+            }
+            await fs.rmdir(dir).catch(() => undefined);
         }
         session.codecScratch = [];
     }
