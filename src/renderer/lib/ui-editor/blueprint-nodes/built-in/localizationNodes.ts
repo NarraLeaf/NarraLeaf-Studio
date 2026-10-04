@@ -258,9 +258,17 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        // Superseded by Format, which fills the same `{0}` placeholders from an array, also fills
+        // `{name}` from an object, takes the array a Make Array builds (this node's `list` pin accepts
+        // only an untyped value), and is pure - so it is the one that works in a Blueprint Value and a
+        // function, with a template from Translation Key Text. Kept registered, executing exactly as it
+        // always has, so graphs that already hold one keep running; out of the palette so the catalogue
+        // stops offering two formatters.
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
         assetNames: "assembled",
         displayName: "Format Text",
+        description: "blueprint.nodeDescription.formatText",
+        hideInPalette: true,
         category: "Localization",
         keywords: ["localization", "format", "placeholder", "interpolate", "template", "text"],
         graphKinds: ["event", "macro"],

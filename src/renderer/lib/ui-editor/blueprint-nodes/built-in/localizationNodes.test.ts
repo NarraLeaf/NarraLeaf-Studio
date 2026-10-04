@@ -370,3 +370,54 @@ describe("Translation Key Text", () => {
         });
     });
 });
+
+/**
+ * `Format Text` left the add-node menu when Format became the one formatter. Graphs that already hold
+ * one must not notice: it stays registered, keeps its pins, and formats exactly as it did - including
+ * where it differs from Format, which is why those differences are pinned here.
+ */
+describe("Format Text in an existing graph", () => {
+    async function formatText(template: string, values: unknown): Promise<unknown> {
+        const graph: UIGraph = {
+            id: "formatTextKept",
+            entries: { main: { start: { nodeId: "get", port: "in" } } },
+            nodes: {
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT, params: {} },
+                template: { id: "template", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: template } },
+                values: { id: "values", type: BLUEPRINT_NODE_TYPE_LITERAL_JSON, params: { value: values } },
+                store: { id: "store", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "out" } },
+            },
+            edges: [
+                { from: { nodeId: "template", port: "value" }, to: { nodeId: "get", port: "text" } },
+                { from: { nodeId: "values", port: "value" }, to: { nodeId: "get", port: "values" } },
+                { from: { nodeId: "get", port: "next" }, to: { nodeId: "store", port: "in" } },
+                { from: { nodeId: "get", port: "value" }, to: { nodeId: "store", port: "value" } },
+            ],
+        } as UIGraph;
+        return (await runGraph(graph, { locale: "en", setCalls: [] })).out;
+    }
+
+    it("formats as it always has", async () => {
+        expect(await formatText("{0} of {1}", [3, 10])).toBe("3 of 10");
+        // A lone value fills {0}.
+        expect(await formatText("{0} s", 3)).toBe("3 s");
+        // Only numbered placeholders are placeholders; anything else in braces is text.
+        expect(await formatText("{name} {0} { 0 }", ["x"])).toBe("{name} x { 0 }");
+        // A number with no value is blank.
+        expect(await formatText("[{2}]", ["x"])).toBe("[]");
+    });
+
+    it("keeps its registration and pins, and is only gone from the add-node menu", () => {
+        registerCoreBlueprintNodes();
+        const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT)!;
+
+        expect(def.pins.map(pin => pin.id)).toEqual(["in", "next", "text", "values", "value"]);
+        expect(def.hideInPalette).toBe(true);
+        const context = { graphKind: "event", owner: { kind: "globalMain" } } as BlueprintPaletteContext;
+        expect(isBlueprintNodeAllowedInGraphContext(def, context)).toBe(true);
+        expect(blueprintNodeRegistry.listPaletteEntries(context).some(entry => entry.type === BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT))
+            .toBe(false);
+        expect(blueprintNodeRegistry.listPaletteEntries(context).some(entry => entry.type === BLUEPRINT_NODE_TYPE_STRING_FORMAT))
+            .toBe(true);
+    });
+});
