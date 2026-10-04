@@ -35,10 +35,18 @@ and the `content.<locale>/` overlays only).
   the canvas toolbar's Format graph button, and is applied as it comes out. Cards are not placed by
   hand: if a formatted layer is still hard to read, change the graph, not the positions.
 - What that gives: execution runs left to right along one row; an If's true branch continues the
-  row and its false branch starts a row of its own below everything the true branch led to; a data
-  node sits just before and below the input it feeds, a card's feeders stacked in the order of its
-  inputs; a note goes above the part of the graph it was written over; a frame is re-fitted around
-  the cards it held.
+  row and its false branch starts a row of its own below everything the true branch led to; a loop
+  (For, For Each, While) reads the same way, its body continuing the row and Completed starting a
+  row below; a data node sits just before and below the input it feeds, a card's feeders stacked in
+  the order of its inputs; a note goes above the part of the graph it was written over; a frame is
+  re-fitted around the cards it held and keeps everything else out of its whole rectangle, so a
+  section can be framed even where the other side of a branch starts right under it.
+- The template is laid out once, in English, and the Chinese and Japanese trees keep its positions.
+  `format` allows for a card turning out narrower in another language, so the counts it reports are
+  the ones every language's editor shows. Format the English source, never the generated trees.
+- A frame holds the cards its rectangle fully contains when `format` runs. To frame a section whose
+  cards are not yet together, place them inside the new frame's rectangle in the `.bp` first - away
+  from the rest if need be - and let `format` put the frame back in the row.
 - `format` reports what is left on each layer: wire crossings, wires drawn under a card that is
   neither of their ends, and backwards wires. The graph is the cause of every one of them, so bring
   each layer to the lowest count a restructure can reach. The usual causes: one Element node fanned
