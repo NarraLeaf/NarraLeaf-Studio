@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DevTools, type SavedGame } from "narraleaf-react";
+import { DevTools, Scene, type SavedGame } from "narraleaf-react";
 import type { StoryDocument } from "@shared/types/story";
 import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -18,8 +18,9 @@ import {
  * the save was written against - and the proof is the engine's own hash, which the naming changed.
  *
  * "Written by a build before" is produced for real rather than imitated: the same compiled story,
- * with the names this change gives taken off and the engine left to number those actions again, is
- * exactly what that build constructed. Its hash and its numbers are then the engine's own.
+ * with the names this change gives taken off - the compiler's, and the engine's for a scene's own
+ * steps - and the engine left to number those actions again, is exactly what that build constructed.
+ * Its hash and its numbers are then the engine's own.
  */
 
 const STORIES = path.join(process.cwd(), "resources/templates/skeleton/content/editor/story/stories");
@@ -56,9 +57,21 @@ async function bothBuilds(document: StoryDocument) {
     const renamed = walk(story).filter(action => DevTools.getStaticId(action)?.startsWith("nl:action:"));
     const names = new Map(renamed.map(action => [action, DevTools.getStaticId(action)!]));
     renamed.forEach(action => DevTools.setStaticId(action, null));
-    story.constructStory();
-    const oldIdByNewId = new Map(renamed.map(action => [names.get(action)!, action.getId()]));
-    const oldHash = story.hash();
+    // The build before also ran an engine that numbered the steps a scene builds for itself
+    // (narraleaf-react before 1.2.1). With the engine's naming of them off, construction takes the
+    // path that engine took - every one of them gets the next number - so the story is that build's.
+    const engineScene = Scene as unknown as { nameBuiltActions: (...args: unknown[]) => Map<unknown, string> };
+    const nameBuiltActions = engineScene.nameBuiltActions;
+    engineScene.nameBuiltActions = () => new Map();
+    let oldIdByNewId: Map<string, string>;
+    let oldHash: string;
+    try {
+        story.constructStory();
+        oldIdByNewId = new Map(renamed.map(action => [names.get(action)!, action.getId()]));
+        oldHash = story.hash();
+    } finally {
+        engineScene.nameBuiltActions = nameBuiltActions;
+    }
 
     renamed.forEach(action => DevTools.setStaticId(action, names.get(action)!));
     story.constructStory();
