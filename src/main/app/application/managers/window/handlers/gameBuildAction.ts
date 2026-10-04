@@ -282,6 +282,9 @@ export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.g
                     productName: pack.project?.name?.trim() || null,
                     version: pack.project?.version?.trim() || null,
                     builtAt: pack.generatedAt || null,
+                    // The field the game itself checks a patch's proof against: a pack without it
+                    // was built with no distribution key, and the game refuses every patch.
+                    acceptsPatches: Boolean(pack.addOns?.verificationKey),
                 };
             } finally {
                 await payload.close().catch(() => undefined);

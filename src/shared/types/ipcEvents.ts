@@ -3298,6 +3298,12 @@ export type IPCGameBuildEvents = {
             version: string | null;
             /** When the build was compiled, ISO-8601. */
             builtAt: string | null;
+            /**
+             * Whether the build was made with a distribution key, and so can read a patch at all.
+             * False for a build made before the project had one: the game ignores every patch, so
+             * the dialog says so rather than letting one be exported for it unremarked.
+             */
+            acceptsPatches: boolean;
         };
     };
     /**

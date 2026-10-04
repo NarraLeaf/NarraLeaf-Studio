@@ -9,6 +9,7 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type MouseEvent as ReactMouseEvent,
     type ReactNode,
 } from "react";
 import { AnimatePresence, useIsPresent, useReducedMotion } from "motion/react";
@@ -65,6 +66,8 @@ import {
 } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { FramePageBox } from "@/lib/ui-editor/runtime/surface/FramePageBox";
+import { framePagePressPoint } from "@/lib/ui-editor/runtime/surface/framePageSurfacePresses";
+import { readPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
 import { fitFramePage } from "@/lib/ui-editor/runtime/surface/framePageFit";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
@@ -866,25 +869,33 @@ function NestedSurfaceInstance(props: {
         onChangingPage(runtimeInput.runtimeScopeId, true);
         return () => onChangingPage(runtimeInput.runtimeScopeId, false);
     }, [changingPage, onChangingPage, runtimeInput.runtimeScopeId]);
-    const hostAdapter = useMemo(() => {
+    /**
+     * The host the page runs on, and whether it is the page's own. Without a nested runtime the page
+     * borrows the surface holding the frame's - an editor preview - and its surface events would be
+     * that surface's, so only a page with a runtime of its own answers presses on itself.
+     */
+    const { hostAdapter, ownsRuntime } = useMemo(() => {
         const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
         const nestedHostAdapter = nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput);
         if (nestedHostAdapter) {
             if (nestedHostAdapter.blueprintRuntime) {
                 nestedHostAdapter.blueprintRuntime.getSurfaceTransitionState = getSurfaceTransitionState;
             }
-            return nestedHostAdapter;
+            return { hostAdapter: nestedHostAdapter, ownsRuntime: Boolean(nestedHostAdapter.blueprintRuntime) };
         }
         if (parentHostAdapter.blueprintRuntime) {
             return {
-                ...parentHostAdapter,
-                blueprintRuntime: {
-                    ...parentHostAdapter.blueprintRuntime,
-                    getSurfaceTransitionState,
+                hostAdapter: {
+                    ...parentHostAdapter,
+                    blueprintRuntime: {
+                        ...parentHostAdapter.blueprintRuntime,
+                        getSurfaceTransitionState,
+                    },
                 },
+                ownsRuntime: false,
             };
         }
-        return parentHostAdapter;
+        return { hostAdapter: parentHostAdapter, ownsRuntime: false };
     }, [nestedSurfaceRuntime, parentHostAdapter, runtimeInput]);
     const bindingContext = useMemo(
         () => nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null,
@@ -1024,6 +1035,34 @@ function NestedSurfaceInstance(props: {
         overflow: "hidden",
         backgroundColor: getSurfaceBackgroundColor(targetSurface),
     };
+    // The page's own Surface `Mouse Click` and `Right Click`, before the press goes on to the surface
+    // holding the frame (see `framePageSurfacePresses`). Only while the page takes input, on the same
+    // terms its elements do.
+    const dispatchOwnSurfaceEvent = ownsRuntime && effectiveInteractive
+        ? hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent
+        : undefined;
+    const handlePageClick = dispatchOwnSurfaceEvent
+        ? (event: ReactMouseEvent<HTMLDivElement>) => {
+            const point = framePagePressPoint(event, designSize);
+            if (point) {
+                void dispatchOwnSurfaceEvent("mouseClick", point);
+            }
+        }
+        : undefined;
+    const handlePageContextMenu = dispatchOwnSurfaceEvent
+        ? (event: ReactMouseEvent<HTMLDivElement>) => {
+            // A held finger's platform duplicate is no right click; the surface holding the frame
+            // swallows it (`GameSurfaceRenderer`).
+            if (!readPointerInputGesture(event.nativeEvent)) {
+                return;
+            }
+            const point = framePagePressPoint(event, designSize);
+            if (point) {
+                event.preventDefault();
+                void dispatchOwnSurfaceEvent("rightClick", point);
+            }
+        }
+        : undefined;
     const contentStyle: CSSProperties = fit
         ? {
               width: designSize.width,
@@ -1055,6 +1094,8 @@ function NestedSurfaceInstance(props: {
             onBeforeExit={handleBeforeExit}
             onReturn={handleReturn}
             onEnterComplete={handleEnterComplete}
+            onClick={handlePageClick}
+            onContextMenu={handlePageContextMenu}
         >
             <SurfaceBackgroundImageLayer surface={targetSurface} />
             <SurfaceElementTree

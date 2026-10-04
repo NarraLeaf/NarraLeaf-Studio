@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { resolvePasteTargetAfterSelection, uiEditorUngroupSelection } from "./uiEditorCommands";
-import { applyUngroupContainer } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { resolvePasteTargetAfterSelection, uiEditorGroupSelection, uiEditorUngroupSelection } from "./uiEditorCommands";
+import { applyGroupElements, applyUngroupContainer, planGroupElements } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 
@@ -133,5 +133,50 @@ describe("UI editor ungroup", () => {
         );
         expect(setUIElementSelection).not.toHaveBeenCalled();
         expect(doc.elements.source.childrenIds).toEqual(["source-child"]);
+    });
+});
+
+describe("UI editor group", () => {
+    function groupHarness(doc: UIDocument) {
+        const setUIElementSelection = vi.fn();
+        const documentService = {
+            getDocument: () => doc,
+            groupElements: (surfaceId: string, ids: string[]) => {
+                const plan = planGroupElements(doc, surfaceId, ids);
+                if (!plan) {
+                    return null;
+                }
+                applyGroupElements(doc, plan, element("group", "nl.container", null));
+                return "group";
+            },
+        } as unknown as UIDocumentService;
+        const stateService = { setUIElementSelection } as unknown as UIEditorStateService;
+        return { documentService, stateService, setUIElementSelection };
+    }
+
+    it("wraps the selection in a new group and selects it, whatever was selected first", () => {
+        const doc = makeDocument();
+        const { documentService, stateService, setUIElementSelection } = groupHarness(doc);
+
+        // A text-led selection used to be refused: the old command needed a container to put the rest in.
+        expect(uiEditorGroupSelection(documentService, stateService, "surface", selection(["source-child"]))).toBe(true);
+        expect(doc.elements.source.childrenIds).toEqual(["group"]);
+        expect(doc.elements.group.childrenIds).toEqual(["source-child"]);
+        expect(setUIElementSelection).toHaveBeenCalledWith({
+            editor: "ui",
+            surfaceId: "surface",
+            elementIds: ["group"],
+            primaryId: "group",
+        });
+    });
+
+    it("leaves the containers it was handed alone rather than filling the first with the rest", () => {
+        const doc = makeDocument();
+        const { documentService, stateService } = groupHarness(doc);
+
+        uiEditorGroupSelection(documentService, stateService, "surface", selection(["next", "source"]));
+        expect(doc.elements.root.childrenIds).toEqual(["group"]);
+        expect(doc.elements.group.childrenIds).toEqual(["source", "next"]);
+        expect(doc.elements.next.childrenIds).toEqual([]);
     });
 });

@@ -54,8 +54,11 @@ import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
+import type { UIService } from "../core/UIService";
+import { isBlueprintEntryTabShowing } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
+    applyGroupElements,
     applyPlannedMove,
     applyUngroupContainer,
     canUngroupContainer,
@@ -65,9 +68,12 @@ import {
     normalizeFlowChildLayout,
     normalizeFlowChildLayouts,
     normalizeListSlotsForMovedChildren,
+    planGroupElements,
     planMoveElementsInSurface,
     type MoveUiElementsResult,
+    type PlannedGroup,
 } from "./uiDocumentTreeMove";
+import { createGroupContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/groupProps";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
@@ -295,6 +301,40 @@ type StageSlotTemplate = {
     elements: Record<UIElementId, UIElement>;
     configure: (surfaceId: UISurfaceId) => void;
 };
+
+/** The container Group creates for a plan, before it is put in the tree. */
+function createGroupElement(id: string, plan: PlannedGroup): UIElement {
+    return {
+        id,
+        type: "nl.container",
+        name: translate("widgets.defaults.group.name"),
+        parentId: plan.parentId,
+        childrenIds: [],
+        layout: { ...plan.groupLayout, visible: true, opacity: 1 },
+        props: createGroupContainerProps(plan.flow),
+    };
+}
+
+/**
+ * A component definition seen as a document of its own - one surface rooted at the component's root
+ * - so the tree planners written for surfaces can read and edit its elements table in place.
+ */
+function componentAsDocument(document: UIDocument, component: UIComponentDefinition, surfaceId: string): UIDocument {
+    return {
+        ...document,
+        surfaces: [
+            {
+                id: surfaceId,
+                name: component.name,
+                host: "app",
+                kind: "appSurface",
+                designSize: getComponentPreviewDesignSize(component),
+                rootElementId: component.rootElementId,
+            },
+        ],
+        elements: component.elements,
+    };
+}
 
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
     return {
@@ -1320,6 +1360,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const historyService = this.getHistoryService();
         const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const removedBlueprintId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
         localBp.removeWidgetValueBlueprint(surfaceId, elementId, propPath);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
@@ -1337,6 +1378,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 before: beforeHistory,
                 after: historyService.captureSnapshot(surfaceId),
             });
+        }
+        if (removedBlueprintId) {
+            this.closeTabsShowingBlueprint(removedBlueprintId);
+        }
+    }
+
+    /**
+     * Close the editor tabs showing a value blueprint that clearing its binding has just removed.
+     *
+     * The blueprint is the binding's own - minted for this element's prop and named for it - but the
+     * author writes their logic into it, so its removal is one step on the page's undo history above,
+     * blueprint included. A tab left open on it said only that the blueprint could not be found, and
+     * while it stayed the active editor the inspector's Ctrl+Z went to its stack instead of the page's,
+     * so the step that would bring the logic back was out of reach from where the author was. Closed,
+     * the page the binding belongs to is the editor the inspector edits again.
+     */
+    private closeTabsShowingBlueprint(blueprintId: string): void {
+        const ui = this.getContext().services.get<UIService>(Services.UI);
+        for (const tab of ui.editor.getAll()) {
+            if (isBlueprintEntryTabShowing(tab, blueprintId)) {
+                ui.editor.close(tab.id);
+            }
         }
     }
 
@@ -1453,6 +1516,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             history: { surfaceId },
         });
         return lifted;
+    }
+
+    /**
+     * Wrap elements in a new group - an invisible container that takes their place - and return the
+     * group's id, or null when they cannot be wrapped (see `planGroupElements` for which can, and
+     * for why nothing on screen moves).
+     *
+     * One mutation, so Undo puts the tree back as it was in one step.
+     */
+    public groupElements(surfaceId: string, elementIds: readonly string[]): string | null {
+        const plan = planGroupElements(this.getDocument(), surfaceId, elementIds);
+        if (!plan) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const group = createGroupElement(uuidService.generate(), plan);
+        this.mutateDocument(document => {
+            applyGroupElements(document, plan, group);
+        }, {
+            history: { surfaceId },
+        });
+        return group.id;
     }
 
     /**
@@ -3539,6 +3624,63 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             liveComponent.updatedAt = new Date().toISOString();
         }, { history: false });
         return { ok: true };
+    }
+
+    /**
+     * `ungroupContainers` for a component definition's elements, over a document made of the
+     * component alone. Returns the ids that were lifted out.
+     */
+    public ungroupComponentContainers(componentId: string, containerIds: readonly string[]): string[] {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        const surfaceId = `component:${componentId}`;
+        if (
+            !component ||
+            !containerIds.some(id => canUngroupContainer(componentAsDocument(document, component, surfaceId), surfaceId, id))
+        ) {
+            return [];
+        }
+        const lifted: string[] = [];
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            const view = componentAsDocument(doc, liveComponent, surfaceId);
+            for (const containerId of containerIds) {
+                lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
+            }
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return lifted;
+    }
+
+    /**
+     * `groupElements` for a component definition's elements: the same plan, read and applied over a
+     * document made of the component alone, as `moveComponentElements` does.
+     */
+    public groupComponentElements(componentId: string, elementIds: readonly string[]): string | null {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        if (!component) {
+            return null;
+        }
+        const surfaceId = `component:${componentId}`;
+        const plan = planGroupElements(componentAsDocument(document, component, surfaceId), surfaceId, elementIds);
+        if (!plan) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const group = createGroupElement(uuidService.generate(), plan);
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            applyGroupElements(componentAsDocument(doc, liveComponent, surfaceId), plan, group);
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return group.id;
     }
 
     public createComponentElement(

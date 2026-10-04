@@ -37,6 +37,7 @@ import {
     type GalleryStoreData,
     type GalleryVariant,
 } from "./catalog";
+import { createAudioLengthReader, type GalleryAudioLengthReader } from "./audioDuration";
 import { createGalleryTranslator, type GalleryMessageKey } from "./messages";
 
 export type GalleryStore = ReturnType<typeof createGalleryStore>;
@@ -72,7 +73,14 @@ function reorder<T extends { id: string }>(list: T[], id: string, beforeId: stri
     return next;
 }
 
-export function createGalleryStore(app: PluginApp) {
+/**
+ * `readAudioLength` measures a clip as it is imported; it is a parameter only so a test can answer
+ * without a media element.
+ */
+export function createGalleryStore(
+    app: PluginApp,
+    readAudioLength: GalleryAudioLengthReader = createAudioLengthReader(app),
+) {
     let data: GalleryStoreData = EMPTY_STORE;
     const listeners = new Set<() => void>();
     const tr = createGalleryTranslator(app);
@@ -140,14 +148,26 @@ export function createGalleryStore(app: PluginApp) {
         imageAssetName: asset.name,
     });
 
-    /** A track or a loose voice clip: audio-backed, named after the file. */
-    const variantFromAudio = (artworkId: string, asset: Asset, fallbackName: string): GalleryVariant => ({
+    /** A track or a loose voice clip: audio-backed, named after the file, with its length when known. */
+    const variantFromAudio = (
+        artworkId: string,
+        asset: Asset,
+        fallbackName: string,
+        durationSec: number | null,
+    ): GalleryVariant => ({
         id: createVariantId(artworkId),
         name: stripExtension(asset.name) || fallbackName,
         imageAssetId: null,
         audioAssetId: asset.id,
         audioAssetName: asset.name,
+        ...(durationSec ? { durationSec } : {}),
     });
+
+    /**
+     * Every picked clip's length, in pick order. Read before the commit rather than after it, so a
+     * track lands with its length in the same write that adds it.
+     */
+    const measure = (assets: Asset[]) => Promise.all(assets.map(asset => readAudioLength(asset)));
 
     return {
         async load() {
@@ -258,6 +278,7 @@ export function createGalleryStore(app: PluginApp) {
         },
         /** Tracks of an album, or loose clips of a voice set. */
         async addAudioVariants(artworkId: string, assets: Asset[]) {
+            const lengths = await measure(assets);
             await patchArtwork(artworkId, artwork => ({
                 ...artwork,
                 variants: [
@@ -266,6 +287,7 @@ export function createGalleryStore(app: PluginApp) {
                         artwork.id,
                         asset,
                         tr.t("defaultTrack", { n: artwork.variants.length + index + 1 }),
+                        lengths[index] ?? null,
                     )),
                 ],
             }));
@@ -304,6 +326,7 @@ export function createGalleryStore(app: PluginApp) {
         },
         /** One album per picked file is rarely wanted; one album, many tracks is. */
         async importTracks(assets: Asset[], groupId: string | null = null): Promise<string> {
+            const lengths = await measure(assets);
             const artwork = newArtwork(
                 tr.t("defaultMusic", { n: data.items.filter(item => item.kind === "music").length + 1 }),
                 groupId,
@@ -314,6 +337,7 @@ export function createGalleryStore(app: PluginApp) {
                 artwork.id,
                 asset,
                 tr.t("defaultTrack", { n: index + 1 }),
+                lengths[index] ?? null,
             ));
             // A single track reads better as its own entry than as a one-track
             // album, so it takes the file's name.

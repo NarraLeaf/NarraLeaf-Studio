@@ -261,7 +261,7 @@ describe("projectExecutionContext", () => {
         const view = contextFor("left", null);
         // The editor's own pills - never `control:all` / `menu:action`, which is what the panel used
         // to print in their place.
-        expect(view.chain.map(rung => rung.pill)).toEqual(["Repeat", "Run at the same time"]);
+        expect(view.chain.map(rung => rung.pill)).toEqual(["Repeat", "Parallel"]);
     });
 
     it("carries the repeat's authored round count from the document", () => {

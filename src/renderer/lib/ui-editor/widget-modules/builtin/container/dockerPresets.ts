@@ -25,7 +25,7 @@ export function buildVerticalStackPreset(): { props: Record<string, unknown> } {
             layoutKind: "stack" as ContainerLayoutKind,
             stackDirection: "vertical" as ContainerStackDirection,
             stackGap: 8,
-            stackAlignItems: "stretch",
+            stackAlignItems: "start",
             stackJustifyContent: "start",
         },
     };

@@ -62,7 +62,7 @@ function noopActions() {
         selectAll: vi.fn(),
         renamePrimary: vi.fn(),
         setSelectedVisible: vi.fn(),
-        addSelectionToLeaderGroup: vi.fn(),
+        groupSelection: vi.fn(),
         ungroupSelection: vi.fn(),
         addSelectionToComponentLibrary: vi.fn(),
     };
@@ -84,7 +84,7 @@ describe("UI editor context menus", () => {
             widgetModules: [{ type: "nl.button", displayName: "Button" } as any],
             documentService: {} as any,
             actions: noopActions(),
-            canAddToGroup: false,
+            canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
         });
@@ -100,7 +100,7 @@ describe("UI editor context menus", () => {
             "add-to-component-library",
             "show-selected",
             "hide-selected",
-            "add-to-group",
+            "group",
             "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
@@ -131,7 +131,7 @@ describe("UI editor context menus", () => {
             widgetModules: [{ type: "nl.button", displayName: "Button" } as any],
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
-            canAddToGroup: false,
+            canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "root",
@@ -148,7 +148,7 @@ describe("UI editor context menus", () => {
             "toggle-visible",
             "delete",
             "add-to-component-library",
-            "add-to-group",
+            "group",
             "ungroup",
         ]) {
             expect(findItem(items, id).disabled).toBe(true);
@@ -184,7 +184,7 @@ describe("UI editor context menus", () => {
             widgetModules: [{ type: "nl.button", displayName: "Button" } as any],
             documentService: { updateElementLayout: vi.fn() } as any,
             actions,
-            canAddToGroup: false,
+            canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: true,
             insertParentIdForRow: "child",

@@ -17,6 +17,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import {
+    createDialogueAdvanceRecord,
+    isDialogueSlotSurface,
     projectDrawsNvlPage,
     resolveDialogueAdvanceActionIds,
     resolveEngineNvlKeys,
@@ -118,5 +120,27 @@ describe("the engine's NVL page as a keyboard target", () => {
     it("is none while a dialogue box or an NVL surface is on the stage, so one press reads on once", () => {
         expect(resolveEngineNvlKeys({ nvlActive: true, projectDrawsNvlPage: false, stage: [surfaceOn("dialog")], actionIds, advance })).toBeNull();
         expect(resolveEngineNvlKeys({ nvlActive: true, projectDrawsNvlPage: false, stage: [surfaceOn("nvl")], actionIds, advance })).toBeNull();
+    });
+});
+
+describe("what playing shows about the dialogue box", () => {
+    it("adds the actions seen reading on to the ones the graphs reach Next from, and only those", () => {
+        const record = createDialogueAdvanceRecord();
+        const fromGraphs = new Set(["advance"]);
+
+        expect(record.actionIds(fromGraphs)).toBe(fromGraphs);
+        const before = record.nextCalls();
+        record.noteNext();
+        expect(record.nextCalls()).toBe(before + 1);
+        record.witnessed(["confirm"]);
+
+        expect([...record.actionIds(fromGraphs)].sort()).toEqual(["advance", "confirm"]);
+        expect([...record.actionIds(new Set())]).toEqual(["confirm"]);
+    });
+
+    it("knows the dialogue box among the stage's surfaces", () => {
+        expect(isDialogueSlotSurface({ kind: "stageSurface", mount: { kind: "slot", slotId: "dialog" } })).toBe(true);
+        expect(isDialogueSlotSurface({ kind: "stageSurface", mount: { kind: "slot", slotId: "nvl" } })).toBe(false);
+        expect(isDialogueSlotSurface({ kind: "appSurface" })).toBe(false);
     });
 });

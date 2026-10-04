@@ -191,15 +191,22 @@ export function ImageFillField<TData extends UIInspectorData>({
         normalizedFill.mode,
     ]);
 
+    // The mode this effect last saw, so that it can tell "the mode just changed away from crop" from
+    // "the mode is not crop". Crop editing is entered on a fill in any mode - it writes nothing until
+    // the picture is dragged - so only a change of mode while editing ends it.
+    const lastSeenModeRef = useRef(normalizedFill.mode);
     useEffect(() => {
         if (!stateService) {
             return;
         }
+        const modeChanged = lastSeenModeRef.current !== normalizedFill.mode;
+        lastSeenModeRef.current = normalizedFill.mode;
         const override = stateService.getInteractionOverride();
         const isElementSelected =
             selection?.type === "element" && selection.data?.elementIds.includes(element.id);
         const cropAllowed = !allowedModes?.length || allowedModes.includes("crop");
         if (
+            modeChanged &&
             normalizedFill.mode !== "crop" &&
             override?.kind === "imageCrop" &&
             override.elementId === element.id &&

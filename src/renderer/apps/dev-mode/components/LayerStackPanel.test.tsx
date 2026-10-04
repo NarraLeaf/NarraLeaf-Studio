@@ -29,6 +29,7 @@ const GAME_UI = [
         surfaceName: "Dialog box",
         slotId: "dialog" as const,
         concealed: false,
+        hidden: false,
         interactive: true,
         takesInput: true,
     },
@@ -38,6 +39,7 @@ const GAME_UI = [
         surfaceName: "Toasts",
         slotId: "notification" as const,
         concealed: false,
+        hidden: false,
         interactive: false,
         takesInput: false,
     },
@@ -117,6 +119,16 @@ describe("LayerStackPanel", () => {
         })} />);
         expect(screen.getAllByText("Faded out")).toHaveLength(1);
         expect(screen.getAllByText("Keyboard")).toHaveLength(1);
+    });
+
+    it("says the dialogue box is hidden while the player has put it away", () => {
+        render(<LayerStackPanel composite={composite({
+            page: null,
+            stage: { interactive: true, keyboardOwner: true, gameUi: [{ ...GAME_UI[0]!, hidden: true }, GAME_UI[1]!] },
+        })} />);
+        expect(screen.getAllByText("Hidden")).toHaveLength(1);
+        // Still mounted, and a click on the stage brings it back, so it still takes clicks.
+        expect(screen.getAllByText("Takes clicks")).toHaveLength(2);
     });
 
     it("lists what is waiting for a group, and an exit that has not finished", () => {

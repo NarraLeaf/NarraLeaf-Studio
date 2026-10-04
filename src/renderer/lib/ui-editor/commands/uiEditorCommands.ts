@@ -25,8 +25,6 @@ import {
 import {
     filterToEditableTopLevel,
     getContainersToUngroup,
-    getMoversToGroupIntoLeaderContainer,
-    getSelectionLeaderId,
     getSelectionPrimaryId,
     isSurfaceRootElement,
     selectSurfaceForProperties,
@@ -401,7 +399,14 @@ export function uiEditorDeleteSelection(
     return true;
 }
 
-export function uiEditorGroupIntoLeaderContainer(
+/**
+ * Group: wrap the selection in a new, invisible container that takes its place, and select it.
+ *
+ * Whatever was selected first, and whatever kind of element it is: the command creates the group
+ * rather than reusing one of the selected elements as it. See `planGroupElements` for what can be
+ * wrapped and how nothing on screen moves.
+ */
+export function uiEditorGroupSelection(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
@@ -410,24 +415,15 @@ export function uiEditorGroupIntoLeaderContainer(
     if (!selection || selection.surfaceId !== surfaceId) {
         return false;
     }
-    const doc = documentService.getDocument();
-    const leader = getSelectionLeaderId(selection);
-    if (!leader) {
-        return false;
-    }
-    const movers = getMoversToGroupIntoLeaderContainer(doc, selection);
-    if (movers.length === 0) {
-        return false;
-    }
-    const result = documentService.moveElementsInSurface(surfaceId, movers, leader, null);
-    if (!result.ok) {
+    const groupId = documentService.groupElements(surfaceId, selection.elementIds);
+    if (!groupId) {
         return false;
     }
     stateService.setUIElementSelection({
         editor: "ui",
         surfaceId,
-        elementIds: selection.elementIds,
-        primaryId: getSelectionPrimaryId(selection) ?? leader,
+        elementIds: [groupId],
+        primaryId: groupId,
     });
     return true;
 }
@@ -435,7 +431,7 @@ export function uiEditorGroupIntoLeaderContainer(
 /**
  * Dissolve every group in the selection, and select what came out of them.
  *
- * The way back out of `uiEditorGroupIntoLeaderContainer`. What stays selected is the selection with
+ * The way back out of `uiEditorGroupSelection`. What stays selected is the selection with
  * each dissolved group replaced by its former children, filtered against the document afterwards so
  * that a nested group dissolved in the same pass does not leave a dead id behind. Ungrouping an
  * empty group leaves nothing to select, so the surface takes the properties panel as after a delete.

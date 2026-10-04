@@ -107,3 +107,26 @@ describe("pointer events over a widget that declares them", () => {
         expect(dispatchedEvents(dispatchElementBlueprintEvent)).toEqual(["mouseWheel", "mouseClick", "mouseMove"]);
     });
 });
+
+describe("the press an event carries up the chain", () => {
+    it("names the point for the elements above the one that was hit", () => {
+        const { dispatchElementBlueprintEvent, node } = renderWrapper(elementOfType("nl.container"));
+        node.getBoundingClientRect = () => ({ left: 10, top: 20, width: 100, height: 100 }) as DOMRect;
+
+        fireEvent.click(node, { clientX: 35, clientY: 70 });
+
+        const options = (dispatchElementBlueprintEvent.mock.calls[0] as unknown[] | undefined)?.[3] as
+            | { pointerPositions?: (elementId: string) => { x: number; y: number } | null }
+            | undefined;
+        expect(options?.pointerPositions?.("target")).toEqual({ x: 25, y: 50 });
+        expect(options?.pointerPositions?.("parent")).toBeNull();
+    });
+
+    it("names none for an event that does not travel", () => {
+        const { dispatchElementBlueprintEvent, node } = renderWrapper(elementOfType("nl.container"));
+
+        fireEvent.pointerMove(node);
+
+        expect((dispatchElementBlueprintEvent.mock.calls[0] as unknown[] | undefined)?.[3]).not.toHaveProperty("pointerPositions");
+    });
+});

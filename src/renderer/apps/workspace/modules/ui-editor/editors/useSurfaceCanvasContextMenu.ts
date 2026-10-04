@@ -14,16 +14,12 @@ import {
     uiEditorCutSelection,
     uiEditorDeleteSelection,
     uiEditorDuplicateSelection,
-    uiEditorGroupIntoLeaderContainer,
+    uiEditorGroupSelection,
     uiEditorPaste,
     uiEditorSelectAllInSurface,
     uiEditorUngroupSelection,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
-import {
-    canAddRestToLeaderContainer,
-    getContainersToUngroup,
-    getMoversToGroupIntoLeaderContainer,
-} from "@/lib/ui-editor/commands/uiEditorSelection";
+import { canGroupSelection, getContainersToUngroup } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { InputDialog } from "@/lib/components/dialogs";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
@@ -121,10 +117,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 stateService.getSelection(),
             );
             const doc = documentService.getDocument();
-            const canGroup =
-                Boolean(menuSel) &&
-                canAddRestToLeaderContainer(menuSel!, doc) &&
-                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canGroup = canGroupSelection(doc, surface.id, menuSel);
             const canUngroup = getContainersToUngroup(doc, surface.id, menuSel).length > 0;
 
             const items = buildCanvasContextMenu({
@@ -134,7 +127,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 hasClipboard: hasUiEditorClipboard(),
                 widgetModules,
                 documentService,
-                canAddToGroup: canGroup,
+                canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions: {
@@ -198,8 +191,8 @@ export function useSurfaceCanvasContextMenu(params: {
                             }
                         }
                     },
-                    addSelectionToLeaderGroup: () => {
-                        uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
+                    groupSelection: () => {
+                        uiEditorGroupSelection(documentService, stateService, surface.id, menuSel);
                     },
                     ungroupSelection: () => {
                         uiEditorUngroupSelection(documentService, stateService, surface.id, menuSel, uiService);

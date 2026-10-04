@@ -172,7 +172,7 @@ import {
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
-import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { attachPlayerPreferences, startPlaythroughPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { listPlayerSaveIds, loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import { planSaveMount, type SaveMountPlan } from "./saveMountPlan";
@@ -217,7 +217,12 @@ import {
     resolveKeyboardOwnerLane,
     type KeyboardOwner,
 } from "./keyboardOwner";
-import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
+import {
+    createDialogueAdvanceRecord,
+    projectDrawsNvlPage,
+    resolveDialogueAdvanceActionIds,
+    resolveEngineNvlKeys,
+} from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
@@ -262,6 +267,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
 import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
+import { useStageCoverCapture } from "./stageCoverCapture";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -1023,6 +1029,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameHiddenKeys: gameHiddenNavKeys,
     });
     /**
+     * The screen as it was when the page now covering the stage opened, for the saves written under
+     * it - and the Game UI waits on the stage while that picture is taken (see `stageCoverCapture`).
+     * Nothing to picture before the game has been entered, which is every page opened from the title.
+     */
+    const stageCover = useStageCoverCapture({
+        covered: stageCoveredByPage,
+        capture: () => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                return null;
+            }
+            return liveGame.capturePng();
+        },
+    });
+    /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
      * below reads it, and a save has to record the time at the moment it is written.
@@ -1290,6 +1311,22 @@ export function GameApp(props: GameAppProps): ReactNode {
             preferenceListenersRef.current.delete(listener);
         };
     }, []);
+    /**
+     * Whether the player has put the dialogue box away (`showDialog` off), for a host that draws
+     * overlays: the Layers panel lists the dialogue surface, and nothing else this component draws
+     * changes when the box is hidden - the engine only makes it transparent, so it stays mounted and
+     * registered. Read off the preference snapshot the change stream keeps, which is the value the
+     * engine's box draws by. Without overlays it is a constant, and nothing renders for it.
+     */
+    const subscribeDialogHidden = useCallback(
+        (listener: () => void): (() => void) => (drawsOverlays ? subscribeGamePreferences(listener) : () => undefined),
+        [drawsOverlays, subscribeGamePreferences],
+    );
+    const readDialogHidden = useCallback(
+        () => drawsOverlays && preferenceSnapshotRef.current.showDialog === false,
+        [drawsOverlays],
+    );
+    const dialogHidden = useSyncExternalStore(subscribeDialogHidden, readDialogHidden);
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const prefersReducedMotion = useReducedMotion();
@@ -1653,6 +1690,11 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     /**
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
+     *
+     * Stamped the way `Go Page` stamps a page (`openSurface`): a layer shown while a game holds the
+     * screen is drawn over the playthrough, so it is a game overlay - what `Is Game Overlay` answers
+     * inside it, and what thins its background so the scene shows through. Fixed for the life of
+     * the layer, as a page's is.
      */
     const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
         const key = mountSurfaceLayer(layerStack, {
@@ -1662,6 +1704,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             dismissible: request.dismissible,
             group: request.group,
             ownerScopeId: request.ownerScopeId,
+            presentation: studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage",
         });
         noteSurfaceMountStart(surfaceMountStartsRef.current, key, request.surfaceId, "layer");
         return key;
@@ -2368,6 +2411,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [requireActiveLiveGame]);
 
     /**
+     * Which actions the dialogue box reads on with, as far as playing has shown - the half of
+     * `engineNvlKeys` a script layer needs. Held in state rather than a memo so a StrictMode remount
+     * keeps the one record, and it has nothing to tear down.
+     */
+    const [dialogueAdvances] = useState(createDialogueAdvanceRecord);
+    /** The host's `Next`: every graph node and script call that asks the game to read on comes here. */
+    const nextFromGraph = useCallback(async () => {
+        dialogueAdvances.noteNext();
+        await nextInGame();
+    }, [dialogueAdvances, nextInGame]);
+
+    /**
      * Backs the blueprint `sound` family. Built once per host and ref-backed, so
      * its identity is stable across relaunches; it reads the live game through
      * the ref and degrades to a warned no-op when there is none.
@@ -2871,10 +2926,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeLanguageChangeConfiguration(bundle.languageChange),
         [bundle.languageChange],
     );
+    const readStageCoverPicture = stageCover.readPicture;
     const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         let capture: string | undefined;
-        if (screenshot === true) {
+        // Under a page the stage's Game UI has stepped off, so the picture is the one taken as that
+        // page opened: the screen the player left to save, as an auto-save a moment earlier shows it.
+        const underPage = screenshot === true ? await (readStageCoverPicture() ?? null) : null;
+        if (underPage !== null) {
+            try {
+                capture = await shrinkSaveCapture(underPage);
+            } catch (error) {
+                reportSaveCaptureFailure(id, normalizeError(error));
+            }
+        } else if (screenshot === true) {
             if (typeof liveGame.capturePng !== "function") {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
@@ -2904,6 +2969,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         playtime,
         pluginHost,
+        readStageCoverPicture,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
     ]);
@@ -3087,6 +3153,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 apply: savedGame => {
                     const game = activeLiveGame();
                     game.game.router.clear().cleanHistory();
+                    // A loaded save is a playthrough of its own: the box opens the author's way,
+                    // not the way the game it replaced last left it.
+                    startPlaythroughPreferences(
+                        (game.game as { preference?: PreferenceStoreLike }).preference,
+                        currentBundleRef.current.preferences,
+                    );
                     game.newGame().deserialize(savedGame);
                 },
                 /**
@@ -4165,7 +4237,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onClearEndingState: clearEndingStateInGame,
             onClearEndings: clearEndingsInGame,
             onSelectChoice: selectChoiceInGame,
-            onNext: nextInGame,
+            onNext: nextFromGraph,
             onSkip: skipInGame,
             onShowDialog: showDialogInGame,
             onHideDialog: hideDialogInGame,
@@ -4254,7 +4326,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        nextInGame,
+        nextFromGraph,
         openSurface,
         quitGame,
         replaceSurface,
@@ -4557,6 +4629,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         const sceneReady = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
+        // A box the player put away in the last playthrough is not away in this one. Before
+        // `newGame()`, so the first line mounts with the box the author's way.
+        startPlaythroughPreferences(
+            (liveGame.game as { preference?: PreferenceStoreLike }).preference,
+            currentBundleRef.current.preferences,
+        );
         liveGame.newGame();
         // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
         // later with the reading it inherited; nothing else in the file resets it.
@@ -5585,9 +5663,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         nvlActive: isNvlModeInGame(),
                         projectDrawsNvlPage: drawsOwnNvlPage,
                         stage,
-                        actionIds: dialogueAdvanceActionIds,
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
                         advance: nextInGame,
                     }),
+                    dialogueAdvance: dialogueAdvances,
                 };
             },
             onError: err => host.log("error", normalizeError(err)),
@@ -5596,6 +5675,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle,
         core,
         dialogueAdvanceActionIds,
+        dialogueAdvances,
         drawsOwnNvlPage,
         host,
         hostAdapterBundle,
@@ -6077,6 +6157,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     coveredByPage: stageCoveredByPage,
                     // What the stage layer below is handed as `interactive`.
                     pointerLive: gameStageVisible,
+                    dialogHidden,
                     surfaces: listStageSurfaces({
                         live: ambientSurfaces.list(),
                         takingInput: stageKeyboardSurfaces.list(),
@@ -6339,7 +6420,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onContextMenu={offerSyntheticPointerInputToGlobal}
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
-                <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
+                <StageCoveredByPageContext.Provider value={stageCover.concealed}>
                     <StageCoveredContext.Provider value={stageCovered}>
                         {nlrStageLayer}
                     </StageCoveredContext.Provider>

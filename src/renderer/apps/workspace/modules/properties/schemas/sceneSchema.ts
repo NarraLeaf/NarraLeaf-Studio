@@ -10,6 +10,7 @@ import { isEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { DEFAULT_UI_STAGE_SLOT_ID } from "@shared/types/ui-editor/stageSlots";
 import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
+import { getSurfaceDefaultBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import type {
     ColorPickerFieldDefinition,
     CustomFieldDefinition,
@@ -131,7 +132,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
             allowOpacity: true,
             brandPalette: true,
             getValue: data =>
-                parseColorValue(data.surface.settings?.backgroundColor, {
+                parseColorValue(data.surface.settings?.backgroundColor ?? getSurfaceDefaultBackgroundColor(data.surface), {
                     hex: "#000000",
                     alpha: 1,
                 }),

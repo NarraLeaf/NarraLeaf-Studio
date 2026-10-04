@@ -269,7 +269,9 @@ export const TRANSFORM_TIMING_PARAMS = {
     // easing mirrored too, so there is no snap at the joint.
     repeatType: { hint: "repeatType", type: { kind: "enum", options: REPEAT_TYPE_OPTIONS } },
     from: { hint: "fromProps", type: { kind: "text" } },
-    motion: { hint: "storyMotion", type: { kind: "boolean" } },
+    // 运镜 is the Chinese word this flag was typed as before its hint was named after the Story Motion
+    // it binds (动效). A typed word is a habit, so the old spelling stays accepted, in every locale.
+    motion: { hint: "storyMotion", aliases: ["运镜"], type: { kind: "boolean" } },
 } as const satisfies StoryCommandParamsShape;
 
 /** Every key that writes a prop - what `validate` checks against and what a camera row measures itself by. */

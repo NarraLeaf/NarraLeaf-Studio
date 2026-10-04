@@ -93,7 +93,7 @@ export const build = {
         appId: "アプリ ID",
         copyright: "著作権表示",
         icons: "アイコン",
-        iconsHint: "アイコンをクリックするとプロジェクト設定で変えられる",
+        iconsHint: "アイコンをクリックすると「プロジェクト ▸ アプリ」で変えられる",
         iconUnset: "未設定",
         // バージョンや著作権表示が空のときの表示。この節はもう報告しかしないので、
         // 空欄が入力待ちのコントロールに見えないよう、空であることを言葉で出す。
@@ -102,8 +102,8 @@ export const build = {
     },
     content: {
         protection: "アセットの保護",
-        protectionOn: "パッケージしたゲームの中で、アセットとセーブは暗号化される",
-        protectionOff: "アセットとセーブは暗号化せずに配布される",
+        protectionOn: "パッケージしたゲームの中で、アセットは暗号化される",
+        protectionOff: "アセットは暗号化せずに配布される",
         plugins: "同梱するプラグイン",
         pluginsNone: "このゲームに同梱されるプラグインはない",
         pluginsRescanUnavailable: "このウィンドウではプラグイン一覧を取り直せない",
@@ -157,6 +157,8 @@ export const build = {
             artifactReadVersioned: "{product} {version}、ビルド日時 {date}",
             artifactVariantStated: "ビルドフォルダーから読み取った値",
             artifactVariantUnknown: "このビルドはバリアントを記録していない。下で選択する。",
+            // プロジェクトにキーができる前のビルド。述べるだけで、書き出しは止めない。
+            artifactNoKey: "このビルドは配布キーなしで作られている。これに向けて書き出したパッチはゲームに無視される。",
             artifactVariantMismatch: "このビルドは {build}。この DLC の依存先は {variant}。",
             artifactWholeGame: "パッチにゲーム全体を含める",
             contentLabel: "内容の取得元バリアント",
@@ -324,6 +326,8 @@ export const build = {
             + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
         "mobile-unprotected": "Android と iOS のパッケージにアセットの保護は効かない",
+        // 横に「作成」ボタンがあるので、文は結果だけを述べ、対処はボタンに任せる。
+        "distribution-key-missing": "配布キーが未作成。このビルドで作られるゲームは今後パッチを受け入れない",
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
