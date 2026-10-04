@@ -22,6 +22,7 @@ type GameStateHandler = (payload: never) => void;
 function createEngine() {
     const gameStateHandlers = new Map<string, GameStateHandler[]>();
     let currentAction: ((payload: { actionId: string | null }) => void) | null = null;
+    let advDialog: { dialogId: string; actionId: string | null; ended: boolean } | null = null;
 
     const gameState = {
         events: {
@@ -32,6 +33,12 @@ function createEngine() {
                 return token;
             },
         },
+        getAdvDialogState: () => advDialog,
+    };
+    const fire = (event: string, payload: unknown) => {
+        for (const handler of gameStateHandlers.get(event) ?? []) {
+            (handler as (value: unknown) => void)(payload);
+        }
     };
     const liveGame = {
         game: {
@@ -51,10 +58,17 @@ function createEngine() {
     return {
         liveGame: liveGame as unknown as LiveGame,
         reachAction: (actionId: string | null) => currentAction?.({ actionId }),
-        fire: (event: string, payload: unknown) => {
-            for (const handler of gameStateHandlers.get(event) ?? []) {
-                (handler as (value: unknown) => void)(payload);
-            }
+        fire,
+        /** A say action showing its line in an ADV dialog, as `GameState.beginAdvDialog` does. */
+        showAdvLine: (actionId: string) => {
+            currentAction?.({ actionId });
+            advDialog = { dialogId: `dialog:${actionId}`, actionId, ended: false };
+            fire("event:state.dialog.change", undefined);
+        },
+        /** The dialog advanced past or cancelled, as `GameState.settleAdvDialog` does. */
+        settleAdvLine: () => {
+            advDialog = null;
+            fire("event:state.dialog.change", undefined);
         },
     };
 }
@@ -65,6 +79,7 @@ function compiledStory(overrides: Partial<CompiledNlrStory> = {}): CompiledNlrSt
     const bindings: NlrActionIdBinding[] = [
         { action: null, staticId: "action:bgm", blockId: "bgm", audioAssetId: "asset-theme" },
         { action: null, staticId: "action:say", blockId: "say", textId: "text-1" },
+        { action: null, staticId: "action:say-2", blockId: "say-2", textId: "text-2" },
         { action: null, staticId: "action:wait", blockId: "wait" },
     ] as unknown as NlrActionIdBinding[];
     return {
@@ -151,6 +166,39 @@ describe("dialogueEnd", () => {
         engine.fire("event:state.player.lineEnd", undefined);
 
         expect(dialogue).toEqual([{ textId: "text-1" }, { textId: null }]);
+    });
+
+    it("names the ADV line advanced past, not the next one the advance already started", () => {
+        // In ADV an advance settles the dialog and lets the story run on before the engine says the
+        // line ended: by `lineEnd` the play head stands on the next line. Reading the play head
+        // there named every line by the one after it - the first line of a run never at all.
+        const { engine, dialogue } = attach();
+
+        engine.showAdvLine("action:say");
+        // The player advances: settle, the next line starts, and only then the end of the first.
+        engine.settleAdvLine();
+        engine.showAdvLine("action:say-2");
+        engine.fire("event:state.player.lineEnd", undefined);
+        // The last line of the run: what follows it is not a line.
+        engine.settleAdvLine();
+        engine.reachAction("action:wait");
+        engine.fire("event:state.player.lineEnd", undefined);
+
+        expect(dialogue).toEqual([{ textId: "text-1" }, { textId: "text-2" }]);
+    });
+
+    it("does not let a dialog settled without an end name a later line", async () => {
+        // A rollback cancels the ADV dialog on screen, which settles it with no `lineEnd` after it.
+        const { engine, dialogue } = attach();
+
+        engine.showAdvLine("action:say-2");
+        engine.settleAdvLine();
+        await Promise.resolve();
+        // Later, in NVL, a line ends before the play head moves on.
+        engine.reachAction("action:say");
+        engine.fire("event:state.player.lineEnd", undefined);
+
+        expect(dialogue).toEqual([{ textId: "text-1" }]);
     });
 
     it("forgets the line when the session is replaced", () => {
