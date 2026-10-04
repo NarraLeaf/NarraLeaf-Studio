@@ -46,6 +46,7 @@ import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/c
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
@@ -78,9 +79,15 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextLabel)) {
         return;
     }
+    // Typed over a key the project does not have - drawn as its name - the words become the button's
+    // own and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getButtonProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel },
+        {
+            ...(docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 

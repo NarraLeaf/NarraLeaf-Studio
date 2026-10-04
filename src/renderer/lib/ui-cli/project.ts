@@ -150,23 +150,17 @@ export function writeUiDocument(file: UiDocumentFile): void {
 // The translation keys, read only
 // ---------------------------------------------------------------------------
 
-/** The project's named translation keys, and whether its game reads them at all. */
+/** The project's named translation keys, and its source language. */
 export type TextKeys = {
-    /**
-     * True when the project has a source language. Without one a build carries no keys and every
-     * keyed widget shows its own words, so a key is not yet what a player reads.
-     */
-    keysApply: boolean;
-    /** The project's source language, or "" when it has none. */
+    /** The project's source language, or "" when it has none. Keys are read either way. */
     sourceLocale: string;
     /** Key name to source-language text, from `editor/localization/keys.json`. */
     keys: ReadonlyMap<string, string>;
 };
 
 /**
- * Read the key registry and the project's source language, the two things that decide whether a
- * keyed widget's own words are ever shown. Null when the project config cannot be read, which is not
- * the same as a project with no keys.
+ * Read the key registry and the project's source language. Null when the project config cannot be
+ * read, which is not the same as a project with no keys.
  */
 export function readTextKeys(projectDir: string): TextKeys | null {
     let config: Record<string, unknown>;
@@ -198,11 +192,7 @@ export function readTextKeys(projectDir: string): TextKeys | null {
             return null;
         }
     }
-    return {
-        keysApply: Boolean(localization.sourceLocale) && localization.locales.length > 0,
-        sourceLocale: localization.sourceLocale,
-        keys,
-    };
+    return { sourceLocale: localization.sourceLocale, keys };
 }
 
 // ---------------------------------------------------------------------------

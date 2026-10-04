@@ -81,7 +81,6 @@ export const widgets = {
     localization: {
         direct: "直接入力",
         translationKey: "翻訳キー",
-        noSourceLanguage: "プロジェクトに原文の言語が設定されていない",
         none: "なし",
         createKey: "新しいキーを作る…",
         createKeyTitle: "新しいローカライズのキー",

@@ -193,10 +193,10 @@ describe("useLocalizedWidgetText at design time", () => {
         expect(inGame.getAllByTestId("text")[1].textContent).toBe("Quit");
     });
 
-    it("falls back to the widget's own text for a key the registry does not hold", () => {
+    it("draws a key the registry does not hold as its name, as the game does", () => {
         setDesignTimeLocalizationKeys({ "menu.start": "Start" });
         const { getByTestId } = renderProbe(null, keyed);
-        expect(getByTestId("text").textContent).toBe("Leave");
+        expect(getByTestId("text").textContent).toBe(keyed.localizationKey);
     });
 
     it("draws the widget's own text while nothing is published", () => {

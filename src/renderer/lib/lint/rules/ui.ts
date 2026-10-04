@@ -964,11 +964,11 @@ function runListTextUntranslated(ctx: LintContext): LintFinding[] {
 /**
  * A widget whose words are read from a translation key the project does not have.
  *
- * A key removed from the registry, or brought in on a pasted element, leaves the widget naming
- * nothing: it shows its own stored words in the source language and whatever translation of the old
- * key a language file still holds in the others, and nothing in the editor says the two came apart.
- * Every place a widget names a key is checked - pages and component definitions - and each widget is
- * reported, since each is fixed on its own.
+ * The widget shows the key's name, on the canvas and in the game, as a `Get Text` of the same key
+ * does. Removing a key turns its widgets into ones holding its words, and a paste or an import does
+ * the same for a key the project lacks, so this is reached by a hand-edited document or a `.ui` file
+ * applied without `check`. Every place a widget names a key is checked - pages and component
+ * definitions - and each widget is reported, since each is fixed on its own.
  *
  * Quiet when the key registry was not read (`null`), which is not a project with no keys.
  */

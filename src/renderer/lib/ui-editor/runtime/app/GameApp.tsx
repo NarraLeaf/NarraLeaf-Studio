@@ -27,6 +27,7 @@ import {
 import { EMPTY_GAME_MENU_MODEL } from "@shared/types/gameMenu";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
+    isKeysOnlyLocalization,
     localizationKeyUnitId,
     LOCALE_RESTART_RESUME_KEY,
     LOCALE_STORAGE_KEY,
@@ -531,7 +532,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     // The stored value stays authoritative afterwards (player choice wins).
     useEffect(() => {
         const localization = bundle.localization;
-        if (!core || !localization) {
+        // A project without a source language has no language to pick, only its keys.
+        if (!core || !localization || isKeysOnlyLocalization(localization)) {
             return;
         }
         let cancelled = false;
@@ -581,6 +583,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         return {
             bundle: localization,
             getLocale: () => {
+                // A project without a source language reads its keys and nothing else, in no
+                // language - a language stored while it still had some changes nothing.
+                if (isKeysOnlyLocalization(localization)) {
+                    return "";
+                }
                 const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
                 return typeof stored === "string" && stored ? stored : localization.sourceLocale;
             },
@@ -651,7 +658,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     // the next spoken line.
     const translateCharacterName = useCallback((name: string | null): string | null => {
         const localization = bundle.localization;
-        if (!name || !localization || !core) {
+        if (!name || !localization || !core || isKeysOnlyLocalization(localization)) {
             return name;
         }
         const character = bundle.storyLibrary?.characters.find(entry => entry.name === name);
@@ -2344,7 +2351,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const readTextLocale = useCallback((): string => {
         const localization = bundle.localization;
-        if (!localization || !core) {
+        if (!localization || !core || isKeysOnlyLocalization(localization)) {
             return "";
         }
         const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
@@ -4063,7 +4070,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             // an author reading it does not have to know which frontend produced a line. Built here
             // rather than in the compiler because the stream belongs to this runtime.
             devtools: core ? createBlueprintDevtoolsApi(event => core.debug.emit(event)) : undefined,
-            localization: bundle.localization && core
+            // The story has nothing to read in a payload of keys alone, and reads none, as before.
+            localization: bundle.localization && core && !isKeysOnlyLocalization(bundle.localization)
                 ? { ...bundle.localization, getLocale: readTextLocale }
                 : undefined,
             voice: bundle.voice && core

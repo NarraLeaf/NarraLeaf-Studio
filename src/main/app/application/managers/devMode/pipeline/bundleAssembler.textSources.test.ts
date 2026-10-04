@@ -162,4 +162,16 @@ describe("bundleAssembler interface document older than v13", () => {
         });
         expect(fromDisk.localization?.tables.ja).toEqual({ "key:menu.start": "スタート", "ui:marked.text": "スタート" });
     });
+
+    it("ships the keys of a project without a source language, and nothing else", async () => {
+        const projectPath = await createV12Project();
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        const bundle = await assembleDevModeBundleFromProjectPath({ projectPath, bundleId: "b", revision: 1 });
+        expect(bundle.localization).toEqual({ sourceLocale: "", locales: [], tables: {}, keys: { "menu.start": "Start" } });
+        // The game showed the button's own words; they equal the key's, which shows the same.
+        expect(bundle.ui.uidoc.elements.start.props).toEqual({ localizationKey: "menu.start" });
+    });
 });

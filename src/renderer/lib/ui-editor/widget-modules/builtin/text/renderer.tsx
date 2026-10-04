@@ -22,6 +22,7 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
@@ -94,9 +95,15 @@ function commitTextEditValue(documentService: UIDocumentService, elementId: stri
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
         return;
     }
+    // Typed over a key the project does not have - drawn as its name - the words become the text's own
+    // and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getTextProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? textValuePatch(docEl, nextText) : { text: nextText },
+        {
+            ...(docEl ? textValuePatch(docEl, nextText) : { text: nextText }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 

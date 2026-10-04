@@ -14,7 +14,7 @@
  * Comments in English per project convention.
  */
 
-import { localizationKeyUnitId, resolveLocalizedUnitText, type GameLocalizationBundle } from "../localization";
+import { resolveLocalizationKeyWords, resolveLocalizedUnitText, type GameLocalizationBundle } from "../localization";
 import type { UIElement, UIElementValueBinding } from "./document";
 import { UI_TEXT_SITES, type UITextSite } from "./textSites";
 import { resolveByWidgetType } from "./widgetInheritance";
@@ -83,15 +83,15 @@ export type UITextSource = "literal" | "key" | "blueprint";
  * The source a stored element's words are read from - derived, not stored.
  *
  * In the order the game resolves them: a key wins over everything, so an element that also carries
- * words of its own or a value blueprint is a keyed one. `keysApply` is false while the project has
- * no source language: a build then carries no keys, and the game shows the element's own words.
+ * words of its own or a value blueprint is a keyed one - whether or not the project has a source
+ * language, because a key is shared words before it is a translation.
  *
  * Null for an element whose words are bound to a field of its list row (and to no key), which is
  * answered by the row and offers none of the three.
  */
-export function uiTextSourceOf(element: UIElement, site: UITextSite, keysApply: boolean): UITextSource | null {
+export function uiTextSourceOf(element: UIElement, site: UITextSite): UITextSource | null {
     const reading = readUITextSite(element, site);
-    if (keysApply && reading.key) {
+    if (reading.key) {
         return "key";
     }
     if (reading.binding?.kind === "listItemField") {
@@ -192,9 +192,10 @@ export type UITextWordsInput = {
 /**
  * Where the words are being drawn.
  *
- * - `game`: a game with a localization payload, in the player's language.
+ * - `game`: a game, in the player's language. Every game has a localization payload; a project
+ *   without a source language ships one that holds only its keys (`keysOnlyLocalization`).
  * - `canvas`: anywhere without one - the editor canvas, a preview - holding the key registry the
- *   editor published, or null when it published none (the project ships no keys).
+ *   editor published, or null when it has published none yet.
  */
 export type UITextWordsHost =
     | { kind: "game"; bundle: GameLocalizationBundle; locale: string }
@@ -207,7 +208,8 @@ export type UITextWordsHost =
  * translation, then the key's source text, then the words handed in; without a key, words a binding
  * gave as they are, and the element's own words through its own unit, then as written. On the canvas:
  * a site that draws its key shows the key's source text, and every other case shows the words handed
- * in. A key the registry does not hold falls back to the words handed in, in both.
+ * in. A key the registry does not hold shows its name, in both (`resolveLocalizationKeyWords`), as the
+ * blueprint readers of a key do; before a canvas has a registry it shows the words handed in.
  */
 export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHost): string {
     if (input.origin === "written") {
@@ -215,14 +217,13 @@ export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHos
     }
     const keyName = input.localizationKey?.trim();
     if (host.kind === "canvas") {
-        return keyName && input.site.canvasDrawsKey
-            ? host.keys?.[keyName] ?? input.sourceText
-            : input.sourceText;
+        if (!keyName || !input.site.canvasDrawsKey || !host.keys) {
+            return input.sourceText;
+        }
+        return Object.prototype.hasOwnProperty.call(host.keys, keyName) ? host.keys[keyName] : keyName;
     }
     if (keyName) {
-        return resolveLocalizedUnitText(host.bundle, host.locale, localizationKeyUnitId(keyName))
-            ?? host.bundle.keys?.[keyName]
-            ?? input.sourceText;
+        return resolveLocalizationKeyWords(host.bundle, host.locale, keyName);
     }
     if (input.origin === "bound") {
         return input.sourceText;

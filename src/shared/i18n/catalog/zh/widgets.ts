@@ -80,7 +80,6 @@ export const widgets = {
     localization: {
         direct: "直接写",
         translationKey: "翻译键",
-        noSourceLanguage: "项目未设置源语言",
         none: "无",
         createKey: "新建键…",
         createKeyTitle: "新建本地化键",

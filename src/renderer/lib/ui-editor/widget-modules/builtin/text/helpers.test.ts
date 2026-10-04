@@ -18,30 +18,24 @@ const BLUEPRINT = { text: { kind: "blueprintValue", blueprintId: "bp", valueType
 const FIELD = { text: { kind: "listItemField", fieldId: "name" } } as UIElement["valueBindings"];
 
 describe("textSourceOf", () => {
-    it("reads an element with its own words as literal, translated through its own unit or not", () => {
-        expect(textSourceOf(text({}), true)).toBe("literal");
-        expect(textSourceOf(text({}), true)).toBe("literal");
+    it("reads an element with its own words as literal", () => {
+        expect(textSourceOf(text({}))).toBe("literal");
     });
 
-    it("reads an element with both its own words and a key as keyed, which is what the game shows", () => {
-        expect(textSourceOf(text({ localizationKey: "config.title" }), true)).toBe("key");
+    it("reads an element with a key as keyed, whether or not the project has a source language", () => {
+        expect(textSourceOf(text({ localizationKey: "config.title" }))).toBe("key");
     });
 
     it("puts a key before a Blueprint Value, in the order the game resolves them", () => {
-        expect(textSourceOf(text({ localizationKey: "config.title" }, BLUEPRINT), true)).toBe("key");
-        expect(textSourceOf(text({}, BLUEPRINT), true)).toBe("blueprint");
-    });
-
-    it("ignores a key while the project carries none, as a build does", () => {
-        expect(textSourceOf(text({ localizationKey: "config.title" }), false)).toBe("literal");
-        expect(textSourceOf(text({ localizationKey: "config.title" }, BLUEPRINT), false)).toBe("blueprint");
+        expect(textSourceOf(text({ localizationKey: "config.title" }, BLUEPRINT))).toBe("key");
+        expect(textSourceOf(text({}, BLUEPRINT))).toBe("blueprint");
     });
 
     it("ignores a blank key", () => {
-        expect(textSourceOf(text({ localizationKey: "  " }), true)).toBe("literal");
+        expect(textSourceOf(text({ localizationKey: "  " }))).toBe("literal");
     });
 
     it("offers none of the three for a list row's text bound to a field of the row", () => {
-        expect(textSourceOf(text({}, FIELD), true)).toBeNull();
+        expect(textSourceOf(text({}, FIELD))).toBeNull();
     });
 });

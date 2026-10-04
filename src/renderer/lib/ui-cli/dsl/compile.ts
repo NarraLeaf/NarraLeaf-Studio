@@ -489,8 +489,8 @@ class CompileContext {
      * `label` changes nothing a player sees. What `show` prints for a keyed widget - its stored words,
      * which are normally the key's - passes; words that differ from both the key's text and what the
      * element stores are an edit that cannot show, and the tool cannot tell which of the two was
-     * meant. Without a source language the project ships no keys and the widget's own words do show,
-     * until it gets one - so there it is a warning rather than a refusal.
+     * meant. Keys are read whether or not the project has a source language, so it is a refusal
+     * either way.
      */
     private checkWordsTwoSources(node: UiElementNode, id: string, label: string, props: Record<string, unknown>): void {
         const site = uiTextSiteOf(node.type);
@@ -508,22 +508,12 @@ class CompileContext {
             return;
         }
         const writes = `${site.textProp} = ${JSON.stringify(words)}`;
-        if (this.textKeys.keysApply) {
-            this.report(
-                "error",
-                "ui.words_two_sources",
-                `"${label}" writes \`${writes}\` but names key "${key}", whose text (${JSON.stringify(keyText)}) is what the game and the canvas show.`,
-                node.line,
-                `Change the words through the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` to show these words instead.`,
-            );
-            return;
-        }
         this.report(
-            "warning",
+            "error",
             "ui.words_two_sources",
-            `"${label}" writes \`${writes}\` and names key "${key}" (${JSON.stringify(keyText)}). The project has no source language, so these words show now; once it has one, the key's text replaces them.`,
+            `"${label}" writes \`${writes}\` but names key "${key}", whose text (${JSON.stringify(keyText)}) is what the game and the canvas show.`,
             node.line,
-            `Keep one source: drop \`${site.keyProp}\`, or write the words through the key.`,
+            `Change the words through the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` to show these words instead.`,
         );
     }
 

@@ -22,11 +22,12 @@ import {
     migrateVariableRegistryToLatest,
 } from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
-import type {
-    GameLocalizationBundle,
-    LanguageChangeConfiguration,
-    LocalizationConfiguration,
-    LocalizationUnit,
+import {
+    keysOnlyLocalization,
+    type GameLocalizationBundle,
+    type LanguageChangeConfiguration,
+    type LocalizationConfiguration,
+    type LocalizationUnit,
 } from "@shared/types/localization";
 import {
     normalizeLanguageChangeConfiguration,
@@ -326,7 +327,13 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
             scripts,
         },
         storyLibrary: resolvedStoryLibrary,
-        localization,
+        // A project without a source language still ships its keys: a key is shared words before it
+        // is a translation, and a keyed widget or a Get Text reads them whether or not anything is
+        // translated. Only here, at the end - every step above reads `localization` as "no
+        // languages", as it always has.
+        localization: localization ?? (textSources.files.configuration.sourceLocale
+            ? undefined
+            : keysOnlyLocalization(textSources.files.keys)),
         voice,
         audio,
         autoSave,

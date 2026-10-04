@@ -134,10 +134,9 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             getDesignTimeLocalizationKeys,
             getDesignTimeLocalizationKeys,
         );
-        const keysApply = keys !== null;
         const blueprintState = useBlueprintValueBinding(config.blueprint ?? null, data);
         const live = blueprintState.live;
-        const source = uiTextSourceOf(live, site, keysApply);
+        const source = uiTextSourceOf(live, site);
         const writers = useElementTextWriters(live.id);
         const sampleCause = uiTextSampleCauseOf(live, site, writers);
         const writersList = <TextWritersList writers={writers} />;
@@ -263,8 +262,6 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                             id: "key",
                             icon: null,
                             label: t("widgets.localization.translationKey"),
-                            disabled: !keysApply,
-                            tip: keysApply ? undefined : t("widgets.localization.noSourceLanguage"),
                         },
                         ...(config.blueprint
                             ? [{

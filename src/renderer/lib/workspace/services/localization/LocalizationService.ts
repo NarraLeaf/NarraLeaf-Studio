@@ -170,7 +170,6 @@ export class LocalizationService extends Service<LocalizationService> implements
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
         // The canvas draws a keyed text or button from the registry and edits it in place through it.
-        this.events.on("configChanged", () => this.publishDesignTimeKeys());
         setDesignTimeLocalizationKeyWriter((name, sourceText) => {
             const existing = this.keysDocument?.keys[name];
             this.setKey(name, { ...existing, sourceText });
@@ -188,21 +187,15 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     /**
-     * Hand the registry to the canvas, as key name → source text.
+     * Hand the registry to the canvas, as key name → source text, once it is read.
      *
-     * Withdrawn while the project has no source language, because a build carries no keys then and
-     * the game shows every widget's own text; the canvas follows it there too.
+     * Whether or not the project has a source language: a build carries the keys either way
+     * (`keysOnlyLocalization`), and the canvas draws what the game draws.
      */
     private publishDesignTimeKeys(): void {
-        let hasSourceLocale = false;
-        try {
-            hasSourceLocale = Boolean(this.getConfiguration().sourceLocale);
-        } catch {
-            hasSourceLocale = false;
-        }
         const document = this.keysDocument;
         setDesignTimeLocalizationKeys(
-            hasSourceLocale && document
+            document
                 ? Object.fromEntries(Object.entries(document.keys).map(([name, key]) => [name, key.sourceText]))
                 : null,
         );

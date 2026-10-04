@@ -57,8 +57,8 @@ export const TEXT_SITE = requireUITextSite("nl.text");
 export type TextSource = UITextSource;
 
 /** The source a stored text element's `text` is read from - derived, not stored (`uiTextSourceOf`). */
-export function textSourceOf(element: UIElement, keysApply: boolean): TextSource | null {
-    return uiTextSourceOf(element, TEXT_SITE, keysApply);
+export function textSourceOf(element: UIElement): TextSource | null {
+    return uiTextSourceOf(element, TEXT_SITE);
 }
 
 /** A text label keeps its string in `text` and its runs beside it in `rich`. */
