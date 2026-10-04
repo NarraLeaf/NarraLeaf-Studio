@@ -131,7 +131,8 @@ import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
 import { dlcForAppTag, findDlc, type ProjectDlc } from "@shared/types/dlc";
 import { readProjectDlcFromDir } from "../../utils/dlcFile";
-import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
+import { openPayload, patchCarriesEntry } from "./patchPayload";
+import { readBuildPayloadInWorker } from "./readBuildPayloadInWorker";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
 import { downloadFailureHints } from "./downloadFailureHint";
@@ -1749,30 +1750,35 @@ export class GameBuildManager {
          */
         let baselinePack: GameRuntimePackV1 | null = null;
         if (baselineAppDir) {
-            const previous = await openPayload(baselineAppDir).catch((error: unknown) => {
-                throw new Error(
-                    `Could not read the build this patch is for at ${baselineAppDir}: `
-                    + `${error instanceof Error ? error.message : String(error)}`,
-                );
-            });
-            try {
-                baseline = await digestPayload(previous);
-                baselinePack = previous.pack;
-                // Before anything is written: what this patch does to saves is the author's to know
-                // while they can still decide not to ship it. A warning, never a refusal - a patch
-                // that breaks saves is sometimes exactly the patch an author means to make, and a
-                // gate here would teach them to turn the whole check off.
-                await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
-                // Beside it because it answers the other half of the same question: whether the game
-                // this file lands in is the game the content was made for. Saves are about the
-                // player's progress, the engine is about the code that will read it.
-                this.emit(session, {
-                    source: "Build",
-                    ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+            /*
+             * Read in the compile worker, which has exited by the time the answer arrives. The
+             * baseline is the build folder the author named or a staging folder this export
+             * compiled, and either is built into again later: read here, it would stay held - a
+             * packaged build's archive by Electron's asar patch, a sealed one's reader as a loaded
+             * module - and the next build into it would fail until Studio exited.
+             */
+            const previous = await readBuildPayloadInWorker(this.app, baselineAppDir, { digests: true })
+                .catch(async (error: unknown) => {
+                    await payload.close().catch(() => undefined);
+                    throw new Error(
+                        `Could not read the build this patch is for at ${baselineAppDir}: `
+                        + `${error instanceof Error ? error.message : String(error)}`,
+                    );
                 });
-            } finally {
-                await previous.close().catch(() => undefined);
-            }
+            baseline = new Map(previous.digests ?? []);
+            baselinePack = previous.pack;
+            // Before anything is written: what this patch does to saves is the author's to know
+            // while they can still decide not to ship it. A warning, never a refusal - a patch
+            // that breaks saves is sometimes exactly the patch an author means to make, and a
+            // gate here would teach them to turn the whole check off.
+            await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
+            // Beside it because it answers the other half of the same question: whether the game
+            // this file lands in is the game the content was made for. Saves are about the
+            // player's progress, the engine is about the code that will read it.
+            this.emit(session, {
+                source: "Build",
+                ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+            });
         } else {
             this.emit(session, {
                 level: "warning",

@@ -3,7 +3,7 @@ import { OVERLAY_FILE_EXTENSION } from "@narraleaf/bindings";
 import { GameBuildErrorCode } from "@shared/types/gameBuild";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { openPayload } from "../../build/patchPayload";
+import { readBuildPayloadInWorker } from "../../build/readBuildPayloadInWorker";
 import { requireWindowProject } from "../../../utils/windowProject";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -39,7 +39,7 @@ class BaselineNotGrantedError extends Error {
  *
  * That it is asked at all is decided by where an unchecked path ends up. A payload that looks sealed
  * is opened by loading `bindings.node` from inside it, and loading a `.node` is `dlopen`: a renderer
- * that can name any folder can run native code of its choosing in the main process, which is not a
+ * that can name any folder can run native code of its choosing in a Studio process, which is not a
  * boundary a read check is merely tidy about.
  */
 async function readableBaselineDir(window: AppWindow, target: string): Promise<string> {
@@ -264,6 +264,10 @@ export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType
  *
  * The same reader on purpose: a folder this answers for is a folder the export can measure against,
  * and a folder it refuses is one the export would refuse later with the author already committed.
+ *
+ * Read in the compile worker, which has exited by the time this answers: the folder is usually the
+ * one the author builds into next, and a build read in this process would stay held - and that
+ * folder unbuildable - until Studio exited.
  */
 export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.gameBuildReadPatchBaseline> {
     readonly name = IPCEventType.gameBuildReadPatchBaseline;
@@ -274,21 +278,20 @@ export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.g
         { path: target }: IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["response"]>> {
         return this.tryUse(async () => {
-            const payload = await openPayload(await readableBaselineDir(window, target));
-            try {
-                const pack = payload.pack;
-                return {
-                    appTagId: pack.addOns?.appTagId?.trim() || null,
-                    productName: pack.project?.name?.trim() || null,
-                    version: pack.project?.version?.trim() || null,
-                    builtAt: pack.generatedAt || null,
-                    // The field the game itself checks a patch's proof against: a pack without it
-                    // was built with no distribution key, and the game refuses every patch.
-                    acceptsPatches: Boolean(pack.addOns?.verificationKey),
-                };
-            } finally {
-                await payload.close().catch(() => undefined);
-            }
+            const { pack } = await readBuildPayloadInWorker(
+                window.getApp(),
+                await readableBaselineDir(window, target),
+                { digests: false },
+            );
+            return {
+                appTagId: pack.addOns?.appTagId?.trim() || null,
+                productName: pack.project?.name?.trim() || null,
+                version: pack.project?.version?.trim() || null,
+                builtAt: pack.generatedAt || null,
+                // The field the game itself checks a patch's proof against: a pack without it
+                // was built with no distribution key, and the game refuses every patch.
+                acceptsPatches: Boolean(pack.addOns?.verificationKey),
+            };
         });
     }
 }
