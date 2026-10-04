@@ -23,6 +23,8 @@
  * Comments in English per project convention.
  */
 
+import { LOCALE_STORAGE_KEY } from "@shared/types/localization";
+
 /** The key a blueprint variable is read and written under: its record, and its id in the record. */
 export function blueprintVariableStateKey(storeKey: string, variableId: string): string {
     return `var\0${storeKey}\0${variableId}`;
@@ -40,6 +42,18 @@ export function persistentStateKey(storageKey: string): string {
 
 /** Every persistent value at once: the store reloaded or cleared. */
 export const EVERY_PERSISTENT_STATE_KEY = "persistent\0*";
+
+/**
+ * The language the game is being played in, as a graph that translates something records it.
+ *
+ * The player's language lives in the persistence scope under `LOCALE_STORAGE_KEY`, and every way it
+ * changes - `Set Language`, the match against the system language at boot, a language kept for the
+ * next launch being promoted, the store reloading - writes it through `ScopeStoreBridge`, which
+ * announces the key it wrote. So the language needs no announcement of its own: naming the same key
+ * is what makes a value binding that showed a translated word show the new language's word when the
+ * player switches on the title screen, where the game does not restart.
+ */
+export const GAME_LOCALE_STATE_KEY = persistentStateKey(LOCALE_STORAGE_KEY);
 
 /** A saved variable of the running playthrough, by its id. */
 export function savedVariableStateKey(variableId: string): string {

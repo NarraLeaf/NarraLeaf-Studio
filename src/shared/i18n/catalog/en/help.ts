@@ -681,6 +681,8 @@ export const help = {
                 + "- A Blueprint Value reads the variables of its page and of App logic directly. Other variables "
                 + "are read through Call Fn.\n"
                 + "- When a variable the Blueprint Value read is written, the widget shows the new value.\n"
+                + "- Translation Key Text gives a translation key's text in the player's language, and Format fills "
+                + "values into it. When the player changes language, the widget shows the new language.\n"
                 + "- A widget inside a list row can also show one field of that row, chosen under Field.",
         },
         networkNodes: {
