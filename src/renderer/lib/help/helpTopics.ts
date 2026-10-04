@@ -110,9 +110,10 @@ export interface HelpTopic {
     id: HelpTopicId;
     section: HelpSectionId;
     /**
-     * Keybinding catalog ids to show as chord rows under the body. Rendered through the keybinding
-     * service, so a rebound chord shows rebound here too; an id with no catalog entry is a test
-     * failure rather than a blank row.
+     * Keybinding catalog ids to show as chord rows under the body, or fixed-input catalog ids for a
+     * mouse gesture or a key that cannot be rebound. Rendered through the keybinding service, so a
+     * rebound chord shows rebound here too; an id with no catalog entry is a test failure rather
+     * than a blank row.
      */
     shortcuts?: readonly string[];
     related?: readonly HelpTopicId[];
@@ -135,7 +136,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "workspaceLayout",
         section: "start",
-        shortcuts: ["editor-split-right", "editor-split-down", "workspace-editor-quick-switch-next"],
+        shortcuts: ["editor-split-right", "editor-split-down", "workspace.split.reset", "workspace-editor-quick-switch-next"],
         related: ["keyboard", "search", "undo"],
     },
     {
@@ -177,7 +178,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyScene",
         section: "story",
-        shortcuts: ["story.edit-active", "story.insert-blank-after-selection", "story.duplicate", "story.move-row-down"],
+        shortcuts: [
+            "story.edit-active",
+            "story.edit.enter",
+            "story.insert-blank-after-selection",
+            "story.row.range-select",
+            "story.duplicate",
+            "story.move-row-down",
+        ],
         related: ["storyCommands", "storyVariables", "storyFlow"],
     },
     {
@@ -210,6 +218,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyPaste",
         section: "story",
+        shortcuts: ["story.paste-plain"],
         related: ["storyScene", "characters", "storyScript"],
     },
     {
@@ -230,7 +239,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyMotion",
         section: "story",
-        shortcuts: ["story-motion.prev-frame", "story-motion.next-frame", "story-motion.delete"],
+        shortcuts: [
+            "story-motion.prev-frame",
+            "story-motion.next-frame",
+            "story-motion.add-keyframe",
+            "story-motion.delete",
+            "story-motion.no-snap",
+        ],
         related: ["storyCommands", "characters"],
     },
 
@@ -238,7 +253,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assets",
         section: "content",
-        shortcuts: ["assets.rename", "assets.copy", "assets.paste"],
+        shortcuts: ["assets.rename", "assets.copy", "assets.paste", "assets.range-select", "assets.up"],
         related: ["assetSources", "assetSets", "characters", "audio", "lint"],
     },
     {
@@ -291,6 +306,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "assets.audio.mark-loop",
             "assets.audio.mark-out",
             "assets.audio.clear-markers",
+            "assets.audio.zoom-time",
         ],
         related: ["audio", "assets"],
     },
@@ -303,6 +319,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "assets.video.next-frame",
             "assets.video.loop",
             "assets.video.audition-seam",
+            "assets.video.zoom",
         ],
         related: ["assets", "audioClips"],
     },
@@ -328,6 +345,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "uiSurfaces",
         section: "interface",
+        shortcuts: ["ui-editor.pan", "ui-editor.zoom", "ui-editor.select-inside", "ui-editor.edit-text", "ui-editor.suspend-snap"],
         related: ["uiComponents", "blueprints", "inputActions"],
     },
     // Four topics rather than one card. The feature has four separate things an author has to know
@@ -361,7 +379,15 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "blueprints",
         section: "interface",
-        shortcuts: ["blueprint.copy", "blueprint.paste", "blueprint.undo"],
+        shortcuts: [
+            "blueprint.add-node",
+            "blueprint.add-connected-node",
+            "blueprint.delete-wire",
+            "blueprint.pan",
+            "blueprint.copy",
+            "blueprint.paste",
+            "blueprint.undo",
+        ],
         related: ["scripts", "uiBindings", "uiSurfaces", "storyVariables"],
         // The per-node reference: every node's pins and flags, one page per palette category. Far
         // too long for a topic, so the blueprint editor's F1 reaches it through this link.

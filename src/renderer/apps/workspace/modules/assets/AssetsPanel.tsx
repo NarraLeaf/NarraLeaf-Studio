@@ -7,6 +7,7 @@ import { PanelComponentProps } from "../types";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "../../components/ui/ShortcutContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
@@ -66,6 +67,16 @@ import {
     type AssetBrowserLocation,
     type AssetBrowserSort,
 } from "./browser/assetBrowserModel";
+
+/** The asset menu's rows that a key also runs, by row id, so each row prints its chord. */
+const ASSET_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    copy: "assets.copy",
+    "copy-selected": "assets.copy",
+    cut: "assets.cut",
+    "cut-selected": "assets.cut",
+    paste: "assets.paste",
+    rename: "assets.rename",
+};
 
 export type AssetViewMode = "list" | "icons" | "overview";
 
@@ -1422,7 +1433,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     </div>
                 )}
 
-                <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
+                <ShortcutContextMenu
+                    shortcuts={ASSET_MENU_SHORTCUTS}
+                    items={contextMenu}
+                    position={menuState.position}
+                    visible={menuState.visible}
+                    onClose={closeContextMenu}
+                />
                 {/* A second menu rather than a fourth branch in the asset menu: a set shares none of
                     that menu's rows (it holds no bytes to copy, export or replace), and only one of
                     the two can be open at a time. */}

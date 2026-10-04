@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect, createC
 import { createPortal } from "react-dom";
 import { useFloatingLayer } from "../layout/floatingLayer";
 import { ChevronRight } from "lucide-react";
+import { MenuShortcut } from "./MenuShortcut";
 import { cn } from "../../utils/cn";
 import { useHostWindow } from "../layout/hostWindow";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -59,6 +60,12 @@ export interface ContextMenuItemDef {
      * than in the label keeps a disabled menu a menu instead of a paragraph.
      */
     tooltip?: string;
+    /**
+     * The chord that runs the same command, already formatted for this platform (callers resolve it
+     * through `useShortcutLabels`, so a rebound key shows rebound). Printed at the right of the row:
+     * a menu that names a command without its key is the reason the key stays undiscovered.
+     */
+    shortcut?: string;
     onClick?: () => void;
     submenu?: ContextMenuItemDef[];
     /**
@@ -511,6 +518,12 @@ function ContextMenuItem({
 
                 {/* Label */}
                 <span className="flex-1">{item.label}</span>
+
+                {item.shortcut ? (
+                    <span className="pl-4">
+                        <MenuShortcut of={item.shortcut} />
+                    </span>
+                ) : null}
 
                 {/* Submenu indicator */}
                 {hasSubmenu && (
