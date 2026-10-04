@@ -1239,6 +1239,8 @@ export interface RendererPreloadedInterface {
             productName: string | null;
             version: string | null;
             builtAt: string | null;
+            /** False when the build was made without a distribution key, so it reads no patch. */
+            acceptsPatches: boolean;
         }>>;
     };
 

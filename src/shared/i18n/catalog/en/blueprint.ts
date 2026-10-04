@@ -49,6 +49,21 @@ export const blueprint = {
         },
     },
     /**
+     * Following a wire to its other end: the tooltip on a hovered wire, which names the end away
+     * from the pointer, and the rows of the wire's and a pin's context menus that go there.
+     * `{target}` is `end` filled in, or the node alone for a pin with no label; `{node}` there is
+     * `nodeDetail` when the card shows something under its title (an element, a field's value).
+     */
+    wire: {
+        nodeDetail: "{node} ({detail})",
+        end: "{node} · {pin}",
+        connectedTo: "Connected to {target}",
+        goTo: "Go to {target}",
+        /** One of several rows naming cards that read alike, numbered left to right as they sit on the graph. */
+        goToNth: "Go to {target} ({n})",
+        goToConnected: "Go to connected node",
+    },
+    /**
      * A paste of nodes copied in another project.
      *
      * Counts only: what came across, and what still needs the author. Each unresolved reference is

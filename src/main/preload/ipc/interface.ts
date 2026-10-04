@@ -813,6 +813,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                 productName: string | null;
                 version: string | null;
                 builtAt: string | null;
+                acceptsPatches: boolean;
             }>>,
     },
 

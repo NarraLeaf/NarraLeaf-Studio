@@ -11,6 +11,6 @@ export {
     tooltipTextOf,
 } from "./tooltipController";
 export type { TooltipSide, TooltipTarget } from "./tooltipController";
-export { TooltipHost } from "./TooltipHost";
+export { TOOLTIP_BUBBLE_CLASS, TooltipHost, placeTooltip } from "./TooltipHost";
 export { TooltipGroup } from "./TooltipGroup";
 export type { TooltipGroupProps } from "./TooltipGroup";
