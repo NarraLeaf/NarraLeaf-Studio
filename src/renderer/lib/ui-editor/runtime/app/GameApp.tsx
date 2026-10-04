@@ -217,7 +217,12 @@ import {
     resolveKeyboardOwnerLane,
     type KeyboardOwner,
 } from "./keyboardOwner";
-import { projectDrawsNvlPage, resolveDialogueAdvanceActionIds, resolveEngineNvlKeys } from "./engineNvlKeys";
+import {
+    createDialogueAdvanceRecord,
+    projectDrawsNvlPage,
+    resolveDialogueAdvanceActionIds,
+    resolveEngineNvlKeys,
+} from "./engineNvlKeys";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { shrinkSaveCapture } from "./saveCapture";
 import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
@@ -262,6 +267,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView, listStageSurfaces } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered, isStageCoveredByPage } from "./layers/stageOcclusion";
 import { StageCoveredByPageContext, StageCoveredContext } from "./stageConcealment";
+import { useStageCoverCapture } from "./stageCoverCapture";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
@@ -1021,6 +1027,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         pageEntries: navStack,
         pagesHiddenForGame: studioPageHiddenForGame,
         gameHiddenKeys: gameHiddenNavKeys,
+    });
+    /**
+     * The screen as it was when the page now covering the stage opened, for the saves written under
+     * it - and the Game UI waits on the stage while that picture is taken (see `stageCoverCapture`).
+     * Nothing to picture before the game has been entered, which is every page opened from the title.
+     */
+    const stageCover = useStageCoverCapture({
+        covered: stageCoveredByPage,
+        capture: () => {
+            const liveGame = nlrLiveGameRef.current;
+            if (!liveGame || !gameEnteredRef.current || typeof liveGame.capturePng !== "function") {
+                return null;
+            }
+            return liveGame.capturePng();
+        },
     });
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
@@ -2390,6 +2411,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     }), [requireActiveLiveGame]);
 
     /**
+     * Which actions the dialogue box reads on with, as far as playing has shown - the half of
+     * `engineNvlKeys` a script layer needs. Held in state rather than a memo so a StrictMode remount
+     * keeps the one record, and it has nothing to tear down.
+     */
+    const [dialogueAdvances] = useState(createDialogueAdvanceRecord);
+    /** The host's `Next`: every graph node and script call that asks the game to read on comes here. */
+    const nextFromGraph = useCallback(async () => {
+        dialogueAdvances.noteNext();
+        await nextInGame();
+    }, [dialogueAdvances, nextInGame]);
+
+    /**
      * Backs the blueprint `sound` family. Built once per host and ref-backed, so
      * its identity is stable across relaunches; it reads the live game through
      * the ref and degrades to a warned no-op when there is none.
@@ -2893,10 +2926,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeLanguageChangeConfiguration(bundle.languageChange),
         [bundle.languageChange],
     );
+    const readStageCoverPicture = stageCover.readPicture;
     const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         let capture: string | undefined;
-        if (screenshot === true) {
+        // Under a page the stage's Game UI has stepped off, so the picture is the one taken as that
+        // page opened: the screen the player left to save, as an auto-save a moment earlier shows it.
+        const underPage = screenshot === true ? await (readStageCoverPicture() ?? null) : null;
+        if (underPage !== null) {
+            try {
+                capture = await shrinkSaveCapture(underPage);
+            } catch (error) {
+                reportSaveCaptureFailure(id, normalizeError(error));
+            }
+        } else if (screenshot === true) {
             if (typeof liveGame.capturePng !== "function") {
                 reportSaveCaptureFailure(id, "the game runtime does not support capturePng");
             } else {
@@ -2926,6 +2969,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         playtime,
         pluginHost,
+        readStageCoverPicture,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
     ]);
@@ -4193,7 +4237,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onClearEndingState: clearEndingStateInGame,
             onClearEndings: clearEndingsInGame,
             onSelectChoice: selectChoiceInGame,
-            onNext: nextInGame,
+            onNext: nextFromGraph,
             onSkip: skipInGame,
             onShowDialog: showDialogInGame,
             onHideDialog: hideDialogInGame,
@@ -4282,7 +4326,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isInGame,
         isNvlModeInGame,
         listSaveIds,
-        nextInGame,
+        nextFromGraph,
         openSurface,
         quitGame,
         replaceSurface,
@@ -5619,9 +5663,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         nvlActive: isNvlModeInGame(),
                         projectDrawsNvlPage: drawsOwnNvlPage,
                         stage,
-                        actionIds: dialogueAdvanceActionIds,
+                        actionIds: dialogueAdvances.actionIds(dialogueAdvanceActionIds),
                         advance: nextInGame,
                     }),
+                    dialogueAdvance: dialogueAdvances,
                 };
             },
             onError: err => host.log("error", normalizeError(err)),
@@ -5630,6 +5675,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         bundle,
         core,
         dialogueAdvanceActionIds,
+        dialogueAdvances,
         drawsOwnNvlPage,
         host,
         hostAdapterBundle,
@@ -6374,7 +6420,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 onContextMenu={offerSyntheticPointerInputToGlobal}
                 onWheel={offerSyntheticPointerInputToGlobal}
             >
-                <StageCoveredByPageContext.Provider value={stageCoveredByPage}>
+                <StageCoveredByPageContext.Provider value={stageCover.concealed}>
                     <StageCoveredContext.Provider value={stageCovered}>
                         {nlrStageLayer}
                     </StageCoveredContext.Provider>

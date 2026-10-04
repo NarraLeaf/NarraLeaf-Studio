@@ -27,7 +27,7 @@ import {
     BUTTON_MODULE_KEYS,
     type ButtonAppearanceModuleId,
     getRowValueForModuleEdit,
-    moduleFullyHasExclusiveState,
+    moduleHasExclusiveState,
     type ModuleEditMode,
     updateRowValueForModuleEditOrEnsure,
 } from "./appearanceModuleState";
@@ -93,7 +93,7 @@ export function CompactButtonAppearance({
     useEffect(() => {
         (["typography", "background", "border", "spacing", "transform", "effects"] as const).forEach(mid => {
             const m = buttonModuleModes[mid];
-            if (m !== "default" && !moduleFullyHasExclusiveState(variant, BUTTON_MODULE_KEYS[mid], m)) {
+            if (m !== "default" && !moduleHasExclusiveState(variant, BUTTON_MODULE_KEYS[mid], m)) {
                 setButtonModuleMode(mid, "default");
             }
         });

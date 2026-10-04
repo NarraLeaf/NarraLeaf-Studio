@@ -18,6 +18,10 @@ const CROP_PLACEMENT_EPSILON = 0.001;
 const IMAGE_FILL_BASE_TRANSFORM =
     "scale(calc(var(--nl-image-base-flip-x, 1) * var(--nl-image-drag-flip-x, 1)), calc(var(--nl-image-base-flip-y, 1) * var(--nl-image-drag-flip-y, 1)))";
 
+/** The inline style properties a crop preview or gesture writes on the image, and so has to give back. */
+const CROP_PREVIEW_STYLE_KEYS = ["left", "top", "width", "height", "maxWidth", "maxHeight", "transform"] as const;
+type CropPreviewStyleKey = (typeof CROP_PREVIEW_STYLE_KEYS)[number];
+
 interface ImageCropHandlersConfig {
     documentService: UIDocumentService;
     elementId: string;
@@ -37,7 +41,7 @@ interface NativeCropRuntime {
     endTransform: () => void;
     scheduleMoveableRectUpdate: () => void;
     updateMoveableRectNow: () => void;
-    ensureStoredCropPlacement?: () => ImageFillCropPlacement | null;
+    resolveGestureBase?: () => ImageFillCropPlacement | null;
     updatePlacement?: (
         override?: {
             widthPx?: number;
@@ -47,47 +51,15 @@ interface NativeCropRuntime {
         },
         options?: { scheduleRectUpdate?: boolean },
     ) => ImageFillCropPlacement | null;
-    commitPlacement?: (placement: ImageFillCropPlacement) => boolean;
+    finishGesture?: (placement: ImageFillCropPlacement | null) => void;
 }
 
-function parsePixelValue(value: string): number | null {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-}
-
-function readCropPlacementFromDom(
-    container: HTMLElement,
-    imageTarget: HTMLElement,
-): ImageFillCropPlacement | null {
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    if (containerWidth <= 0 || containerHeight <= 0) {
-        return null;
-    }
-
-    const computed = window.getComputedStyle(imageTarget);
-    const widthPx = parsePixelValue(computed.width) ?? imageTarget.offsetWidth;
-    const heightPx = parsePixelValue(computed.height) ?? imageTarget.offsetHeight;
-    const leftPx = parsePixelValue(computed.left) ?? imageTarget.offsetLeft;
-    const topPx = parsePixelValue(computed.top) ?? imageTarget.offsetTop;
-    if (widthPx <= 0 || heightPx <= 0) {
-        return null;
-    }
-
-    return {
-        leftPct: (leftPx / containerWidth) * 100,
-        topPct: (topPx / containerHeight) * 100,
-        widthPct: (widthPx / containerWidth) * 100,
-        heightPct: (heightPx / containerHeight) * 100,
-    };
-}
-
-function isDefaultCropPlacement(placement: ImageFillCropPlacement): boolean {
+function samePlacement(a: ImageFillCropPlacement, b: ImageFillCropPlacement): boolean {
     return (
-        Math.abs(placement.leftPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.leftPct) < CROP_PLACEMENT_EPSILON &&
-        Math.abs(placement.topPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.topPct) < CROP_PLACEMENT_EPSILON &&
-        Math.abs(placement.widthPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.widthPct) < CROP_PLACEMENT_EPSILON &&
-        Math.abs(placement.heightPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.heightPct) < CROP_PLACEMENT_EPSILON
+        Math.abs(a.leftPct - b.leftPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(a.topPct - b.topPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(a.widthPct - b.widthPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(a.heightPct - b.heightPct) < CROP_PLACEMENT_EPSILON
     );
 }
 
@@ -117,36 +89,33 @@ function readRenderedAssetId(imageTarget: HTMLElement): string | null {
     return raw && raw.trim() ? raw.trim() : null;
 }
 
-function resolveInitialCropPlacement(
+/**
+ * Where the picture is drawn right now, as a crop placement: the box a crop gesture starts from.
+ *
+ * A crop fill draws its stored placement, or the whole box when it has none - the same fallback the
+ * renderer takes. Every other mode is turned into the placement that draws the same picture, which
+ * needs the image's natural size; until the image has loaded there is no answer.
+ */
+function resolveDrawnCropPlacement(
     container: HTMLElement,
     imageTarget: HTMLElement,
-    fill?: ImageFill,
-): ImageFillCropPlacement {
-    const mode = readRenderedFillMode(imageTarget) ?? fill?.mode ?? "cover";
-    if (mode === "crop" && fill?.cropPlacement) {
-        return fill.cropPlacement;
+    fill: ImageFill,
+): ImageFillCropPlacement | null {
+    const mode = readRenderedFillMode(imageTarget) ?? fill.mode ?? "cover";
+    if (mode === "crop") {
+        return fill.cropPlacement ?? DEFAULT_RECTANGLE_CROP_PLACEMENT;
     }
-
     const naturalSize = getNaturalImageSize(imageTarget);
-    const placementFromMode = naturalSize
-        ? computeCropPlacementForMode({
-              imageWidth: naturalSize.width,
-              imageHeight: naturalSize.height,
-              containerWidth: container.clientWidth,
-              containerHeight: container.clientHeight,
-              mode,
-          })
-        : null;
-    if (placementFromMode) {
-        return placementFromMode;
+    if (!naturalSize) {
+        return null;
     }
-
-    const domPlacement = readCropPlacementFromDom(container, imageTarget);
-    if (domPlacement && !isDefaultCropPlacement(domPlacement)) {
-        return domPlacement;
-    }
-
-    return domPlacement ?? DEFAULT_RECTANGLE_CROP_PLACEMENT;
+    return computeCropPlacementForMode({
+        imageWidth: naturalSize.width,
+        imageHeight: naturalSize.height,
+        containerWidth: container.clientWidth,
+        containerHeight: container.clientHeight,
+        mode,
+    });
 }
 
 function applyCropPlacementStyles(
@@ -177,6 +146,16 @@ function clientDeltaToContainerDelta(
     };
 }
 
+/**
+ * Crop editing of one image fill: the drag and resize gestures, and nothing written before them.
+ *
+ * Entering crop editing changes nothing in the document. A fill in any other mode is shown at the
+ * placement that draws the same picture - the box grows to the whole image so the part outside the
+ * frame can be seen and dragged - but that preview lives in the image's inline style only, and is
+ * handed back when editing ends without a gesture. The fill becomes a crop, with that placement, at
+ * the end of a drag or resize that actually moved the picture; a click, or a drag back to where it
+ * started, writes nothing.
+ */
 export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
     const {
         documentService,
@@ -197,7 +176,6 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
     } | null>(null);
     const lastPlacementRef = useRef<ImageFillCropPlacement | null>(null);
     const gestureBaseRef = useRef<ImageFillCropPlacement | null>(null);
-    const autoCropSessionRef = useRef<{ elementId: string; converted: boolean } | null>(null);
     const nativeDragRef = useRef<{
         pointerId: number;
         startClientX: number;
@@ -213,6 +191,146 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         updateMoveableRectNow,
     });
 
+    /**
+     * The fill as it is drawn: the element's own `imageFill`, with the mode and picture the image
+     * reports laid over it. The two differ when an appearance row supplies the fill, and the drawn
+     * one is what a crop has to keep showing.
+     */
+    const resolveEffectiveFill = useCallback((): ImageFill | null => {
+        if (!imageTarget || !elementId) {
+            return null;
+        }
+        const element = documentService.getDocument().elements[elementId];
+        if (!element) {
+            return null;
+        }
+        const renderedMode = readRenderedFillMode(imageTarget);
+        const renderedAssetId = readRenderedAssetId(imageTarget);
+        const prevFill = (element.props?.imageFill as ImageFill | undefined) ?? {
+            mode: renderedMode ?? "cover",
+            assetId: renderedAssetId,
+        };
+        return {
+            ...prevFill,
+            mode: renderedMode ?? prevFill.mode ?? "cover",
+            assetId: renderedAssetId ?? prevFill.assetId ?? null,
+        };
+    }, [documentService, elementId, imageTarget]);
+
+    const resolveGestureBase = useCallback((): ImageFillCropPlacement | null => {
+        if (!container || !imageTarget) {
+            return null;
+        }
+        const fill = resolveEffectiveFill();
+        return fill ? resolveDrawnCropPlacement(container, imageTarget, fill) : null;
+    }, [container, imageTarget, resolveEffectiveFill]);
+
+    /**
+     * Show a fill that is not a crop at the placement that draws the same picture, for as long as
+     * crop editing lasts, and give the image its own inline style back afterwards unless a gesture
+     * made the fill a crop in the meantime (then the renderer draws the crop and owns the style).
+     */
+    useLayoutEffect(() => {
+        if (!container || !imageTarget || !elementId) {
+            return;
+        }
+        const fill = resolveEffectiveFill();
+        if (!fill || fill.mode === "crop") {
+            return;
+        }
+        const saved = {} as Record<CropPreviewStyleKey, string>;
+        for (const key of CROP_PREVIEW_STYLE_KEYS) {
+            saved[key] = imageTarget.style[key];
+        }
+        let previewing = false;
+        const showPreview = () => {
+            const placement = resolveDrawnCropPlacement(container, imageTarget, fill);
+            if (!placement) {
+                return;
+            }
+            // `max-width: 100%` from the base stylesheet would hold the box to the frame.
+            imageTarget.style.maxWidth = "none";
+            imageTarget.style.maxHeight = "none";
+            applyCropPlacementStyles(imageTarget, placement, { clearTransform: false });
+            previewing = true;
+            scheduleMoveableRectUpdate();
+        };
+        showPreview();
+        if (!previewing) {
+            imageTarget.addEventListener("load", showPreview, { once: true });
+        }
+        return () => {
+            imageTarget.removeEventListener("load", showPreview);
+            const now = documentService.getDocument().elements[elementId]?.props?.imageFill as ImageFill | undefined;
+            if (now?.mode === "crop") {
+                return;
+            }
+            for (const key of CROP_PREVIEW_STYLE_KEYS) {
+                imageTarget.style[key] = saved[key];
+            }
+        };
+        // The fill is read once per editing session: a change of mode while editing ends the session
+        // (see `ImageFillField` and the image's docker bar), which runs this again.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [container, elementId, imageTarget]);
+
+    /**
+     * Persist the crop placement and directly apply the resulting CSS to the image target so the
+     * visual state is immediately correct.
+     *
+     * We MUST write the styles ourselves instead of relying on React's reconciliation because:
+     *   1. Moveable manipulates inline styles directly (transform, width, height).
+     *   2. When we clear those overrides React still considers its previous
+     *      render values "current" and only patches properties that CHANGED
+     *      between renders.  For a pure drag (no size change) React would
+     *      skip re-applying width/height, leaving them blank after the clear.
+     *   3. Writing the authoritative values here avoids the gap entirely.
+     *
+     * The fill written is the drawn one (see `resolveEffectiveFill`), so the first crop of a fill
+     * that came from an appearance row keeps its picture.
+     */
+    const commitPlacement = useCallback(
+        (placement: ImageFillCropPlacement): boolean => {
+            if (!imageTarget || !elementId) {
+                return false;
+            }
+            const element = documentService.getDocument().elements[elementId];
+            const fill = resolveEffectiveFill();
+            if (!element || !fill) {
+                return false;
+            }
+            documentService.updateElementProps(
+                elementId,
+                buildImageFillPropsUpdate(element, {
+                    ...fill,
+                    mode: "crop",
+                    cropPlacement: placement,
+                }),
+            );
+            applyCropPlacementStyles(imageTarget, placement);
+            scheduleMoveableRectUpdate();
+            return true;
+        },
+        [documentService, elementId, imageTarget, resolveEffectiveFill, scheduleMoveableRectUpdate],
+    );
+
+    /**
+     * The end of a drag or resize. Only a gesture that moved the picture is written; one that did
+     * not puts the picture back where it started, which is also where the preview drew it.
+     */
+    const finishGesture = useCallback(
+        (placement: ImageFillCropPlacement | null) => {
+            const base = gestureBaseRef.current;
+            if (placement && (!base || !samePlacement(placement, base))) {
+                commitPlacement(placement);
+            } else if (base && imageTarget) {
+                applyCropPlacementStyles(imageTarget, base, { clearTransform: false });
+                scheduleMoveableRectUpdate();
+            }
+        },
+        [commitPlacement, imageTarget, scheduleMoveableRectUpdate],
+    );
+
     const endNativeDrag = useCallback((event: PointerEvent | null, commit: boolean) => {
         const dragState = nativeDragRef.current;
         if (!dragState) {
@@ -224,9 +342,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         if (event && releaseTarget?.hasPointerCapture?.(dragState.pointerId)) {
             releaseTarget.releasePointerCapture(dragState.pointerId);
         }
-        if (commit && lastPlacementRef.current) {
-            runtime.commitPlacement?.(lastPlacementRef.current);
-        }
+        runtime.finishGesture?.(commit ? lastPlacementRef.current : null);
         lastDragRef.current = null;
         lastPlacementRef.current = null;
         gestureBaseRef.current = null;
@@ -234,116 +350,9 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
     }, []);
 
     useEffect(() => {
-        if (!elementId) {
-            autoCropSessionRef.current = null;
-            gestureBaseRef.current = null;
-            lastPlacementRef.current = null;
-            return;
-        }
-        if (autoCropSessionRef.current?.elementId !== elementId) {
-            autoCropSessionRef.current = { elementId, converted: false };
-            gestureBaseRef.current = null;
-            lastPlacementRef.current = null;
-        }
+        gestureBaseRef.current = null;
+        lastPlacementRef.current = null;
     }, [elementId]);
-
-    const ensureStoredCropPlacement = useCallback(() => {
-        if (!container || !imageTarget || !elementId) {
-            return null;
-        }
-
-        const doc = documentService.getDocument();
-        const element = doc.elements[elementId];
-        if (!element) {
-            return null;
-        }
-
-        const renderedMode = readRenderedFillMode(imageTarget);
-        const renderedAssetId = readRenderedAssetId(imageTarget);
-        const prevFill = (element.props?.imageFill as ImageFill | undefined) ?? {
-            mode: renderedMode ?? "cover",
-            assetId: renderedAssetId,
-        };
-        const effectiveFill: ImageFill = {
-            ...prevFill,
-            mode: renderedMode ?? prevFill.mode ?? "cover",
-            assetId: renderedAssetId ?? prevFill.assetId ?? null,
-        };
-        const autoCropSession = autoCropSessionRef.current;
-        if (
-            effectiveFill.mode !== "crop" &&
-            autoCropSession?.elementId === elementId &&
-            autoCropSession.converted
-        ) {
-            return null;
-        }
-        const placement = resolveInitialCropPlacement(container, imageTarget, effectiveFill);
-        if (effectiveFill.mode === "crop" && effectiveFill.cropPlacement) {
-            autoCropSessionRef.current = { elementId, converted: true };
-            return placement;
-        }
-
-        const nextFill: ImageFill = {
-            ...effectiveFill,
-            mode: "crop",
-            cropPlacement: placement,
-        };
-        documentService.updateElementProps(elementId, buildImageFillPropsUpdate(element, nextFill));
-        autoCropSessionRef.current = { elementId, converted: true };
-        applyCropPlacementStyles(imageTarget, placement, { clearTransform: false });
-        scheduleMoveableRectUpdate();
-        return placement;
-    }, [container, documentService, elementId, imageTarget, scheduleMoveableRectUpdate]);
-
-    useLayoutEffect(() => {
-        ensureStoredCropPlacement();
-    }, [ensureStoredCropPlacement]);
-
-    /**
-     * Persist the crop placement from tracked pixel deltas, then directly
-     * apply the resulting CSS to the image target so the visual state is
-     * immediately correct.
-     *
-     * We MUST write the styles ourselves instead of relying on React's
-     * reconciliation because:
-     *   1. Moveable manipulates inline styles directly (transform, width, height).
-     *   2. When we clear those overrides React still considers its previous
-     *      render values "current" and only patches properties that CHANGED
-     *      between renders.  For a pure drag (no size change) React would
-     *      skip re-applying width/height, leaving them blank after the clear.
-     *   3. Writing the authoritative values here avoids the gap entirely.
-     *
-     * Uses container.clientWidth / clientHeight (the padding-box in local CSS
-     * coordinates) which is immune to ancestor CSS transforms (rotation,
-     * viewport zoom / pan).
-     */
-    const commitPlacement = useCallback(
-        (placement: ImageFillCropPlacement): boolean => {
-            if (!imageTarget || !elementId) {
-                return false;
-            }
-            const element = documentService.getDocument().elements[elementId];
-            if (!element) {
-                return false;
-            }
-            const prevFill = (element.props?.imageFill as ImageFill | undefined) ?? {
-                mode: "crop",
-                assetId: null,
-            };
-            documentService.updateElementProps(
-                elementId,
-                buildImageFillPropsUpdate(element, {
-                    ...prevFill,
-                    mode: "crop",
-                    cropPlacement: placement,
-                }),
-            );
-            applyCropPlacementStyles(imageTarget, placement);
-            scheduleMoveableRectUpdate();
-            return true;
-        },
-        [documentService, elementId, imageTarget, scheduleMoveableRectUpdate],
-    );
 
     const updatePlacement = useCallback(
         (override?: {
@@ -363,18 +372,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 return null;
             }
 
-            const doc = documentService.getDocument();
-            const element = doc.elements[elementId];
-            if (!element) {
+            const prev = gestureBaseRef.current ?? resolveGestureBase();
+            if (!prev) {
                 return null;
             }
-
-            const prevFill = (element.props?.imageFill as ImageFill | undefined) ?? {
-                mode: "crop",
-                assetId: null,
-            };
-            const prev = gestureBaseRef.current ??
-                resolveInitialCropPlacement(container, imageTarget, prevFill);
 
             // Convert stored percentages → local pixels
             const baseWidthPx = (prev.widthPct / 100) * containerWidth;
@@ -404,7 +405,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             }
             return placement;
         },
-        [container, documentService, elementId, imageTarget, scheduleMoveableRectUpdate],
+        [container, elementId, imageTarget, resolveGestureBase, scheduleMoveableRectUpdate],
     );
 
     useEffect(() => {
@@ -422,18 +423,18 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             endTransform,
             scheduleMoveableRectUpdate,
             updateMoveableRectNow,
-            ensureStoredCropPlacement,
+            resolveGestureBase,
             updatePlacement,
-            commitPlacement,
+            finishGesture,
         };
     }, [
         beginTransform,
-        commitPlacement,
         container,
         elementId,
         endTransform,
-        ensureStoredCropPlacement,
+        finishGesture,
         imageTarget,
+        resolveGestureBase,
         scheduleMoveableRectUpdate,
         updateMoveableRectNow,
         updatePlacement,
@@ -508,11 +509,11 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 event.button !== 0 ||
                 nativeDragRef.current ||
                 !runtime.imageTarget ||
-                !runtime.ensureStoredCropPlacement
+                !runtime.resolveGestureBase
             ) {
                 return;
             }
-            const placement = runtime.ensureStoredCropPlacement();
+            const placement = runtime.resolveGestureBase();
             if (!placement) {
                 return;
             }
@@ -545,8 +546,9 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             if (!imageTarget) {
                 return;
             }
-            const placement = ensureStoredCropPlacement();
+            const placement = resolveGestureBase();
             gestureBaseRef.current = placement;
+            lastPlacementRef.current = null;
             if (placement) {
                 applyCropPlacementStyles(imageTarget, placement, { clearTransform: false });
                 scheduleMoveableRectUpdate();
@@ -554,7 +556,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             event.set([0, 0]);
             beginTransform();
         },
-        [beginTransform, ensureStoredCropPlacement, imageTarget, scheduleMoveableRectUpdate],
+        [beginTransform, imageTarget, resolveGestureBase, scheduleMoveableRectUpdate],
     );
 
     const handleDrag = useCallback((event: OnDrag) => {
@@ -577,23 +579,20 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 endTransform();
                 return;
             }
-            if (lastPlacementRef.current) {
-                commitPlacement(lastPlacementRef.current);
-            } else if (lastDragRef.current) {
-                const placement = updatePlacement({
+            let placement = lastPlacementRef.current;
+            if (!placement && lastDragRef.current) {
+                placement = updatePlacement({
                     translateX: lastDragRef.current.translateX,
                     translateY: lastDragRef.current.translateY,
                 });
-                if (placement) {
-                    commitPlacement(placement);
-                }
             }
+            finishGesture(placement);
             lastDragRef.current = null;
             lastPlacementRef.current = null;
             gestureBaseRef.current = null;
             endTransform();
         },
-        [commitPlacement, container, endTransform, imageTarget, updatePlacement],
+        [container, endTransform, finishGesture, imageTarget, updatePlacement],
     );
 
     // ── Resize ───────────────────────────────────────────────────────────
@@ -603,8 +602,9 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             if (!imageTarget || !container) {
                 return;
             }
-            const placement = ensureStoredCropPlacement();
+            const placement = resolveGestureBase();
             gestureBaseRef.current = placement;
+            lastPlacementRef.current = null;
             if (placement) {
                 const widthPx = (placement.widthPct / 100) * container.clientWidth;
                 const heightPx = (placement.heightPct / 100) * container.clientHeight;
@@ -618,7 +618,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             event.setMin?.([0, 0]);
             beginTransform();
         },
-        [beginTransform, container, ensureStoredCropPlacement, imageTarget, scheduleMoveableRectUpdate],
+        [beginTransform, container, imageTarget, resolveGestureBase, scheduleMoveableRectUpdate],
     );
 
     const handleResize = useCallback((event: OnResize) => {
@@ -647,25 +647,22 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 endTransform();
                 return;
             }
-            if (lastPlacementRef.current) {
-                commitPlacement(lastPlacementRef.current);
-            } else if (lastResizeRef.current) {
-                const placement = updatePlacement({
+            let placement = lastPlacementRef.current;
+            if (!placement && lastResizeRef.current) {
+                placement = updatePlacement({
                     widthPx: lastResizeRef.current.width,
                     heightPx: lastResizeRef.current.height,
                     translateX: lastResizeRef.current.translateX,
                     translateY: lastResizeRef.current.translateY,
                 });
-                if (placement) {
-                    commitPlacement(placement);
-                }
             }
+            finishGesture(placement);
             lastResizeRef.current = null;
             lastPlacementRef.current = null;
             gestureBaseRef.current = null;
             endTransform();
         },
-        [commitPlacement, container, endTransform, imageTarget, updatePlacement],
+        [container, endTransform, finishGesture, imageTarget, updatePlacement],
     );
 
     return {

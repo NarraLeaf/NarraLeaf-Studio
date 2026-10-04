@@ -3,8 +3,9 @@
  *
  * The section titles carry the ownership split the panel is built on: the two project scopes are
  * defined in the project (this panel writes them), the scene scope is declared in the story and only
- * mirrored here. `persistent` keeps its key - it is the scope's name everywhere in the code - but
- * reads as "global", which is what the story's own `/global` row and its badge already call it.
+ * mirrored here. `persistent` is the scope's name in the code and in the interface alike: the
+ * blueprint editor, the help and Dev Mode all say "persistent", and "global" names the App logic
+ * blueprint's own variables, so the two scopes cannot share it.
  *
  * There is no empty-state string, and there was one until the panel stopped being story-scoped: the
  * two project scopes always render, and the scene section is omitted rather than explained when no
@@ -46,7 +47,7 @@ export const storyVars = {
         hint: "Defined in the project; the value lives in the save file.",
     },
     persistent: {
-        title: "Global variables",
+        title: "Persistent variables",
         hint: "Defined in the project; app-level, shared with blueprints.",
     },
 } as const;

@@ -359,7 +359,7 @@ export const documentDiff = {
         added: "新增音轨",
         removed: "删除音轨",
         renamed: "改名",
-        rerouted: "改为汇入别的总线",
+        rerouted: "改为汇入别的音轨",
         reroutedToMaster: "改为直接汇入主输出",
         /** 一对值是滑杆自己的数字（百分数），不是存下来的 0 到 1。 */
         volume: "音量改动",
@@ -371,11 +371,11 @@ export const documentDiff = {
         changed: "音轨改动",
     },
     /**
-     * 项目的存档变量与全局变量。
+     * 项目的存档变量与持久变量。
      *
      * `defaultValue` 是这一层存在的理由：它是每一周目的起点，也是变量出现之前写下的存档读出来的值，
      * 改动它就改动了出货的游戏，而计数一动不动。作用域那两条说的是这个变量现在是什么，
-     * 而不是把两个存储用词摆成一对——其中 persistent 那个词，面板里根本不这么叫。
+     * 而不是把两个存储用词摆成一对。
      */
     variables: {
         added: "新增变量",
@@ -384,7 +384,7 @@ export const documentDiff = {
         defaultValue: "默认值改动",
         valueType: "类型改动",
         scopeSaved: "现在是存档变量",
-        scopeGlobal: "现在是全局变量",
+        scopeGlobal: "现在是持久变量",
         /** 值存在哪个键下。改名本来就设计成永远不动它。 */
         storageKey: "已经存下的值从此读不回来",
         description: "备注改动",

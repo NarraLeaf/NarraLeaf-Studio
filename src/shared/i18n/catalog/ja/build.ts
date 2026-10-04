@@ -93,7 +93,7 @@ export const build = {
         appId: "アプリ ID",
         copyright: "著作権表示",
         icons: "アイコン",
-        iconsHint: "アイコンをクリックするとプロジェクト設定で変えられる",
+        iconsHint: "アイコンをクリックすると「プロジェクト ▸ アプリ」で変えられる",
         iconUnset: "未設定",
         // バージョンや著作権表示が空のときの表示。この節はもう報告しかしないので、
         // 空欄が入力待ちのコントロールに見えないよう、空であることを言葉で出す。
@@ -102,8 +102,8 @@ export const build = {
     },
     content: {
         protection: "アセットの保護",
-        protectionOn: "パッケージしたゲームの中で、アセットとセーブは暗号化される",
-        protectionOff: "アセットとセーブは暗号化せずに配布される",
+        protectionOn: "パッケージしたゲームの中で、アセットは暗号化される",
+        protectionOff: "アセットは暗号化せずに配布される",
         plugins: "同梱するプラグイン",
         pluginsNone: "このゲームに同梱されるプラグインはない",
         pluginsRescanUnavailable: "このウィンドウではプラグイン一覧を取り直せない",

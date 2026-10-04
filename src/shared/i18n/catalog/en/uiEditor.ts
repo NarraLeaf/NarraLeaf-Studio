@@ -18,8 +18,8 @@ export const uiEditor = {
     ownerLabel: {
         globalMain: "App logic",
         surfaceMain: "Page logic",
-        widgetMain: "Component logic",
-        widgetValue: "Component value",
+        widgetMain: "Widget logic",
+        widgetValue: "Widget value",
         storyAction: "Story action",
     },
     // The five stage slots a Game UI can take. Named once here because the author meets the same
@@ -228,7 +228,7 @@ export const uiEditor = {
         showSelected: "Show selected",
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
-        addToGroup: "Add to group",
+        group: "Group",
         ungroup: "Ungroup",
         addState: "Add state",
         arrange: {

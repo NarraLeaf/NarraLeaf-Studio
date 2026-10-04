@@ -225,7 +225,6 @@ export const widgets = {
         start: "起始",
         center: "居中",
         end: "末端",
-        stretch: "拉伸",
         spaceBetween: "两端对齐",
         spaceAround: "环绕对齐",
         gapHint: "子级之间的间距",
@@ -307,7 +306,7 @@ export const widgets = {
         describeOk: "名称来自模型本身",
         describeNoModel: "选择模型包后才能列出名称",
         describeNoBackend: "选择运行时后才能列出模型的名称",
-        describeBackendMissing: "本机未安装该运行时，名称需要手动输入",
+        describeBackendMissing: "本项目未安装该运行时，名称需要手动输入",
         describeDistrusted: "该项目未受信任，其运行时不会加载。可在状态栏信任该项目。",
         describeNotSupported: "该运行时不描述模型，名称需要手动输入",
         describeFailed: "读取模型失败，名称需要手动输入",
@@ -374,6 +373,9 @@ export const widgets = {
         },
         container: {
             name: "容器",
+        },
+        group: {
+            name: "编组",
         },
         dialog: {
             name: "句子",

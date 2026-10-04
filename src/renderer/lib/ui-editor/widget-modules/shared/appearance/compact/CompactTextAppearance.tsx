@@ -26,7 +26,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import {
     getRowValueForModuleEdit,
-    moduleFullyHasExclusiveState,
+    moduleHasExclusiveState,
     type ModuleEditMode,
     TEXT_MODULE_KEYS,
     type TextAppearanceModuleId,
@@ -91,7 +91,7 @@ export function CompactTextAppearance({
     useEffect(() => {
         (["typography", "transform", "effects"] as const).forEach(mid => {
             const m = textModuleModes[mid];
-            if (m !== "default" && !moduleFullyHasExclusiveState(variant, TEXT_MODULE_KEYS[mid], m)) {
+            if (m !== "default" && !moduleHasExclusiveState(variant, TEXT_MODULE_KEYS[mid], m)) {
                 setTextModuleMode(mid, "default");
             }
         });

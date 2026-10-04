@@ -23,7 +23,8 @@ export type UiEditorContextMenuActions = {
     renamePrimary: () => void;
     /** Multi or single: set layout.visible */
     setSelectedVisible: (visible: boolean) => void;
-    addSelectionToLeaderGroup: () => void;
+    /** Wrap the selection in a new group. */
+    groupSelection: () => void;
     /** Dissolve the selected groups; their children take their place. */
     ungroupSelection: () => void;
     addSelectionToComponentLibrary: () => void;
@@ -38,8 +39,8 @@ export type BuildCanvasContextMenuInput = {
     widgetModules: UIWidgetModule[];
     documentService: UIDocumentService;
     actions: UiEditorContextMenuActions;
-    /** Leader is first id and is nl.container, multi-select */
-    canAddToGroup: boolean;
+    /** The selection can be wrapped in a new group (see `canGroupSelection`). */
+    canGroup: boolean;
     /** At least one selected element is a group that can be dissolved */
     canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;
@@ -62,7 +63,7 @@ export type BuildOutlineContextMenuInput = {
         /** Insert widget under outline-specific parent (row insert parent or blank = surface root). */
         insertChildInOutline: (type: string) => void;
     };
-    canAddToGroup: boolean;
+    canGroup: boolean;
     /** At least one selected element is a group that can be dissolved */
     canUngroup: boolean;
     allowAddToComponentLibrary?: boolean;

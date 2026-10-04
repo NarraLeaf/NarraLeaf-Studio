@@ -66,7 +66,7 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
 /** What {@link UIDocumentService} asked to be recorded, in the order it asked. */
 type RecordedHistoryCall = { surfaceId: string; mergeKey?: string };
 
-function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean } = {}) {
+function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean; withEditorTabs?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
     const projectHistory = new HistoryService();
@@ -134,8 +134,33 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
             };
             return id;
         },
+        getWidgetValueBlueprintId: (surfaceId: string, elementId: string, propPath: string) =>
+            blueprintDocument.ownerRecords[ownerKeyForTest({ kind: "widgetValue", surfaceId, elementId, propPath })]?.blueprintId,
+        removeWidgetValueBlueprint: (surfaceId: string, elementId: string, propPath: string) => {
+            const key = ownerKeyForTest({ kind: "widgetValue", surfaceId, elementId, propPath });
+            const record = blueprintDocument.ownerRecords[key];
+            if (record) {
+                delete blueprintDocument.blueprints[record.blueprintId];
+                delete blueprintDocument.ownerRecords[key];
+            }
+        },
         applyBlueprintMutation: (mutator: (doc: any) => void) => mutator(blueprintDocument),
         getBlueprintDocument: () => blueprintDocument,
+    };
+    /** The editor tabs open in the workspace, and the ids this service asked to close. */
+    const editorTabs: Array<{ id: string; payload?: unknown }> = [];
+    const closedTabIds: string[] = [];
+    const uiService = {
+        editor: {
+            getAll: () => [...editorTabs],
+            close: (tabId: string) => {
+                closedTabIds.push(tabId);
+                const index = editorTabs.findIndex(tab => tab.id === tabId);
+                if (index >= 0) {
+                    editorTabs.splice(index, 1);
+                }
+            },
+        },
     };
     service.setContext({
         project: {
@@ -155,6 +180,9 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
                 if (options.withHistory && serviceId === Services.UIEditorHistory) {
                     return historyService;
                 }
+                if (options.withEditorTabs && serviceId === Services.UI) {
+                    return uiService;
+                }
                 // The workspace-wide stack, which is a different service from the interface
                 // editor's own per-surface history above. Reordering the surface list is the one
                 // thing this service puts there.
@@ -170,7 +198,16 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls, projectHistory };
+    return {
+        service,
+        initialDocument,
+        blueprintDocument,
+        createGraphBlueprint,
+        historyCalls,
+        projectHistory,
+        editorTabs,
+        closedTabIds,
+    };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -2062,5 +2099,51 @@ describe("UIDocumentService entry page", () => {
 
         const template = service.importTemplateBundle({ document: copied, graphs: undefined, placement: { kind: "appSurface" } });
         expect(template.importedSurfaces).toEqual([]);
+    });
+});
+
+describe("UIDocumentService clearing a Blueprint Value binding", () => {
+    it("removes the binding's blueprint as one undo step and closes the tabs showing it, and only those", () => {
+        const { service, blueprintDocument, historyCalls, editorTabs, closedTabIds } = createHarness({
+            withLocalBlueprint: true,
+            withHistory: true,
+            withEditorTabs: true,
+        });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Title" });
+        const elementId = page.rootElementId;
+        const { blueprintId } = service.ensureElementBlueprintValueBinding(elementId, "text", { valueType: "string" });
+        const other = service.ensureElementBlueprintValueBinding(elementId, "label", { valueType: "string" }).blueprintId;
+        // The same blueprint open twice - once from the inspector, once from the blueprint wall - beside
+        // a tab on another blueprint and a tab that is not a blueprint editor but names this id.
+        editorTabs.push(
+            { id: `blueprint-entry:${blueprintId}:${page.id}:${elementId}:text`, payload: { blueprintId, ownerKind: "widgetValue" } },
+            { id: `blueprint-entry:${blueprintId}:${page.id}:${elementId}:~`, payload: { blueprintId, ownerKind: "widgetValue" } },
+            { id: `blueprint-entry:${other}:${page.id}:${elementId}:label`, payload: { blueprintId: other, ownerKind: "widgetValue" } },
+            { id: "narraleaf-studio:vcs-changes:working-tree", payload: { blueprintId } },
+        );
+        historyCalls.length = 0;
+
+        service.clearElementBlueprintValueBinding(elementId, "text");
+
+        expect(service.getDocument().elements[elementId]?.valueBindings?.text).toBeUndefined();
+        expect(blueprintDocument.blueprints[blueprintId]).toBeUndefined();
+        expect(historyCalls).toEqual([{ surfaceId: page.id, mergeKey: undefined }]);
+        expect(closedTabIds).toEqual([
+            `blueprint-entry:${blueprintId}:${page.id}:${elementId}:text`,
+            `blueprint-entry:${blueprintId}:${page.id}:${elementId}:~`,
+        ]);
+        expect(editorTabs.map(tab => tab.id)).toEqual([
+            `blueprint-entry:${other}:${page.id}:${elementId}:label`,
+            "narraleaf-studio:vcs-changes:working-tree",
+        ]);
+    });
+
+    it("closes nothing when the prop held no blueprint", () => {
+        const { service, closedTabIds } = createHarness({ withLocalBlueprint: true, withHistory: true, withEditorTabs: true });
+        const page = service.createSurface({ kind: "appSurface", host: "app", name: "Title" });
+
+        service.clearElementBlueprintValueBinding(page.rootElementId, "text");
+
+        expect(closedTabIds).toEqual([]);
     });
 });

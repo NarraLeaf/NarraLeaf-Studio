@@ -89,7 +89,7 @@ export const characters = {
             describeOk: "Filled from the model",
             describeNoModel: "No model to read",
             describeNoBackend: "No runtime chosen",
-            describeBackendMissing: "Runtime not installed here",
+            describeBackendMissing: "Runtime not installed in this project",
             describeDistrusted: "Project not trusted",
             describeNotSupported: "This runtime lists nothing",
             describeFailed: "The model could not be read",
@@ -265,14 +265,14 @@ export const characters = {
         editorTitle: "Character Properties",
         thumbnail: "Thumbnail",
         preview: "Preview",
-        defaultAvatar: "Dialog avatar",
+        defaultAvatar: "Default dialog avatar",
         // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
         // offered - the engine refuses a voice clip anywhere else.
-        voiceTrack: "Voice bus",
-        voiceTrackMissing: "Missing bus",
+        voiceTrack: "Voice track",
+        voiceTrackMissing: "Missing track",
         // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
         // help and the author has to go and make a bus first.
-        voiceTrackEmpty: "Add a bus under Voice in Project ▸ Game to give this character its own volume control.",
+        voiceTrackEmpty: "Add a track under Voice in Project ▸ Game to give this character its own volume control.",
         // What an `enter` row falls back to on every channel it does not state. Named for the
         // operation the rows carry (`charOp.enter`), which is the word an author already reads on
         // the row itself.

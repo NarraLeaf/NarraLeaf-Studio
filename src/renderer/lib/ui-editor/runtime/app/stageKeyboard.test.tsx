@@ -48,7 +48,7 @@ import { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles, type PageHostInputs } from "./hostAdapterBundles";
 import { listenForGameKeys, type KeyboardOwner } from "./keyboardOwner";
-import type { EngineNvlKeys } from "./engineNvlKeys";
+import { createDialogueAdvanceRecord, type EngineNvlKeys } from "./engineNvlKeys";
 import { StageCoveredContext } from "./stageConcealment";
 import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
@@ -199,7 +199,12 @@ let sessionCount = 0;
  */
 type Screen = "title" | "story" | "page over the story" | "engine NVL";
 
-function runningGame() {
+/**
+ * `learnFrom`: the engine's NVL page reads on only with what the dialogue box was seen reading on with
+ * (`createDialogueAdvanceRecord`), and the box counts as asking the game to read on whenever it logs
+ * this line - a stand-in for a `Next` that a graph or a script layer runs in answer to an action.
+ */
+function runningGame(options: { learnFrom?: string } = {}) {
     sessionCount += 1;
     const core = createRecordingCore([]);
     const blueprintDocument = blueprintDocumentOf(blueprints);
@@ -277,12 +282,31 @@ function runningGame() {
     let screen: Screen = "story";
     /** Each time the engine's NVL page was read on. */
     const nvlAdvances: string[] = [];
-    const engineNvl: EngineNvlKeys = { actionIds: new Set([ADVANCE]), advance: () => { nvlAdvances.push("advance"); } };
+    const learned = options.learnFrom === undefined ? null : createDialogueAdvanceRecord();
+    if (learned) {
+        core.debug.subscribeEvents(event => {
+            if (event.type === "devtools.log" && event.message === options.learnFrom) {
+                learned.noteNext();
+            }
+        });
+    }
+    const engineNvl: EngineNvlKeys = {
+        get actionIds() {
+            return learned ? learned.actionIds(new Set()) : new Set([ADVANCE]);
+        },
+        advance: () => {
+            nvlAdvances.push("advance");
+        },
+    };
     const readKeyboardOwner = (): KeyboardOwner | null => {
         if (screen === "title" || screen === "page over the story") {
             return { surface: titleSurface, host: titleHost };
         }
-        return { stage: stageKeyboardSurfaces.list(), ...(screen === "engine NVL" ? { engineNvl } : {}) };
+        return {
+            stage: stageKeyboardSurfaces.list(),
+            ...(screen === "engine NVL" ? { engineNvl } : {}),
+            ...(learned ? { dialogueAdvance: learned } : {}),
+        };
     };
     running.push(listenForGameKeys(window, {
         blueprintDocument,
@@ -429,6 +453,43 @@ describe("the keys on the stage", () => {
         await game.press(" ");
         expect(game.nvlAdvances).toEqual(["advance", "advance"]);
         expect(game.errors).toEqual([]);
+    });
+
+    it("reads the engine's NVL page on with a key the dialogue box was seen reading on with, whatever layer read it on", async () => {
+        const game = runningGame({ learnFrom: "dialogue: advance" });
+
+        // A passage that opens in NVL, before the box has had a key: nothing says yet what reads on.
+        game.showing("engine NVL");
+        await game.press(" ");
+        expect(game.nvlAdvances).toEqual([]);
+
+        // The box answers Advance and the game is asked to read on while it does.
+        game.showing("story");
+        const view = render(<Stage options={game.slotOptions} />);
+        await waitFor(() => expect(game.stageKeyboardSurfaces.list().map(target => target.surface.id)).toEqual([DIALOGUE]));
+        expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
+        view.unmount();
+
+        // Every key bound to Advance reads the page on now, once a press - and no other key.
+        game.showing("engine NVL");
+        await game.press(" ");
+        await game.press("Enter");
+        await game.press("a");
+        expect(game.nvlAdvances).toEqual(["advance", "advance"]);
+        expect(game.errors).toEqual([]);
+    });
+
+    it("does not learn an action the dialogue box answers without reading on", async () => {
+        const game = runningGame({ learnFrom: "a line the box never logs" });
+        const view = render(<Stage options={game.slotOptions} />);
+        await waitFor(() => expect(game.stageKeyboardSurfaces.list().map(target => target.surface.id)).toEqual([DIALOGUE]));
+
+        expect(await game.press(" ")).toEqual(["dialogue: advance", "dialogue: key down"]);
+        view.unmount();
+        game.showing("engine NVL");
+        await game.press(" ");
+
+        expect(game.nvlAdvances).toEqual([]);
     });
 
     it("answers a key held down once: the system's repeats reach neither the action nor the key head", async () => {

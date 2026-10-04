@@ -23,7 +23,7 @@ import {
     CONTAINER_MODULE_KEYS,
     type ContainerAppearanceModuleId,
     getRowValueForModuleEdit,
-    moduleFullyHasExclusiveState,
+    moduleHasExclusiveState,
     type ModuleEditMode,
     updateRowValueForModuleEditOrEnsure,
 } from "./appearanceModuleState";
@@ -97,7 +97,7 @@ export function CompactContainerAppearance({
     useEffect(() => {
         (["background", "stroke", "corners", "transform", "effects"] as const).forEach(mid => {
             const m = containerModuleModes[mid];
-            if (m !== "default" && !moduleFullyHasExclusiveState(variant, CONTAINER_MODULE_KEYS[mid], m)) {
+            if (m !== "default" && !moduleHasExclusiveState(variant, CONTAINER_MODULE_KEYS[mid], m)) {
                 setContainerModuleMode(mid, "default");
             }
         });

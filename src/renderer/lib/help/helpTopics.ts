@@ -45,6 +45,7 @@ export const HELP_TOPIC_IDS = [
     "storyExpressions",
     "storyFlow",
     "storyScript",
+    "storyPaste",
     "sceneSnapshot",
     "storyMotion",
     "dictionary",
@@ -202,7 +203,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "storyScript",
         section: "story",
-        related: ["storyScene", "localization"],
+        related: ["storyScene", "storyPaste", "localization"],
+    },
+    // The paste wizard's own topic. It asks a different question from the export and import above -
+    // who is speaking in text that came from elsewhere - and it is what F1 answers inside it.
+    {
+        id: "storyPaste",
+        section: "story",
+        related: ["storyScene", "characters", "storyScript"],
     },
     {
         id: "sceneSnapshot",
@@ -355,6 +363,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "interface",
         shortcuts: ["blueprint.copy", "blueprint.paste", "blueprint.undo"],
         related: ["scripts", "uiBindings", "uiSurfaces", "storyVariables"],
+        // The per-node reference: every node's pins and flags, one page per palette category. Far
+        // too long for a topic, so the blueprint editor's F1 reaches it through this link.
+        learnMore: `${DOCS_URL}/blueprint/nodes`,
     },
     {
         id: "scripts",

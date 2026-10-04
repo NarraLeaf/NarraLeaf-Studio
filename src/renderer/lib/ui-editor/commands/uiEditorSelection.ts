@@ -1,16 +1,11 @@
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { canUngroupContainer, filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
+import { canUngroupContainer, filterToTopLevelMovers, planGroupElements } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
-
-/** First id in `elementIds` is the stable "leader" for group operations (per product spec). */
-export function getSelectionLeaderId(selection: UIElementSelection): string | undefined {
-    return selection.elementIds[0];
-}
 
 export function getSelectionPrimaryId(selection: UIElementSelection): string | undefined {
     return selection.primaryId ?? selection.elementIds[selection.elementIds.length - 1];
@@ -75,32 +70,18 @@ export function selectSurfaceForProperties(
 }
 
 /**
- * True when the first selected element is an `nl.container` and there is at least one other selected id.
+ * Whether Group has something to wrap: see `planGroupElements` for which selections can be grouped.
+ * A component's frame is never wrapped - it is not put inside anything.
  */
-export function canAddRestToLeaderContainer(selection: UIElementSelection, document: UIDocument): boolean {
-    if (selection.elementIds.length < 2) {
+export function canGroupSelection(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null | undefined,
+): boolean {
+    if (!selection || selection.surfaceId !== surfaceId) {
         return false;
     }
-    const leader = getSelectionLeaderId(selection);
-    if (!leader) {
-        return false;
-    }
-    const el = document.elements[leader];
-    return el != null && el.type === "nl.container" && !isComponentEditorRootElement(el);
-}
-
-/**
- * Ids to reparent into the leader container: top-level movers among the selection except the leader.
- *
- * A component's frame is never one of them - it is not put inside anything.
- */
-export function getMoversToGroupIntoLeaderContainer(document: UIDocument, selection: UIElementSelection): string[] {
-    const leader = getSelectionLeaderId(selection);
-    if (!leader || !canAddRestToLeaderContainer(selection, document)) {
-        return [];
-    }
-    const tops = filterToEditableTopLevel(document, selection.elementIds);
-    return tops.filter(id => id !== leader);
+    return planGroupElements(document, surfaceId, selection.elementIds) !== null;
 }
 
 /**

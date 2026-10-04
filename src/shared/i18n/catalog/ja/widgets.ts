@@ -7,7 +7,7 @@ export const widgets = {
         interaction: "操作",
     },
     blueprint: {
-        controlLabel: "コンポーネントロジック",
+        controlLabel: "ウィジェットロジック",
     },
     appearance: {
         title: "外観",
@@ -227,7 +227,6 @@ export const widgets = {
         start: "始端",
         center: "中央",
         end: "終端",
-        stretch: "引き伸ばし",
         spaceBetween: "均等配置（両端そろえ）",
         spaceAround: "均等配置（両端も空ける）",
         gapHint: "子要素どうしの間隔",
@@ -376,6 +375,7 @@ export const widgets = {
         button: { name: "ボタン", label: "ボタン" },
         choiceList: { name: "選択肢リスト", choiceA: "選択肢 A", choiceB: "選択肢 B", choiceC: "選択肢 C" },
         container: { name: "コンテナ" },
+        group: { name: "グループ" },
         dialog: { name: "本文", text: "現在の行がここに表示される" },
         frame: { name: "ページ" },
         image: { name: "画像" },

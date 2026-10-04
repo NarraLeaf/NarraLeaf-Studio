@@ -9,11 +9,7 @@ import {
     shouldApplyCanvasContextRetarget,
 } from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
-import {
-    canAddRestToLeaderContainer,
-    getContainersToUngroup,
-    getMoversToGroupIntoLeaderContainer,
-} from "@/lib/ui-editor/commands/uiEditorSelection";
+import { canGroupSelection, getContainersToUngroup } from "@/lib/ui-editor/commands/uiEditorSelection";
 import {
     defaultLayoutPatchForOutlineInsert,
     resolveNearestInsertParentInSurface,
@@ -102,10 +98,7 @@ export function useLayerOutlineContextMenus(params: {
             const doc = documentService.getDocument();
             const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
             const insertParentId = resolveNearestInsertParentInSurface(doc, surfaceId, element.id);
-            const canGroup =
-                Boolean(menuSel) &&
-                canAddRestToLeaderContainer(menuSel!, doc) &&
-                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canGroup = canGroupSelection(doc, surfaceId, menuSel);
             const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertChildInOutline = (type: string) => {
@@ -151,7 +144,7 @@ export function useLayerOutlineContextMenus(params: {
                 widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: insertParentId,
-                canAddToGroup: canGroup,
+                canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
@@ -197,10 +190,7 @@ export function useLayerOutlineContextMenus(params: {
             const menuSel = resolveCanvasContextSelection(surfaceId, null, stateService.getSelection());
             const doc = documentService.getDocument();
             const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
-            const canGroup =
-                Boolean(menuSel) &&
-                canAddRestToLeaderContainer(menuSel!, doc) &&
-                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+            const canGroup = canGroupSelection(doc, surfaceId, menuSel);
             const canUngroup = getContainersToUngroup(doc, surfaceId, menuSel).length > 0;
 
             const insertOutline = (type: string) => {
@@ -244,7 +234,7 @@ export function useLayerOutlineContextMenus(params: {
                 widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: null,
-                canAddToGroup: canGroup,
+                canGroup,
                 canUngroup,
                 allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
