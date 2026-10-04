@@ -1294,39 +1294,16 @@ function videoSentence(
         ...(pickStageObject(lookups, "video", name, next => retargetActionable(payload, lookups, "video", next)) ?? {}),
         ...stageObjectLink(lookups, "video", payload.target, name),
     };
-    if (payload.operation === "create") {
-        return {
-            commandId,
-            args: [
-                positional("video", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
-                arg("name", name),
-                arg("muted", booleanValue(payload.muted), { apply: next => ({ ...payload, muted: next === "true" }) }),
-            ],
-        };
-    }
     if (payload.operation === "seek") {
         return {
             commandId,
             args: [positional("target", name, object), positional("time", seconds(payload.timeMs), { apply: next => ({ ...payload, timeMs: msOf(next) }) })],
         };
     }
-    // The one-row form, `/show` or `/play` naming its own clip - see `imageSentence`. A clip carries
-    // no placement, so the line is the file and the name, and on a `play` how the clip goes.
-    const subject = revealCreates(payload)
-        ? [
-            positional("target", assetWord(lookups, payload.assetId), {
-                ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                ...assetLink(lookups, payload.assetId),
-            }),
-            arg("name", name),
-        ]
-        : [positional("target", name, object)];
     if (payload.operation === "play") {
-        return { commandId, args: [...subject, ...clipPlayLeaveArgs(payload)] };
+        return { commandId, args: playArgs(payload, lookups, name, object) };
     }
+    const subject = [positional("target", name, object)];
     if (payload.operation === "hide") {
         return { commandId, args: [...subject, ...clipLeaveArgs(payload, DEFAULT_VIDEO_LEAVE_FADE_MS)] };
     }
@@ -1336,19 +1313,34 @@ function videoSentence(
 type VideoPayload = Extract<StoryActionPayload, { action: "video" }>;
 
 /**
- * `hide=` and the leave args of a `/play`, as its build reads them back.
+ * A `/play` line: the file and the clip's name - see `imageSentence` for why `name=` is printed even
+ * when it repeats the file's name - then the row's own settings, as its build reads them back.
  *
- * `hide=` is printed when the row states it, except where the leave args already say it: on a clip
- * the row would otherwise keep, writing how it leaves is what asks for it to leave, so `/play clip
- * out=fade d=1` is the whole line and a `hide=true` beside it would be the same thing twice.
+ * A play with no file is a row the inspector left half-made, and it prints the clip's name where the
+ * file goes: the line then reads as a play of that clip again, which is the nearest thing it can be.
  */
-function clipPlayLeaveArgs(payload: VideoPayload): (Arg | null)[] {
-    const leave = clipLeaveArgs(payload, undefined);
-    const saidByLeave = payload.hideOnEnd === true && !revealCreates(payload) && leave.length > 0;
-    const hide = payload.hideOnEnd === undefined || saidByLeave
-        ? null
-        : arg("hide", booleanValue(payload.hideOnEnd), { apply: next => ({ ...payload, hideOnEnd: next === "true" }) });
-    return [hide, ...leave];
+function playArgs(
+    payload: VideoPayload,
+    lookups: StoryCommandLineLookups,
+    name: string | undefined,
+    object: Omit<Arg, "param" | "value" | "positional">,
+): (Arg | null)[] {
+    const file = payload.assetId
+        ? [
+            positional("target", assetWord(lookups, payload.assetId), {
+                ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                ...assetLink(lookups, payload.assetId),
+            }),
+            arg("name", name),
+        ]
+        : [positional("target", name, object)];
+    return [
+        ...file,
+        arg("muted", booleanValue(payload.muted), { apply: next => ({ ...payload, muted: next === "true" }) }),
+        arg("wait", booleanValue(payload.waitForEnd), { apply: next => ({ ...payload, waitForEnd: next === "true" }) }),
+        arg("hide", booleanValue(payload.hideOnEnd), { apply: next => ({ ...payload, hideOnEnd: next === "true" }) }),
+        ...clipLeaveArgs(payload, undefined),
+    ];
 }
 
 /**

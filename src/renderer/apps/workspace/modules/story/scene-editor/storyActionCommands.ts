@@ -67,8 +67,6 @@ export type ActionCommandId =
     | "textFont"
     | "layerCreate"
     | "layerZIndex"
-    | "videoCreate"
-    | "videoShow"
     | "videoHide"
     | "videoPlay"
     | "nvl"
@@ -236,10 +234,6 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "layer", operation: "create", objectName: "layer", zIndex: 1 } };
         case "layerZIndex":
             return { ...base, kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "", target: { kind: "default", layer: "displayable" }, zIndex: 1 } };
-        case "videoCreate":
-            return { ...base, kind: "action", payload: { action: "video", operation: "create", objectName: "video", muted: false } };
-        case "videoShow":
-            return { ...base, kind: "action", payload: { action: "video", operation: "show", objectName: "video" } };
         case "videoHide":
             return { ...base, kind: "action", payload: { action: "video", operation: "hide", objectName: "video" } };
         case "videoPlay":
