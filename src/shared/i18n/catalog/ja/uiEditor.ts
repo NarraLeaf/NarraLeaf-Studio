@@ -55,6 +55,10 @@ export const uiEditor = {
         pageValidationHint: "作成する前にページ名と大きさを確認する",
         gameUiSlotHint: "作成する前に空いているゲーム UI スロットを選ぶ",
         allSlotsUsed: "ゲーム UI のスロットはすべて埋まっている。一覧から既存のゲーム UI を開く",
+        starterTitlePage: {
+            title: "タイトルページを作成",
+            description: "「はじめから」「つづきから」ボタンは接続済み。空の入口ページと置き換える",
+        },
     },
     naming: {
         page: "ページ {index}",

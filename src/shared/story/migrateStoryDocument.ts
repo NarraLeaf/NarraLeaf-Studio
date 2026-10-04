@@ -28,6 +28,8 @@
  */
 
 import {
+    listSceneBlocksInDocumentOrder,
+    normalizeStageObjectName,
     STORY_DOCUMENT_SCHEMA_VERSION,
     StoryBlock,
     StoryBlockId,
@@ -146,6 +148,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 22) {
         migrated = migrateStoryDocumentV21toV22(migrated);
     }
+    if (version < 27) {
+        migrated = migrateStoryDocumentV26toV27(migrated);
+    }
     // The stamp is unconditional, and has to be. Most bumps are additive - a document at the
     // version below is already valid at the new one, because it cannot contain a field that did not
     // exist to be written - so they get no step, and this line is their entire migration. v23 (a
@@ -189,6 +194,244 @@ function migrateStoryDocumentV21toV22(document: StoryDocument): StoryDocument {
         scenes[sceneId] = { ...scene, blocks };
     }
     return { ...document, scenes };
+}
+
+/**
+ * v26→v27: `play` becomes the only row that puts a clip on the stage, and every play carries its file.
+ *
+ * Read per scene, in document order, because that is the span a clip's name lives in and the order
+ * the old rows took effect in:
+ *
+ *  - A clip's `create` and `show` rows fold into the next `play` of the same clip that follows them:
+ *    that play takes the clip's file, name and mute flag, and the folded rows go. What the scene shows
+ *    is unchanged in substance - the clip appears and runs on the play row - minus the stretch where
+ *    it stood revealed and still, which no row can say any more.
+ *  - A `play` that only named a clip takes that clip's file, so it defines the clip as every play now
+ *    does. It no longer keeps its clip on the stage after the end unless it said so; that hold was
+ *    never what anyone wanted (the last frame stayed over every later scene), so it is not written in.
+ *  - What can no longer be said becomes a note quoting the line: a clip declared or shown and never
+ *    played afterwards, a play of a clip nothing gave a file, and a row addressing a clip that no play
+ *    in the scene defines - or that it reaches before the clip's first play, when there is no clip yet.
+ *    The note keeps the row's place, so nothing disappears from the scene without a trace.
+ *
+ * "The clip" is the old runtime reading of a name at a row: the first row at or above it that built
+ * one with a file (`create`, or a `show` or `play` naming one), which is the clip the compiler's
+ * get-or-create handed every later row. Every play is given that clip's file, so it plays after the
+ * step what it played before - a play that named a different file of its own was playing the first
+ * clip all along, and a play above every declaration of its clip played nothing and becomes a note.
+ * A disabled row never built anything, so it declares nothing here either; a disabled `create` or
+ * `show` becomes a disabled note.
+ *
+ * The rows that address a clip afterwards are pointed at the play that now defines it, because the row
+ * their reference was bound to may be one of the rows that went.
+ */
+function migrateStoryDocumentV26toV27(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        scenes[sceneId] = migrateSceneClips(scene);
+    }
+    return { ...document, scenes };
+}
+
+/** A v26 video row, read loosely: `create` and `show` are operations the v27 type no longer has. */
+type LegacyVideoPayload = {
+    action: "video";
+    operation: string;
+    objectName?: string;
+    target?: { name?: string; label?: string; sourceBlockId?: string; builtin?: string };
+    assetId?: string;
+    muted?: boolean;
+    timeMs?: number;
+    durationMs?: number;
+    [key: string]: unknown;
+};
+
+function legacyVideoPayload(block: StoryBlock | undefined): LegacyVideoPayload | null {
+    if (!block || block.kind !== "action") {
+        return null;
+    }
+    const payload = block.payload as unknown as LegacyVideoPayload;
+    return payload.action === "video" ? payload : null;
+}
+
+/** The registry key a clip name had - the rule `normalizeStageObjectName` states. */
+function clipKey(name: string | undefined): string {
+    return normalizeStageObjectName(name);
+}
+
+/** Whether a v26 row built its clip: `create`, or a `show` or `play` naming its own file. */
+function legacyDeclares(payload: LegacyVideoPayload): boolean {
+    if (payload.operation === "create") {
+        return true;
+    }
+    return (payload.operation === "show" || payload.operation === "play") && Boolean(payload.assetId?.trim());
+}
+
+function migrateSceneClips(scene: StoryScene): StoryScene {
+    const ordered = listSceneBlocksInDocumentOrder(scene);
+    if (!ordered.some(block => legacyVideoPayload(block))) {
+        return scene;
+    }
+
+    // Rows the compiler skips: a disabled row and everything under it.
+    const disabled = new Set<StoryBlockId>();
+    for (const block of ordered) {
+        if (block.disabled || (block.parentId !== null && disabled.has(block.parentId))) {
+            disabled.add(block.id);
+        }
+    }
+
+    const blocks: Record<StoryBlockId, StoryBlock> = { ...scene.blocks };
+    const removed = new Set<StoryBlockId>();
+    // The clip each name stands for at the row being read: the first enabled row so far that built it
+    // with a file.
+    const clips = new Map<string, { name: string; assetId: string; muted?: boolean }>();
+    // The play that defines each clip after the step - the first enabled one - which the rows
+    // addressing it are bound to.
+    const firstPlay = new Map<string, StoryBlockId>();
+    // `create` / `show` rows waiting for the next play of their clip.
+    const pending = new Map<string, StoryBlockId[]>();
+
+    for (const block of ordered) {
+        const payload = legacyVideoPayload(block);
+        if (!payload) {
+            continue;
+        }
+        const live = !disabled.has(block.id);
+        // Which clip the row is about. A declaring row names it; any other row reaches it through the
+        // row its reference was bound to while that is still a video row, and through its own name if
+        // not.
+        let key: string;
+        if (legacyDeclares(payload)) {
+            key = clipKey(payload.objectName);
+        } else {
+            const bound = legacyVideoPayload(payload.target?.sourceBlockId ? scene.blocks[payload.target.sourceBlockId] : undefined);
+            key = clipKey(bound?.objectName ?? (payload.target?.name || payload.objectName));
+        }
+        const ownFile = payload.assetId?.trim();
+        if (live && legacyDeclares(payload) && ownFile && !clips.has(key)) {
+            clips.set(key, { name: payload.objectName?.trim() || key, assetId: ownFile, ...(payload.muted !== undefined ? { muted: payload.muted } : {}) });
+        }
+        const clip = clips.get(key);
+
+        if (payload.operation === "create" || payload.operation === "show") {
+            if (live) {
+                pending.set(key, [...(pending.get(key) ?? []), block.id]);
+            } else {
+                blocks[block.id] = noteQuoting(block, payload);
+            }
+            continue;
+        }
+        if (payload.operation === "play") {
+            // A disabled play built nothing either, so it keeps the file it names when the clip has
+            // none to give it.
+            const file = clip ?? (!live && ownFile ? { name: payload.objectName?.trim() || key, assetId: ownFile, muted: payload.muted } : undefined);
+            if (!file) {
+                blocks[block.id] = noteQuoting(block, payload);
+                continue;
+            }
+            const { target: _target, assetId: _assetId, muted: _muted, ...rest } = payload;
+            const next: LegacyVideoPayload = {
+                ...rest,
+                objectName: payload.objectName?.trim() || file.name,
+                assetId: file.assetId,
+                ...(file.muted !== undefined ? { muted: file.muted } : {}),
+            };
+            blocks[block.id] = { ...block, payload: next as unknown as StoryActionPayloadOf<"video"> } as StoryBlock;
+            if (live) {
+                for (const foldedId of pending.get(key) ?? []) {
+                    removed.add(foldedId);
+                }
+                pending.delete(key);
+                if (!firstPlay.has(key)) {
+                    firstPlay.set(key, block.id);
+                }
+            }
+            continue;
+        }
+        // `pause`, `resume`, `seek`, `stop`, `hide`: a row addressing a clip.
+        const definingPlay = firstPlay.get(key);
+        if (!definingPlay) {
+            blocks[block.id] = noteQuoting(block, payload);
+            continue;
+        }
+        const name = legacyVideoPayload(blocks[definingPlay])?.objectName ?? key;
+        blocks[block.id] = {
+            ...block,
+            payload: {
+                ...payload,
+                objectName: name,
+                ...(payload.target && !payload.target.builtin
+                    ? { target: { ...payload.target, name: clipKey(name), label: name, sourceBlockId: definingPlay } }
+                    : {}),
+            } as unknown as StoryActionPayloadOf<"video">,
+        } as StoryBlock;
+    }
+
+    // Declarations no later play took up: the clip never ran after them.
+    for (const ids of pending.values()) {
+        for (const id of ids) {
+            const payload = legacyVideoPayload(blocks[id]);
+            if (payload) {
+                blocks[id] = noteQuoting(blocks[id], payload);
+            }
+        }
+    }
+
+    if (removed.size === 0) {
+        return { ...scene, blocks };
+    }
+    for (const id of removed) {
+        delete blocks[id];
+    }
+    for (const [id, block] of Object.entries(blocks)) {
+        if (block.childrenIds.some(childId => removed.has(childId))) {
+            blocks[id] = { ...block, childrenIds: block.childrenIds.filter(childId => !removed.has(childId)) };
+        }
+    }
+    return { ...scene, blocks, rootBlockIds: scene.rootBlockIds.filter(id => !removed.has(id)) };
+}
+
+type StoryActionPayloadOf<A extends string> = Extract<Extract<StoryBlock, { kind: "action" }>["payload"], { action: A }>;
+
+/**
+ * A note in the row's place, quoting what the row said in the command line's canonical spelling.
+ *
+ * The file a row named is left out: the document holds its asset id, which is not a word an author
+ * can read, and the asset library that would name it is not part of a story document.
+ */
+function noteQuoting(block: StoryBlock, payload: LegacyVideoPayload): StoryBlock {
+    const word = (value: string | undefined): string => {
+        const text = (value ?? "").trim();
+        return /\s/.test(text) ? `'${text}'` : text;
+    };
+    const name = word(payload.target?.label || payload.objectName || payload.target?.name);
+    const seconds = (ms: number | undefined): string => `${Math.max(0, ms ?? 0) / 1000}`;
+    let line: string;
+    switch (payload.operation) {
+        case "create":
+            line = `/video name=${name}${payload.muted ? " muted" : ""}`;
+            break;
+        case "seek":
+            line = `/seek ${name} ${seconds(payload.timeMs)}`;
+            break;
+        case "hide":
+            line = typeof payload.durationMs === "number" && payload.durationMs > 0
+                ? `/hide ${name} out=fade d=${seconds(payload.durationMs)}`
+                : `/hide ${name}`;
+            break;
+        default:
+            line = `/${payload.operation} ${name}`;
+            break;
+    }
+    return {
+        id: block.id,
+        kind: "note",
+        parentId: block.parentId,
+        childrenIds: [],
+        payload: { text: { textId: `${block.id}-note`, role: "note", value: line.trim() } },
+        ...(block.disabled ? { disabled: true } : {}),
+    };
 }
 
 /** The transition kinds that read a hold, and so the only ones whose `props.hold` meant anything. */

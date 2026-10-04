@@ -52,6 +52,10 @@ export const uiEditor = {
         pageValidationHint: "创建前检查页面名称和尺寸",
         gameUiSlotHint: "创建前选择可用的游戏 UI 位置",
         allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
+        starterTitlePage: {
+            title: "新建标题页",
+            description: "「开始」「继续」按钮已接好，替换空白的入口页面",
+        },
     },
     naming: {
         page: "页面 {index}",

@@ -510,7 +510,7 @@ const CREATORS: Partial<Record<NarralangVerb, NarralangStageEntry["kind"]>> = {
     imageCreate: "image",
     textCreate: "text",
     layerCreate: "layer",
-    videoCreate: "video",
+    videoPlay: "video",
     vfxCreate: "vfx",
 };
 

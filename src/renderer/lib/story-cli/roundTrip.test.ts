@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import { declaredStageObject } from "@shared/types/story";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
+import { parseCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandParser";
+import { resolveCommandLine } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
+import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
 import { compileStoryFile } from "./dsl/compile";
 import { sameRowContent } from "./dsl/equal";
 import { parseStoryFile } from "./dsl/parse";
@@ -284,7 +287,7 @@ describe("a row that names a row the same file adds", () => {
     });
 
     /**
-     * How a clip leaves - `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
+     * How a clip plays and leaves - `wait=`, `hide=`, `out=` and `d=` on a `/play`, `out=` and `d=` on a `/hide` - written
      * into a scene and printed back as the same lines, so every one of them is a row the file can
      * carry rather than a `»` line.
      */
@@ -309,8 +312,7 @@ describe("a row that names a row the same file adds", () => {
         const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
         const lines = [
             "/play festival name=festival hide=false",
-            "/play festival out=fade d=1.2s",
-            "/show festival",
+            "/play festival name=festival wait=false out=fade d=1.2s",
             "/hide festival out=fade d=0.5s",
         ];
         const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
@@ -331,8 +333,8 @@ describe("a row that names a row the same file adds", () => {
             return block?.kind === "action" ? block.payload : null;
         });
         expect(payloads[0]).toMatchObject({ operation: "play", assetId: clipId, hideOnEnd: false });
-        expect(payloads[1]).toMatchObject({ operation: "play", hideOnEnd: true, durationMs: 1200 });
-        expect(payloads[3]).toMatchObject({ operation: "hide", durationMs: 500 });
+        expect(payloads[1]).toMatchObject({ operation: "play", assetId: clipId, waitForEnd: false, durationMs: 1200 });
+        expect(payloads[2]).toMatchObject({ operation: "hide", durationMs: 500 });
 
         const { printed, compiled: reread } = roundTrip(data, document, compiled.scene!);
         for (const line of lines) {
@@ -397,6 +399,244 @@ describe("a row that names a row the same file adds", () => {
         expect(back.compiled.scene!.rootBlockIds).toEqual(applied.rootBlockIds);
         for (const [id, block] of Object.entries(applied.blocks)) {
             expect(sameRowContent(back.compiled.scene!.blocks[id], block), `row ${id}`).toBe(true);
+        }
+    });
+});
+
+/** The skeleton with one clip, `festival`, in its library - the skeleton ships none. */
+function withFestivalClip(data: ProjectData): ProjectData {
+    const clipId = "11111111-2222-4333-8444-555555555555";
+    return {
+        ...data,
+        assets: {
+            ...data.assets,
+            video: {
+                [clipId]: {
+                    id: clipId, type: "video", name: "festival", ext: "mp4", hash: "hash", source: "local", meta: {}, tags: [], description: "",
+                },
+            },
+        } as ProjectData["assets"],
+    };
+}
+
+/**
+ * The rows the story editor lands when `lines` are typed into an empty `scene` one after another:
+ * each line parsed, resolved and built by the three calls Enter makes, against the scene as the rows
+ * above it left it. Row `index` takes the id `ids[index]`, so the rows can be compared with a file's
+ * payload for payload - a reference to an earlier row names the same id in both.
+ */
+function typedInOrder(
+    data: ProjectData,
+    document: StoryDocument,
+    scene: StoryScene,
+    lines: readonly string[],
+    ids: readonly string[],
+): StoryBlock[] {
+    let stage: StoryScene = { ...scene, rootBlockIds: [], blocks: {} };
+    let next = 0;
+    return lines.map((line, index) => {
+        const context = buildContext(data, document, stage);
+        const parsed = parseCommandLine(line);
+        expect(parsed.kind === "command" && parsed.def, line).toBeTruthy();
+        const { args, issues } = resolveCommandLine(parsed, context);
+        expect(issues, line).toEqual([]);
+        const spec = getCommandSpec(parsed.kind === "command" ? parsed.def!.commandId : "");
+        const built = spec!.build!(args, { generateId: () => `typed-${next++}`, context });
+        const block = { ...built, id: ids[index] } as StoryBlock;
+        stage = { ...stage, rootBlockIds: [...stage.rootBlockIds, block.id], blocks: { ...stage.blocks, [block.id]: block } };
+        return block;
+    });
+}
+
+/**
+ * Compiles `lines` as the whole body of `scene`, through both passes, with ids minted in order.
+ * The scene is the one the file says it describes - `existing` - so an anchored line keeps its row.
+ */
+function compileBody(data: ProjectData, document: StoryDocument, scene: StoryScene, lines: readonly string[]) {
+    const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+    const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n${lines.join("\n")}\n`;
+    let next = 0;
+    return compileStoryFile({
+        ast: parseStoryFile(source).ast,
+        existing: scene,
+        document,
+        contextFor: stage => buildContext(data, document, stage ?? scene),
+        prose: lookups.prose,
+        conditions: lookups.conditions,
+        mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+    });
+}
+
+/** The `if` / `elseIf` / `else` of each branch under the condition row `conditionId`, in order. */
+function branchKinds(scene: StoryScene, conditionId: string): string[] {
+    return scene.blocks[conditionId].childrenIds.map(id => {
+        const branch = scene.blocks[id];
+        return branch.kind === "control" && branch.payload.control === "conditionBranch" ? branch.payload.branch : branch.kind;
+    });
+}
+
+/**
+ * Which of `if`, `elseIf` and `else` a `?` line is.
+ *
+ * The format has one spelling for all three - `? expression`, or `? else` - because the row editor
+ * has no others either: `/if` lands the first branch, "+ else if" adds the next one above any `else`,
+ * and "+ else" closes the chain. So the kind is the line's place under its `/if`, and a second
+ * condition is an else-if. It was built as a second `if`, which the editor heads with 如果 a second
+ * time and the scene flow draws as the start of another condition, while `check` said nothing.
+ */
+describe("the branches of one /if", () => {
+    it("builds every condition after the first as an else-if, and the chain reads back unchanged", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const compiled = compileBody(data, document, scene, [
+            "/if",
+            "  ? Honest",
+            "    Narra: One.",
+            "  ? !Honest",
+            "    Narra: Two.",
+            "  ? Location == \"nowhere\"",
+            "    Narra: Three.",
+            "  ? else",
+            "    Narra: Four.",
+        ]);
+
+        expect(compiled.diagnostics).toEqual([]);
+        const applied = compiled.scene!;
+        const [condition] = applied.rootBlockIds;
+        expect(branchKinds(applied, condition)).toEqual(["if", "elseIf", "elseIf", "else"]);
+
+        // `show` then `apply` on the scene that landed changes nothing, the else-ifs included.
+        const appliedDocument = { ...document, scenes: { ...document.scenes, [applied.id]: applied } };
+        const back = roundTrip(data, appliedDocument, applied);
+        expect(back.printed.text).not.toContain(OPAQUE_PREFIX);
+        expect(back.compiled.diagnostics).toEqual([]);
+        for (const [id, block] of Object.entries(applied.blocks)) {
+            expect(JSON.stringify(back.compiled.scene!.blocks[id]), `row ${id}`).toBe(JSON.stringify(block));
+        }
+    });
+
+    it("gives a branch the kind of the place it is moved to", () => {
+        // A new condition written above the stored first branch heads the chain, and the branch it
+        // displaced follows it as an else-if - rather than two rows each claiming to be the `if`.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = (Object.values(document.scenes) as StoryScene[]).find(entry => entry.name === "Last light");
+        expect(scene).toBeDefined();
+        const { printed } = roundTrip(data, document, scene!);
+        const lines = printed.text.split("\n");
+        const firstBranch = lines.findIndex(line => line.startsWith("  ? Honest"));
+        expect(firstBranch).toBeGreaterThan(0);
+        lines.splice(firstBranch, 0, "  ? !Honest", "    Narra: Written above it.");
+        const body = lines.slice(lines.findIndex(line => line === "") + 1);
+
+        const compiled = compileBody(data, document, scene!, body);
+        expect(compiled.diagnostics).toEqual([]);
+        const condition = compiled.scene!.rootBlockIds.find(id => {
+            const block = compiled.scene!.blocks[id];
+            return block.kind === "control" && block.payload.control === "condition";
+        })!;
+        expect(branchKinds(compiled.scene!, condition)).toEqual(["if", "elseIf", "else"]);
+        // The stored branch is the same row, now second.
+        expect(compiled.scene!.blocks[condition].childrenIds[1]).toBe(scene!.blocks[condition].childrenIds[0]);
+    });
+});
+
+/**
+ * A clip a file plays, then pauses, resumes, seeks and stops further down.
+ *
+ * The transport verbs reach sound as well as video, and a name nothing on stage answers to is taken
+ * for a sound - the row editor's rule for a name made somewhere it cannot see. The first reading of
+ * a file runs against the scene as stored, which does not hold the clip yet, so it took `clip` for a
+ * sound on every one of those lines; the second reading then found `clip` twice on the stage the
+ * first one built - the clip, and the sound those rows had made up - and refused every line as
+ * ambiguous. Typed into the editor in this order, each line finds the clip and nothing else.
+ *
+ * Every shape a clip can come on with: a play the story waits on and that holds its last frame, one
+ * the story does not wait for (the shape the later rows are written for), the same through `/video`,
+ * the word that names `/play` too, and a clip played a second time by its name alone.
+ */
+describe("a clip the file plays, then pauses or stops", () => {
+    const declarations: readonly (readonly string[])[] = [
+        ["/play festival name=clip hide=false"],
+        ["/play festival name=clip wait=false"],
+        ["/video festival name=clip wait=false"],
+        ["/play festival name=clip", "/play clip wait=false"],
+    ];
+    for (const declaration of declarations) {
+        it(`lands the rows the editor lands, after ${declaration.join(" + ")}`, () => {
+            commandI18nStore.setPreference(false);
+            const project = skeletonProject();
+            expect(project).not.toBeNull();
+            const data = withFestivalClip(project!.data);
+            const document = project!.document;
+            const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+            const lines = [...declaration, "/pause clip", "/resume clip", "/seek clip 2", "/stop clip"];
+
+            const compiled = compileBody(data, document, scene, lines);
+            expect(compiled.diagnostics).toEqual([]);
+            const rows = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+            expect(rows.length).toBe(lines.length);
+
+            const typed = typedInOrder(data, document, scene, lines, rows.map(row => row.id));
+            for (const [index, row] of rows.entries()) {
+                expect(sameRowContent(row, typed[index]), lines[index]).toBe(true);
+            }
+            // Spelled out, so a regression reads as what went wrong rather than as a payload diff.
+            for (const [index, operation] of ["pause", "resume", "seek", "stop"].entries()) {
+                const row = rows[declaration.length + index];
+                expect(row.kind === "action" && row.payload, lines[declaration.length + index]).toMatchObject({
+                    action: "video",
+                    operation,
+                    objectName: "clip",
+                    target: { sourceBlockId: rows[0].id },
+                });
+            }
+        });
+    }
+
+    it("lands the rows the editor lands for an overlay the file starts", () => {
+        // An overlay outlives its scene, so its name is read off every scene of the story rather than
+        // off the one open - and the editor's story holds the scene as it is being written. The file's
+        // second reading has to see the same, or `/pause petals` is taken for a sound.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lines = ["/vfx rain name=petals", "/pause petals", "/resume petals"];
+
+        const compiled = compileBody(data, document, scene, lines);
+        expect(compiled.diagnostics).toEqual([]);
+        const rows = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        const typed = typedInOrder(data, document, scene, lines, rows.map(row => row.id));
+        for (const [index, row] of rows.entries()) {
+            expect(sameRowContent(row, typed[index]), lines[index]).toBe(true);
+        }
+        for (const [index, operation] of ["pause", "resume"].entries()) {
+            const row = rows[1 + index];
+            expect(row.kind === "action" && row.payload, lines[1 + index]).toMatchObject({ action: "vfx", operation });
+        }
+    });
+
+    it("still takes a name no row declares for a sound", () => {
+        // The fallback the first reading leans on is right where nothing answers the name at all: the
+        // sound may be started in another scene. Leaving the first reading's guesses out of what the
+        // second one resolves against must not turn that into an error.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const compiled = compileBody(data, document, scene, ["/pause rain", "/stop rain"]);
+        expect(compiled.diagnostics).toEqual([]);
+        for (const id of compiled.scene!.rootBlockIds) {
+            const row = compiled.scene!.blocks[id];
+            expect(row.kind === "action" && row.payload).toMatchObject({ action: "audio", objectName: "rain" });
         }
     });
 });

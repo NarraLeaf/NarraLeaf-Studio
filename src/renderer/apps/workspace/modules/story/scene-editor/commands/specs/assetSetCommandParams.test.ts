@@ -79,6 +79,7 @@ describe("asset set command params", () => {
         ["/bg Room", IMAGE_SET],
         ["/image Room", IMAGE_SET],
         ["/video Sting", VIDEO_SET],
+        ["/play Sting", VIDEO_SET],
         ["/bgm Chime", AUDIO_SET],
         ["/sound Chime", AUDIO_SET],
         ["/vfx Sting", VIDEO_SET],
@@ -89,13 +90,11 @@ describe("asset set command params", () => {
         // The mask is the one asset a row writes a level down (`transform.to.maskAssetId`), which is
         // exactly the slot the materializer had to be taught about - so it is worth proving here.
         ["/transform hero mask=Room", IMAGE_SET],
-        // `/show`'s subject slot reads the libraries as well as the stage, and the id it stores is the
-        // row's own `assetId` - the same field `/image` and `/video` write, so a set reaches assembly
-        // by the same route.
+        // `/show`'s subject slot reads the picture library as well as the stage, and the id it stores
+        // is the row's own `assetId` - the same field `/image` writes, so a set reaches assembly by the
+        // same route. `/play` (and `/video`, its other name, above) reads the clip library on the same
+        // terms and stores the clip in the same field.
         ["/show Room", IMAGE_SET],
-        ["/show Sting", VIDEO_SET],
-        // `/play` reads the clip library on the same terms and stores the clip in the same field.
-        ["/play Sting", VIDEO_SET],
     ])("commits %s and hands the set id to assembly", (source, setId) => {
         expect(assemblyReadsSet(build(source), setId)).toBe(true);
     });
@@ -154,7 +153,6 @@ describe("asset set command params", () => {
             "swap.content",
             "transform.mask",
             "vfx.clip",
-            "video.video",
         ]);
         // The two rule-image slots - `/bg` and `/jump` both carry one - and nothing else.
         expect(refused.sort()).toEqual(["background.rule", "jump.rule"]);
@@ -178,6 +176,6 @@ describe("asset set command params", () => {
                 }
             }
         }
-        expect(reading.sort()).toEqual(["play.target: video", "show.target: image+video"]);
+        expect(reading.sort()).toEqual(["play.target: video", "show.target: image"]);
     });
 });

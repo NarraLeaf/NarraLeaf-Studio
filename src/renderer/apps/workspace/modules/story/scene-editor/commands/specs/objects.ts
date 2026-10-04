@@ -1,7 +1,7 @@
-import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type, Video } from "lucide-react";
+import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
-import type { StoryCommandResolutionIssue } from "../../storyCommandValues";
+import type { StoryCommandResolutionIssue, StoryCommandValue } from "../../storyCommandValues";
 import {
     asBoolean,
     asColor,
@@ -16,7 +16,6 @@ import {
     type StoryCommandValidateContext,
 } from "../spec";
 import {
-    actionableTargetRef,
     clipLeaveDurationMs,
     deriveObjectName,
     deriveShownObjectName,
@@ -28,7 +27,7 @@ import {
 import { clipConcealOptions, transitionOptions } from "../transitions";
 import { validateNameTarget } from "./character";
 
-/** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
+/** Media objects: `/image`, `/text`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
 
 export const image = defineStoryCommand({
     id: "image",
@@ -98,40 +97,6 @@ export const text = defineStoryCommand({
         }
         const transform = withPlacementTransform(payload.transform, args.pos, undefined);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
-    },
-});
-
-export const video = defineStoryCommand({
-    id: "video",
-    token: "video",
-    aliases: ["vid"],
-    category: "video",
-    icon: Video,
-    examples: ["/video intro", "/video intro name=cutscene muted"],
-    params: {
-        video: { aliases: ["src"], hint: "videoAsset", type: { kind: "asset", assetType: "video", allowSets: true }, positional: true, core: true },
-        name: { hint: "objectName", type: { kind: "text" } },
-        muted: { hint: "muted", type: { kind: "boolean" } },
-    },
-    deriveArgs: deriveObjectName("video", "video", "video"),
-    build(args, ctx) {
-        const block = createBlockForCommand("videoCreate", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "video") {
-            return block;
-        }
-        const payload = { ...block.payload };
-        const name = asText(args.name);
-        if (name !== undefined) {
-            payload.objectName = name;
-        }
-        if (args.video?.kind === "asset") {
-            payload.assetId = args.video.assetId;
-        }
-        const muted = asBoolean(args.muted);
-        if (muted !== undefined) {
-            payload.muted = muted;
-        }
-        return { ...block, payload };
     },
 });
 
@@ -237,36 +202,47 @@ export const swap = defineStoryCommand({
 });
 
 /**
- * `/play` - run a clip to its end.
+ * `/play` - the one row that puts a story video on the stage.
  *
- * Two subjects, on the terms `/show` already reads them. A clip on stage is what a name means, and
- * the row runs it and leaves its visibility alone. A clip out of the library is a whole cutscene in
- * one row: the row builds it, names it (`name=`, or the file's own name), reveals it and runs it -
- * which is what an author who picks a clip and writes "play" expects to see, and what used to take a
- * `/video` row and a `/show` row above it.
+ * Every play carries its file and defines its clip: it reveals the clip, runs it, and clears it away
+ * when it ends. A video in a story is a cutscene the story plays rather than an object it stages, so
+ * there is no row that declares or reveals a clip without running it - `/video` and `/vid` are this
+ * command's other names, kept so the word an author reaches for still finds it.
  *
- * **And then whether it goes.** A clip that ends holds its last frame above every scene, a jump
- * included, and the next scene has no name for it to hide it by - so the cutscene form clears itself
- * away by default, and the other form keeps leaving the clip as an earlier row left it. `hide=` says
- * otherwise either way. How the clip leaves is the conceal half `/hide` already writes, `out=` and
- * `d=`, cut down to the two a clip can do: a fade (the default) and none. Stating one is asking for
- * the clip to leave, so on a row that would otherwise keep it, it does.
+ * Two subjects, on the terms `/show` reads a picture. A file out of the library defines a clip under
+ * `name=`, or the file's own name. A clip an earlier play defined is what a name means once one has:
+ * `/play intro` plays `intro` again, and the row it builds carries that clip's file and name like any
+ * other play, so it reads back as the play it is.
+ *
+ * **Whether the story waits.** `wait=` (default true) holds the story until the clip ends - or until
+ * the player clicks or skips, which ends it early; `false` moves on at once while the clip plays, and
+ * the clip still leaves when it ends. The later rows that name the clip - `/pause`, `/resume`,
+ * `/seek`, `/stop`, `/hide` - are what reach a clip the story did not wait for.
+ *
+ * **And whether it goes.** A clip that ends holds its last frame above every scene, a jump included,
+ * and the next scene has no name for it to hide it by - so every play clears its clip away by
+ * default, and `hide=false` holds the last frame until a `/hide` takes it. How the clip leaves is the
+ * conceal half `/hide` already writes, `out=` and `d=`, cut down to the two a clip can do: a fade (the
+ * default) and none.
  */
 export const play = defineStoryCommand({
     id: "play",
     token: "play",
+    aliases: ["video", "vid"],
     category: "video",
     icon: Play,
-    examples: ["/play clip", "/play intro name=cutscene", "/play intro name=cutscene out=fade d=1", "/play intro name=cutscene hide=false"],
+    examples: ["/play intro", "/play intro name=cutscene muted", "/play intro name=cutscene wait=false", "/play intro name=cutscene out=fade d=1", "/play intro name=cutscene hide=false"],
     params: {
         target: targetParam(["video"], { core: true, assets: ["video"], namedBy: "name" }),
-        // What the clip this row creates is called on stage, for the rows that address it later -
-        // `/pause`, `/stop`, `/hide`. Only meaningful on the library form; refused on a clip already
-        // on stage, which has a name of its own.
+        // What the clip this row defines is called on stage, for the rows that address it later -
+        // `/pause`, `/stop`, `/hide`. Only meaningful on a file; refused on a clip a play already
+        // defined, which has a name of its own.
         name: { hint: "objectName", type: { kind: "text" } },
+        wait: { hint: "waitForEnd", type: { kind: "boolean" } },
         hide: { hint: "hideOnEnd", type: { kind: "boolean" } },
         out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: clipConcealOptions() } },
         d: secondsParam(),
+        muted: { hint: "muted", type: { kind: "boolean" } },
     },
     deriveArgs: deriveShownObjectName(),
     build(args, ctx) {
@@ -275,30 +251,80 @@ export const play = defineStoryCommand({
             return block;
         }
         const target = asTarget(args.target);
-        const createsClip = target?.type === "asset";
         const payload = { ...block.payload };
         if (target?.type === "asset") {
             payload.objectName = asText(args.name) ?? target.name;
             payload.assetId = target.assetId;
         } else if (target?.type === "stageObject") {
+            // Playing a clip again: the row names the clip's file and mute flag as the play that
+            // defined it does, so it defines the same clip and reads back as `/play <file> name=`.
+            const clip = ctx.context.videoClips?.[target.name.trim().toLowerCase()];
             payload.objectName = target.name;
-            payload.target = actionableTargetRef(target);
+            if (clip) {
+                payload.assetId = clip.assetId;
+                if (clip.muted !== undefined) {
+                    payload.muted = clip.muted;
+                }
+            }
         }
-        // A cutscene already leaves with the default fade, so an `out=fade` with no `d=` on it says
-        // nothing that needs storing; on a clip the row would keep, it is what turns leaving on.
-        const statesLeave = args.out !== undefined || args.d !== undefined;
-        const hideOnEnd = asBoolean(args.hide) ?? (statesLeave && !createsClip ? true : undefined);
+        const muted = asBoolean(args.muted);
+        if (muted !== undefined) {
+            payload.muted = muted;
+        }
+        const waitForEnd = asBoolean(args.wait);
+        if (waitForEnd !== undefined) {
+            payload.waitForEnd = waitForEnd;
+        }
+        const hideOnEnd = asBoolean(args.hide);
         if (hideOnEnd !== undefined) {
             payload.hideOnEnd = hideOnEnd;
         }
+        // A play fades its clip out by default, so an `out=fade` with no `d=` says nothing that needs
+        // storing.
         const durationMs = clipLeaveDurationMs(args.out, args.d, undefined);
         if (durationMs !== undefined) {
             payload.durationMs = durationMs;
         }
         return { ...block, payload };
     },
-    validate: (args, ctx) => validateNameTarget(args, ctx),
+    validate: (args, ctx) => [
+        ...validateNameTarget(args, ctx),
+        ...validateClipFile(args, ctx),
+        ...validateLeaveWithoutHide(args, ctx),
+    ],
 });
+
+/**
+ * A `/play` naming a clip no earlier play in the scene gave a file, so the row would have nothing to
+ * play. Reported on the subject, as a file the line names and the library does not hold.
+ */
+function validateClipFile(
+    args: { readonly target?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const target = asTarget(args.target);
+    if (target?.type !== "stageObject" || ctx.context.videoClips?.[target.name.trim().toLowerCase()]) {
+        return [];
+    }
+    const span = ctx.spanOf("target");
+    return span ? [{ code: "unknownAsset", span, value: target.name, assetType: "video", allowSets: true }] : [];
+}
+
+/**
+ * `out=` or `d=` beside `hide=false`: how a clip leaves, on a row that keeps it. Refused rather than
+ * stored, because nothing would read it.
+ */
+function validateLeaveWithoutHide(
+    args: { readonly hide?: StoryCommandValue; readonly out?: StoryCommandValue; readonly d?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    if (asBoolean(args.hide) !== false) {
+        return [];
+    }
+    const key = args.out !== undefined ? "out" : args.d !== undefined ? "d" : null;
+    const span = key ? ctx.spanOf(key) : undefined;
+    return key && span ? [{ code: "conflictingParams", span, keys: ["hide", key] }] : [];
+}
 
 /**
  * `/front` - put this in front of everything else in its layer.
@@ -388,4 +414,4 @@ export const font = defineStoryCommand({
     },
 });
 
-export const OBJECT_COMMANDS = [image, text, video, layer, swap, play, front, font];
+export const OBJECT_COMMANDS = [image, text, layer, swap, play, front, font];

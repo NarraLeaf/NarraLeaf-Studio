@@ -355,7 +355,7 @@ export function buildContext(
         assets: data.assets,
         assetSets: data.assetSets,
         characters: data.characters,
-        document,
+        document: documentHolding(document, scene),
         sceneId: scene?.id ?? null,
         scene,
         persistentVariables: data.persistentVariables,
@@ -365,6 +365,27 @@ export function buildContext(
         appTags: data.appTags,
         surfaces: data.surfaces,
     });
+}
+
+/**
+ * `document` with `scene` in place of its stored copy.
+ *
+ * The editor builds a line's context from the story it has open, and that story holds the scene being
+ * written as it stands. Most names come off the scene alone, but a few are read off the whole story -
+ * an ambience overlay outlives its scene, so `/pause rain` looks for the overlay in every one - and a
+ * file's second reading resolves against the scene its first reading built, which the document on
+ * disk does not hold. Without the swap, `/vfx rain name=rain` followed by `/pause rain` took the name
+ * for a sound.
+ *
+ * The scene keeps its stored name: a file that renames its scene is reported, not applied, so the
+ * story still calls it what it did.
+ */
+function documentHolding(document: StoryDocument | null, scene: StoryScene | null): StoryDocument | null {
+    const stored = scene ? document?.scenes?.[scene.id] : undefined;
+    if (!document || !scene || !stored || stored === scene) {
+        return document;
+    }
+    return { ...document, scenes: { ...document.scenes, [scene.id]: { ...scene, name: stored.name } } };
 }
 
 /** An empty project, for the catalogue commands that must answer with no `--project` at all. */

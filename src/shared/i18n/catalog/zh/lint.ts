@@ -197,6 +197,11 @@ export const lint = {
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
         },
+        storyVideoControlAfterEnd: {
+            title: "已播放完毕的视频",
+            description: "播放行等待播放结束，其后暂停、继续、跳转或停止该视频的行",
+            message: "{object} 在该行已播放完毕；如需在播放时继续，请关闭其播放行的“等待播放结束”",
+        },
         storyCharacterMissing: {
             title: "不存在的角色",
             description: "该行指定的角色不在本项目中",

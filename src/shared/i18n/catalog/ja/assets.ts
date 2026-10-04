@@ -165,6 +165,7 @@ export const assets = {
         list: "リスト表示",
         icons: "アイコン表示",
         overview: "概要",
+        details: "詳細表示",
     },
     filter: {
         label: "絞り込み",
@@ -184,6 +185,15 @@ export const assets = {
     },
     list: {
         emptyFiltered: "現在の絞り込みに一致するアセットがない",
+    },
+    browser: {
+        results: {
+            other: "{count} 件の結果",
+        },
+        selected: {
+            other: "{count} 件を選択",
+        },
+        location: "場所",
     },
     iconView: {
         updating: "更新している…",

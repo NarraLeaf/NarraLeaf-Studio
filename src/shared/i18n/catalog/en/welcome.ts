@@ -22,6 +22,11 @@ export const welcome = {
             label: "Help",
             description: "How the parts of Studio behave.",
         },
+        // Shown only while the project has no interface yet.
+        titlePage: {
+            label: "New Title Page",
+            description: "Start and Continue buttons included.",
+        },
     },
     reopenHint: {
         menu: "Reopen this page from Help → Open Welcome.",

@@ -106,6 +106,7 @@ import {
     storyTransitionKindOf,
     storyVariableRefKey,
     videoLeaveFadeMs,
+    videoPlayWaits,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
@@ -983,6 +984,12 @@ type SceneCompileContext = {
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
+    /**
+     * Set only while the opening scene of a row-precise launch compiles: the prefix every element
+     * that scene builds is named under, in place of `nl:<kind>:<scene id>` (see
+     * {@link launchSceneIdPrefix} and {@link sceneElementStaticId}).
+     */
+    launchElementIdPrefix?: string;
     nextActionIndex: (blockId: string) => number;
     /**
      * What a plugin compile pass attached around each row, keyed by block id.
@@ -1040,8 +1047,20 @@ export type SceneWarmOrder = {
      * switch to, and they stay with those rows.
      */
     onEntry: string[];
-    /** Block ids in compile order - which is row order within a scene, and a tree walk across branches. */
+    /**
+     * The blocks that asked for media, in compile order - which is row order within a scene, and a
+     * tree walk across branches.
+     */
     blockOrder: string[];
+    /**
+     * Where every compiled row falls in {@link blockOrder}: the index the next row that asks for
+     * media takes - the row's own index when it is one of them.
+     *
+     * What lets a plan place the play head on a row that asks for nothing, which is most rows - every
+     * line of dialogue. Without it such a row could only be read as the top of the scene, and the plan
+     * then put back on the stage a clip the story had already played and taken away.
+     */
+    placeOf?: Record<string, number>;
     /** Media each block resolved, keyed by block id. Deduplicated within the block. */
     byBlock: Record<string, StoryWarmResource[]>;
     /**
@@ -1409,6 +1428,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
                 firstFrame: scenesBuild.initialBackgroundUrls?.[scene.id] ?? null,
                 onEntry: [],
                 blockOrder: [],
+                placeOf: {},
                 byBlock: {},
                 rows: {},
             }} : {}),
@@ -1595,6 +1615,8 @@ async function buildLaunchEntryScene(params: {
             ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
         },
     );
+    const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
+    setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
 
     const ctx: SceneCompileContext = {
         document: input.document,
@@ -1645,6 +1667,7 @@ async function buildLaunchEntryScene(params: {
         diagnostics,
         actionIdBindings: params.actionIdBindings,
         elementIdBindings: params.elementIdBindings,
+        launchElementIdPrefix: launchIdPrefix,
         nextActionIndex: params.nextActionIndex,
     };
 
@@ -1661,12 +1684,13 @@ async function buildLaunchEntryScene(params: {
             getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
         }
     }
-    const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
+    const registrations: { element: Image | Text; layer: Layer | undefined; id: string }[] = [];
     for (const record of preposed) {
         if (record.kind === "layer") {
             continue;
         }
         const layer = resolveLayerForRef(ctx, record.layer);
+        const id = sceneElementStaticId(ctx, record.kind, normalizeObjectName(record.objectName));
         if (record.kind === "image") {
             const src = await resolveSnapshotImageSource(ctx, record);
             const image = getImage(ctx, record.objectName, {
@@ -1681,7 +1705,7 @@ async function buildLaunchEntryScene(params: {
             if (record.source?.type === "character") {
                 await bindCharacterPortrait(ctx, record.source.characterId, image);
             }
-            registrations.push({ element: image, layer });
+            registrations.push({ element: image, layer, id });
         } else {
             const text = getText(ctx, record.objectName, {
                 text: record.text ?? "",
@@ -1690,11 +1714,15 @@ async function buildLaunchEntryScene(params: {
                 layer,
                 initialProps: snapshotPoseProps(record),
             });
-            registrations.push({ element: text, layer });
+            registrations.push({ element: text, layer, id });
         }
     }
-    registrations.forEach((registration, index) => {
-        DevTools.setElementId(registration.element as any, `launch-e-${index}`);
+    // Registered by hand rather than reached by a row, so story construction never names these: an
+    // element no action calls keeps whatever id it had. They take their own stable names now rather
+    // than a counter's, which is both unique (the engine keys their React nodes by it) and the name
+    // a save written in this launch carries for them.
+    registrations.forEach(registration => {
+        DevTools.setElementId(registration.element as any, registration.id);
     });
 
     const statements: NlrStatement[] = [];
@@ -1789,9 +1817,6 @@ async function buildLaunchEntryScene(params: {
         }
         if (record.staged) {
             statements.push(video.preload());
-        }
-        if (record.visible) {
-            statements.push(video.show());
         }
     }
 
@@ -2842,6 +2867,11 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
     if (!block) {
         diagnostic(ctx, "warning", undefined, say("story.compile.flow.missingRow"));
         return [];
+    }
+    // Before the row compiles, so a row that asks for media is placed at its own entry.
+    const placeOf = ctx.warmOrder?.placeOf;
+    if (placeOf && !(blockId in placeOf)) {
+        placeOf[blockId] = ctx.warmOrder!.blockOrder.length;
     }
 
     // A disabled row (schema v7) is compiled out — with its whole subtree, since returning here never
@@ -3974,7 +4004,7 @@ async function getPuppetElement(
         // puppet character is her own size on the same terms.
         ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
     });
-    setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
+    setStableElementId(ctx.elementIdBindings, puppet, sceneElementStaticId(ctx, "puppet", key));
     ctx.puppets.set(key, puppet);
     return puppet;
 }
@@ -4391,19 +4421,97 @@ function videoFadeOptions(durationMs: number): { duration: number } | undefined 
     return durationMs > 0 ? { duration: durationMs } : undefined;
 }
 
+/**
+ * Whether the player has auto-forward on, read when the clip starts rather than when the story is built.
+ */
+function autoForwardIsOn(scriptCtx: ScriptCtx): boolean {
+    return scriptCtx.game.preference.getPreference("autoForward") === true;
+}
+
+/**
+ * A `play` row: reveal the clip, run it, and take it away when it ends - as ONE statement, so the
+ * three stay one run wherever the row sits. A parallel group hands the engine one branch per statement
+ * of its body, and three statements there would reveal, run and hide the clip all at once.
+ *
+ * The reveal comes first because the engine's `play` only runs the clip: an element nothing revealed
+ * is heard and not seen. It resolves once the clip can play, so `play` starts on a loaded clip; an
+ * element that is still loading draws nothing, and the stage shows through it until the first frame.
+ *
+ * A row that clears its clip away hides it after: `play` settles when the clip ends (or is stopped),
+ * so the hide runs then and fades out the frame the clip is on. Without it that frame stays above
+ * every scene - the stage draws videos over the scene group and a jump does not remove them, while the
+ * next scene has no name for the clip to hide it by.
+ *
+ * **A play that waits** is a `Control.do`, so the story holds on it, and the player can cut it short
+ * - see {@link skippableVideoPlay}. **A play that does not wait** is the same chain in a
+ * `Control.doAsync`: the story moves on at once, the chain runs on beside it and still hides the clip
+ * when it ends, and a later `/stop` ends its `play` early so that hide runs then. Nothing in it listens
+ * for the player, so the clicks that advance the lines written over the clip advance only the lines.
+ */
+function compileVideoPlay(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "video" }>,
+    video: Video,
+): NlrStatement {
+    const record = (statement: NlrStatement): NlrStatement => recordStatement(ctx, statement, block);
+    const steps: NlrStatement[] = [record(video.show())];
+    if (videoPlayWaits(payload)) {
+        steps.push(skippableVideoPlay(record, video));
+    } else {
+        steps.push(record(video.play()));
+    }
+    const leaveFadeMs = videoLeaveFadeMs(payload);
+    if (leaveFadeMs !== null) {
+        steps.push(record(video.hide(videoFadeOptions(leaveFadeMs))));
+    }
+    return record(videoPlayWaits(payload) ? Control.do(steps as any) : Control.doAsync(steps as any));
+}
+
+/**
+ * Run a clip the story waits on, ending it early when the player clicks the stage or presses skip.
+ *
+ * The engine has a switch for skipping clips (`allowSkipVideo`), and it is not this: it answers only
+ * the skip key, not a click, and it cuts every clip mounted on the stage - a clip a non-waiting play
+ * left running under the dialogue included - and winds it back to its first frame. So it stays off,
+ * and the waiting play races the clip against `waitForClick`, which both a stage click and a skip
+ * settle. Whichever finishes first ends the race; `stop` then pauses the clip on the frame it reached
+ * (a clip that ran out is already paused there) and settles the engine's own wait on it, and the
+ * row's hide fades that frame out.
+ *
+ * Two things around the race:
+ *  - **A click that arrived just before it is drained first.** The engine keeps a stage click for
+ *    200 ms so a `waitForClick` that starts a moment late still sees it - which here would be the very
+ *    click that advanced the line before the clip, ending the clip as it began. The drain is a
+ *    `waitForClick` raced against nothing at all: it takes a click that is waiting and lets go at once
+ *    when there is none.
+ *  - **Auto-forward plays the clip out.** `waitForClick` settles by itself after the auto-forward
+ *    delay when auto-forward is on, which would cut every clip longer than a few seconds. So when it
+ *    is on as the clip starts, the clip just runs to its end.
+ */
+function skippableVideoPlay(record: (statement: NlrStatement) => NlrStatement, video: Video): NlrStatement {
+    const drain = record(Control.any([record(Control.waitForClick()), record(Control.sleep(0))] as any));
+    const race = record(Control.any([record(video.play()), record(Control.waitForClick())] as any));
+    const settle = record(video.stop());
+    return record(Condition.If(
+        autoForwardIsOn as never,
+        [record(video.play())] as never,
+    ).Else([drain, race, settle] as never));
+}
+
 async function compileVideoAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
-    // `create` builds the clip, and so do a `show` and a `play` that name one (`revealCreates`); the
-    // other transport verbs address one an earlier row built. `show` needs no `preload` beside it -
-    // the engine mounts the element on the show itself - so the one-row reveal is one statement.
+    // `play` defines the clip it runs (`declaresStageObject`); every other verb addresses the clip a
+    // play defined.
     //
-    // Building through `getVideo` is also what warms a one-row clip as early as a declaring row
-    // would: the warm order records the clip against this row, and the preload plan puts every clip
-    // ahead of the play head on the stage hidden, so the element is buffering from the moment the
-    // scene starts rather than from the moment this row is reached.
+    // Building through `getVideo` is also what warms a clip ahead of its row: the warm order records
+    // the clip against this row, and the preload plan puts every clip ahead of the play head on the
+    // stage hidden, so the element is buffering from the moment the scene starts rather than from the
+    // moment this row is reached. A play that does not wait is built here exactly as one that does, so
+    // it is warmed exactly as one is.
     const video = declaresStageObject(payload)
         ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
         : findStageVideo(ctx, block.id, payload);
@@ -4411,36 +4519,7 @@ async function compileVideoAction(
         return [];
     }
     if (payload.operation === "play") {
-        // Up to three statements, because the engine's `play` only runs the clip.
-        //
-        // The one-row cutscene reveals first: a clip played without a reveal is heard and not seen,
-        // which is what a `play` addressing a clip a hidden `/video` row declared still does. The
-        // reveal resolves once the clip can play, so `play` starts on a loaded clip; an element that
-        // is still loading draws nothing, and the stage shows through it until the first frame.
-        //
-        // A row that clears its clip away hides it after: `play` waits for the end, so the hide runs
-        // the moment the clip finishes and fades out the frame it ended on. Without it that frame
-        // stays above every scene - the stage draws videos over the scene group and a jump does not
-        // remove them, while the next scene has no name for the clip to hide it by.
-        const statements: NlrStatement[] = [];
-        if (revealCreates(payload)) {
-            statements.push(video.show());
-        }
-        statements.push(video.play());
-        const leaveFadeMs = videoLeaveFadeMs(payload);
-        if (leaveFadeMs !== null) {
-            statements.push(video.hide(videoFadeOptions(leaveFadeMs)));
-        }
-        return statements.map(statement => recordStatement(ctx, statement, block));
-    }
-    if (payload.operation === "create") {
-        // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
-        // its own row: the element mounts hidden and starts buffering, so the `/show` or `/play`
-        // that follows is not the first moment anything has been fetched.
-        return [recordStatement(ctx, video.preload(), block)];
-    }
-    if (payload.operation === "show") {
-        return [recordStatement(ctx, video.show(), block)];
+        return [compileVideoPlay(ctx, block, payload, video)];
     }
     if (payload.operation === "hide") {
         return [recordStatement(ctx, video.hide(videoFadeOptions(videoLeaveFadeMs(payload) ?? 0)), block)];
@@ -5102,7 +5181,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
-    setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, image, sceneElementStaticId(ctx, "image", name));
     ctx.images.set(name, image);
     recordEntryImage(ctx, options?.src);
     return image;
@@ -5136,7 +5215,7 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
         layer: options.layer,
         ...(options.initialProps ?? {}),
     } as any);
-    setStableElementId(ctx.elementIdBindings, text, `nl:text:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, text, sceneElementStaticId(ctx, "text", name));
     ctx.texts.set(name, text);
     return text;
 }
@@ -5154,7 +5233,7 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
         return existing;
     }
     const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
-    setStableElementId(ctx.elementIdBindings, layer, `nl:layer:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, layer, sceneElementStaticId(ctx, "layer", name));
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -5184,17 +5263,27 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     return getLayer(ctx, name, zIndex);
 }
 
+/** The url each clip was built from - the engine keeps its own copy out of reach. */
+const videoUrls = new WeakMap<Video, string>();
+
 /**
- * Builds the clip a declaring row names - `/video`, or a `/show` or `/play` naming its own clip - and
- * hands back the one already built when an earlier row declared the name. That second case is the
- * same get-or-create every stage object follows: the first declaration stands, the later row's asset
- * goes nowhere, and lint's `story/stage-object-duplicate` is what tells the author. The transport
- * verbs look up instead.
+ * Builds the clip a `/play` row defines, and hands back the one already built when an earlier play
+ * defined the name. That second case is how a clip is played again - the row names the same file -
+ * and otherwise the same get-or-create every stage object follows: the first definition stands, a
+ * later row's different file goes nowhere, and lint's `story/stage-object-duplicate` is what tells
+ * the author. The other verbs look up instead.
  */
 async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: string | undefined, muted: boolean | undefined, blockId: string): Promise<Video | null> {
     const name = normalizeObjectName(objectName);
     const existing = ctx.videos.get(name);
     if (existing) {
+        // Played again: this row asks for the clip as well, so a plan placed after the first play
+        // still buffers it ahead of this one.
+        const url = videoUrls.get(existing);
+        if (url) {
+            recordWarmedAsset(ctx, blockId, "video", url, assetId ?? "");
+            recordWarmedVideoElement(ctx, blockId, url, existing);
+        }
         return existing;
     }
     if (!assetId) {
@@ -5206,7 +5295,8 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
-    setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
+    videoUrls.set(video, url);
+    setStableElementId(ctx.elementIdBindings, video, sceneElementStaticId(ctx, "video", name));
     ctx.videos.set(name, video);
     // The warm order recorded the url a moment ago, when the asset resolved. Only here is there an
     // element to go with it, and the element is what a preload plan can actually warm.
@@ -7365,16 +7455,52 @@ function stableActionId(storyId: string, sceneId: string, blockId: string, textI
  * around them stopped moving, and a save would still put a layer's pose onto a background.
  */
 function setStableSceneElementIds(sink: string[], scene: Scene, sceneId: string): void {
-    setStableElementId(sink, scene, `nl:scene:${sceneId}`);
-    setStableElementId(sink, scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
-    setStableElementId(sink, scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
-    setStableElementId(sink, scene.background, `nl:scene:${sceneId}:background`);
+    setSceneOwnElementIds(sink, scene, `nl:scene:${sceneId}`);
     // The narrator is the engine's own `Character(null)`, shared by every narration line in every
-    // scene, and nothing here constructs it - so like the three above it would keep a positional
-    // name. It began carrying state in engine 0.26.0, when `Character` started serialising its
+    // scene, and nothing here constructs it - so like a scene's own three elements it would keep a
+    // positional name. It began carrying state in engine 0.26.0, when `Character` started serialising its
     // name, and a positional name is only harmless while an element reaches no save. Naming a
     // singleton repeatedly is the same write each time.
     setStableElementId(sink, Narrator, "nl:character:narrator");
+}
+
+/** A scene and the three elements every scene owns, named under one id. */
+function setSceneOwnElementIds(sink: string[], scene: Scene, sceneElementId: string): void {
+    setStableElementId(sink, scene, sceneElementId);
+    setStableElementId(sink, scene.backgroundLayer, `${sceneElementId}:layer:background`);
+    setStableElementId(sink, scene.displayableLayer, `${sceneElementId}:layer:displayable`);
+    setStableElementId(sink, scene.background, `${sceneElementId}:background`);
+}
+
+/**
+ * Where everything the opening scene of a row-precise launch builds is named.
+ *
+ * That scene is not a scene of the document: it is built for one launch, from the stage the walk to
+ * one row arrived at, and nothing outside a launch of that same row has it. So it and everything it
+ * builds are named apart from the document's own elements, under the scene and row the launch is
+ * for - and everything under the prefix is recognisably one launch's (see `isRowLaunchSave` in the
+ * save loader, which is what reads it).
+ *
+ * Named apart, rather than reusing `nl:scene:<id>` and `nl:image:<id>:<name>`, for two reasons.
+ * The scene the launch stands for is compiled as well, for anything that jumps back to it, so the
+ * same names would put two different elements under one id and a save would restore one's state
+ * onto the other. And before this the scene and its layers took positional names (`e-0`, `e-1`),
+ * which a normal compile hands to unrelated elements - so a save written in a launch and loaded
+ * anywhere else was checked against the wrong things entirely.
+ */
+function launchSceneIdPrefix(sceneId: string, targetBlockId: string): string {
+    return `nl:launch:${sceneId}:${targetBlockId}`;
+}
+
+/** The id an element a scene builds is stamped with: its kind and name, under the scene's own namespace. */
+function sceneElementStaticId(
+    ctx: SceneCompileContext,
+    kind: "image" | "text" | "layer" | "video" | "puppet",
+    name: string,
+): string {
+    return ctx.launchElementIdPrefix
+        ? `${ctx.launchElementIdPrefix}:${kind}:${name}`
+        : `nl:${kind}:${ctx.scene.id}:${name}`;
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {

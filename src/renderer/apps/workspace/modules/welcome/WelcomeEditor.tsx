@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { CircleQuestionMark, FolderOpen, SquarePlus, type LucideIcon } from "lucide-react";
+import { CircleQuestionMark, FolderOpen, LayoutTemplate, SquarePlus, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { cn } from "@/lib/utils/cn";
@@ -10,11 +10,14 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { openHelpTab } from "../help/openHelpTab";
+import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
+import { useStarterTitlePage } from "../ui-editor/panel/templates/useStarterTitlePage";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { EditorComponentProps } from "../types";
 
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
+const UI_PANEL_ID = "narraleaf-studio:ui-surfaces";
 const STORY_PANEL_ID = "narraleaf-studio:story";
 
 /**
@@ -38,6 +41,8 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     const freeze = useFreezeGuard();
 
     const uiService = useMemo(() => context?.services.get<UIService>(Services.UI) ?? null, [context]);
+    // Offered here too while the project has no interface: this tab is where a new project lands.
+    const starterTitlePage = useStarterTitlePage();
     const storyService = useMemo(() => context?.services.get<StoryService>(Services.Story) ?? null, [context]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
 
@@ -68,6 +73,14 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
         uiService.editor.open(createStorySceneEditorTab({ storyId, sceneId: scene.id }, scene.name));
     }, [context, inputDialog, storyService, t, uiService]);
 
+    const handleAddTitlePage = useCallback(async () => {
+        const surface = await starterTitlePage.add();
+        if (surface && uiService) {
+            uiService.getStore().setPanelVisibility(UI_PANEL_ID, true);
+            uiService.editor.open(createSurfaceEditorTab(surface));
+        }
+    }, [starterTitlePage, uiService]);
+
     const handleOpenAssets = useCallback(() => {
         uiService?.getStore().setPanelVisibility(ASSETS_PANEL_ID, true);
     }, [uiService]);
@@ -91,7 +104,8 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                     <p className="mt-2 text-sm text-fg-muted">{t("welcome.subtitle")}</p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                {/* Two by two when the title page is offered, rather than three and one left over. */}
+                <div className={cn("grid gap-3", starterTitlePage.offered ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
                     <QuickAction
                         icon={SquarePlus}
                         label={t("welcome.quickActions.newScene.label")}
@@ -101,6 +115,15 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                         // card asked for a name, took it, and dropped the scene on the floor.
                         {...freeze.writes(!storyService)}
                     />
+                    {starterTitlePage.offered ? (
+                        <QuickAction
+                            icon={LayoutTemplate}
+                            label={t("welcome.quickActions.titlePage.label")}
+                            description={t("welcome.quickActions.titlePage.description")}
+                            onClick={() => void handleAddTitlePage()}
+                            {...freeze.writes(!uiService)}
+                        />
+                    ) : null}
                     <QuickAction
                         icon={FolderOpen}
                         label={t("welcome.quickActions.openAssets.label")}

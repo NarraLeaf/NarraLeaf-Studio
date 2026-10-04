@@ -128,6 +128,7 @@ export type LintRuleId =
     | "story/ending-name-duplicate"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"
+    | "story/video-control-after-end"
     | "story/declared-never-shown"
     | "story/character-missing"
     | "story/transition-unavailable"

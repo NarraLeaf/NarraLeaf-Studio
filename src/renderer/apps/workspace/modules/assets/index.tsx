@@ -28,7 +28,10 @@ export const assetsModule: PanelModule = {
 };
 
 /**
- * Secondary assets panel module that lives in the bottom tray.
+ * The bottom tray's asset browser: a folder tree beside the contents of one folder.
+ *
+ * The same panel as the sidebar's - the same library, menus, shortcuts and drags - in the shape a
+ * wide, short tray suits (see `browser/AssetBrowserView.tsx`).
  */
 export const assetsBottomModule: PanelModule = {
     metadata: {
@@ -40,10 +43,8 @@ export const assetsBottomModule: PanelModule = {
         defaultVisible: false,
         order: 10,
         payload: {
-            defaultViewMode: "icons",
-            defaultIconSize: 140,
             focusArea: FocusArea.BottomPanel,
-            showHeader: false,
+            layout: "browser",
         },
     },
     component: AssetsPanel,

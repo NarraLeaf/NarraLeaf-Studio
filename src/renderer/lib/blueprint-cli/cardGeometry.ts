@@ -108,7 +108,8 @@ const LOCALES: readonly LocaleCode[] = ["en", "zh", "ja"];
 
 /**
  * No card is drawn narrower than this. Widths here are estimates rounded up, so where a question
- * needs a card's smallest possible extent - does an author's frame hold it - this is the width to ask with.
+ * needs a card's smallest possible extent - does an author's frame hold it, how far left can its
+ * output pins end up in some language - this is the width to ask with.
  */
 export const BLUEPRINT_CARD_NARROWEST = CARD.minWidth;
 

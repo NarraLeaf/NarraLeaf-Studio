@@ -226,6 +226,23 @@ describe("BrandService mutations", () => {
         expect(files.get(DOCUMENT)).not.toContain("Accent");
     });
 
+    it("adopts colours under the ids they arrive with, and never over one the project has", async () => {
+        const { service } = await createHarness();
+        const own = service.createColor({ name: "Accent", value: "#00FF00" });
+
+        const added = service.adoptColors([
+            { id: "surface.sunken", name: "Page background", value: "#0A090D" },
+            { id: own.id, name: "Theirs", value: "#FF0000" },
+            { id: "primary", value: "#FF0000" },
+        ]);
+
+        expect(added).toBe(1);
+        expect(service.getColor("surface.sunken")).toEqual({ id: "surface.sunken", name: "Page background", value: "#0A090D" });
+        expect(service.getColor(own.id)).toMatchObject({ name: "Accent", value: "#00FF00" });
+        expect(service.getColor("primary")?.value).not.toBe("#FF0000");
+        expect(service.getPalette().resolveCss("surface.sunken")).not.toBeNull();
+    });
+
     it("reorders colours, seeded slots included", async () => {
         const { service } = await createHarness();
         const color = service.createColor({ name: "Accent" });

@@ -278,7 +278,11 @@ export class InputDialog {
     /**
      * Convenience method for creating groups
      */
-    async showCreateGroupDialog(category: AssetCategory, parentGroupId?: string): Promise<string | null> {
+    /**
+     * Ask for a new group's name. `parentName` is the group it is being made inside, which the prompt
+     * names: the author is told where the group will appear, not only what kind it is.
+     */
+    async showCreateGroupDialog(category: AssetCategory, parentName?: string): Promise<string | null> {
         // Keyed by category, not type: a folder belongs to a sidebar section, and "create a folder
         // for Audio" would be a lie under a section that also holds video.
         const categoryNouns: Record<AssetCategory, string> = {
@@ -292,7 +296,9 @@ export class InputDialog {
 
         return this.show({
             title: translate("dialogs.createGroup.title"),
-            description: translate("dialogs.createGroup.prompt", { type: categoryNouns[category] }),
+            description: parentName
+                ? translate("dialogs.createGroup.promptIn", { parent: parentName })
+                : translate("dialogs.createGroup.prompt", { type: categoryNouns[category] }),
             placeholder: translate("dialogs.createGroup.placeholder"),
             required: true,
             maxLength: 100,

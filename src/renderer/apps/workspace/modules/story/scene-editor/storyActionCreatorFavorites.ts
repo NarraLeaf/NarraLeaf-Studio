@@ -34,12 +34,14 @@ export const STARRED_ICON_COLOR = "#c8b06e";
  *    persistent variable is declared in the project variable registry now, and the registry is not a
  *    row the creator can insert - so there is no spec to land on, and unstarring is the honest
  *    outcome rather than pointing the author at `/local`, which declares a *different* variable.
- * Typed as a total map over the id union so a future id cannot quietly skip this table. The three
+ * Typed as a total map over the id union so a future id cannot quietly skip this table. The ids
  * spelled explicitly beside the union are no longer members of it, and a stored favourite still
- * carrying one has to be recognised rather than kept as an unknown plugin action.
+ * carrying one has to be recognised rather than kept as an unknown plugin action. `video` is one of
+ * them twice over: the old palette had a `videoCreate`, and the spec that replaced it was itself
+ * folded into `/play` when a play became the only row that brings a clip on.
  */
 export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
-    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette", string | null>
+    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette" | "videoCreate" | "videoShow" | "video", string | null>
 > = {
     narration: null,
     conditionIf: null,
@@ -79,8 +81,9 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
     textFont: "font",
     layerCreate: "layer",
     layerZIndex: "layer",
-    videoCreate: "video",
-    videoShow: "show",
+    videoCreate: "play",
+    videoShow: "play",
+    video: "play",
     videoHide: "hide",
     videoPlay: "play",
     displayableShow: "show",
