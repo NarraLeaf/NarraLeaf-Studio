@@ -284,7 +284,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "5107c0a1-0000-4000-8000-000000000500",
@@ -49717,7 +49722,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-04T00:54:46.166Z"
+    "updatedAt": "2026-10-04T21:33:57.807Z"
   },
   "structs": {
     "extra.galleryEntry": {

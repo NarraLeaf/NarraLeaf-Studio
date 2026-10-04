@@ -284,7 +284,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "5107c0a1-0000-4000-8000-000000000500",
@@ -3980,7 +3985,7 @@
     "ccd57b37-cc28-465e-8e13-e002e9f8dbe2": {
       "id": "ccd57b37-cc28-465e-8e13-e002e9f8dbe2",
       "type": "nl.container",
-      "name": "回想",
+      "name": "记录",
       "parentId": "6caa9353-a2bc-4553-b1df-20f020dcd305",
       "childrenIds": [
         "06eba888-e39e-45ec-9b7f-2b6fde3978a7",
@@ -49672,7 +49677,7 @@
     },
     "backlog": {
       "id": "backlog",
-      "name": "回想",
+      "name": "记录",
       "bindings": [
         {
           "kind": "pointer",
@@ -49717,7 +49722,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-10-04T00:54:46.166Z"
+    "updatedAt": "2026-10-04T21:33:57.807Z"
   },
   "structs": {
     "extra.galleryEntry": {
