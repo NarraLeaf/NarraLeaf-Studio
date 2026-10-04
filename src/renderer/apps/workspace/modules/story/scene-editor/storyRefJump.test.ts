@@ -99,16 +99,10 @@ describe("storyRefJumpTarget", () => {
             .toEqual({ kind: "storyBlock", storyId: "story-1", sceneId: HERE, blockId: "b_label", storyName: "Chapter One", sceneName: "Kitchen" });
     });
 
-    it("follows a row reference that names its own scene, which is how an overlay is reached", () => {
-        // The one declaration that can be outside the scene being read: an ambience overlay is held
-        // at game level, so the row that declares the rain this scene hides is usually elsewhere.
-        expect(storyRefJumpTarget({ kind: "block", blockId: "b_rain", sceneId: THERE }, WHERE))
-            .toEqual({ kind: "storyBlock", storyId: "story-1", sceneId: THERE, blockId: "b_rain", storyName: "Chapter One", sceneName: "Hallway" });
-    });
-
-    it("declines a row reference whose named scene does not hold it", () => {
-        // Same rule as every other miss: no target, so the word is never lit up at all.
-        expect(storyRefJumpTarget({ kind: "block", blockId: "b_label", sceneId: THERE }, WHERE)).toBeNull();
+    it("declines a row reference this scene does not hold", () => {
+        // Same rule as every other miss: no target, so the word is never lit up at all. A row in
+        // another scene is such a miss - every declaration a line points at is in its own scene.
+        expect(storyRefJumpTarget({ kind: "block", blockId: "b_rain" }, WHERE)).toBeNull();
     });
 
     it("sends a scene variable to the row that declares it", () => {

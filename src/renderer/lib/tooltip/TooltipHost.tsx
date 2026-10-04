@@ -21,10 +21,10 @@ function clamp(value: number, extent: number, available: number): number {
  * resting on; it flips below for the top toolbar and the title bar. A rail declares `left`/`right`
  * instead, so its tooltips open into the app rather than onto the icon above.
  */
-function place(
+export function placeTooltip(
     side: TooltipSide,
-    anchor: DOMRect,
-    size: DOMRect,
+    anchor: Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">,
+    size: Pick<DOMRect, "width" | "height">,
     viewWidth: number,
     viewHeight: number,
 ): { top: number; left: number } {
@@ -52,6 +52,16 @@ function place(
         left: clamp(anchor.left + anchor.width / 2 - size.width / 2, size.width, viewWidth),
     };
 }
+
+/**
+ * What a tooltip looks like, for the one surface that has to draw its own.
+ *
+ * A wire on the blueprint canvas is an SVG path that changes what it is pointing at as the pointer
+ * moves along it, so it cannot carry a `data-tip`; it draws its bubble itself, from this, so that it
+ * is the same bubble as every other one in the window.
+ */
+export const TOOLTIP_BUBBLE_CLASS =
+    "pointer-events-none z-[20010] max-w-[240px] whitespace-pre-line break-words rounded-md border border-edge bg-surface-overlay px-2 py-1 text-2xs leading-snug text-fg shadow-lg";
 
 /**
  * The one tooltip surface a window draws.
@@ -88,7 +98,7 @@ export function TooltipHost() {
         }
         const anchor = target.anchor.getBoundingClientRect();
         const size = bubble.getBoundingClientRect();
-        const placed = place(target.side, anchor, size, view.innerWidth, view.innerHeight);
+        const placed = placeTooltip(target.side, anchor, size, view.innerWidth, view.innerHeight);
         setStyle({ position: "fixed", top: Math.round(placed.top), left: Math.round(placed.left) });
     }, [doc, target]);
 
@@ -104,7 +114,7 @@ export function TooltipHost() {
             // than transparent for that one frame: a transparent box still has to be composited, and
             // this one is thrown away every time the pointer moves to the next control.
             style={style ?? { position: "fixed", top: 0, left: 0, visibility: "hidden" }}
-            className="pointer-events-none z-[20010] max-w-[240px] whitespace-pre-line break-words rounded-md border border-edge bg-surface-overlay px-2 py-1 text-2xs leading-snug text-fg shadow-lg"
+            className={TOOLTIP_BUBBLE_CLASS}
         >
             {target.text}
         </div>,

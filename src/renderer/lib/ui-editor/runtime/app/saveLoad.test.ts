@@ -370,6 +370,26 @@ describe("loadSaveIntoGame", () => {
         );
     });
 
+    it("loads a save whose ambience overlay the story no longer names, without the overlay", async () => {
+        // Written when an overlay was named for the whole story; the story now names it under the
+        // scene that declares it. Rain is decoration - the save loads without it rather than not at
+        // all, and the overlay's records are taken out of what the engine is handed, because its
+        // element-state record is the one place a missing overlay would still throw.
+        const harness = createHarness({ head: PLAYING });
+        const saved = makeSave(PLAYING) as unknown as { game: Record<string, any> };
+        saved.game.elementStates.push({ id: "nl:vfx:rain", data: { state: { display: true, paused: false } } });
+        saved.game.stage.vfx = [["nl:vfx:rain", { state: { display: true, paused: false } }]];
+        const applied: SavedGame[] = [];
+        const game = { ...harness.game, apply: (savedGame: SavedGame) => { applied.push(savedGame); harness.game.apply(savedGame); } };
+
+        const outcome = await loadWith({ ...harness, game }, { savedGame: saved as unknown as SavedGame });
+
+        expect(outcome).toMatchObject({ status: "loaded", applied: "save" });
+        const handed = applied[0].game as unknown as Record<string, any>;
+        expect(handed.elementStates.map((entry: { id: string }) => entry.id)).toEqual([PLAYING.sceneId]);
+        expect(handed.stage.vfx).toEqual([]);
+    });
+
     it("says the stage is short of something when only elements are missing", async () => {
         const harness = createHarness({ head: PLAYING, knownElements: ["scene-a"] });
         const saved = makeSave({ sceneId: "scene-a", line: 4, backlog: [], audio: "" });

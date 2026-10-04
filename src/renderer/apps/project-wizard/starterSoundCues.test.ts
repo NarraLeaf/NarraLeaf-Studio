@@ -243,9 +243,7 @@ function assertHoverSound(element: Element): void {
  * The rail entries each in-game page authors for itself.
  *
  * Title and Back are not among them: each is the same on every rail that places it, so the pages
- * place one component instead of holding copies of it, and its sounds are asserted once, below. The
- * Log page's Back is the exception - it wears the rail's lit look there, which an instance cannot -
- * and is listed on its own.
+ * place one component instead of holding copies of it, and its sounds are asserted once, below.
  */
 const RAIL_ENTRIES = ["Save", "Load", "Config"];
 
@@ -284,14 +282,12 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     ...["Log", "Save", "Load"].flatMap(page =>
         pressableRailEntries(page).map(button => ({ page, button, clip: "ui-confirm" })),
     ),
-    { page: "Log", button: "Back", clip: "ui-back" },
 ];
 
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({ page: "Title", button })),
     ...["Config", "Log", "Save", "Load"].flatMap(page => pressableRailEntries(page).map(button => ({ page, button }))),
-    { page: "Log", button: "Back" },
     // The segment rail is a menu, so it answers the pointer the way the nav rails do.
     ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
 ];
@@ -314,7 +310,7 @@ const CG_GRID = "5107c0a1-0000-4000-8000-000000000310";
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
 
-/** The button the Save, Load, Config and Extra rails all place to leave the page. */
+/** The button the Save, Load, Config, Log and Extra rails all place to leave the page. */
 const BACK_BUTTON = "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be";
 
 describe("the sounds the starter template makes", () => {
@@ -382,8 +378,8 @@ describe("the sounds the starter template makes", () => {
     });
 
     it("the back button answers wherever a rail places it", () => {
-        // One button, placed on the Save, Load, Config and Extra rails, with the clip that means
-        // undo. The Log page's own Back is among the cases above.
+        // One button, placed on the Save, Load, Config, Log and Extra rails, with the clip that
+        // means undo.
         const button = elementById(BACK_BUTTON);
         assertClickSound(button, "ui-back");
         assertHoverSound(button);

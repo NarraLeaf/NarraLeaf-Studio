@@ -22,6 +22,7 @@ import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { normalizeDistributionConfiguration } from "@/lib/workspace/project/configuration";
 import { SettingsGroup } from "../components/SettingsGroup";
+import { rotateDistributionKey } from "../distributionKeyAction";
 import type { ProjectSectionProps } from "./types";
 
 export function ProjectDistributionSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
@@ -36,28 +37,18 @@ export function ProjectDistributionSection({ projectService, uiService, config, 
         if (busy) {
             return;
         }
-        // Only when there is something to lose. The first mint changes nothing that
-        // exists yet, and a confirmation on it would teach the author to click
-        // through the one that matters.
-        if (distribution && uiService) {
-            const confirmed = await uiService.dialogs.confirmDestructive(
-                t("project.distribution.replaceConfirm"),
-                t("project.distribution.replaceConfirmDetail"),
-                t("project.distribution.replaceAction"),
-            );
-            if (!confirmed) {
-                return;
-            }
-        }
+        // The confirmation before a replace, and the report of a failure, live in the shared
+        // action: the build dialog's Create button goes through the same one.
         setBusy(true);
         try {
-            onConfigChange(await projectService.rotateDistributionKey());
-        } catch (error) {
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+            const next = await rotateDistributionKey(projectService, uiService);
+            if (next) {
+                onConfigChange(next);
+            }
         } finally {
             setBusy(false);
         }
-    }, [busy, distribution, onConfigChange, projectService, t, uiService]);
+    }, [busy, onConfigChange, projectService, uiService]);
 
     return (
         <SettingsGroup

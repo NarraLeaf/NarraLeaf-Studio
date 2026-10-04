@@ -574,132 +574,6 @@
         },
         "bindings": {}
       },
-      "d16cbdba-237c-40f4-840c-1b5ddbd32e89": {
-        "id": "d16cbdba-237c-40f4-840c-1b5ddbd32e89",
-        "name": "Active bar",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "21b58ced-62f0-4995-ae7e-e7904ba8b55c"
-        },
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "2677bcbd-8060-4967-883f-94fadb952bfa": {
-        "id": "2677bcbd-8060-4967-883f-94fadb952bfa",
-        "name": "Back",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "c76320a0-ab15-4d1d-82bb-a2e91bfe30a2"
-        },
-        "graphs": {
-          "eventIds": [
-            "b9f2fb12-c31f-4555-8945-a148e7375c9f"
-          ],
-          "events": {
-            "b9f2fb12-c31f-4555-8945-a148e7375c9f": {
-              "id": "b9f2fb12-c31f-4555-8945-a148e7375c9f",
-              "name": "Go back to where the page was opened from",
-              "graph": {
-                "nodes": {
-                  "note": {
-                    "id": "note",
-                    "type": "blueprint.flow.comment",
-                    "params": {
-                      "text": "Does what Escape does on this page (the page blueprint, layer \"Close the log\"): Clear Page returns to the story, and with no game running Go back returns to the page beneath. The same graph as the Back button component the other rails place, kept as a copy: here Back wears the rail's lit look (brighter, bolder text, with the bar beside it), and every instance of a component draws its definition's look.",
-                      "width": 1100,
-                      "height": 160
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -600
-                      }
-                    }
-                  },
-                  "pressed": {
-                    "id": "pressed",
-                    "type": "blueprint.event.head.mouseClick",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": -400
-                      }
-                    }
-                  },
-                  "clear": {
-                    "id": "clear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 290,
-                        "y": -400
-                      }
-                    }
-                  },
-                  "back": {
-                    "id": "back",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 580,
-                        "y": -400
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "pressed",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "clear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "clear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "back",
-                      "port": "in"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "2409712c-549c-47c3-a4ee-74010201e074": {
         "id": "2409712c-549c-47c3-a4ee-74010201e074",
         "name": "Screen title",
@@ -1213,7 +1087,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Escape is bound to the Dismiss action (Input actions panel), and this page answers it. Over a running game, Clear Page closes every page above the story and the player is back in it. From the title page there is no game, so Clear Page does nothing and Go back returns to the title. The Back button on the left runs the same two nodes.",
+                      "text": "Escape is bound to the Dismiss action (Input actions panel), and this page answers it. Over a running game, Clear Page closes every page above the story and the player is back in it. Outside a game Clear Page does nothing, and Go back returns to the page this one was opened from. The Back button on the left runs the same two nodes.",
                       "width": 828,
                       "height": 160
                     },
@@ -3344,7 +3218,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -3409,7 +3283,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": -382
                       }
                     }
@@ -3424,7 +3298,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": -243
                       }
                     }
@@ -3435,7 +3309,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 8
                       }
                     }
@@ -3582,7 +3456,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -3642,7 +3516,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1442,
+                        "x": 1452,
                         "y": 178
                       }
                     }
@@ -3657,7 +3531,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1172,
+                        "x": 1154,
                         "y": 317
                       }
                     }
@@ -3668,7 +3542,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1154,
+                        "x": 1164,
                         "y": 568
                       }
                     }
@@ -5639,7 +5513,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -5704,7 +5578,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": 218
                       }
                     }
@@ -5719,7 +5593,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": 357
                       }
                     }
@@ -5730,7 +5604,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 608
                       }
                     }
@@ -5877,7 +5751,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -5953,7 +5827,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1454,
+                        "x": 1464,
                         "y": 178
                       }
                     }
@@ -5968,7 +5842,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1184,
+                        "x": 1166,
                         "y": 317
                       }
                     }
@@ -5979,7 +5853,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1166,
+                        "x": 1176,
                         "y": 568
                       }
                     }
@@ -6407,8 +6281,8 @@
                       "text": "Apply the setting",
                       "frame": true,
                       "color": "slate",
-                      "width": 676,
-                      "height": 551
+                      "width": 688,
+                      "height": 817
                     },
                     "meta": {
                       "editorLayout": {
@@ -6424,12 +6298,12 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 542
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1286,
+                        "x": 1298,
                         "y": 259
                       }
                     }
@@ -6462,7 +6336,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 918,
+                        "x": 930,
                         "y": 248
                       }
                     }
@@ -6476,7 +6350,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 578,
-                        "y": 445
+                        "y": 712
                       }
                     }
                   },
@@ -6491,8 +6365,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 646,
-                        "y": 622
+                        "x": 658,
+                        "y": 888
                       }
                     }
                   },
@@ -6502,7 +6376,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1602,
+                        "x": 1624,
                         "y": 307
                       }
                     }
@@ -6517,7 +6391,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1332,
+                        "x": 1326,
                         "y": 445
                       }
                     }
@@ -6528,7 +6402,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1314,
+                        "x": 1336,
                         "y": 696
                       }
                     }
@@ -6685,7 +6559,7 @@
                       "text": "Show the number",
                       "frame": true,
                       "color": "slate",
-                      "width": 544,
+                      "width": 554,
                       "height": 543
                     },
                     "meta": {
@@ -6774,7 +6648,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1874,
+                        "x": 1884,
                         "y": 178
                       }
                     }
@@ -6789,7 +6663,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1604,
+                        "x": 1586,
                         "y": 317
                       }
                     }
@@ -6800,7 +6674,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1586,
+                        "x": 1596,
                         "y": 568
                       }
                     }
@@ -14111,7 +13985,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 11020
+                        "y": 10971
                       }
                     }
                   },
@@ -14124,7 +13998,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 210,
-                        "y": 10983
+                        "y": 10934
                       }
                     }
                   },
@@ -14539,7 +14413,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 5518,
+                        "x": 5528,
                         "y": 10952
                       }
                     }
@@ -14550,7 +14424,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 5837,
+                        "x": 5847,
                         "y": 10611
                       }
                     }
@@ -14565,7 +14439,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 5567,
+                        "x": 5518,
                         "y": 10701
                       }
                     }
@@ -14576,7 +14450,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 6437,
+                        "x": 6447,
                         "y": 10611
                       }
                     }
@@ -14589,7 +14463,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 6097,
+                        "x": 6107,
                         "y": 10701
                       }
                     }
@@ -14600,7 +14474,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 6773,
+                        "x": 6793,
                         "y": 10952
                       }
                     }
@@ -14611,7 +14485,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 7091,
+                        "x": 7111,
                         "y": 10611
                       }
                     }
@@ -14626,7 +14500,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 6821,
+                        "x": 6783,
                         "y": 10701
                       }
                     }
@@ -14637,7 +14511,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 7691,
+                        "x": 7711,
                         "y": 10611
                       }
                     }
@@ -14650,7 +14524,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 7351,
+                        "x": 7371,
                         "y": 10701
                       }
                     }
@@ -14661,7 +14535,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 8296,
+                        "x": 8316,
                         "y": 10611
                       }
                     }
@@ -14676,7 +14550,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 8026,
+                        "x": 8046,
                         "y": 10745
                       }
                     }
@@ -15541,7 +15415,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 410,
+                        "x": 330,
                         "y": 10541
                       }
                     }
@@ -15712,7 +15586,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1162,
-                        "y": 10754
+                        "y": 10705
                       }
                     }
                   },
@@ -15725,7 +15599,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 822,
-                        "y": 10717
+                        "y": 10668
                       }
                     }
                   },
@@ -15844,7 +15718,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   },
@@ -15857,7 +15731,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 290,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   },
@@ -15873,7 +15747,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 890,
-                        "y": 11002
+                        "y": 10999
                       }
                     }
                   },
@@ -15886,7 +15760,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 11211
+                        "y": 11207
                       }
                     }
                   },
@@ -15904,7 +15778,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1239,
-                        "y": 10943
+                        "y": 10940
                       }
                     }
                   }
@@ -16225,7 +16099,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 1162,
-                        "y": 10754
+                        "y": 10705
                       }
                     }
                   },
@@ -16238,7 +16112,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 822,
-                        "y": 10717
+                        "y": 10668
                       }
                     }
                   },
@@ -16649,7 +16523,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 550,
-                        "y": 10756
+                        "y": 10707
                       }
                     }
                   },
@@ -16662,7 +16536,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 210,
-                        "y": 10719
+                        "y": 10670
                       }
                     }
                   },
@@ -16980,6 +16854,23 @@
                       }
                     }
                   },
+                  "frame.ask": {
+                    "id": "frame.ask",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Ask first",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1446,
+                      "height": 354
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 810,
+                        "y": -400
+                      }
+                    }
+                  },
                   "pressed": {
                     "id": "pressed",
                     "type": "blueprint.event.head.mouseClick",
@@ -16987,7 +16878,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 0,
-                        "y": -341
+                        "y": -293
                       }
                     }
                   },
@@ -16998,7 +16889,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 260,
-                        "y": -251
+                        "y": -203
                       }
                     }
                   },
@@ -17009,7 +16900,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 520,
-                        "y": -341
+                        "y": -293
                       }
                     }
                   },
@@ -17021,8 +16912,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 810,
-                        "y": -400
+                        "x": 838,
+                        "y": -352
                       }
                     }
                   },
@@ -17034,8 +16925,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1180,
-                        "y": -400
+                        "x": 1208,
+                        "y": -352
                       }
                     }
                   },
@@ -17047,8 +16938,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1550,
-                        "y": -400
+                        "x": 1578,
+                        "y": -352
                       }
                     }
                   },
@@ -17067,8 +16958,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1920,
-                        "y": -400
+                        "x": 1948,
+                        "y": -352
                       }
                     }
                   },
@@ -17080,8 +16971,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 2290,
-                        "y": -400
+                        "x": 2346,
+                        "y": -352
                       }
                     }
                   },
@@ -17094,7 +16985,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": 810,
-                        "y": -202
+                        "y": -36
                       }
                     }
                   }
@@ -19631,7 +19522,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -19648,12 +19539,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -19701,7 +19592,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -19716,7 +19607,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -19727,7 +19618,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -19742,7 +19633,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -19758,7 +19649,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -19771,7 +19662,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -19784,7 +19675,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -19797,7 +19688,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -19821,7 +19712,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -19832,7 +19723,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -19847,7 +19738,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -19858,7 +19749,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -20099,7 +19990,7 @@
                       "frame": true,
                       "color": "slate",
                       "width": 2686,
-                      "height": 503
+                      "height": 454
                     },
                     "meta": {
                       "editorLayout": {
@@ -20115,7 +20006,7 @@
                       "text": "Show the picture",
                       "frame": true,
                       "color": "slate",
-                      "width": 1126,
+                      "width": 1136,
                       "height": 712
                     },
                     "meta": {
@@ -20250,7 +20141,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -3512,
-                        "y": -2439
+                        "y": -2488
                       }
                     }
                   },
@@ -20266,7 +20157,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -3172,
-                        "y": -2426
+                        "y": -2475
                       }
                     }
                   },
@@ -20317,7 +20208,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1996,
+                        "x": -1986,
                         "y": -2282
                       }
                     }
@@ -20332,7 +20223,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1926,
+                        "x": -1996,
                         "y": -2533
                       }
                     }
@@ -20343,7 +20234,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -1656,
+                        "x": -1646,
                         "y": -2671
                       }
                     }
@@ -20358,7 +20249,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1396,
+                        "x": -1386,
                         "y": -2581
                       }
                     }
@@ -20372,7 +20263,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -1126,
+                        "x": -1116,
                         "y": -2782
                       }
                     }
@@ -20654,7 +20545,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -20671,12 +20562,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -20724,7 +20615,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -20739,7 +20630,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -20750,7 +20641,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -20765,7 +20656,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -20781,7 +20672,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -20794,7 +20685,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -20807,7 +20698,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -20820,7 +20711,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -20844,7 +20735,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -20855,7 +20746,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -20870,7 +20761,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -20881,7 +20772,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -21188,7 +21079,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4770,
+                        "x": -4690,
                         "y": -2466
                       }
                     }
@@ -21201,7 +21092,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4770,
+                        "x": -4610,
                         "y": -2289
                       }
                     }
@@ -21212,7 +21103,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -4430,
+                        "x": -4270,
                         "y": -2850
                       }
                     }
@@ -21364,7 +21255,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -21381,12 +21272,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -21434,7 +21325,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -21449,7 +21340,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -21460,7 +21351,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -21475,7 +21366,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -21491,7 +21382,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -21504,7 +21395,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -21517,7 +21408,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -21530,7 +21421,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -21554,7 +21445,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -21565,7 +21456,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -21580,7 +21471,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -21591,7 +21482,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -22002,7 +21893,7 @@
                       "text": "Say when there is nothing to show",
                       "frame": true,
                       "color": "slate",
-                      "width": 1428,
+                      "width": 1438,
                       "height": 677
                     },
                     "meta": {
@@ -22019,12 +21910,12 @@
                       "text": "Show how many are unlocked",
                       "frame": true,
                       "color": "slate",
-                      "width": 1281,
+                      "width": 1291,
                       "height": 735
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3506,
+                        "x": -3496,
                         "y": -2780
                       }
                     }
@@ -22072,7 +21963,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4434,
+                        "x": -4424,
                         "y": -2673
                       }
                     }
@@ -22087,7 +21978,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4094,
+                        "x": -4084,
                         "y": -2480
                       }
                     }
@@ -22098,7 +21989,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3824,
+                        "x": -3814,
                         "y": -2614
                       }
                     }
@@ -22113,7 +22004,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4994,
+                        "x": -4996,
                         "y": -2476
                       }
                     }
@@ -22129,7 +22020,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4996,
+                        "x": -4986,
                         "y": -2225
                       }
                     }
@@ -22142,7 +22033,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4724,
+                        "x": -4714,
                         "y": -2725
                       }
                     }
@@ -22155,7 +22046,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3478,
+                        "x": -3468,
                         "y": -2732
                       }
                     }
@@ -22168,7 +22059,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3098,
                         "y": -2673
                       }
                     }
@@ -22192,7 +22083,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3108,
+                        "x": -3088,
                         "y": -2252
                       }
                     }
@@ -22203,7 +22094,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2768,
+                        "x": -2748,
                         "y": -2273
                       }
                     }
@@ -22218,7 +22109,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -2723,
+                        "x": -2758,
                         "y": -2524
                       }
                     }
@@ -22229,7 +22120,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -2453,
+                        "x": -2433,
                         "y": -2614
                       }
                     }
@@ -22628,7 +22519,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3984,
+                        "x": -2872,
                         "y": -2830
                       }
                     }
@@ -22645,8 +22536,25 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4272,
+                        "x": -3160,
                         "y": -2254
+                      }
+                    }
+                  },
+                  "frame.step": {
+                    "id": "frame.step",
+                    "type": "blueprint.flow.comment",
+                    "params": {
+                      "text": "Step to the next variant",
+                      "frame": true,
+                      "color": "slate",
+                      "width": 1312,
+                      "height": 777
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": -5082,
+                        "y": -2778
                       }
                     }
                   },
@@ -22663,7 +22571,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -5380,
-                        "y": -2228
+                        "y": -1961
                       }
                     }
                   },
@@ -22719,8 +22627,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -5878,
-                        "y": -2404
+                        "x": -5054,
+                        "y": -2341
                       }
                     }
                   },
@@ -22730,8 +22638,8 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -5618,
-                        "y": -2346
+                        "x": -4794,
+                        "y": -2283
                       }
                     }
                   },
@@ -22743,8 +22651,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -5602,
-                        "y": -2228
+                        "x": -4778,
+                        "y": -2165
                       }
                     }
                   },
@@ -22754,8 +22662,8 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -5342,
-                        "y": -2346
+                        "x": -4518,
+                        "y": -2283
                       }
                     }
                   },
@@ -22765,8 +22673,8 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -5082,
-                        "y": -2346
+                        "x": -4258,
+                        "y": -2283
                       }
                     }
                   },
@@ -22778,7 +22686,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4822,
+                        "x": -3998,
                         "y": -2730
                       }
                     }
@@ -22791,8 +22699,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4822,
-                        "y": -2307
+                        "x": -3710,
+                        "y": -2240
                       }
                     }
                   },
@@ -22804,8 +22712,8 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4822,
-                        "y": -2131
+                        "x": -3710,
+                        "y": -2064
                       }
                     }
                   },
@@ -22815,8 +22723,8 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -4562,
-                        "y": -2249
+                        "x": -3450,
+                        "y": -2181
                       }
                     }
                   },
@@ -22826,7 +22734,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -4302,
+                        "x": -3190,
                         "y": -2671
                       }
                     }
@@ -22841,7 +22749,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3956,
+                        "x": -2844,
                         "y": -2533
                       }
                     }
@@ -22855,7 +22763,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3686,
+                        "x": -2574,
                         "y": -2782
                       }
                     }
@@ -22868,7 +22776,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4244,
+                        "x": -3132,
                         "y": -2056
                       }
                     }
@@ -22881,7 +22789,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -4244,
+                        "x": -3132,
                         "y": -1880
                       }
                     }
@@ -22892,7 +22800,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3984,
+                        "x": -2872,
                         "y": -2206
                       }
                     }
@@ -22903,7 +22811,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3614,
+                        "x": -2502,
                         "y": -2147
                       }
                     }
@@ -22918,7 +22826,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": -3354,
+                        "x": -2242,
                         "y": -2012
                       }
                     }
@@ -22929,7 +22837,7 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": -3084,
+                        "x": -1972,
                         "y": -2147
                       }
                     }
@@ -22945,7 +22853,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -5352,
-                        "y": -1979
+                        "y": -1712
                       }
                     }
                   },
@@ -22959,7 +22867,7 @@
                     "meta": {
                       "editorLayout": {
                         "x": -5082,
-                        "y": -2180
+                        "y": -1913
                       }
                     }
                   }
@@ -23761,7 +23669,7 @@
                     "id": "note",
                     "type": "blueprint.flow.comment",
                     "params": {
-                      "text": "Leaves the page the way Escape does on it. Over a running game, Clear Page closes every page opened over the story, and the player is back in it. With no game running, Clear Page does nothing and Go back returns to the page this one was opened from. The Save, Load, Config and Extra pages all place this one button, so what Back does is changed here, once.",
+                      "text": "Leaves the page the way Escape does on it. Over a running game, Clear Page closes every page opened over the story, and the player is back in it. With no game running, Clear Page does nothing and Go back returns to the page this one was opened from. The Save, Load, Config, Log and Extra pages all place this one button, so what Back does is changed here, once.",
                       "width": 1100,
                       "height": 130
                     },
@@ -23869,12 +23777,6 @@
       },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:53035b8b-715e-4e50-9d5e-418d216f480a": {
         "blueprintId": "ba9553e9-2e72-46eb-8806-aaca284259a2"
-      },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:21b58ced-62f0-4995-ae7e-e7904ba8b55c": {
-        "blueprintId": "d16cbdba-237c-40f4-840c-1b5ddbd32e89"
-      },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:c76320a0-ab15-4d1d-82bb-a2e91bfe30a2": {
-        "blueprintId": "2677bcbd-8060-4967-883f-94fadb952bfa"
       },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:29fd091e-8a94-489b-9a95-2f5e2e659aa3": {
         "blueprintId": "2409712c-549c-47c3-a4ee-74010201e074"
@@ -24370,6 +24272,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-10-03T21:17:40.079Z"
+    "updatedAt": "2026-10-04T01:00:14.163Z"
   }
 }

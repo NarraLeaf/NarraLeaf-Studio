@@ -159,6 +159,33 @@ export type StageSnapshotVideo = {
     staged: boolean;
 };
 
+/**
+ * An ambience overlay the scene declares, and how it stands at the target row.
+ *
+ * The overlay half of {@link StageSnapshotVideo}, for the same reason: an overlay is an Actionable
+ * with no pose, and a launch needs it in the tail's registry and, when the walked path left it there,
+ * on the stage. Unlike a clip it can be shown again faithfully - it loops, so any frame is the right
+ * one - so a launch puts it back showing as well.
+ */
+export type StageSnapshotVfx = {
+    /** Normalized object name - the compiler's overlay-registry key. */
+    objectName: string;
+    /** The `create` row that declares it, whose source and compositing the overlay is built from. */
+    sourceBlockId: string;
+    /**
+     * On the stage at the target row: a create or a show on the walked path put it there, and nothing
+     * within a scene takes an overlay off the stage - a hide leaves it there, invisible and paused.
+     * False for one only another arm, or a row at or past the target, declares.
+     */
+    staged: boolean;
+    /** The show on the walked path that left it showing, with no hide after it - its options are that showing's. */
+    shownBy?: string;
+    /** A pause on the walked path with no resume after it. */
+    paused: boolean;
+    /** The rate a `setRate` on the walked path left it at. */
+    rate?: number;
+};
+
 export type StoryStageSnapshot = {
     background: { assetId?: string; color?: string } | null;
     /** Displayables in creation order. */
@@ -188,6 +215,12 @@ export type StoryStageSnapshot = {
      * stage, which the engine requires before any row may pause, stop, seek or hide it.
      */
     videos: StageSnapshotVideo[];
+    /**
+     * Every ambience overlay the scene declares, on any arm and at any row - the overlay half of
+     * {@link videos}. An overlay belongs to its scene like every other stage object, so these are the
+     * only overlays a launch's tail can address.
+     */
+    vfx: StageSnapshotVfx[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -341,6 +374,8 @@ class SnapshotWalker {
     private declaring = false;
     /** Clips by registry key, in the order they were first met - the walk's, then the declaration pass's. */
     private readonly videos = new Map<string, StageSnapshotVideo>();
+    /** Overlays by registry key, in the order they were first met - the walk's, then the declaration pass's. */
+    private readonly vfx = new Map<string, StageSnapshotVfx>();
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
@@ -401,6 +436,7 @@ class SnapshotWalker {
                 .filter(key => !this.displayables.has(key))
                 .map(key => this.declared.get(key) as StageSnapshotDisplayable),
             videos: [...this.videos.values()],
+            vfx: [...this.vfx.values()],
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
@@ -451,7 +487,11 @@ class SnapshotWalker {
                     case "video":
                         this.declareVideo(block, block.payload);
                         break;
-                    // vfx / audio declare Actionables, which no record here models.
+                    // An overlay has a table of its own too, filled the same way.
+                    case "vfx":
+                        this.declareVfx(block, block.payload);
+                        break;
+                    // audio declares an Actionable no record here models: a sound outlives its scene.
                     default:
                         break;
                 }
@@ -701,7 +741,10 @@ class SnapshotWalker {
                 this.applyVideo(block, payload);
                 return;
             case "vfx":
+                // The preview draws no overlay, which is what the diagnostic says. The record is for a
+                // launch, which puts the overlay back the way this path left it.
                 this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
+                this.applyVfx(block, payload);
                 return;
             case "blueprint":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
@@ -834,6 +877,63 @@ class SnapshotWalker {
         if (payload.operation === "hide") {
             record.staged = false;
         }
+    }
+
+    /**
+     * An overlay row on the walked path. A create puts the overlay on the stage, hidden; a show
+     * reveals it; a hide makes it invisible and leaves it on the stage; pause, resume and a rate act
+     * on its loop. A row addressing an overlay nothing on the path declared changes nothing here -
+     * the compile of the tail reports it.
+     */
+    private applyVfx(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "vfx" }>): void {
+        const declares = declaresStageObject(payload);
+        const name = declares
+            ? normalizeObjectName(payload.objectName)
+            : actionableStageRefName(this.scene, payload.target, "vfx", payload.objectName).name;
+        const record = declares ? this.declareVfx(block, payload) : this.vfx.get(name);
+        if (!record) {
+            return;
+        }
+        switch (payload.operation) {
+            case "create":
+                record.staged = true;
+                return;
+            case "show":
+                record.staged = true;
+                record.shownBy = block.id;
+                return;
+            case "hide":
+                delete record.shownBy;
+                return;
+            case "pause":
+                record.paused = true;
+                return;
+            case "resume":
+                record.paused = false;
+                return;
+            case "setRate":
+                record.rate = payload.rate;
+                return;
+            default:
+                return;
+        }
+    }
+
+    /** The overlay a create row declares - the existing record when an earlier row declared the name first. */
+    private declareVfx(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "vfx" }>): StageSnapshotVfx {
+        const name = normalizeObjectName(payload.objectName);
+        const existing = this.vfx.get(name);
+        if (existing) {
+            return existing;
+        }
+        const record: StageSnapshotVfx = {
+            objectName: name,
+            sourceBlockId: block.id,
+            staged: false,
+            paused: false,
+        };
+        this.vfx.set(name, record);
+        return record;
     }
 
     /**

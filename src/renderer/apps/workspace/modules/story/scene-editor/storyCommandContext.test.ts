@@ -50,11 +50,13 @@ describe("buildStoryCommandContext - stage objects", () => {
         expect(context.stageObjects.vfx).toEqual(["rain"]);
     });
 
-    it("offers an ambience overlay started in another scene", () => {
-        // A `Vfx` is held by the game, not by a scene: it keeps playing after the scene that
-        // started it ends, so the scene the author is standing in is the one that has to be able to
-        // stop it. Every other kind here stays scene-scoped, because every other kind does end.
-        const document = documentWith({ b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" } });
+    it("does not offer an ambience overlay another scene started", () => {
+        // An overlay leaves the stage with the scene that started it, like every other kind here, so
+        // the scene the author is standing in has no rain unless it starts its own.
+        const document = documentWith({
+            b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
+            b2: { action: "vfx", operation: "create", objectName: "petals", assetId: "vid-1" },
+        });
         document.scenes["scene-2"] = {
             id: "scene-2",
             name: "Second",
@@ -76,8 +78,7 @@ describe("buildStoryCommandContext - stage objects", () => {
             scene: document.scenes["scene-1"],
         });
 
-        expect(context.stageObjects.vfx).toEqual(["rain"]);
-        // The scene-scoped kinds do not follow it across.
+        expect(context.stageObjects.vfx).toEqual(["petals"]);
         expect(context.stageObjects.image).toEqual(["hero"]);
     });
 

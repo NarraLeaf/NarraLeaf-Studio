@@ -204,15 +204,11 @@ export type StoryCommandLineRef =
      */
     | { kind: "variable"; target: StoryVariableRef }
     /**
-     * A row — the label a `/goto` lands on, or the row that declares a stage object.
-     *
-     * `sceneId` is absent for all but one of them, and absent MEANS "this row's own scene": every
-     * declaration index a line reads is scene-scoped, because every stage object but one ends with
-     * the scene that made it. The exception is the ambience overlay, which the engine holds at game
-     * level, so the row that declares the rain a scene hides is usually somewhere else entirely -
-     * and a link to it has to say where.
+     * A row in this row's own scene — the label a `/goto` lands on, or the row that declares a stage
+     * object. Every declaration index a line reads is scene-scoped, because every stage object ends
+     * with the scene that made it.
      */
-    | { kind: "block"; blockId: string; sceneId?: string };
+    | { kind: "block"; blockId: string };
 
 /**
  * One pointing word inside the line: where it sits, and what it points at.
@@ -637,32 +633,6 @@ function stageObjectLink(
     }
     const key = name?.trim().toLowerCase();
     return blockLink(lookups, key ? lookups.commandContext?.stageObjectSources?.[kind]?.[key] : undefined);
-}
-
-/**
- * The row that declares an ambience overlay, wherever in the story it is.
- *
- * The one link that may leave this scene, because the overlay is the one stage object that outlives
- * one: a `/hide rain` is very often written in a scene that never mentions rain otherwise, and being
- * taken to the row that started it is exactly what an author is asking for there.
- *
- * The row's own reference is still tried first and still wins, on the same terms as every other
- * subject - it is the stable anchor and it follows a rename - but only when it points into THIS
- * scene, which is all a bare block id can address. Anything else resolves by name through the
- * story-wide index, which is also how the compiler resolves it.
- */
-function vfxLink(
-    lookups: StoryCommandLineLookups,
-    ref: { builtin?: string; sourceBlockId?: string } | undefined,
-    name: string | undefined,
-): Pick<Arg, "link"> {
-    const bound = blockLink(lookups, ref?.sourceBlockId);
-    if (bound.link) {
-        return bound;
-    }
-    const key = name?.trim().toLowerCase();
-    const declared = key ? lookups.commandContext?.vfxSources?.[key] : undefined;
-    return declared ? { link: { kind: "block", blockId: declared.blockId, sceneId: declared.sceneId } } : {};
 }
 
 /**
@@ -1398,7 +1368,7 @@ function vfxSentence(
     }
     const object = {
         ...(pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {}),
-        ...vfxLink(lookups, payload.target, name),
+        ...stageObjectLink(lookups, "vfx", payload.target, name),
     };
     if (payload.operation === "setRate") {
         return {
