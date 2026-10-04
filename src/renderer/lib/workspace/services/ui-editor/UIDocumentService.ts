@@ -36,6 +36,7 @@ import {
     UI_TEXT_SOURCES_SCHEMA_VERSION,
     type UITextArrivalConversion,
     type UITextCarriedKeys,
+    type UITextMigrationChange,
 } from "@shared/types/ui-editor/textSourceMigration";
 import { readUITextSite, uiTextSiteOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
 import type { LocalizationUnit } from "@shared/types/localization";
@@ -741,6 +742,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
+    /** What the v13 step changed that an author can see, until the workspace has said so. */
+    private textSourceMigrationChanges: UITextMigrationChange[] = [];
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -1174,6 +1177,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             }
         })();
+    }
+
+    /**
+     * The changes the v13 step made on opening this document that an author can see, handed over
+     * once: the workspace tells the author about them in one notice, and a second ask is empty.
+     */
+    public takeTextSourceMigrationChanges(): UITextMigrationChange[] {
+        const changes = this.textSourceMigrationChanges;
+        this.textSourceMigrationChanges = [];
+        return changes;
     }
 
     /** A fresh id for something this document will own. */
@@ -1918,6 +1931,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             sourceLocale: config.sourceLocale,
             translations,
         });
+        this.textSourceMigrationChanges = result.changes;
         const edits = Object.entries(result.localeEdits);
         if (edits.length > 0) {
             for (const [locale, edit] of edits) {

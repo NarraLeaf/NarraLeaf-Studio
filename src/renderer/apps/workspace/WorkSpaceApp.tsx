@@ -14,6 +14,7 @@ import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { useUpdateOffer } from "./hooks/useUpdateOffer";
 import { useDependencyOffer } from "./hooks/useDependencyOffer";
+import { useTextSourceMigrationNotice } from "./hooks/useTextSourceMigrationNotice";
 import { useProjectTakenOver } from "./hooks/useWorkspaceFrozen";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
@@ -37,6 +38,7 @@ function WorkspaceContent() {
     useRecoveryOffer();
     useUpdateOffer();
     useDependencyOffer();
+    useTextSourceMigrationNotice();
     // Tabs are not restored into a recovery window. The session on disk names scenes, surfaces and
     // characters, and in this mode most of those services have not started - so restoring would
     // reopen a screenful of tabs that can only report that their subject is missing, over the one

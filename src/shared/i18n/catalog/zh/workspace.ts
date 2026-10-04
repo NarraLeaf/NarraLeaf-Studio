@@ -217,6 +217,18 @@ export const workspace = {
             findPlaceholder: "在台词中查找",
         },
     },
+    textSourceMigration: {
+        message: {
+            one: "界面文字已升级，{count} 个控件的文字来源已更改",
+            other: "界面文字已升级，{count} 个控件的文字来源已更改",
+        },
+        place: "{n}. {owner} ▸ {element}：{change}",
+        marksKept: "改为直接写，保留标记，不再使用翻译键 {key}",
+        bindingDropped: "移除了从未生效的绑定，显示翻译键 {key} 的文字",
+        missingKey: "翻译键 {key} 不存在，改为直接写，文字与译文不变",
+        keyDiffered: "改为直接写，保留原先显示的文字，不再使用翻译键 {key}",
+        locate: "定位 {n}",
+    },
     recovery: {
         enter: "以恢复模式打开",
         enterFailed: "无法进入恢复模式：{error}",

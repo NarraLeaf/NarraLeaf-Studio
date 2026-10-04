@@ -220,6 +220,17 @@ export const workspace = {
             findPlaceholder: "セリフを検索",
         },
     },
+    textSourceMigration: {
+        message: {
+            other: "インターフェースのテキストを更新した。{count} 個のウィジェットでテキストの出どころが変わった",
+        },
+        place: "{n}. {owner} ▸ {element}：{change}",
+        marksKept: "直接入力に変更。文字装飾を保持し、翻訳キー {key} は使わない",
+        bindingDropped: "表示されていなかったバインドを削除。翻訳キー {key} のテキストを表示",
+        missingKey: "翻訳キー {key} が存在しないため直接入力に変更。テキストと翻訳は変わらない",
+        keyDiffered: "直接入力に変更。表示していたテキストを保持し、翻訳キー {key} は使わない",
+        locate: "{n} へ移動",
+    },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
     // 読み取り専用かつプラグイン無しで開き直す道。
     recovery: {
