@@ -8,12 +8,6 @@ import { ClipboardState } from './state/useClipboard';
 import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
 import type { AssetClaims, AssetTransfers } from './assetLiveSession';
 
-/** Breadcrumb shown in the panel toolbar center when the assets panel uses a compact (bottom) toolbar. */
-export interface AssetsIconViewToolbarCenter {
-    title: string;
-    onBack: () => void;
-}
-
 /**
  * The set a jump asked this panel to put on screen.
  *
@@ -151,11 +145,6 @@ interface AssetsPanelContextType {
      * has to be on screen, so the tree force-opens and the grid goes flat while this is set.
      */
     isNarrowed: boolean;
-
-    /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
-    compactToolbar: boolean;
-    /** Takes an updater as well, so a view can leave the breadcrumb alone when nothing about it moved. */
-    setAssetsIconToolbarCenter: React.Dispatch<React.SetStateAction<AssetsIconViewToolbarCenter | null>>;
 
     /**
      * Assets that will not play as they are, keyed by asset id.

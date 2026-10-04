@@ -849,9 +849,7 @@ function buildDraft(
         case "layerHide":
         case "layerTransform":
             return layerDraft(ctx, verb, slots);
-        case "videoCreate":
         case "videoSeek":
-        case "videoShow":
         case "videoHide":
         case "videoPlay":
         case "videoPause":
@@ -1432,19 +1430,20 @@ function layerDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
 }
 
 function videoDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {
-    if (verb === "videoCreate") {
+    if (verb === "videoPlay") {
+        // A play defines its clip, so its name is a new one rather than a stage lookup, and its file
+        // is required: a play with nothing to play is not a row the script can write.
         const objectName = nameOf(slots, "subject");
         if (objectName === undefined) {
             return fail("missingValue", "subject");
         }
         const assetName = nameOf(slots, "source");
-        let assetId: string | undefined;
-        if (assetName !== undefined) {
-            const asset = resolve(ctx.lookups.assetId?.(assetName), "asset");
-            if (isFail(asset)) {
-                return asset;
-            }
-            assetId = asset.value;
+        if (assetName === undefined) {
+            return fail("missingValue", "source");
+        }
+        const asset = resolve(ctx.lookups.assetId?.(assetName), "asset");
+        if (isFail(asset)) {
+            return asset;
         }
         const muted = wordOf(slots, "muted");
         if (muted !== undefined && muted !== "muted") {
@@ -1454,9 +1453,9 @@ function videoDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
             kind: "action",
             payload: prune({
                 action: "video" as const,
-                operation: "create" as const,
+                operation: "play" as const,
                 objectName,
-                assetId,
+                assetId: asset.value,
                 muted: muted === undefined ? undefined : true,
             }),
         };
@@ -1474,17 +1473,13 @@ function videoDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
         }
         return { kind: "action", payload: { action: "video", operation: "seek", objectName, target, timeMs } };
     }
-    const operation = verb === "videoShow"
-        ? "show"
-        : verb === "videoHide"
-            ? "hide"
-            : verb === "videoPlay"
-                ? "play"
-                : verb === "videoPause"
-                    ? "pause"
-                    : verb === "videoResume"
-                        ? "resume"
-                        : "stop";
+    const operation = verb === "videoHide"
+        ? "hide"
+        : verb === "videoPause"
+            ? "pause"
+            : verb === "videoResume"
+                ? "resume"
+                : "stop";
     return { kind: "action", payload: { action: "video", operation, objectName, target } };
 }
 

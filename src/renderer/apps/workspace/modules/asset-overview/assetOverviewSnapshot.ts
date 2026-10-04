@@ -75,10 +75,39 @@ export function assetBytesFromWalk(
     return bytesByAssetId;
 }
 
-export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promise<AssetOverviewSummary> {
+/**
+ * Measure `assets/` on disk: the one expensive half of a snapshot.
+ *
+ * A single IPC, but the main process stats every file under the folder, which on a project of a
+ * thousand files is most of a second. What it measures only changes when a file is added, replaced or
+ * removed, so a caller keeps the result and hands it back to {@link computeAssetOverviewSnapshot}
+ * until the library changes, rather than walking again every time the reference index moves.
+ */
+export async function walkAssetLibraryDirectory(ctx: WorkspaceContext): Promise<DirectorySizeResult> {
+    const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
+    // `ProjectNameConvention.Assets` carries a trailing slash (it names a directory); the walk
+    // joins child names onto this string, so trim it the way the build's own `path.join` would.
+    const assetsRoot = ctx.project.resolve(ProjectNameConvention.Assets).replace(/[\\/]+$/, "");
+    const sizeResult = await fs.directorySize(assetsRoot);
+    // A directory that cannot be measured reads as empty rather than taking the whole page down.
+    return sizeResult.ok
+        ? sizeResult.data
+        : { totalBytes: 0, fileCount: 0, bytesByRelativePath: {} };
+}
+
+/**
+ * Read the library against the reference index and a measurement of the folder.
+ *
+ * `walk` is a measurement taken earlier by {@link walkAssetLibraryDirectory}; absent, the folder is
+ * walked now. The bytes are attributed to the records as they are at this call either way, so a
+ * record deleted since the walk simply drops out, and one added since reads as not measured.
+ */
+export async function computeAssetOverviewSnapshot(
+    ctx: WorkspaceContext,
+    walk?: DirectorySizeResult,
+): Promise<{ summary: AssetOverviewSummary; walk: DirectorySizeResult }> {
     const assetsService = ctx.services.get<AssetsService>(Services.Assets);
     const referenceService = ctx.services.get<ReferenceService>(Services.Reference);
-    const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
 
     const assets: Asset[] = Object.values(assetsService.getAssets()).flatMap(
         byId => Object.values(byId) as Asset[],
@@ -95,25 +124,18 @@ export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promi
         referenceCountByAssetId.set(assetId, references.length);
     }
 
-    // `ProjectNameConvention.Assets` carries a trailing slash (it names a directory); the walk
-    // joins child names onto this string, so trim it the way the build's own `path.join` would.
-    const assetsRoot = ctx.project.resolve(ProjectNameConvention.Assets).replace(/[\\/]+$/, "");
-    const sizeResult = await fs.directorySize(assetsRoot);
-    // A directory that cannot be measured reads as empty rather than taking the whole page down.
-    const walk: DirectorySizeResult = sizeResult.ok
-        ? sizeResult.data
-        : { totalBytes: 0, fileCount: 0, bytesByRelativePath: {} };
+    const measured = walk ?? await walkAssetLibraryDirectory(ctx);
+    const bytesByAssetId = assetBytesFromWalk(assets, measured.bytesByRelativePath);
 
-    const bytesByAssetId = assetBytesFromWalk(assets, walk.bytesByRelativePath);
-
-    return buildAssetOverview({
+    const summary = buildAssetOverview({
         assets,
         // Read after the same flush the counts came from, so coverage and counts describe one pass.
         indexResult: referenceService.getIndexResult(),
         bytesByAssetId,
         referenceCountByAssetId,
-        directoryBytes: walk.totalBytes,
-        directoryFileCount: walk.fileCount,
+        directoryBytes: measured.totalBytes,
+        directoryFileCount: measured.fileCount,
         topCount: TOP_ASSET_COUNT,
     });
+    return { summary, walk: measured };
 }

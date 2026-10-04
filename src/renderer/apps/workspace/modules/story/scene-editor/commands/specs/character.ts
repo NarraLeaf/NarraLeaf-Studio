@@ -69,7 +69,15 @@ import { CLIP_CONCEAL_WORDS, supportedTransitionWords, transformEffectFor, trans
  * `specs.test.ts` pins the refusal so it is reversed on purpose rather than by drift.
  */
 
-const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
+/**
+ * What `/hide` takes off the stage: anything that can be on it.
+ *
+ * `/show` takes the same list less the clip. A story video comes on and runs on its `/play` row and
+ * nowhere else, so a clip has nothing for `/show` to reveal - `/show` resolves one only to refuse it,
+ * so the line says `/play` is the verb rather than that no such thing is on stage.
+ */
+const HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
+const SHOW_ACCEPTS = ["character", "image", "text", "layer", "vfx"] as const;
 
 /**
  * Reject a reveal/conceal word the resolved target's context cannot express - `/show Alice in=zoom`
@@ -149,7 +157,8 @@ function validateFormTarget(
 /**
  * The show/hide block for a stage-object target. Layers ride the displayable payload - they have no
  * show/hide command family of their own. `vfx` never reaches here: it has its own payload and is
- * dispatched before this, which is why its kind is excluded rather than given a dead arm.
+ * dispatched before this, which is why its kind is excluded rather than given a dead arm. A clip only
+ * ever arrives from `/hide` - `/show` refuses one - so its arm has only the one block.
  */
 function stageObjectBlockId(
     objectKind: Exclude<Extract<StoryCommandTargetValue, { type: "stageObject" }>["objectKind"], "vfx">,
@@ -161,7 +170,7 @@ function stageObjectBlockId(
         case "text":
             return direction === "show" ? "textShow" : "textHide";
         case "video":
-            return direction === "show" ? "videoShow" : "videoHide";
+            return "videoHide";
         case "layer":
         case "audio":
             return direction === "show" ? "displayableShow" : "displayableHide";
@@ -169,7 +178,7 @@ function stageObjectBlockId(
 }
 
 /**
- * `/show <asset>` - the row that creates what it reveals.
+ * `/show <asset>` - the row that creates the picture it reveals.
  *
  * One block, not two: a create row followed by a show row would be the very boundary this form
  * exists to remove, and the payload already holds everything both of them said. The name the element
@@ -177,10 +186,9 @@ function stageObjectBlockId(
  * is written into `objectName` exactly as a create row writes it - so `/hide`, `/transform` and every
  * other verb address the object afterwards without knowing which shape made it.
  *
- * An image is placed the way `/image` places one: `pos=` wins over `in=`, because a transform holds
- * one preset and a placement is the more specific instruction. A clip is neither placed nor faded -
- * a `Video` is an `Actionable` with no transform pipeline - so it carries the source and the name and
- * nothing else, and `/play` is still what runs it.
+ * It is placed the way `/image` places one: `pos=` wins over `in=`, because a transform holds one
+ * preset and a placement is the more specific instruction. Only a picture: a clip out of the library
+ * is `/play`'s, the one row a story video comes on with.
  */
 function buildShowAsset(
     target: Extract<StoryCommandTargetValue, { type: "asset" }>,
@@ -189,13 +197,6 @@ function buildShowAsset(
     word: StoryCommandValue | undefined,
 ): StoryBlock {
     const name = asText(args.name) ?? target.name;
-    if (target.assetType === "video") {
-        const block = createBlockForCommand("videoShow", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "video") {
-            return block;
-        }
-        return { ...block, payload: { ...block.payload, objectName: name, assetId: target.assetId } };
-    }
     const block = createBlockForCommand("imageShow", ctx.generateId);
     if (block.kind !== "action" || block.payload.action !== "image") {
         return block;
@@ -343,12 +344,11 @@ export const show = defineStoryCommand({
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
     params: {
-        // The slot reads the picture and clip libraries as well as the stage. Showing something that
-        // is not on stage yet used to mean going back for an `/image` row and returning, while
-        // `/show Alice` worked straight away - one verb with a boundary nothing on screen drew.
-        // Video is in for the same reason it had to be: a `/show` that took pictures and not clips
-        // would put the boundary back one step further in.
-        target: targetParam(SHOW_HIDE_ACCEPTS, { core: true, assets: ["image", "video"], namedBy: "name" }),
+        // The slot reads the picture library as well as the stage. Showing something that is not on
+        // stage yet used to mean going back for an `/image` row and returning, while `/show Alice`
+        // worked straight away - one verb with a boundary nothing on screen drew. A clip is the one
+        // thing it refuses: a story video comes on with `/play`, which reveals and runs it together.
+        target: targetParam(SHOW_ACCEPTS, { core: true, assets: ["image"], namedBy: "name", refuses: ["video"] }),
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
         // What the element this row creates is called on stage, for the rows that address it later.
         // Only meaningful on the library form - `validate` refuses it on anything already on stage,
@@ -449,7 +449,7 @@ export const hide = defineStoryCommand({
     // Inline quick-edit: how long the exit takes - the same transform duration `hide()` reads.
     quickParams: ["d"],
     params: {
-        target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
+        target: targetParam(HIDE_ACCEPTS, { core: true }),
         // The conceal half of `/show in=` - see there for why this is not `t=`.
         out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: transitionOptions("conceal") } },
         d: secondsParam(),
