@@ -24,6 +24,7 @@ import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtim
 import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { createWidgetDrawingRegistry } from "./widgetDrawingRegistry";
 import { playUIElementInteractionSound } from "../interactionSounds";
+import { pointerPayloadFor } from "../elementPointerPosition";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -208,6 +209,11 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      * each element's listeners start together, but the parent's start once they have settled, because
      * a script's `ctx.stopPropagation()` is promised to keep the parent from hearing the event and the
      * control can only be read once the element's listeners are done.
+     *
+     * Each element up the chain is handed the press in its own box: `x` / `y` are local to the
+     * element whose head reads them, as they are for the element that was hit, so a panel's click
+     * reads the same point whichever of its children was under the pointer. The positions were read
+     * once, as the press arrived (`elementPointerPosition`).
      */
     const dispatchElementBlueprintEventNow: UIHostAdapterBlueprintRuntime["dispatchElementBlueprintEvent"] = async (
         elementId,
@@ -234,7 +240,12 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             }
             visited.add(next.id);
             options = next.options;
-            await fireElementListeners(next.id, eventName, eventPayload, options);
+            await fireElementListeners(
+                next.id,
+                eventName,
+                pointerPayloadFor(eventPayload, next.id, options?.pointerPositions),
+                options,
+            );
             currentId = next.id;
         }
     };

@@ -1,16 +1,17 @@
 /**
  * Story variable nodes: Scene Var (NLR `Scene.local`) and Saved Var (NLR `Storable`).
  *
- * Three of the four are story-action only, backed by `ctx.hostAdapter.storyRuntime` - the access
- * pair the story compiler binds to the running NLR `Script` context.
+ * Inside a story row all four are backed by `ctx.hostAdapter.storyRuntime` - the access pair the
+ * story compiler binds to the running NLR context.
  *
- * `Get Saved Var` is the exception: a Game UI screen may read one too, through the host API's
- * `game.getSavedVariable`. Saved variables are the only per-playthrough state a screen has any
- * business showing - a persistent variable is shared by every save file, so a status screen, a HUD
- * or a map built on one would report the wrong run's progress. The write half stays in the story,
- * where writes are sequenced and undoable; see the capability's note.
+ * The two Scene Var nodes are story-action only. A scene variable exists only while its scene is on
+ * stage, so nothing outside the story can address one.
  *
- * Comments in English per convention.
+ * The two Saved Var nodes also work in a screen's blueprint, through the host API's
+ * `game.getSavedVariable` / `game.setSavedVariable`. Saved variables are the only per-playthrough
+ * state a screen has any business showing - a persistent variable is shared by every save file, so a
+ * status screen, a HUD or a map built on one would report the wrong run's progress. A write from a
+ * screen is not undone with the story and does not notify it; see `game.setSavedVariable`'s note.
  */
 
 import {

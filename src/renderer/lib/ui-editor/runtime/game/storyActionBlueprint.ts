@@ -2,7 +2,8 @@
  * Compiles a Story Action Blueprint (a graph blueprint bound 1:1 to a story action) into an awaited
  * NLR action (`storyAwaitedAction.ts`). Its handler runs the blueprint's "On Call" graph through the
  * shared behavior-graph interpreter, mapping variable scopes onto NLR stores:
- *   - Var        -> ephemeral graph execution locals
+ *   - Var        -> the row's own Vars start from their declared defaults on every run; a Var of
+ *                   the project blueprint is the live record the interface reads and writes
  *   - Scene var  -> NLR `Scene.local` (per-scene, in-save)
  *   - Saved var  -> NLR `Storable` namespace (per save-file)
  *   - Persistent -> shared host persistence bridge (app-level, cross-save)
@@ -33,6 +34,7 @@ import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
 import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
+import { acquireBlueprintExecutionLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -263,7 +265,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: input.persistentVariables,
@@ -444,6 +446,17 @@ function buildStoryActionHostAdapter(
 }
 
 /**
+ * The variables one run of a story-row graph reads and writes through `Get Var` / `Set Var`.
+ *
+ * The same accessor a Surface blueprint's run is given, with no surface: the row's own Vars at their
+ * declared defaults, and the project blueprint's Vars as the live records. Each graph run gets a
+ * fresh object, because the node-output values a run writes into it are that run's alone.
+ */
+function storyActionLocals(document: BlueprintDocument, blueprintId: string): Record<string, unknown> {
+    return acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
+}
+
+/**
  * Run every `On Call` head of the row's blueprint, all of them together, and wait for all of them -
  * the story waits on the row until its last head is done.
  *
@@ -467,7 +480,7 @@ async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unkno
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter: env.hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(env.input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: env.input.persistentVariables,
@@ -516,7 +529,7 @@ async function invokeStoryActionFn(options: {
     if (!visible) {
         throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
-    const blueprintLocals: Record<string, unknown> = {};
+    const blueprintLocals = storyActionLocals(input.blueprintDocument, decl.blueprintId);
     const seededArgs: Record<string, unknown> = {};
     for (const param of decl.params) {
         seededArgs[param.pinId] = args[param.pinId];

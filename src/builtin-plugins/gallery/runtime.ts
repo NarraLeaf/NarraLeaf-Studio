@@ -9,15 +9,14 @@
 import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 import {
     GALLERY_STORE_NAMESPACE,
-    RUNTIME_UNLOCKED_KEY,
     collectAudioAssetVariantIds,
     collectSceneVariantIds,
     collectVoiceUnitVariantIds,
     normalizeGalleryStore,
-    readUnlockedVariantIds,
     type GalleryArtwork,
 } from "./catalog";
 import { createGalleryBlueprintNodes } from "./nodes";
+import { updateUnlockRecord } from "./unlockRecord";
 
 export default defineRuntimePlugin({
     setup(app) {
@@ -48,7 +47,11 @@ export default defineRuntimePlugin({
          *
          * Every source here is an *execution* signal: a remount, a rollback or a replay fires it
          * again. That is harmless because collecting is an idempotent set insert, and the write is
-         * skipped when the set did not move.
+         * skipped when the set did not move - which keeps a write per signal off the disk on every
+         * scene transition and every line of dialogue.
+         *
+         * Collecting runs in turn with the lock/unlock nodes (see `unlockRecord.ts`): a scene whose
+         * entry graph unlocks a CG fires both at once, and neither may write over the other.
          */
         const events = app.game.events;
         const store = app.game.store;
@@ -67,20 +70,11 @@ export default defineRuntimePlugin({
                     if (reached.length === 0) {
                         return;
                     }
-                    const unlocked = readUnlockedVariantIds(
-                        await store.get(RUNTIME_UNLOCKED_KEY),
-                        data.items,
-                    );
-                    const before = unlocked.size;
-                    for (const variantId of reached) {
-                        unlocked.add(variantId);
-                    }
-                    // Only write when something changed: these signals fire on every remount and
-                    // every replay, and a persistence write per signal is a needless disk hit on
-                    // every scene transition and every line of dialogue.
-                    if (unlocked.size !== before) {
-                        await store.set(RUNTIME_UNLOCKED_KEY, Array.from(unlocked));
-                    }
+                    await updateUnlockRecord(store, data.items, unlocked => {
+                        for (const id of reached) {
+                            unlocked.add(id);
+                        }
+                    });
                 } catch (error) {
                     app.game.log(
                         "warning",
