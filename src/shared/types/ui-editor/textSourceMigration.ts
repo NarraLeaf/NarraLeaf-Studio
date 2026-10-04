@@ -219,6 +219,17 @@ function isInStorySlot(document: UIDocument, element: UIElement, site: UITextSit
     return surface?.kind === "stageSurface" && surface.mount.slotId === site.storySlot;
 }
 
+/** A component instance's copy of its definition's props in the v13 shape: no switch, no words under a key. */
+function settleInstanceCopy(element: UIElement, site: UITextSite): UIElement {
+    const props = (element.props ?? {}) as Record<string, unknown>;
+    const keyed = site.role === "words" && Boolean(readUITextSite(element, site).key);
+    const drop = [
+        LEGACY_UI_TEXT_UNIT_PROP,
+        ...(keyed ? [site.textProp, site.marksProp] : []),
+    ].filter((prop): prop is string => Boolean(prop) && props[prop as string] !== undefined);
+    return drop.length > 0 ? withoutProps(element, drop) : element;
+}
+
 type ElementOutcome = {
     element: UIElement;
     changes: UITextMigrationChangeKind[];
@@ -351,9 +362,21 @@ export function migrateUITextSourcesV13(document: UIDocument, input: UITextMigra
         let out = table;
         for (const [id, element] of Object.entries(table)) {
             const site = uiTextSiteOf(element.type);
-            // A component instance holds none of its definition's words; the definition's own elements
-            // are migrated where they are kept.
-            if (!site || getUIComponentLink(element)) {
+            if (!site) {
+                continue;
+            }
+            // A component instance is drawn from its definition, whose own elements are migrated
+            // where they are kept; the props an instance carries are a copy nothing draws. They are
+            // brought to the v13 shape all the same, quietly - no translation is read for them and
+            // nothing an author sees changes.
+            if (getUIComponentLink(element)) {
+                const settled = settleInstanceCopy(element, site);
+                if (settled !== element) {
+                    if (out === table) {
+                        out = { ...table };
+                    }
+                    out[id] = settled;
+                }
                 continue;
             }
             const outcome = migrateElement(element, site, input, edits, () => inStorySlot(element, site));
@@ -485,7 +508,15 @@ export function settleIncomingUITextSources(
     };
     for (const [id, element] of Object.entries(table)) {
         const site = uiTextSiteOf(element.type);
-        if (!site || getUIComponentLink(element)) {
+        if (!site) {
+            continue;
+        }
+        if (getUIComponentLink(element)) {
+            // Drawn from its definition; its own copy is only brought to the v13 shape.
+            const settled = settleInstanceCopy(element, site);
+            if (settled !== element) {
+                replace(id, settled);
+            }
             continue;
         }
         let next = element;

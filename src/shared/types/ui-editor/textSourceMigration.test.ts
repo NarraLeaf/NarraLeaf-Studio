@@ -286,7 +286,7 @@ describe("migrateUITextSourcesV13", () => {
         expect(elsewhere.document.elements.s.valueBindings).toEqual({ text: BOUND });
     });
 
-    it("migrates a component definition's elements and leaves an instance's alone", () => {
+    it("migrates a component definition's elements, and quietly settles an instance's undrawn copy", () => {
         const result = migrateUITextSourcesV13(
             documentOf(
                 [element("inst", "nl.button", { label: "Start", localizationKey: "menu.start" }, { extra: { componentLink: { componentId: "c", linked: true } } })],
@@ -301,7 +301,7 @@ describe("migrateUITextSourcesV13", () => {
             ),
             input(),
         );
-        expect(result.document.elements.inst.props).toEqual({ label: "Start", localizationKey: "menu.start" });
+        expect(result.document.elements.inst.props).toEqual({ localizationKey: "menu.start" });
         expect(result.document.components?.[0].elements.cb.props).toEqual({ label: "Gone" });
         expect(result.changes).toEqual([
             { kind: "missingKey", elementId: "cb", prop: "label", keyName: "gone", componentId: "c" },
