@@ -89,6 +89,7 @@ const LayoutVisibleListItemFieldBinding = createListItemFieldBindingField({
     labelKey: "struct.field.visiblePicker",
 });
 import type {
+    CustomFieldProps,
     FieldDefinition,
     InlineRowItemContext,
     InputGroupTrailingContext,
@@ -739,8 +740,8 @@ function mergeInspectorWithLayoutSchema(
  * revision, and an inline component would be a new type each time - React would remount the field
  * and the text cursor would leave the input on the first keystroke.
  */
-function LinkedComponentParamsSection({ data }: { data: UIInspectorData }) {
-    return <LinkedComponentParamsField element={data.element} documentService={data.documentService} />;
+function LinkedComponentParamsSection({ data, readOnly }: CustomFieldProps<UIInspectorData>) {
+    return <LinkedComponentParamsField data={data} readOnly={readOnly} />;
 }
 
 function createLinkedComponentInspectorSchema(

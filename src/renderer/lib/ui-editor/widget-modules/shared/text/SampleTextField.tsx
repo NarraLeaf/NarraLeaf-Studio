@@ -72,6 +72,8 @@ export function createSampleTextField(config: SampleTextFieldConfig) {
                 data.documentService.clearElementBlueprintValueBinding(live.id, propPath);
             } else if (binding?.kind === "listItemField") {
                 data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
+            } else if (binding?.kind === "componentParam") {
+                data.documentService.setElementComponentParamBinding(live.id, propPath, null);
             }
         };
 

@@ -7,24 +7,40 @@
  * what the declare side wrote. Splitting them would put the two spellings of that list in two
  * places.
  *
+ * A text parameter (`type: "text"`) is words a player reads, and a placement gives it the way a
+ * text's words are given: written directly, or as a translation key, chosen with the same choice and
+ * the same key picker a text's inspector offers (`TextParamValueField`).
+ *
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import {
     getUIComponentLink,
     getUIComponentParams,
+    isUIComponentTextParam,
     type UIComponentDefinition,
     type UIComponentParam,
-    type UIElement,
 } from "@shared/types/ui-editor/document";
 // SectionCard is missing from the elements barrel, so it comes from its own module.
 import { FieldLabel, IconButton, Input } from "@/lib/components/elements";
 import { SectionCard } from "@/lib/components/elements/SectionCard";
+import { Select } from "@/lib/components/elements/Select";
+import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
+import { LABEL_TEXT_AREA_CLASS } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
+import {
+    getDesignTimeLocalizationKeys,
+    subscribeDesignTimeLocalizationKeys,
+    writeDesignTimeLocalizationKeySourceText,
+} from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { IconButtonSegGroup } from "./framework/fields/IconButtonSegGroup";
+import type { CustomFieldProps } from "./framework/types";
 import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
 
 /**
@@ -39,12 +55,14 @@ function DraftInput({
     placeholder,
     disabled,
     title,
+    ariaLabel,
     onCommit,
 }: {
     value: string;
     placeholder?: string;
     disabled?: boolean;
     title?: string;
+    ariaLabel?: string;
     onCommit: (next: string) => void;
 }) {
     const [draft, setDraft] = useState(value);
@@ -72,6 +90,7 @@ function DraftInput({
             placeholder={placeholder}
             disabled={disabled}
             data-tip={title}
+            aria-label={ariaLabel}
             onFocus={() => setEditing(true)}
             onChange={event => setDraft(event.target.value)}
             onBlur={() => {
@@ -131,6 +150,11 @@ export function ComponentParamsEditor({
         [params, write],
     );
 
+    const typeOptions = [
+        { value: "string", label: t("properties.componentParams.typeString") },
+        { value: "text", label: t("properties.componentParams.typeText") },
+    ];
+
     return (
         <SectionCard
             title={t("properties.componentParams.title")}
@@ -149,38 +173,187 @@ export function ComponentParamsEditor({
                     <Plus className="h-4 w-4" />
                 </IconButton>
             }
-            bodyClassName="space-y-2"
+            bodyClassName="space-y-3"
         >
             {params.length === 0 ? (
                 <p className="text-2xs text-fg-subtle">{t("properties.componentParams.none")}</p>
             ) : (
                 params.map(param => (
-                    <div key={param.id} className="flex items-center gap-2">
-                        <DraftInput
-                            value={param.name}
-                            placeholder={t("properties.componentParams.namePlaceholder")}
-                            {...freeze.writes()}
-                            onCommit={next => patchParam(param.id, { name: next })}
-                        />
+                    <div key={param.id} className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                            <DraftInput
+                                value={param.name}
+                                placeholder={t("properties.componentParams.namePlaceholder")}
+                                {...freeze.writes()}
+                                onCommit={next => patchParam(param.id, { name: next })}
+                            />
+                            {/* What the parameter holds. A string reaches the definition through a
+                                blueprint; text is words a widget inside it can show, translated per
+                                placement. Switching keeps every value: both are stored as strings. */}
+                            <Select
+                                size="sm"
+                                className="w-24 shrink-0"
+                                value={isUIComponentTextParam(param) ? "text" : "string"}
+                                options={typeOptions}
+                                portalMenu
+                                ariaLabel={t("properties.componentParams.type")}
+                                disabled={freeze.frozen}
+                                onChange={value => patchParam(param.id, { type: value === "text" ? "text" : "string" })}
+                            />
+                            <IconButton
+                                size="sm"
+                                className="shrink-0"
+                                aria-label={t("properties.componentParams.remove")}
+                                {...freeze.writes(false, t("properties.componentParams.remove"))}
+                                onClick={() => write(params.filter(item => item.id !== param.id))}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </IconButton>
+                        </div>
                         <DraftInput
                             value={param.defaultValue}
                             placeholder={t("properties.componentParams.defaultPlaceholder")}
+                            ariaLabel={t("properties.componentParams.defaultPlaceholder")}
                             {...freeze.writes()}
                             onCommit={next => patchParam(param.id, { defaultValue: next })}
                         />
-                        <IconButton
-                            size="sm"
-                            className="shrink-0"
-                            aria-label={t("properties.componentParams.remove")}
-                            {...freeze.writes(false, t("properties.componentParams.remove"))}
-                            onClick={() => write(params.filter(item => item.id !== param.id))}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </IconButton>
                     </div>
                 ))
             )}
         </SectionCard>
+    );
+}
+
+/**
+ * The key picker for one text parameter of the selected placement - the same picker a text's
+ * inspector uses, reading and writing the placement's `paramKeys` instead of a widget's prop.
+ *
+ * One per param id, made once: the picker is a component, and a fresh one each render would remount
+ * it (and its open create-key dialog) on every keystroke elsewhere in the panel.
+ */
+const keyPickerByParam = new Map<string, ComponentType<CustomFieldProps<UIInspectorData>>>();
+
+function keyPickerFor(paramId: string): ComponentType<CustomFieldProps<UIInspectorData>> {
+    let picker = keyPickerByParam.get(paramId);
+    if (!picker) {
+        picker = createLocalizationKeyField({
+            getKey: element => getUIComponentLink(element)?.paramKeys?.[paramId] ?? "",
+            setKey: (data, name) => {
+                if (name) {
+                    data.documentService.setComponentInstanceParamKey(data.element.id, paramId, name);
+                }
+            },
+            // Choosing no key is choosing to write the words directly, which the row above does.
+            allowNone: false,
+            // A new key usually names the words the placement already shows.
+            getInitialSourceText: element => getUIComponentLink(element)?.params?.[paramId] ?? "",
+        });
+        keyPickerByParam.set(paramId, picker);
+    }
+    return picker;
+}
+
+type TextParamSource = "literal" | "key";
+
+/**
+ * One text parameter's value on the selected placement: written directly or read from a translation
+ * key, the choice a text's words make (`createLabelSourceField`), with the same two labels and the
+ * same key picker. A placement that has written nothing shows the definition's default in the box,
+ * as a placeholder. Under a key the box below the picker edits the key's source text, which every
+ * user of the key shows.
+ */
+function TextParamValueField({
+    data,
+    param,
+    readOnly,
+}: {
+    data: UIInspectorData;
+    param: UIComponentParam;
+    readOnly: boolean;
+}) {
+    const { t } = useTranslation();
+    const keys = useSyncExternalStore(
+        subscribeDesignTimeLocalizationKeys,
+        getDesignTimeLocalizationKeys,
+        getDesignTimeLocalizationKeys,
+    );
+    const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
+    const link = getUIComponentLink(live);
+    const key = link?.paramKeys?.[param.id] ?? "";
+    const words = link?.params?.[param.id];
+    // "Translation key" picked before a key is: nothing is written until one is chosen.
+    const [pickingKey, setPickingKey] = useState(false);
+    useEffect(() => setPickingKey(false), [live.id, param.id]);
+    const shown: TextParamSource = key || pickingKey ? "key" : "literal";
+    const KeyPicker = keyPickerFor(param.id);
+    const label = param.name.trim() || param.id;
+
+    const choose = (next: TextParamSource) => {
+        if (next === shown) {
+            return;
+        }
+        if (next === "key") {
+            setPickingKey(true);
+            return;
+        }
+        setPickingKey(false);
+        // Leaving a key keeps the words on screen: the placement takes the key's words as its own.
+        if (key) {
+            data.documentService.setComponentInstanceParam(live.id, param.id, keys?.[key] ?? "");
+        }
+    };
+
+    return (
+        <div className="space-y-2">
+            <FieldLabel as="div">{label}</FieldLabel>
+            <IconButtonSegGroup
+                mode="single"
+                density="compact"
+                segmentWidth="content"
+                value={shown}
+                disabled={readOnly}
+                onChange={next => {
+                    if (next === "literal" || next === "key") {
+                        choose(next);
+                    }
+                }}
+                options={[
+                    { id: "literal", icon: null, label: t("widgets.localization.direct") },
+                    { id: "key", icon: null, label: t("widgets.localization.translationKey") },
+                ]}
+            />
+            {shown === "literal" ? (
+                <DraftInput
+                    value={words ?? ""}
+                    // The declared default is the placeholder, not the value, as for a string param.
+                    placeholder={typeof words === "string" ? "" : param.defaultValue}
+                    ariaLabel={label}
+                    disabled={readOnly}
+                    onCommit={next => data.documentService.setComponentInstanceParam(live.id, param.id, next)}
+                />
+            ) : (
+                <>
+                    <KeyPicker data={data} onChange={() => undefined} readOnly={readOnly} />
+                    {key ? (
+                        <div>
+                            <FieldLabel as="div">{t("widgets.localization.sourceText")}</FieldLabel>
+                            <DraftTextInput
+                                multiline
+                                className={LABEL_TEXT_AREA_CLASS}
+                                value={keys?.[key] ?? ""}
+                                rows={2}
+                                readOnly={readOnly}
+                                draftResetKey={`${live.id}:${param.id}:${key}`}
+                                readCommittedValue={() => getDesignTimeLocalizationKeys()?.[key] ?? ""}
+                                onCommit={next => {
+                                    writeDesignTimeLocalizationKeySourceText(key, next);
+                                }}
+                            />
+                        </div>
+                    ) : null}
+                </>
+            )}
+        </div>
     );
 }
 
@@ -191,15 +364,10 @@ export function ComponentParamsEditor({
  * so these values are the one thing about a placement that is not the definition's, and the only
  * thing besides its layout that this inspector can write.
  */
-export function LinkedComponentParamsField({
-    element,
-    documentService,
-}: {
-    element: UIElement;
-    documentService: UIDocumentService;
-}) {
+export function LinkedComponentParamsField({ data, readOnly }: { data: UIInspectorData; readOnly?: boolean }) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const { element, documentService } = data;
     const link = getUIComponentLink(element);
     const component = link ? documentService.getComponent(link.componentId) : null;
     const params = getUIComponentParams(component);
@@ -209,8 +377,18 @@ export function LinkedComponentParamsField({
     }
 
     return (
-        <SectionCard title={t("properties.componentParams.title")} bodyClassName="space-y-2">
+        <SectionCard title={t("properties.componentParams.title")} bodyClassName="space-y-3">
             {params.map(param => {
+                if (isUIComponentTextParam(param)) {
+                    return (
+                        <TextParamValueField
+                            key={param.id}
+                            data={data}
+                            param={param}
+                            readOnly={readOnly === true || freeze.frozen}
+                        />
+                    );
+                }
                 const supplied = link.params?.[param.id];
                 return (
                     <div key={param.id}>

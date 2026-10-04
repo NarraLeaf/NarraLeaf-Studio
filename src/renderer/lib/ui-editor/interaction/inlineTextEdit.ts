@@ -1,5 +1,6 @@
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { getUIComponentParams, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { findUIStructField, uiStructFieldLabel } from "@shared/types/ui-editor/struct";
 import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
@@ -26,6 +27,7 @@ export function isInlineTextEditableElement(element: UIElement | null | undefine
 /** Where the words of an element typed on the canvas come from, when it is not the element itself. */
 export type BoundTextSource =
     | { kind: "listItemField"; fieldId: string }
+    | { kind: "componentParam"; paramId: string }
     | { kind: "blueprintValue"; blueprintId: string };
 
 /**
@@ -49,6 +51,9 @@ export function boundTextSourceOf(element: UIElement | null | undefined): BoundT
     if (reading.binding?.kind === "listItemField") {
         return { kind: "listItemField", fieldId: reading.binding.fieldId };
     }
+    if (reading.binding?.kind === "componentParam") {
+        return { kind: "componentParam", paramId: reading.binding.paramId };
+    }
     if (reading.binding?.kind === "blueprintValue") {
         return { kind: "blueprintValue", blueprintId: reading.binding.blueprintId };
     }
@@ -60,6 +65,17 @@ function rowFieldLabel(document: UIDocument, element: UIElement, fieldId: string
     const context = findOwningListItemTemplate(document, element);
     const field = context ? findUIStructField(resolveUIStruct(document, context.structId), fieldId) : undefined;
     return field ? uiStructFieldLabel(field) : fieldId;
+}
+
+/**
+ * The parameter's name as the component's inspector shows it, or its id when the component no longer
+ * declares it. The canvas this is asked from is the component's own editor, whose document carries
+ * the definition's elements; the definition is the one holding this element.
+ */
+function componentParamLabel(document: UIDocument, element: UIElement, paramId: string): string {
+    const component = findUIComponentHoldingElement(document, element.id);
+    const param = getUIComponentParams(component).find(candidate => candidate.id === paramId);
+    return param?.name.trim() || paramId;
 }
 
 /**
@@ -97,6 +113,8 @@ export function beginOrExplainInlineTextEdit(host: InlineTextEditHost, surfaceId
     let message: string;
     if (bound.kind === "listItemField") {
         message = translate("uiEditor.canvas.wordsFromRowField", { field: rowFieldLabel(document, element, bound.fieldId) });
+    } else if (bound.kind === "componentParam") {
+        message = translate("uiEditor.canvas.wordsFromComponentParam", { param: componentParamLabel(document, element, bound.paramId) });
     } else {
         const name = services.get<LocalBlueprintService>(Services.LocalBlueprint)
             .getBlueprintDocument().blueprints[bound.blueprintId]?.name?.trim();

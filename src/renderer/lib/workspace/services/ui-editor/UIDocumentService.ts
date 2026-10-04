@@ -24,7 +24,9 @@ import {
     getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
+    isUIComponentTextParam,
     type UIComponentParam,
+    type UIElementValueBinding,
 } from "@shared/types/ui-editor/document";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
@@ -39,6 +41,7 @@ import {
     type UITextMigrationChange,
 } from "@shared/types/ui-editor/textSourceMigration";
 import { readUITextSite, uiTextSiteOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
+import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { LocalizationService } from "../localization/LocalizationService";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
@@ -1094,15 +1097,40 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      *
      * What removing a key does to the widgets that use it: each keeps showing what it showed, and none
      * is left naming a key the project no longer has. Component definitions' widgets are included; an
-     * instance holds none of its definition's words. One change to the document, outside any page's
-     * undo history, like the removal of the key it goes with. Returns each site it converted, for the
-     * translations that go with the words (`ui:<elementId>.<prop>`).
+     * instance holds none of its definition's words, but a text parameter's value it reads from the key
+     * becomes the key's words, given directly (prop `param.<paramId>`). One change to the document,
+     * outside any page's undo history, like the removal of the key it goes with. Returns each site it
+     * converted, for the translations that go with the words (`ui:<elementId>.<prop>`).
      */
     public giveKeyedWidgetsTheirWords(keyName: string, words: string): { elementId: string; prop: string }[] {
         const converted: { elementId: string; prop: string }[] = [];
         this.mutateDocument(document => {
             const visit = (table: Record<string, UIElement>): void => {
                 for (const element of Object.values(table)) {
+                    // A placement that reads a text parameter's value from the key takes the key's
+                    // words as the value it gives, translated through its own unit from now on.
+                    const link = getUIComponentLink(element);
+                    if (link?.paramKeys) {
+                        const paramIds = Object.keys(link.paramKeys).filter(paramId => link.paramKeys?.[paramId] === keyName);
+                        if (paramIds.length > 0) {
+                            const params = { ...(link.params ?? {}) };
+                            const paramKeys = { ...link.paramKeys };
+                            for (const paramId of paramIds) {
+                                params[paramId] = words;
+                                delete paramKeys[paramId];
+                                converted.push({ elementId: element.id, prop: `param.${paramId}` });
+                            }
+                            element.extra = {
+                                ...(element.extra ?? {}),
+                                componentLink: {
+                                    componentId: link.componentId,
+                                    linked: true,
+                                    params,
+                                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
+                                },
+                            };
+                        }
+                    }
                     const site = uiTextSiteOf(element.type);
                     if (!site?.keyProp || site.role !== "words" || isLinkedUIComponentElement(element)) {
                         continue;
@@ -3484,7 +3512,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .map(param => ({
                     id: param.id.trim(),
                     name: param.name.trim(),
-                    type: "string" as const,
+                    type: isUIComponentTextParam(param) ? ("text" as const) : ("string" as const),
                     defaultValue: typeof param.defaultValue === "string" ? param.defaultValue : "",
                 }))
                 .filter(param => {
@@ -3498,7 +3526,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: false });
     }
 
-    /** Set one param value on one instance. An empty string is a value, not a reset. */
+    /**
+     * Set one param value on one instance. An empty string is a value, not a reset.
+     *
+     * Words written for a text parameter replace a key the instance named for it: a value holds one
+     * or the other (`UIComponentLink.paramKeys`).
+     */
     public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
@@ -3507,11 +3540,48 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!element || !link) {
                 return;
             }
+            const { [paramId]: _droppedKey, ...paramKeys } = link.paramKeys ?? {};
+            const { paramKeys: _keys, ...rest } = link;
             element.extra = {
                 ...(element.extra ?? {}),
                 componentLink: {
-                    ...link,
+                    ...rest,
                     params: { ...(link.params ?? {}), [paramId]: value },
+                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
+                },
+            };
+        }, {
+            history: surfaceId ? { surfaceId, mergeKey: `component-param:${elementId}:${paramId}` } : false,
+        });
+    }
+
+    /**
+     * Name the translation key one instance's text parameter is read from, or (`null`) name none.
+     *
+     * Naming a key removes the words the instance held for the parameter - a value holds one source -
+     * and naming none leaves the parameter with neither, which falls back to the definition's default.
+     */
+    public setComponentInstanceParamKey(elementId: string, paramId: string, keyName: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            const link = getUIComponentLink(element);
+            if (!element || !link) {
+                return;
+            }
+            const { [paramId]: _droppedWords, ...params } = link.params ?? {};
+            const { [paramId]: _droppedKey, ...paramKeys } = link.paramKeys ?? {};
+            const name = keyName?.trim();
+            if (name) {
+                paramKeys[paramId] = name;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                componentLink: {
+                    componentId: link.componentId,
+                    linked: true,
+                    ...(Object.keys(params).length > 0 ? { params } : {}),
+                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
                 },
             };
         }, {
@@ -3646,6 +3716,50 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 };
             }
         }, { history: false });
+    }
+
+    /**
+     * Bind one prop of one element of a component definition to a field of its list row or to a text
+     * parameter of the component - the two value bindings that need no blueprint - or (`null`) unbind
+     * it. A definition's elements take no Blueprint Value (`ComponentDocumentServiceAdapter`), so there
+     * is no blueprint to clear on the way.
+     */
+    public setComponentElementValueBinding(
+        componentId: string,
+        elementId: string,
+        propPath: string,
+        binding: Extract<UIElementValueBinding, { kind: "listItemField" | "componentParam" }> | null,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            if (binding) {
+                element.valueBindings = { ...(element.valueBindings ?? {}), [propPath]: binding };
+            } else if (element.valueBindings) {
+                delete element.valueBindings[propPath];
+                if (Object.keys(element.valueBindings).length === 0) {
+                    delete element.valueBindings;
+                }
+            }
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    /**
+     * Show one of a component's text parameters in the words of an element of its definition, or
+     * (`null`) stop showing one. The component is the one whose definition holds the element; an
+     * element on a page has no parameters to show and is left alone.
+     */
+    public setElementComponentParamBinding(elementId: string, propPath: string, paramId: string | null): void {
+        const component = findUIComponentHoldingElement(this.getDocument(), elementId);
+        if (!component) {
+            return;
+        }
+        const id = paramId?.trim();
+        this.setComponentElementValueBinding(component.id, elementId, propPath, id ? { kind: "componentParam", paramId: id } : null);
     }
 
     public updateComponentElementProps(
