@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentChange } from "@shared/documents/diff";
 import { diffAssetsMetadata } from "@shared/documents/specs/assetsMetadata";
-import { assetFolderPath, changesAssetGroup, nameAssetFields, parseAssetFolders, type AssetFolderNames } from "./assetFolderNames";
+import {
+    assetFolderPath,
+    assetTopLevelName,
+    changesAssetGroup,
+    nameAssetFields,
+    parseAssetFolders,
+    type AssetFolderNames,
+} from "./assetFolderNames";
 
 /**
  * An asset's group, named the way the assets panel names it rather than by the id its record stores.
@@ -14,6 +21,9 @@ const POSTERS = "group_1790873137719_pndem529z";
 const t = (key: string) => ({
     "documentDiff.assets.fields.group": "Group",
     "documentDiff.assets.fields.missingGroup": "Missing group",
+    "assets.categories.image": "Images",
+    "assets.categories.media": "Media",
+    "assets.categories.other": "Other",
 }[key] ?? key);
 
 function folders(before: Record<string, unknown>, after: Record<string, unknown>): AssetFolderNames {
@@ -83,11 +93,30 @@ describe("nameAssetFields", () => {
         expect(JSON.stringify(nameAssetFields(changes, t, lists))).not.toContain("group_");
     });
 
-    it("names a new nested group by its path, and a group left for no group by the one left", () => {
+    it("names a new nested group by its path", () => {
         expect(groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, POSTERS), t, lists)).label.params)
             .toEqual({ field: "Group", from: "Backgrounds", to: "Backgrounds / Posters" });
-        expect(groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, undefined), t, lists)).label.params)
-            .toEqual({ field: "Group", from: "Backgrounds" });
+    });
+
+    /**
+     * No group is the top of the asset's category, which the panel names by the category's name. A
+     * move out of a group names where the asset went, and a move into one names where it came from,
+     * so the row reads as the move it is - and wears the mark of one, not of a removal or addition.
+     */
+    it("names the top of the category for a move out of a group, or into one", () => {
+        const out = groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, undefined), t, lists, "Images"));
+        expect(out.label.params).toEqual({ field: "Group", from: "Backgrounds", to: "Images" });
+        expect(out.kind).toBe("changed");
+
+        const into = groupLeaf(nameAssetFields(groupMove(undefined, POSTERS), t, lists, "Images"));
+        expect(into.label.params).toEqual({ field: "Group", from: "Images", to: "Backgrounds / Posters" });
+        expect(into.kind).toBe("changed");
+    });
+
+    it("leaves that end off, and the row's mark as it was, when the top is not named", () => {
+        const out = groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, undefined), t, lists));
+        expect(out.label.params).toEqual({ field: "Group", from: "Backgrounds" });
+        expect(out.kind).toBe("removed");
     });
 
     it("falls back to the other side, then to a stand-in, never to the id", () => {
@@ -100,6 +129,10 @@ describe("nameAssetFields", () => {
     it("draws no value at all until the lists have been read", () => {
         expect(groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, CHARACTERS), t, null)).label.params)
             .toEqual({ field: "Group" });
+        // Not the top either: one end of a move shown before the other would read as the whole move.
+        const out = groupLeaf(nameAssetFields(groupMove(BACKGROUNDS, undefined), t, null, "Images"));
+        expect(out.label.params).toEqual({ field: "Group" });
+        expect(out.kind).toBe("removed");
     });
 
     it("leaves every other change as it was", () => {
@@ -111,5 +144,20 @@ describe("nameAssetFields", () => {
         expect(changesAssetGroup(renamed)).toBe(false);
         expect(nameAssetFields(renamed, t, lists)).toEqual(renamed);
         expect(changesAssetGroup(groupMove(BACKGROUNDS, CHARACTERS))).toBe(true);
+    });
+});
+
+describe("assetTopLevelName", () => {
+    it("names the top of the category a shard's type is filed under, as the panel does", () => {
+        expect(assetTopLevelName("assets/assets.metadata.image.json", t)).toBe("Images");
+        // Sound and video share one category, and so one top.
+        expect(assetTopLevelName("assets/assets.metadata.audio.json", t)).toBe("Media");
+        expect(assetTopLevelName("assets/assets.metadata.video.json", t)).toBe("Media");
+    });
+
+    it("names nothing for a path that is not a shard of a known type", () => {
+        expect(assetTopLevelName("assets/assets.metadata.hologram.json", t)).toBeUndefined();
+        expect(assetTopLevelName("assets/assets.groups.image.json", t)).toBeUndefined();
+        expect(assetTopLevelName("editor/story/stories.json", t)).toBeUndefined();
     });
 });

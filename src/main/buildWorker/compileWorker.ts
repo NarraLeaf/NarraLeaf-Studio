@@ -1,9 +1,11 @@
 import path from "path";
+import { summarizePayload } from "@/app/application/managers/build/patchPayload";
 import { compileGameRuntimeArtifact } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
 import { describeWorkerFailure } from "@shared/build/buildRefusal";
 import type {
     CompileWorkerInboundMessage,
     CompileWorkerOutboundMessage,
+    CompileWorkerReadPayloadReply,
     ShippedContentAuditReport,
 } from "./compileWorkerProtocol";
 import { setDownloadReporter } from "./downloadReporting";
@@ -21,6 +23,9 @@ import { setStepProgressReporter } from "./stepProgress";
  * It also runs the shipped-content audit, for the reason the audit exists at all: an edition that
  * leaves content out has to be checked against the package it produced, and this process is the one
  * holding that package.
+ *
+ * And it reads builds back - for the patch dialog, and for every patch and DLC export's comparison -
+ * because reading one holds it open until the reading process exits, and this one does.
  */
 
 type ParentPort = {
@@ -30,7 +35,7 @@ type ParentPort = {
 
 const parentPort = (process as unknown as { parentPort: ParentPort }).parentPort;
 
-function send(message: CompileWorkerOutboundMessage): void {
+function send(message: CompileWorkerOutboundMessage | CompileWorkerReadPayloadReply): void {
     parentPort.postMessage(message);
 }
 
@@ -67,6 +72,19 @@ async function auditShippedContent(
 
 parentPort.on("message", event => {
     const message = event.data as CompileWorkerInboundMessage;
+    if (message?.type === "read-payload") {
+        // Read through Electron's asar patch, which keeps what it opens until this process exits -
+        // and exiting is what the caller does to this process as soon as it has the answer.
+        summarizePayload(message.target, { digests: message.digests })
+            .then(summary => send({ type: "payload", summary }))
+            .catch((error: unknown) => {
+                // The sentence only: it is what the patch dialog shows under the folder, as it did
+                // when this was read in the main process. The stack goes to the log.
+                console.error(error);
+                send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+            });
+        return;
+    }
     if (message?.type !== "compile") {
         return;
     }

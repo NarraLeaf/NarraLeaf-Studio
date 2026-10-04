@@ -589,6 +589,11 @@ describe("the codec images a run leaves in the project", () => {
     };
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined, warn: () => undefined },
+        // A failed run words its download hints in Studio's language: whether this launch is a
+        // command-line build or check, then the stored interface language.
+        getCommandLineBuild: () => false,
+        getCommandLineCheck: () => false,
+        globalState: { get: () => "en" },
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]) as unknown as Plumbing;
     const makeSession = (projectPath: string) => ({
         id: "run",

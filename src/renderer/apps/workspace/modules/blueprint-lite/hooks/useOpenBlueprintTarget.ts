@@ -1,14 +1,8 @@
 import { useCallback } from "react";
 import { useRegistry } from "@/apps/workspace/registry";
-import { focusDetachedWindow } from "@/lib/components/layout";
-import {
-    isEditorDetached,
-    releaseDetachedEditor,
-    updateDetachedEditorPayload,
-} from "@/apps/workspace/detached/detachedEditors";
 import { useDetachBlueprintEditor } from "@/apps/workspace/detached/detachBlueprintEditor";
 import type { BlueprintEditorOpenTarget } from "@/lib/workspace/services/ui-editor/blueprint/navigationTargets";
-import { createBlueprintEntryEditorTab } from "../openBlueprintEditorTab";
+import { createBlueprintEntryEditorTab, showBlueprintEntryEditorTab } from "../openBlueprintEditorTab";
 
 export type BlueprintOpenOptions = {
     /**
@@ -44,22 +38,11 @@ export function useOpenBlueprintTarget() {
                 return;
             }
 
-            const tab = { ...createBlueprintEntryEditorTab(target), preview: options?.preview ?? true };
-
-            // Already open in a window of its own: navigate THAT copy. Opening a tab as well
-            // would leave two editors on one blueprint, and the one the author was sent to - the
-            // node a diagnostic named, the graph a widget linked to - would be in the other one.
-            if (tab.payload && isEditorDetached(tab.id)) {
-                updateDetachedEditorPayload(tab.id, tab.payload);
-                if (focusDetachedWindow(tab.id)) {
-                    return;
-                }
-                // The window went away without saying so. Fall through and dock it again rather
-                // than navigate into nothing.
-                releaseDetachedEditor(tab.id);
-            }
-
-            openEditorTab(tab);
+            // Already open in a window of its own, the window is navigated instead of a tab opened.
+            showBlueprintEntryEditorTab(
+                { ...createBlueprintEntryEditorTab(target), preview: options?.preview ?? true },
+                openEditorTab,
+            );
         },
         [detachBlueprint, openEditorTab],
     );

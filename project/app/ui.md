@@ -47,9 +47,9 @@ node project/app/ui.js widget nl.list
 
 `widget <type>` is the one to reach for before writing anything. It prints where
 the type may be inserted, whether it takes children, the parts it builds for
-itself, every prop with its default, the props a value blueprint may drive, the
-event heads a private blueprint on it may carry, and its commands and readable
-state:
+itself, the palette categories its own nodes are under, every prop with its
+default, the props a value blueprint may drive, the event heads a private
+blueprint on it may carry, and its commands and readable state:
 
 ```
 nl.switch
@@ -57,6 +57,7 @@ nl.switch
   palette    overflow, any surface
   children   structural parts only - an author may not add children
   blueprint  private blueprint supported (owner=widgetMain); the player operates it, so panel gestures stand down over it
+  nodes      Displayable, Switch in its own blueprint; Element in any blueprint
 
   parts (built with the widget; do not delete or re-parent)
     Switch Track  [nl.container]  slot=track
@@ -100,19 +101,19 @@ nl.switch
     windowFullscreenChanged  interaction blueprint.event.head.fullscreenChanged
     windowFocusChanged       interaction blueprint.event.head.windowFocusChanged
 
-  commands (Call Widget Command)
+  commands
     setVisible  Set visible
     setEnabled  Set enabled
     setVariant  Set variant
     setChecked  Set checked
     toggle  Toggle
 
-  readable state (Get Widget State)
+  readable state
     checked  Checked
     visible  Visible
     enabled  Enabled
 
-  writable props (Set Widget Prop)
+  writable props
     checked  Checked
     interactionDisabled  Interaction disabled
 
@@ -125,6 +126,15 @@ nl.switch
       `thumbElementId`. The on/off look belongs on their appearance variants, and the thumb's travel
       on the `on` variant's `transformOffsetX`.
 ```
+
+`nodes` says what the commands, readable state and writable props further down are
+reached with. No one node calls a command or reads a state by its name: each
+widget type has nodes of its own, and `nodes` names the add-node palette categories
+that hold them in the widget's own blueprint - `List` on a list, where `Set Visible`,
+`Get Selected Index` and `Refresh List Items` are - beside `Displayable`, which every
+drawn widget shares. From any other blueprint the same things are done by the
+Element category's nodes, which take the element as a pin. To see the nodes one
+by one, ask the blueprint tool: `blueprint.js nodes --owner widgetMain --widget <type>`.
 
 The prop table is what a **new** widget of that type carries, not a closed set: a
 widget may hold keys its defaults do not name, which is why writing one is a note
