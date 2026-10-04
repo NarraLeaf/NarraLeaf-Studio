@@ -66,6 +66,7 @@ export const widgets = {
         disableItalic: "イタリックをやめる",
     },
     localization: {
+        direct: "直接入力",
         translationKey: "翻訳キー",
         noSourceLanguage: "プロジェクトに原文の言語が設定されていない",
         none: "なし",
@@ -162,8 +163,6 @@ export const widgets = {
         value: "値",
         valueHint: "最初に入っている文。プレイヤーが打った文を持つのは動作中のゲームで、このドキュメントではない",
         placeholder: "プレースホルダ",
-        placeholderKey: "プレースホルダのキー",
-        placeholderKeyHint: "プレースホルダはプレイヤーに見える。翻訳するにはキーを付ける",
         sectionBehavior: "ふるまい",
         inputMode: "入力の種類",
         inputModeText: "テキスト",

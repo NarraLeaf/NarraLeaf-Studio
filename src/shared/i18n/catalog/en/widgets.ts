@@ -68,6 +68,7 @@ export const widgets = {
         disableItalic: "Disable italic",
     },
     localization: {
+        direct: "Direct",
         translationKey: "Translation key",
         noSourceLanguage: "The project has no source language",
         none: "None",
@@ -164,8 +165,6 @@ export const widgets = {
         value: "Value",
         valueHint: "Starting text. What the player types is held by the running game, not by this document.",
         placeholder: "Placeholder",
-        placeholderKey: "Placeholder key",
-        placeholderKeyHint: "The placeholder is shown to the player: attach a key to translate it.",
         sectionBehavior: "Behavior",
         inputMode: "Input mode",
         inputModeText: "Text",

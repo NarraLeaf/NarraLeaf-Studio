@@ -65,6 +65,7 @@ export const widgets = {
         disableItalic: "禁用斜体",
     },
     localization: {
+        direct: "直接写",
         translationKey: "翻译键",
         noSourceLanguage: "项目未设置源语言",
         none: "无",
@@ -161,8 +162,6 @@ export const widgets = {
         value: "值",
         valueHint: "初始文本；玩家输入的内容由运行中的游戏保存，不会写回本文档",
         placeholder: "占位文本",
-        placeholderKey: "占位文本键",
-        placeholderKeyHint: "占位文本会展示给玩家：绑定键以便翻译",
         sectionBehavior: "行为",
         inputMode: "输入模式",
         inputModeText: "文本",

@@ -93,7 +93,7 @@ export const UI_TEXT_SITES: readonly UITextSite[] = [
         textProp: "placeholder",
         role: "words",
         keyProp: "placeholderLocalizationKey",
-        canvasDrawsKey: false,
+        canvasDrawsKey: true,
         typedOnCanvas: false,
         valueBinding: "none",
     },

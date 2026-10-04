@@ -8,6 +8,7 @@ import {
     type UITextSource,
 } from "@shared/types/ui-editor/textSource";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
+import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldControlClass";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
@@ -39,14 +40,20 @@ export type LabelSourceFieldConfig = {
      */
     site: UITextSite;
     /**
-     * The words' Blueprint Value, as the widget offers it. Its `propPath` is the prop holding the
-     * words (`text`, `label`) - the prop a value binding writes and a key replaces.
+     * The words' Blueprint Value, when the widget offers one. Its `propPath` is the prop holding the
+     * words (`text`, `label`) - the prop a value binding writes and a key replaces. Without one the
+     * choice is between the element's own words and a key (a text input's placeholder).
      */
-    blueprint: BlueprintValueFieldConfig;
+    blueprint?: BlueprintValueFieldConfig;
     /** How the words and their marks are read and written. */
     label: MarkedLabelProps;
-    /** The switch that turns that on, under "Literal" (`Localize text`, `Localize label`). */
-    localizeLabel: TranslationKey;
+    /**
+     * The switch under the element's own words that translates them through its own unit (`Localize
+     * text`, `Localize label`), for a site that has one.
+     */
+    localizeLabel?: TranslationKey;
+    /** The words are one line: the boxes are single-line and carry no marks (a placeholder). */
+    singleLine?: boolean;
 };
 
 function liveElementOf(data: UIInspectorData): UIElement {
@@ -55,11 +62,11 @@ function liveElementOf(data: UIInspectorData): UIElement {
 
 /**
  * A widget's words, and where they come from: the element's own, a translation key, or a Blueprint
- * Value - chosen in one field, one at a time. The text widget's text and the button's label are
- * both this field.
+ * Value - chosen in one field, one at a time. The text widget's text, the button's label and the
+ * text input's placeholder (which offers no Blueprint Value) are all this field.
  *
  * The choice is not stored; it is read off the element in the order the game resolves the words
- * (`labelSourceOf`), so a document written before this control existed opens on the source its game
+ * (`uiTextSourceOf`), so a document written before this control existed opens on the source its game
  * already shows. Choosing writes that order's answer: a key is set, or cleared, or a binding made.
  *
  * Under a key the box edits the key's source text, which is what the game shows in the project's
@@ -138,7 +145,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             getDesignTimeLocalizationKeys,
         );
         const keysApply = keys !== null;
-        const blueprintState = useBlueprintValueBinding(config.blueprint, data);
+        const blueprintState = useBlueprintValueBinding(config.blueprint ?? null, data);
         const live = blueprintState.live;
         const source = uiTextSourceOf(live, site, keysApply);
 
@@ -148,7 +155,9 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         useEffect(() => setPickingKey(false), [live.id]);
         const shown: UITextSource | null = source === "key" ? "key" : pickingKey && source !== null ? "key" : source;
 
-        const fieldRow = (
+        // A list row's field answers the words through the same binding slot as a Blueprint Value, so
+        // only a site that offers one offers the field too.
+        const fieldRow = config.blueprint ? (
             <ListItemFieldBindingRow
                 data={data}
                 liveElement={live}
@@ -162,7 +171,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     }
                 }}
             />
-        );
+        ) : null;
 
         if (shown === null) {
             // Bound to a field of its list row, which answers the words; the picker is the whole control.
@@ -200,8 +209,8 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         return (
             <div className="space-y-2">
                 {fieldRow}
-                {/* Words without icons: three worded segments have to share the inspector's column in
-                    every interface language, and "Translation key" with an icon beside it wraps. */}
+                {/* Words without icons: up to three worded segments have to share the inspector's column
+                    in every interface language, and "Translation key" with an icon beside it wraps. */}
                 <IconButtonSegGroup
                     mode="single"
                     density="compact"
@@ -217,7 +226,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                         {
                             id: "literal",
                             icon: null,
-                            label: t("widgetChrome.blueprint.literal"),
+                            label: t("widgets.localization.direct"),
                         },
                         {
                             id: "key",
@@ -226,37 +235,57 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                             disabled: !keysApply,
                             tip: keysApply ? undefined : t("widgets.localization.noSourceLanguage"),
                         },
-                        {
-                            id: "blueprint",
-                            icon: null,
-                            label: t("widgetChrome.blueprint.blueprintValue"),
-                            disabled: shown !== "blueprint" && blueprintState.createUnavailable !== null,
-                            tip: shown !== "blueprint" && blueprintState.createUnavailable
-                                ? blueprintState.createUnavailable
-                                : undefined,
-                        },
+                        ...(config.blueprint
+                            ? [{
+                                id: "blueprint",
+                                icon: null,
+                                label: t("widgetChrome.blueprint.blueprintValue"),
+                                disabled: shown !== "blueprint" && blueprintState.createUnavailable !== null,
+                                tip: shown !== "blueprint" && blueprintState.createUnavailable
+                                    ? blueprintState.createUnavailable
+                                    : undefined,
+                            }]
+                            : []),
                     ]}
                 />
                 {shown === "literal" ? (
                     <>
-                        <TextRunMarksEditor
-                            documentService={data.documentService}
-                            element={live}
-                            label={config.label}
-                            readOnly={readOnly}
-                        />
-                        <div className="flex items-center gap-2">
-                            <Switch
-                                size="sm"
-                                checked={readUITextSite(live, site).localizable}
-                                disabled={readOnly}
-                                aria-label={t(config.localizeLabel)}
-                                onCheckedChange={checked =>
-                                    data.documentService.updateElementProps(live.id, { [site.unitProp ?? "localizable"]: checked })
+                        {config.singleLine ? (
+                            <DraftTextInput
+                                className={`w-full ${FIELD_INPUT_CLASS}`}
+                                value={ownWords(live)}
+                                readOnly={readOnly}
+                                draftResetKey={live.id}
+                                readCommittedValue={() => ownWords(liveElementOf(data))}
+                                onCommit={next =>
+                                    data.documentService.updateElementProps(
+                                        live.id,
+                                        plainTextEditPatch(config.label, liveElementOf(data), next),
+                                    )
                                 }
                             />
-                            <span className="text-sm text-fg-muted">{t(config.localizeLabel)}</span>
-                        </div>
+                        ) : (
+                            <TextRunMarksEditor
+                                documentService={data.documentService}
+                                element={live}
+                                label={config.label}
+                                readOnly={readOnly}
+                            />
+                        )}
+                        {site.unitProp && config.localizeLabel ? (
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    size="sm"
+                                    checked={readUITextSite(live, site).localizable}
+                                    disabled={readOnly}
+                                    aria-label={t(config.localizeLabel)}
+                                    onCheckedChange={checked =>
+                                        data.documentService.updateElementProps(live.id, { [site.unitProp as string]: checked })
+                                    }
+                                />
+                                <span className="text-sm text-fg-muted">{t(config.localizeLabel)}</span>
+                            </div>
+                        ) : null}
                     </>
                 ) : null}
                 {shown === "key" ? (
@@ -266,10 +295,10 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                             <div>
                                 <FieldLabel as="div">{t("widgets.localization.sourceText")}</FieldLabel>
                                 <DraftTextInput
-                                    multiline
-                                    className={LABEL_TEXT_AREA_CLASS}
+                                    multiline={!config.singleLine}
+                                    className={config.singleLine ? `w-full ${FIELD_INPUT_CLASS}` : LABEL_TEXT_AREA_CLASS}
                                     value={keyText}
-                                    rows={4}
+                                    rows={config.singleLine ? undefined : 4}
                                     readOnly={readOnly}
                                     draftResetKey={`${live.id}:${key}`}
                                     readCommittedValue={() => getDesignTimeLocalizationKeys()?.[key] ?? ownWords(liveElementOf(data))}
@@ -281,7 +310,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                         ) : null}
                     </>
                 ) : null}
-                {shown === "blueprint" ? (
+                {shown === "blueprint" && config.blueprint ? (
                     <BlueprintValueBoundCard state={blueprintState} valueLabel={config.blueprint.valueLabel} />
                 ) : null}
             </div>
