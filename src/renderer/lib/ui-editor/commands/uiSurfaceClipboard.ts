@@ -1,3 +1,4 @@
+import { readUITextCarriedKeys, type UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
 import type { InterpolationParams, PluralKey, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -51,6 +52,13 @@ export type UISurfaceClipboardPayload = {
     source?: UIEditorClipboardSource;
     /** Absent when the copied surface references no importable file. */
     assets?: UIEditorClipboardAssets;
+    /**
+     * The words and translations of the translation keys the copied widgets name, filled when the copy
+     * is published for other windows. A project that lacks one of the keys receives its words on the
+     * widgets instead (`settleIncomingUITextSources`); absent on an in-window copy, whose project
+     * has every key it names.
+     */
+    textKeys?: UITextCarriedKeys;
     /** The copied surfaces and their elements, in the shape a template bundle's document has. */
     document: UIDocument;
     /** Their blueprints, in the shape a template bundle's graphs have. */
@@ -158,12 +166,14 @@ export function readUiSurfaceClipboardPayload(json: string): UISurfaceClipboardP
     }
     const source = readSource(candidate.source);
     const assets = readAssets(candidate.assets);
+    const textKeys = readUITextCarriedKeys(candidate.textKeys);
     return {
         v: UI_SURFACE_CLIPBOARD_VERSION,
         kind: UI_SURFACE_CLIPBOARD_KIND,
         ...(typeof candidate.copyId === "string" && candidate.copyId ? { copyId: candidate.copyId } : {}),
         ...(source ? { source } : {}),
         ...(assets ? { assets } : {}),
+        ...(textKeys ? { textKeys } : {}),
         document,
         graphs: { blueprintDocument: readBlueprintDocument(candidate.graphs) },
     };

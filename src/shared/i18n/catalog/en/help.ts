@@ -501,6 +501,8 @@ export const help = {
                 + "sample text.\n"
                 + "- A translation key is words shared by every widget that names it. They show its words whether "
                 + "or not the project has a source language, and the key is translated once.\n"
+                + "- Removing a key, or bringing in widgets that use a key the project does not have, gives those "
+                + "widgets the key's words and translations as their own.\n"
                 + "- Changing language during a game restarts it and returns the player to the line they "
                 + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",

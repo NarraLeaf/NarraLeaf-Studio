@@ -1,3 +1,4 @@
+import { listUITextKeysNamed } from "@shared/types/ui-editor/textSourceMigration";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { getInterface } from "@/lib/app/bridge";
@@ -163,6 +164,7 @@ export async function pasteUiSurface(documentService: UIDocumentService): Promis
             document: payload.document,
             graphs: payload.graphs,
             placement: IMPORT_PLACEMENT_FROM_SOURCE,
+            ...(payload.textKeys ? { textKeys: payload.textKeys } : {}),
         });
     } catch (error) {
         // A payload this Studio cannot read costs the author the paste and nothing else; the
@@ -209,7 +211,17 @@ function publishUiSurfaceClipboard(
             environment,
             collectUiClipboardAssetIds(asUiElementSelection(payload), environment.resolveAssetPins),
         );
-        const published: UISurfaceClipboardPayload = assets ? { ...payload, assets } : payload;
+        const textKeys = await environment.carryTextKeys([
+            ...new Set([
+                ...listUITextKeysNamed(payload.document.elements),
+                ...(payload.document.components ?? []).flatMap(component => listUITextKeysNamed(component.elements)),
+            ]),
+        ]);
+        const published: UISurfaceClipboardPayload = {
+            ...payload,
+            ...(assets ? { assets } : {}),
+            ...(textKeys ? { textKeys } : {}),
+        };
         if (getUiSurfaceClipboard()?.copyId === payload.copyId) {
             setUiSurfaceClipboard(published);
         }

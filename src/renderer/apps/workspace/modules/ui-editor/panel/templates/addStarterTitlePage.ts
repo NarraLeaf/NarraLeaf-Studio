@@ -30,6 +30,7 @@ import {
     isBlankSurface,
     liftStarterTitlePage,
     STARTER_TITLE_PAGE_TEMPLATE_ID,
+    templateTextKeys,
     type StarterStartTarget,
 } from "./starterTitlePage";
 
@@ -269,6 +270,7 @@ export async function addStarterTitlePage(context: WorkspaceContext): Promise<Ad
         document: lifted.payload.document,
         graphs: lifted.payload.graphs,
         placement: IMPORT_PLACEMENT_FROM_SOURCE,
+        textKeys: templateTextKeys(content.localizationKeys),
     });
     const surface = imported.importedSurfaces[0];
     if (!surface) {

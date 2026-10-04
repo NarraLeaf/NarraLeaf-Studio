@@ -1,7 +1,7 @@
 /**
  * Where a named translation key is used: the widgets whose words it supplies and the blueprints that
- * read it. Asked before a key is removed, so the confirmation can say what is left pointing at
- * nothing.
+ * read it. Asked before a key is removed, so the confirmation can say which widgets take the key's
+ * words as their own and which blueprints are left reading a key that is gone.
  *
  * Pure: reads the two documents it is handed. Comments in English per project convention.
  */

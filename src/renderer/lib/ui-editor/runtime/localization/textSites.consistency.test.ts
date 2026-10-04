@@ -7,7 +7,7 @@ import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
-import { keepWordsOnWidgets } from "@/apps/workspace/modules/ui-editor/panel/templates/starterTitlePage";
+import { settleIncomingUITextSources } from "@shared/types/ui-editor/textSourceMigration";
 import { listInterfaceTextUnitSites, listSurfaceTextSites } from "@/lib/lint/rules/ui";
 import { describeWidget } from "@/lib/ui-cli/catalog";
 import {
@@ -165,9 +165,10 @@ describe("interface text sites", () => {
         expect(sorted(found)).toEqual(expectedSites(words));
     });
 
-    it("the page a template hands a project drops exactly the table's key props", () => {
-        const elements = Object.values(structuredClone(KEYED).elements);
-        keepWordsOnWidgets(elements);
+    it("elements arriving in a project that lacks their keys drop exactly the table's key props", () => {
+        const elements = Object.values(
+            settleIncomingUITextSources(structuredClone(KEYED).elements, { hasKey: () => false }).table,
+        );
         const found: string[] = [];
         for (const element of elements) {
             for (const keyProp of CANDIDATE_KEY_PROPS) {

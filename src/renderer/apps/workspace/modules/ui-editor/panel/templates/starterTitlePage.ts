@@ -16,7 +16,8 @@ import {
     type UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
-import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { normalizeLocalizationKeysDocument } from "@shared/types/localization";
+import type { UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
 import { isBuiltinWidgetLogicType } from "@shared/types/ui-editor/widgetLogic";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "@/lib/lint/rules/blueprint";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -48,8 +49,9 @@ import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiD
  *    the receiving project may not have the plugin switched on.
  *  - **Library components the page places come with it**, definitions and their blueprints, cut the
  *    same way. A component whose logic is cut away entirely stays behind with its instances.
- *  - **Start begins the receiving project's own story**, and a widget's named translation key
- *    becomes the widget's own translatable text (see {@link keepWordsOnWidgets}).
+ *  - **Start begins the receiving project's own story.** A widget naming a key the receiving
+ *    project lacks arrives holding the key's words - the import settles that, given the template's
+ *    keys (`templateTextKeys`).
  *
  * Pure: no service, no file. The workspace reads the template and imports the result.
  */
@@ -437,30 +439,6 @@ function pointStartAt(blueprints: BlueprintDocument, target: StarterStartTarget 
     }
 }
 
-/**
- * Turn a widget's named translation key into the widget's own translatable text.
- *
- * The template names its menu words by key because several of its screens say the same word, and a
- * key is how a project says one word once. One page brought into a project that has no such key
- * would name a key the project does not have: the inspector would offer a translation key missing
- * from its own list, and nothing short of creating the key could change the words. So the words stay
- * what the template says in the project's language - the template keeps them on the widget, equal to
- * its key's text - and they are translated the way a word an author typed is: by the widget's own
- * unit. Which widgets carry a key, and in which prop, is the shared text-site table's answer.
- *
- * Exported for the text-site consistency test.
- */
-export function keepWordsOnWidgets(elements: Iterable<UIElement>): void {
-    for (const element of elements) {
-        const site = uiTextSiteOf(element.type);
-        const props = element.props as Record<string, unknown> | undefined;
-        if (!site || site.role !== "words" || !site.keyProp || !props || typeof props[site.keyProp] !== "string") {
-            continue;
-        }
-        delete props[site.keyProp];
-    }
-}
-
 /** Every palette entry a value names by link, wherever in the value it sits. */
 function collectBrandLinkIds(value: unknown, into: Set<string>): void {
     if (typeof value === "string") {
@@ -546,7 +524,6 @@ export function liftStarterTitlePage(input: {
 
     const componentElements = payload.document.components.flatMap(component => Object.values(component.elements ?? {}));
     pointStartAt(blueprintDocument, input.startTarget);
-    keepWordsOnWidgets([...Object.values(payload.document.elements), ...componentElements]);
 
     const brandColorIds = new Set<string>();
     collectBrandLinkIds(payload.document.surfaces, brandColorIds);
@@ -634,4 +611,17 @@ export function isBlankSurface(
         }
     }
     return true;
+}
+
+/**
+ * The words of a template's named keys, as the import of one of its pages takes them: a widget naming
+ * a key the receiving project lacks arrives holding the template's words for it, in the language the
+ * template was read in.
+ */
+export function templateTextKeys(raw: unknown): UITextCarriedKeys {
+    const keys: UITextCarriedKeys = {};
+    for (const [name, key] of Object.entries(normalizeLocalizationKeysDocument(raw).keys)) {
+        keys[name] = { words: key.sourceText };
+    }
+    return keys;
 }

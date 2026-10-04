@@ -532,6 +532,10 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (entries.length === 0) {
             return;
         }
+        // One gesture, one operation - see `applyImportedRows`.
+        if (this.opSink?.handle({ op: "set-translations", locale, units: entries })) {
+            return;
+        }
         this.writeUnits(locale, document, entries);
     }
 

@@ -407,6 +407,108 @@ export function migrateUITextSourcesV13(document: UIDocument, input: UITextMigra
 }
 
 /**
+ * The words of the named keys elements bring with them to another project - each key's source words,
+ * and its translations by language - so a key the receiving project lacks can become the widgets'
+ * own words rather than a name pointing at nothing.
+ */
+export type UITextCarriedKeys = Record<string, { words: string; translations?: Record<string, LocalizationUnit> }>;
+
+/** Read a carried-keys record off something parsed, keeping only what has the right shape. */
+export function readUITextCarriedKeys(value: unknown): UITextCarriedKeys | undefined {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return undefined;
+    }
+    const out: UITextCarriedKeys = {};
+    for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+        const entry = raw as { words?: unknown; translations?: unknown } | null;
+        if (!entry || typeof entry !== "object" || typeof entry.words !== "string") {
+            continue;
+        }
+        const translations: Record<string, LocalizationUnit> = {};
+        if (entry.translations && typeof entry.translations === "object") {
+            for (const [locale, unit] of Object.entries(entry.translations as Record<string, unknown>)) {
+                const candidate = unit as Partial<LocalizationUnit> | null;
+                if (candidate && typeof candidate.target === "string" && candidate.target) {
+                    translations[locale] = {
+                        target: candidate.target,
+                        sourceHash: typeof candidate.sourceHash === "string" ? candidate.sourceHash : "",
+                        status: candidate.status === "machine" || candidate.status === "reviewed" ? candidate.status : "translated",
+                    };
+                }
+            }
+        }
+        out[name] = { words: entry.words, ...(Object.keys(translations).length > 0 ? { translations } : {}) };
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** The keys a table of elements names on their text sites. */
+export function listUITextKeysNamed(table: Readonly<Record<string, UIElement>>): string[] {
+    const names = new Set<string>();
+    for (const element of Object.values(table)) {
+        const site = uiTextSiteOf(element.type);
+        const key = site?.keyProp ? readUITextSite(element, site).key : "";
+        if (key) {
+            names.add(key);
+        }
+    }
+    return [...names];
+}
+
+/** A widget that arrived naming a key the project lacks, and now holds that key's words itself. */
+export type UITextArrivalConversion = { elementId: string; prop: string; keyName: string };
+
+/**
+ * Elements arriving from elsewhere - a paste, a template, a page copied in another project - settled
+ * the way this project stores text from v13 on.
+ *
+ * The switch that translated an element's own words goes, as it went in the v13 step. A widget
+ * naming a key this project has keeps the key and nothing else, its words being the key's here. A
+ * widget naming a key this project lacks becomes one that holds the key's words itself - the words
+ * the elements brought with them when they did, else the copy an older document kept on the widget,
+ * else the key's name - so nothing arrives pointing at a key that is not there.
+ *
+ * Returns the table (the same object when nothing changed) and the widgets it converted, by their
+ * ids in `table`, for the translations a caller can bring with them.
+ */
+export function settleIncomingUITextSources(
+    table: Readonly<Record<string, UIElement>>,
+    input: { hasKey: (name: string) => boolean; carried?: UITextCarriedKeys },
+): { table: Record<string, UIElement>; converted: UITextArrivalConversion[] } {
+    let out = table as Record<string, UIElement>;
+    const converted: UITextArrivalConversion[] = [];
+    const replace = (id: string, element: UIElement): void => {
+        if (out === table) {
+            out = { ...table };
+        }
+        out[id] = element;
+    };
+    for (const [id, element] of Object.entries(table)) {
+        const site = uiTextSiteOf(element.type);
+        if (!site || getUIComponentLink(element)) {
+            continue;
+        }
+        let next = element;
+        if ((element.props as Record<string, unknown> | undefined)?.[LEGACY_UI_TEXT_UNIT_PROP] !== undefined) {
+            next = withoutProps(next, [LEGACY_UI_TEXT_UNIT_PROP]);
+        }
+        const keyName = site.role === "words" ? readUITextSite(element, site).key : "";
+        if (keyName && input.hasKey(keyName)) {
+            next = withoutProps(next, [site.textProp, site.marksProp]);
+        } else if (keyName) {
+            const own = readUITextSite(element, site).text;
+            const words = input.carried?.[keyName]?.words ?? (own || keyName);
+            next = uiTextSiteWithOwnWords(next, site, words);
+            converted.push({ elementId: id, prop: site.textProp, keyName });
+        }
+        if (next !== element) {
+            replace(id, next);
+        }
+    }
+    return { table: out, converted };
+}
+
+/**
  * Apply a run's edits to translation units held in memory: `units` per language, the source
  * language's excluded. Languages without edits come back as the same objects.
  */

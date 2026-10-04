@@ -5,6 +5,7 @@ import { UI_DOCUMENT_MIN_SUPPORTED_VERSION, UI_DOCUMENT_SCHEMA_VERSION, type UID
 import {
     applyUITextLocaleEdits,
     migrateUITextSourcesV13,
+    settleIncomingUITextSources,
     UI_TEXT_SOURCES_SCHEMA_VERSION,
     type UITextMigrationInput,
 } from "./textSourceMigration";
@@ -305,6 +306,33 @@ describe("migrateUITextSourcesV13", () => {
         expect(result.changes).toEqual([
             { kind: "missingKey", elementId: "cb", prop: "label", keyName: "gone", componentId: "c" },
         ]);
+    });
+
+    it("settles elements arriving from elsewhere against this project's keys", () => {
+        const arriving = {
+            kept: element("kept", "nl.button", { label: "Start", localizationKey: "menu.start", localizable: true }),
+            carried: element("carried", "nl.button", { localizationKey: "menu.extra" }),
+            copy: element("copy", "nl.text", { text: "Credits", localizationKey: "menu.credits" }),
+            bare: element("bare", "nl.text", { localizationKey: "menu.bare" }),
+            own: element("own", "nl.text", { text: "Your Game", localizable: true }),
+        };
+        const { table, converted } = settleIncomingUITextSources(arriving, {
+            hasKey: name => name === "menu.start",
+            carried: { "menu.extra": { words: "Extra", translations: { "zh-CN": unit("鉴赏") } } },
+        });
+        expect(table.kept.props).toEqual({ localizationKey: "menu.start" });
+        expect(table.carried.props).toEqual({ label: "Extra" });
+        expect(table.copy.props).toEqual({ text: "Credits" });
+        expect(table.bare.props).toEqual({ text: "menu.bare" });
+        expect(table.own.props).toEqual({ text: "Your Game" });
+        expect(converted.map(site => `${site.elementId}:${site.keyName}`)).toEqual([
+            "carried:menu.extra",
+            "copy:menu.credits",
+            "bare:menu.bare",
+        ]);
+        // Nothing to settle hands the table back as it came.
+        const settled = { plain: element("plain", "nl.text", { text: "Hi" }) };
+        expect(settleIncomingUITextSources(settled, { hasKey: () => true }).table).toBe(settled);
     });
 
     it("applies its edits to translation files held in memory", () => {
