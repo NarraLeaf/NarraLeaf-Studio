@@ -13,7 +13,13 @@ import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
-import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import {
+    UI_TEXT_SITES,
+    uiTextRuntimeOriginOf,
+    uiTextSiteOf,
+    withUITextRuntimeWords,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
@@ -210,14 +216,24 @@ type SupportedValueTarget = {
     valueType: UIElementValueBindingValueType;
     normalize?: (value: unknown, element: UIElement) => unknown;
     write?: (element: UIElement, value: unknown) => UIElement;
+    /** The text site, when the target is a widget's words. */
+    site?: UITextSite;
 };
 
 /**
  * A widget's words as a value target: the string a binding resolves to, written to the prop that
- * holds them. Which widgets' words take a binding is the text-site table's answer (`textSites.ts`).
+ * holds them, marked as bound so the widget shows it as the binding gave it rather than through the
+ * element's own unit (`withUITextRuntimeWords`). Which widgets' words take a binding is the text-site
+ * table's answer (`textSites.ts`).
  */
 function textValueTarget(site: UITextSite): SupportedValueTarget {
-    return { elementType: site.widgetType, propPath: site.textProp, valueType: "string" };
+    return {
+        elementType: site.widgetType,
+        propPath: site.textProp,
+        valueType: "string",
+        site,
+        write: (element, value) => withUITextRuntimeWords(element, site, value, "bound"),
+    };
 }
 
 /** Every bindable prop that is not a widget's words, matched through widget inheritance. */
@@ -692,6 +708,11 @@ export function mergeElementWithBlueprintValues(
     for (const target of valueTargetsFor(element.type)) {
         const binding = bindings[target.propPath];
         if (!binding) {
+            continue;
+        }
+        // Words written at run time win over the binding until the page is drawn afresh, so the
+        // binding is not asked for them meanwhile.
+        if (target.site && uiTextRuntimeOriginOf(element) === "written") {
             continue;
         }
         if (binding.kind === "listItemField") {

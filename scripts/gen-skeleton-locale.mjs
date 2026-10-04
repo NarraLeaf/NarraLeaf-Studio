@@ -8,11 +8,11 @@
 // only thing that differs is the words.
 //
 // Two sources of words per variant, and neither is invented here:
-//   - the story, the character names, the named keys and any widget text that opted into its own
-//     translation unit come from the template's OWN translation file for that language
-//     (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
-//   - everything the localization system never covered - button labels, screen text, confirm
-//     dialogs, element and blueprint names - comes from that variant's table beside this script.
+//   - the story, the character names, the named keys and the widget words the template carries a
+//     translation of (their own unit) come from the template's OWN translation file for that
+//     language (`editor/localization/zh-CN.json`, `ja.json`), promoted into the source text;
+//   - everything else - the sample words a canvas shows, confirm dialogs, element and blueprint
+//     names - comes from that variant's table beside this script.
 //
 // The English text becomes `editor/localization/en.json`, so a project made in Chinese ships an
 // English translation exactly as one made in English ships a Chinese one, and the other languages'
@@ -20,6 +20,12 @@
 //
 // Regenerate after editing the English skeleton:  node scripts/gen-skeleton-locale.mjs
 // Verify the committed trees match:               node scripts/gen-skeleton-locale.mjs --check
+//
+// The English content is settled first. An interface document older than the version Studio writes
+// is brought to it in place, through the same step Studio runs when it opens a project
+// (`src/shared/types/ui-editor/textSourceMigration.ts`), translation files included - so a new
+// project never starts with a migration, and a conflict in the template's files is resolved by
+// running this again rather than by hand. `--check` fails while the English content is not settled.
 // List every word the blueprints show, as JSON:   node scripts/gen-skeleton-locale.mjs --graph-text
 //
 // Three things fail the run, and each is named, so English cannot leak into a variant by being
@@ -78,9 +84,9 @@ const RETURN = "return";
 const AMBIGUOUS = "ambiguous";
 
 /**
- * Where each widget keeps the words a player reads, which prop names their translation key, and
- * whether its own words have a translation unit (`ui:<elementId>.<prop>`) - the shared table the
- * game, the localization panel and lint all read (`src/shared/types/ui-editor/textSites.ts`).
+ * Where each widget keeps the words a player reads, and which prop names their translation key - the
+ * shared table the game, the localization panel and lint all read
+ * (`src/shared/types/ui-editor/textSites.ts`).
  *
  * Loaded from the TypeScript source rather than copied here: a copy is how a widget kind ends up
  * translated one way by this script and resolved another way by the game. The table has no imports,
@@ -96,6 +102,28 @@ const { UI_TEXT_SITES } = await import(
     ).toString("base64")}`
 );
 const TEXT_SITE_BY_WIDGET = new Map(UI_TEXT_SITES.map(site => [site.widgetType, site]));
+
+/**
+ * The interface document's text step, bundled from its TypeScript source with what it imports - the
+ * one implementation Studio, the package assembler and `ui.js` run, rather than a copy here.
+ */
+const TEXT_SOURCES_PATH = resolve(HERE, "../src/shared/types/ui-editor/textSourceMigration.ts");
+const textSources = await import(
+    `data:text/javascript;base64,${Buffer.from(
+        createRequire(import.meta.url)("esbuild").buildSync({
+            entryPoints: [TEXT_SOURCES_PATH],
+            bundle: true,
+            write: false,
+            format: "esm",
+            platform: "neutral",
+            alias: { "@shared": resolve(HERE, "../src/shared") },
+            logLevel: "silent",
+        }).outputFiles[0].text,
+    ).toString("base64")}`
+);
+
+/** The language the English content is written in: its own words are the source of every unit. */
+const ENGLISH_SOURCE_LOCALE = "en";
 
 /**
  * What each node param holds, by node type and param key. A literal typed into a data pin is stored
@@ -483,37 +511,36 @@ function buildVariant(locale) {
     const translateElement = element => {
         element.name = say(element.name);
         const props = element.props ?? {};
-        // A widget that opted into its own translation unit (`ui:<elementId>.<prop>`, the inspector's
-        // "Localize text") is translated by the project, like a story line: its words come from that
-        // unit, and the English goes into the English translation file. Through the table instead,
-        // the unit would keep the English as its source and every other language's translation of
-        // it would arrive stale. The prop is the one the runtime resolves for the widget type.
+        // A widget's own words on a site a player reads are translated by the project, like a story
+        // line, whenever the template carries their translation (`ui:<elementId>.<prop>`): their words
+        // come from that unit, and the English goes into the English translation file. Through the
+        // table instead, the unit would keep the English as its source and every other language's
+        // translation of it would arrive stale. The prop is the one the runtime resolves for the
+        // widget type, read from the shared site table.
         //
-        // A named key wins over the unit there, and over the widget's own words: the game shows the
-        // key's text, and so does the canvas for a text widget. The widget's own words are written
-        // as the key's in this language, so nothing reads one thing on the canvas and another in
-        // the game - which is what a separate table entry for the same label produced.
+        // A named key wins over the widget's own words, and a keyed widget holds none (the English
+        // content is settled to the current interface schema before this runs). One that still holds
+        // words is a document this script has not settled, which is reported rather than guessed at.
         const site = TEXT_SITE_BY_WIDGET.get(element.type);
-        const unitProp = site?.unitProp ? site.textProp : undefined;
+        const wordsProp = site?.role === "words" ? site.textProp : undefined;
         const keyName = site?.keyProp && typeof props[site.keyProp] === "string" ? props[site.keyProp].trim() : "";
-        const ownsUnit = unitProp !== undefined
-            && props[site.unitProp] === true
-            && !keyName
-            && typeof props[unitProp] === "string"
-            && props[unitProp].trim() !== "";
-        for (const key of ["text", "label"]) {
+        for (const key of new Set(["text", "label", ...(wordsProp ? [wordsProp] : [])])) {
             if (typeof props[key] !== "string") {
                 continue;
             }
-            if (ownsUnit && key === unitProp) {
+            if (key === wordsProp) {
+                if (keyName) {
+                    throw new Error(
+                        `${element.name ?? element.type} holds words of its own beside the key ${keyName}; `
+                        + "run the generator without --check to settle the English content first",
+                    );
+                }
                 const unitId = `ui:${element.id}.${key}`;
-                flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
-                props[key] = unitTarget(unitId);
-                continue;
-            }
-            if (keyName && key === unitProp) {
-                props[key] = unitTarget(`key:${keyName}`);
-                continue;
+                if (translations.units?.[unitId]) {
+                    flipped.set(unitId, { source: props[key], translated: unitTarget(unitId) });
+                    props[key] = unitTarget(unitId);
+                    continue;
+                }
             }
             props[key] = say(props[key]);
         }
@@ -755,6 +782,52 @@ function buildVariant(locale) {
     return { files, graphText: blueprintText.slots, ambiguous: blueprintText.ambiguous };
 }
 
+/**
+ * The English content at the interface schema Studio writes: the files the text step changes, or
+ * none when the content is settled already. Each file as Studio would write it - two-space JSON, the
+ * trailing newline the file had.
+ */
+function settleEnglishContent() {
+    const contentDir = join(TEMPLATE_DIR, "content");
+    const uidocPath = "editor/ui/uidoc.json";
+    const uidoc = readJson(join(contentDir, uidocPath));
+    if ((uidoc.value.schemaVersion ?? 0) >= textSources.UI_TEXT_SOURCES_SCHEMA_VERSION) {
+        return [];
+    }
+    const localizationDir = join(contentDir, "editor/localization");
+    const keys = readJson(join(localizationDir, "keys.json")).value.keys ?? {};
+    const translationFiles = new Map();
+    for (const name of readdirSync(localizationDir)) {
+        if (name.endsWith(".json") && name !== "keys.json") {
+            translationFiles.set(name.slice(0, -".json".length), readJson(join(localizationDir, name)));
+        }
+    }
+    const result = textSources.migrateUITextSourcesV13(uidoc.value, {
+        keys: Object.fromEntries(Object.entries(keys).map(([name, key]) => [name, key.sourceText])),
+        sourceLocale: ENGLISH_SOURCE_LOCALE,
+        translations: Object.fromEntries([...translationFiles].map(([locale, file]) => [locale, file.value.units ?? {}])),
+    });
+    if (result.changes.length > 0) {
+        // The template is our own content: anything the step can only keep by changing what an
+        // author sees is fixed in the English content by hand, through Studio or ui.js.
+        throw new Error(`the English content needs ${result.changes.length} visible change(s) to reach the current interface schema: `
+            + result.changes.map(change => `${change.kind} ${change.elementId} (${change.keyName})`).join(", "));
+    }
+    const files = [{ path: uidocPath, content: serialize(result.document, uidoc.trailingNewline) }];
+    const settled = textSources.applyUITextLocaleEdits(
+        Object.fromEntries([...translationFiles].map(([locale, file]) => [locale, file.value.units ?? {}])),
+        result.localeEdits,
+    );
+    for (const locale of Object.keys(result.localeEdits)) {
+        const file = translationFiles.get(locale);
+        files.push({
+            path: `editor/localization/${locale}.json`,
+            content: serialize({ ...file.value, units: settled[locale] }, file.trailingNewline),
+        });
+    }
+    return files;
+}
+
 function listFiles(dir, prefix = "") {
     const out = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -779,6 +852,22 @@ if (process.argv.includes("--graph-text")) {
 
 const check = process.argv.includes("--check");
 let failed = false;
+
+const englishFiles = settleEnglishContent();
+if (englishFiles.length > 0) {
+    if (check) {
+        console.error(
+            "content is not at the interface schema Studio writes:\n"
+            + englishFiles.map(file => `  out of date: ${file.path}`).join("\n")
+            + "\nRun node scripts/gen-skeleton-locale.mjs to settle it.",
+        );
+        process.exit(1);
+    }
+    for (const file of englishFiles) {
+        writeFileSync(join(TEMPLATE_DIR, "content", file.path), file.content, "utf-8");
+    }
+    console.log(`content: settled ${englishFiles.length} file(s) to the current interface schema`);
+}
 for (const locale of TABLES) {
     const { files, ambiguous } = buildVariant(locale);
     for (const { where, seenIn, value } of ambiguous) {

@@ -398,6 +398,7 @@ function commandShow(args: Args, io: CliIo): number {
         componentIds,
         includeSharedTables: !surfaceName && !componentName,
         blueprintsByElement: blueprints.byElement,
+        keyWords: readTextKeys(projectDir)?.keys,
     });
 
     const out = args.flags.out;

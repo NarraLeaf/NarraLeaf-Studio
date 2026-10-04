@@ -35,7 +35,6 @@ export const TextSourceField = createLabelSourceField({
     site: TEXT_SITE,
     blueprint: TEXT_BLUEPRINT_VALUE_CONFIG,
     label: TEXT_MARKED_LABEL,
-    localizeLabel: "widgets.text.localizeText",
 });
 
 /**

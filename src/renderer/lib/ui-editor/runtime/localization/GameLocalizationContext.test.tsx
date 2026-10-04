@@ -66,21 +66,20 @@ function renderProbe(runtime: GameLocalizationRuntime | null, input: LocalizedWi
 afterEach(cleanup);
 
 describe("useLocalizedWidgetText", () => {
-    const localizableInput: LocalizedWidgetTextInput = {
+    const ownWords: LocalizedWidgetTextInput = {
         site: TEXT_SITE,
         elementId: "el-1",
         sourceText: "Start",
-        localizable: true,
     };
 
     it("returns the source text without a provider (editor canvas)", () => {
-        const { getByTestId } = renderProbe(null, localizableInput);
+        const { getByTestId } = renderProbe(null, ownWords);
         expect(getByTestId("text").textContent).toBe("Start");
     });
 
     it("resolves the implicit unit and re-renders on locale switches", () => {
         const runtime = createRuntime("zh-CN");
-        const { getByTestId } = renderProbe(runtime, localizableInput);
+        const { getByTestId } = renderProbe(runtime, ownWords);
         expect(getByTestId("text").textContent).toBe("开始");
         act(() => runtime.setLocale("en"));
         expect(getByTestId("text").textContent).toBe("Start");
@@ -90,13 +89,13 @@ describe("useLocalizedWidgetText", () => {
 
     it("walks the fallback chain for locales without their own table", () => {
         const runtime = createRuntime("yue");
-        const { getByTestId } = renderProbe(runtime, localizableInput);
+        const { getByTestId } = renderProbe(runtime, ownWords);
         expect(getByTestId("text").textContent).toBe("开始");
     });
 
-    it("keeps the source text for widgets that never opted in", () => {
+    it("keeps the source text where the language has no translation of it", () => {
         const runtime = createRuntime("zh-CN");
-        const { getByTestId } = renderProbe(runtime, { ...localizableInput, localizable: false });
+        const { getByTestId } = renderProbe(runtime, { ...ownWords, elementId: "el-3" });
         expect(getByTestId("text").textContent).toBe("Start");
     });
 
@@ -194,10 +193,10 @@ describe("useLocalizedWidgetText at design time", () => {
         expect(inGame.getAllByTestId("text")[1].textContent).toBe("Quit");
     });
 
-    it("falls back to the widget's own text for a key the registry does not hold", () => {
+    it("draws a key the registry does not hold as its name, as the game does", () => {
         setDesignTimeLocalizationKeys({ "menu.start": "Start" });
         const { getByTestId } = renderProbe(null, keyed);
-        expect(getByTestId("text").textContent).toBe("Leave");
+        expect(getByTestId("text").textContent).toBe(keyed.localizationKey);
     });
 
     it("draws the widget's own text while nothing is published", () => {

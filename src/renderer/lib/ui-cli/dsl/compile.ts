@@ -19,7 +19,8 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
-import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
     CONTRIBUTED_WIDGET_PART_SLOT_KEY,
     getContributedWidgetPartSlots,
@@ -91,6 +92,8 @@ class CompileContext {
     private documentEntry?: string;
     private readonly knownTypes: Set<string>;
     private readonly seenUnknownProps = new Set<string>();
+    /** Whether this file's `localizable` has been noted, which is said once per file. */
+    private notedLegacyUnitProp = false;
 
     public constructor(
         private readonly existing: UIDocument | null,
@@ -401,12 +404,14 @@ class CompileContext {
         const extra = applyAssignments({}, node.assignments.filter(a => a.target === "extra"));
         const elementKeys = applyAssignments({}, node.assignments.filter(a => a.target === "element"));
 
+        this.settleTextSource(node, props);
+
         if (detail && node.type !== "nl.root") {
             const declared = new Set(detail.props.map(prop => prop.key));
-            // Where the words come from is stated by props a new widget leaves unset - its key, its
-            // own-unit switch, its marks - and the text-site table names them for each widget.
+            // Where the words come from is stated by props a new widget leaves unset - its key and its
+            // marks - and the text-site table names them for each widget.
             const site = uiTextSiteOf(node.type);
-            for (const sourceProp of [site?.keyProp, site?.unitProp, site?.marksProp]) {
+            for (const sourceProp of [site?.keyProp, site?.marksProp]) {
                 if (sourceProp) {
                     declared.add(sourceProp);
                 }
@@ -428,7 +433,7 @@ class CompileContext {
             }
         }
 
-        this.checkWordsTwoSources(node, id, label, props);
+        this.checkWordsTwoSources(node, label, props);
 
         if (node.componentLink) {
             const component = this.existing ? findComponent(this.existing, node.componentLink.componentId) : undefined;
@@ -482,57 +487,77 @@ class CompileContext {
     }
 
     /**
+     * The switch an older document used to translate a widget's own words, read in a file written
+     * from one. From v13 a widget's own words are translated whenever the project has a second
+     * language, so the prop is dropped and said once.
+     */
+    private settleTextSource(node: UiElementNode, props: Record<string, unknown>): void {
+        if (!uiTextSiteOf(node.type) || !(LEGACY_UI_TEXT_UNIT_PROP in props)) {
+            return;
+        }
+        delete props[LEGACY_UI_TEXT_UNIT_PROP];
+        if (!this.notedLegacyUnitProp) {
+            this.notedLegacyUnitProp = true;
+            this.report(
+                "info",
+                "ui.legacy_prop",
+                `\`${LEGACY_UI_TEXT_UNIT_PROP}\` is not stored any more and was left out: a widget's own words are translated whenever the project has a second language.`,
+                node.line,
+            );
+        }
+    }
+
+    /**
      * Words written onto a widget whose words a translation key supplies.
      *
-     * The key wins: the game and the canvas show its text, so an edit to the widget's own `text` or
-     * `label` changes nothing a player sees. What `show` prints for a keyed widget - its stored words,
-     * which are normally the key's - passes; words that differ from both the key's text and what the
-     * element stores are an edit that cannot show, and the tool cannot tell which of the two was
-     * meant. Without a source language the project ships no keys and the widget's own words do show,
-     * until it gets one - so there it is a warning rather than a refusal.
+     * A keyed widget holds no words of its own (v13): the game and the canvas show the key's. Words
+     * that are the key's - what `show` printed before v13, or what the `# words:` comment says - are
+     * left out with a note. Words that differ are an edit that cannot show, and the tool cannot tell
+     * which of the two was meant, so they are refused. A key the project does not have is reported:
+     * the widget would show the key's name.
      */
-    private checkWordsTwoSources(node: UiElementNode, id: string, label: string, props: Record<string, unknown>): void {
+    private checkWordsTwoSources(node: UiElementNode, label: string, props: Record<string, unknown>): void {
         const site = uiTextSiteOf(node.type);
         if (!site?.keyProp || site.role !== "words" || !this.textKeys) {
             return;
         }
         const key = typeof props[site.keyProp] === "string" ? (props[site.keyProp] as string).trim() : "";
-        const words = props[site.textProp];
-        const keyText = key ? this.textKeys.keys.get(key) : undefined;
-        if (keyText === undefined || typeof words !== "string" || words === keyText) {
+        if (!key) {
             return;
         }
-        const stored = this.existingElement(id);
-        if (stored && readUITextSite(stored, site).text === words) {
+        const keyText = this.textKeys.keys.get(key);
+        if (keyText === undefined) {
+            this.report(
+                "warning",
+                "ui.key_missing",
+                `"${label}" names key "${key}", which the project does not have: the widget shows the key's name.`,
+                node.line,
+                `Add the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` and write \`${site.textProp}\`.`,
+            );
+            return;
+        }
+        const words = props[site.textProp];
+        if (typeof words !== "string") {
             return;
         }
         const writes = `${site.textProp} = ${JSON.stringify(words)}`;
-        if (this.textKeys.keysApply) {
+        if (words === keyText || words === "") {
+            delete props[site.textProp];
             this.report(
-                "error",
-                "ui.words_two_sources",
-                `"${label}" writes \`${writes}\` but names key "${key}", whose text (${JSON.stringify(keyText)}) is what the game and the canvas show.`,
+                "info",
+                "ui.words_dropped",
+                `"${label}" writes \`${writes}\` beside key "${key}", which says the same: left out, as a keyed widget holds no words of its own.`,
                 node.line,
-                `Change the words through the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` to show these words instead.`,
             );
             return;
         }
         this.report(
-            "warning",
+            "error",
             "ui.words_two_sources",
-            `"${label}" writes \`${writes}\` and names key "${key}" (${JSON.stringify(keyText)}). The project has no source language, so these words show now; once it has one, the key's text replaces them.`,
+            `"${label}" writes \`${writes}\` but names key "${key}", whose text (${JSON.stringify(keyText)}) is what the game and the canvas show.`,
             node.line,
-            `Keep one source: drop \`${site.keyProp}\`, or write the words through the key.`,
+            `Change the words through the key - the localization panel, or editor/localization/keys.json - or drop \`${site.keyProp}\` to show these words instead.`,
         );
-    }
-
-    /** The element an id names in the document being edited, on a page or in a component definition. */
-    private existingElement(id: string): UIElement | undefined {
-        if (!this.existing) {
-            return undefined;
-        }
-        return this.existing.elements[id]
-            ?? (this.existing.components ?? []).map(component => component.elements?.[id]).find(Boolean);
     }
 
     /**

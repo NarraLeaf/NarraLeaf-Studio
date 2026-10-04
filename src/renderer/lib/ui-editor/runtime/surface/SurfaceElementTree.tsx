@@ -29,6 +29,7 @@ import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentD
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
+import { UI_TEXT_RUNTIME_ORIGIN_PROP, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { isTrustedElementRenderer, type ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter, UIHostAdapterDrawings } from "@/lib/ui-editor/runtime/types";
 import { bindWidgetEventDispatch, type UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
@@ -1140,6 +1141,12 @@ function applyWidgetRuntimePatches(
         layout: { ...element.layout },
         props: { ...(element.props ?? {}), ...(patch.props ?? {}) },
     };
+    // Words written at run time are shown as written, in every language, ahead of a key, a
+    // translation and a value binding, until the page is drawn afresh with no patch.
+    const site = uiTextSiteOf(element.type);
+    if (site && patch.props && Object.prototype.hasOwnProperty.call(patch.props, site.textProp)) {
+        (next.props as Record<string, unknown>)[UI_TEXT_RUNTIME_ORIGIN_PROP] = "written";
+    }
     if (patch.visible !== undefined) {
         next.layout.visible = patch.visible;
     }

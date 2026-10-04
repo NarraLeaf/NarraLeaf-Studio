@@ -11,10 +11,12 @@
  * does, and rewriting the map in tree order turned a five-element change into twenty thousand lines
  * of churn that hid it and collided with every other branch touching the same document.
  *
- * The schema version is checked before anything is written. Eleven versions' worth of migration live
- * on the renderer's `UIDocumentService` and need a service to run; writing an unmigrated document
- * back under the current version number would be the migration silently not having run. This is the
- * same refusal `blueprint apply` makes, and for the same reason.
+ * The schema version is checked before anything is written. The migration lives on the renderer's
+ * `UIDocumentService` and needs a service to run; writing an unmigrated document back under the
+ * current version number would be the migration silently not having run. This is the same refusal
+ * `blueprint apply` makes, and for the same reason. A v12 document is still *read* as v13, through
+ * the shared text-source step, so `show` and `check` answer for the project as Studio will open it;
+ * it is only the write that waits for Studio, because that step also edits the translation files.
  *
  * `uigraphs.json` is only read here: attaching a graph to a widget is `blueprint apply`'s job. It is
  * read so that a value binding can be checked against the blueprint it names, and so that replacing a
@@ -33,6 +35,7 @@ import { normalizeLocalizationConfiguration, normalizeLocalizationKeysDocument }
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { resolveBlueprintFile } from "../blueprint-cli/project";
 import {
+    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
     UI_DOCUMENT_SCHEMA_VERSION,
     type UIComponentDefinition,
     type UIDocument,
@@ -40,6 +43,7 @@ import {
     type UIElementId,
     type UISurface,
 } from "@shared/types/ui-editor/document";
+import { migrateUITextSourcesV13, UI_TEXT_SOURCES_SCHEMA_VERSION } from "@shared/types/ui-editor/textSourceMigration";
 
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
@@ -70,6 +74,11 @@ export function scratchFileNameFor(name: string): string {
 export type UiDocumentFile = {
     filePath: string;
     document: UIDocument;
+    /**
+     * The version on disk, when the document was brought to the current one in memory to be read.
+     * Such a document is never written back: see {@link assertWritableSchema}.
+     */
+    migratedFrom?: number;
 };
 
 export function resolveProjectDir(input: string): string {
@@ -93,12 +102,35 @@ export function readUiDocument(projectDir: string): UiDocumentFile {
     if (!Array.isArray(raw.surfaces) || typeof raw.elements !== "object" || raw.elements == null) {
         throw new ProjectIoError(`${filePath} has no "surfaces" / "elements": it is not an interface document.`);
     }
+    // A document from before v13 is read the way Studio will read it once it is opened: through the
+    // same step, against the project's keys (`textSourceMigration.ts`). Only the document is needed to
+    // read it - the translation edits that step makes are Studio's to write when it opens the project.
+    if (
+        typeof raw.schemaVersion === "number"
+        && raw.schemaVersion >= UI_DOCUMENT_MIN_SUPPORTED_VERSION
+        && raw.schemaVersion < UI_TEXT_SOURCES_SCHEMA_VERSION
+    ) {
+        const textKeys = readTextKeys(projectDir);
+        const migrated = migrateUITextSourcesV13(raw, {
+            keys: Object.fromEntries(textKeys?.keys ?? []),
+            sourceLocale: textKeys?.sourceLocale ?? "",
+            translations: {},
+        });
+        return { filePath, document: migrated.document, migratedFrom: raw.schemaVersion };
+    }
     return { filePath, document: raw };
 }
 
 export function assertWritableSchema(file: UiDocumentFile): void {
-    if (file.document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
+    if (file.migratedFrom === undefined && file.document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
         return;
+    }
+    if (file.migratedFrom !== undefined) {
+        throw new ProjectIoError(
+            `${file.filePath} carries interface schema v${file.migratedFrom}, and this Studio writes `
+                + `v${UI_DOCUMENT_SCHEMA_VERSION}. Open the project in Studio once so it migrates - its translation `
+                + "files change with it - then run this again.",
+        );
     }
     throw new ProjectIoError(
         `${file.filePath} carries interface schema v${file.document.schemaVersion}, and this Studio writes `
@@ -118,21 +150,17 @@ export function writeUiDocument(file: UiDocumentFile): void {
 // The translation keys, read only
 // ---------------------------------------------------------------------------
 
-/** The project's named translation keys, and whether its game reads them at all. */
+/** The project's named translation keys, and its source language. */
 export type TextKeys = {
-    /**
-     * True when the project has a source language. Without one a build carries no keys and every
-     * keyed widget shows its own words, so a key is not yet what a player reads.
-     */
-    keysApply: boolean;
+    /** The project's source language, or "" when it has none. Keys are read either way. */
+    sourceLocale: string;
     /** Key name to source-language text, from `editor/localization/keys.json`. */
     keys: ReadonlyMap<string, string>;
 };
 
 /**
- * Read the key registry and the project's source language, the two things that decide whether a
- * keyed widget's own words are ever shown. Null when the project config cannot be read, which is not
- * the same as a project with no keys.
+ * Read the key registry and the project's source language. Null when the project config cannot be
+ * read, which is not the same as a project with no keys.
  */
 export function readTextKeys(projectDir: string): TextKeys | null {
     let config: Record<string, unknown>;
@@ -164,7 +192,7 @@ export function readTextKeys(projectDir: string): TextKeys | null {
             return null;
         }
     }
-    return { keysApply: Boolean(localization.sourceLocale) && localization.locales.length > 0, keys };
+    return { sourceLocale: localization.sourceLocale, keys };
 }
 
 // ---------------------------------------------------------------------------

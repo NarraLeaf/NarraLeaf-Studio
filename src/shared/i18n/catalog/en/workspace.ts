@@ -107,11 +107,12 @@ export const workspace = {
             removeKey: "Remove key",
             removeKeyConfirm: "Remove {name}?",
             removeKeyConfirmDetail: "Existing translations of this key stay in the language files.",
-            removeKeyUsedBy: "Used by:",
+            removeKeyWidgets: "These widgets keep the key's words and translations as their own:",
+            removeKeyBlueprints: "Blueprints that use the key:",
             removeKeyUsedByElement: "{owner} ▸ {element}",
             removeKeyUsedByBlueprint: "Blueprint “{name}”",
             removeKeyUsedByMore: "and {count} more",
-            removeKeyUsedByAfter: "Once the key is removed, the project check reports each of them.",
+            removeKeyUsedByAfter: "Once the key is removed, the project check reports each of these blueprints.",
             sourceColumn: "Source",
             targetColumn: "Translation",
             targetPlaceholder: "Translate…",
@@ -241,6 +242,20 @@ export const workspace = {
             dropHint: "Drop audio to assign",
             findPlaceholder: "Find in lines",
         },
+    },
+    // The one notice after a project's interface document is upgraded to v13: the widgets whose
+    // source of words changed in a way the inspector shows, each with a button to it.
+    textSourceMigration: {
+        message: {
+            one: "Interface text was upgraded. The words of {count} widget now come from a different source.",
+            other: "Interface text was upgraded. The words of {count} widgets now come from a different source.",
+        },
+        place: "{n}. {owner} ▸ {element}: {change}",
+        marksKept: "now Direct, keeping its marks, and no longer uses the key {key}",
+        bindingDropped: "a binding that never showed was removed, and the key {key} shows",
+        missingKey: "the key {key} does not exist, so it is now Direct, with the same words and translations",
+        keyDiffered: "now Direct, keeping the words it showed, and no longer uses the key {key}",
+        locate: "Locate {n}",
     },
     // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
     // load, or loads wrong.

@@ -16,6 +16,7 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
 import { propAssignmentKey } from "./parse";
 
@@ -32,6 +33,11 @@ export type PrintOptions = {
     blueprintsByElement?: Map<string, { id: string; name: string }[]>;
     /** Stop at the element itself, for a reference example whose subtree is not the point. */
     withoutChildren?: boolean;
+    /**
+     * The project's key registry, so a keyed widget's words are printed as a comment under its key:
+     * the widget holds none of its own, and the file would otherwise not say what it shows.
+     */
+    keyWords?: ReadonlyMap<string, string>;
 };
 
 export function printUiDocument(document: UIDocument, options: PrintOptions = {}): string {
@@ -168,10 +174,17 @@ export function printElementTree(
     for (const [key, value] of Object.entries(element.style ?? {})) {
         lines.push(`${inner}style.${key} = ${printValue(value)}`);
     }
+    const site = uiTextSiteOf(element.type);
     for (const [key, value] of Object.entries(element.props ?? {})) {
         // The element's own `animation` record is written further down, and only the prefix keeps a
         // Page widget's `animation` prop - the same shape of record - from reading back as it.
         lines.push(`${inner}${propAssignmentKey(key)} = ${printValue(value)}`);
+        if (site?.keyProp === key && typeof value === "string" && value.trim() && options.keyWords) {
+            const words = options.keyWords.get(value.trim());
+            lines.push(words === undefined
+                ? `${inner}# words: ${value.trim()} (the project has no such key, so the widget shows its name)`
+                : `${inner}# words: ${printValue(words)}`);
+        }
     }
     for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
         lines.push(

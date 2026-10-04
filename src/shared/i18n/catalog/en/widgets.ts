@@ -83,7 +83,6 @@ export const widgets = {
     localization: {
         direct: "Direct",
         translationKey: "Translation key",
-        noSourceLanguage: "The project has no source language",
         none: "None",
         createKey: "Create new key…",
         createKeyTitle: "New localization key",
@@ -195,11 +194,9 @@ export const widgets = {
         sectionColor: "Color",
         sectionBehavior: "Behavior",
         interactionDisabled: "Interaction disabled",
-        localizeLabel: "Localize label",
     },
     text: {
         title: "Text",
-        localizeText: "Localize text",
     },
     /**
      * The marks a label's text carries, set over the characters selected in the box above them.

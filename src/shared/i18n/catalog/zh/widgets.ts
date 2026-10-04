@@ -80,7 +80,6 @@ export const widgets = {
     localization: {
         direct: "直接写",
         translationKey: "翻译键",
-        noSourceLanguage: "项目未设置源语言",
         none: "无",
         createKey: "新建键…",
         createKeyTitle: "新建本地化键",
@@ -192,11 +191,9 @@ export const widgets = {
         sectionColor: "颜色",
         sectionBehavior: "行为",
         interactionDisabled: "禁用交互",
-        localizeLabel: "本地化标签",
     },
     text: {
         title: "文本",
-        localizeText: "本地化文本",
     },
     /**
      * 标签文字上的标记，作用于上方文本框里选中的字。按钮本身沿用故事那边的键：

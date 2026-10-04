@@ -172,6 +172,15 @@ export class WidgetRuntimeStateStore {
      */
     private readonly displayableMotionWaiters = new Map<string, Set<(reason: UIDisplayableMotionWaitReason) => void>>();
     private readonly displayableBaseTransforms = new Map<string, UIDisplayableBaseTransform>();
+    /**
+     * The words a text or a button last drew where a value binding gave them, by runtime element key.
+     *
+     * Read by a graph's `Get Text` and `Get Label`, which answer with what is on screen; a binding's
+     * answer lives in the value runtime of the drawing, which a graph cannot reach. Written by the
+     * drawing as it draws and announced to nobody - it is not part of the snapshot, and nothing
+     * re-renders for it.
+     */
+    private readonly drawnBoundWords = new Map<string, string>();
     private readonly listeners = new Set<() => void>();
     private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
@@ -233,6 +242,20 @@ export class WidgetRuntimeStateStore {
             }
         }
         this.emitRuntimePatches();
+    }
+
+    /** Record the words a drawing shows where a binding gave them; null forgets them. See {@link drawnBoundWords}. */
+    recordDrawnBoundWords(key: string, words: string | null): void {
+        if (words === null) {
+            this.drawnBoundWords.delete(key);
+        } else {
+            this.drawnBoundWords.set(key, words);
+        }
+    }
+
+    /** The words a drawing last showed where a binding gave them, if it has drawn any. */
+    getDrawnBoundWords(key: string): string | undefined {
+        return this.drawnBoundWords.get(key);
     }
 
     private getPrimaryHoverTargetId(): string | null {

@@ -20,6 +20,9 @@ import type { BlueprintAssetPinResolver } from "@/lib/workspace/services/referen
 import type { Service } from "@/lib/workspace/services/Service";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { localizationKeyUnitId, type LocalizationUnit } from "@shared/types/localization";
+import { listUITextKeysNamed, type UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
 import {
     getUiEditorClipboard,
     readUiEditorClipboardPayload,
@@ -66,6 +69,12 @@ export type UiClipboardEnvironment = {
     isFrozen: () => boolean;
     /** Declared asset pins per node type, so a widget's graph is swept as the index sweeps it. */
     resolveAssetPins: BlueprintAssetPinResolver;
+    /**
+     * The words and translations of the named keys, for a copy that leaves this window: a project
+     * lacking one of them receives its words on the widgets instead. Undefined when there is nothing
+     * to carry or the keys cannot be read.
+     */
+    carryTextKeys: (names: readonly string[]) => Promise<UITextCarriedKeys | undefined>;
 };
 
 /**
@@ -91,6 +100,7 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
     const freezeService = get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     const projectService = get<ProjectService>(Services.Project);
     const catalog = get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+    const localization = get<LocalizationService>(Services.Localization);
     let projectName = "";
     let projectIdentifier = "";
     try {
@@ -111,7 +121,50 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
         uuidService: get<UuidService>(Services.Uuid),
         isFrozen: () => freezeService?.isFrozen() ?? false,
         resolveAssetPins: createCatalogAssetPinResolver(catalog),
+        carryTextKeys: names => carryTextKeys(localization, names),
     };
+}
+
+/**
+ * The words of the named keys and their translations in every language this project reads, as a copy
+ * carries them (`UITextCarriedKeys`). A language whose file cannot be read carries nothing.
+ */
+async function carryTextKeys(
+    localization: LocalizationService | null,
+    names: readonly string[],
+): Promise<UITextCarriedKeys | undefined> {
+    const keys = localization?.getKeysIfLoaded()?.keys;
+    if (!localization || !keys || names.length === 0) {
+        return undefined;
+    }
+    const carried: UITextCarriedKeys = {};
+    for (const name of names) {
+        if (keys[name]) {
+            carried[name] = { words: keys[name].sourceText };
+        }
+    }
+    if (Object.keys(carried).length === 0) {
+        return undefined;
+    }
+    const config = localization.getConfiguration();
+    for (const { code } of config.locales) {
+        if (code === config.sourceLocale) {
+            continue;
+        }
+        let units: Record<string, LocalizationUnit>;
+        try {
+            units = (await localization.loadDocument(code)).units;
+        } catch {
+            continue;
+        }
+        for (const [name, entry] of Object.entries(carried)) {
+            const unit = units[localizationKeyUnitId(name)];
+            if (unit?.target) {
+                entry.translations = { ...(entry.translations ?? {}), [code]: { ...unit } };
+            }
+        }
+    }
+    return carried;
 }
 
 /**
@@ -133,9 +186,14 @@ export function publishUiClipboard(
             environment,
             collectUiClipboardAssetIds(payload, environment.resolveAssetPins),
         );
+        const textKeys = await environment.carryTextKeys(listUITextKeysNamed(payload.elements));
         // The offer is folded into the payload the clipboard receives and into the one this window
         // holds, so a same-window paste and a cross-window paste describe the same copy.
-        const published: UIEditorClipboardPayload = assets ? { ...payload, assets } : payload;
+        const published: UIEditorClipboardPayload = {
+            ...payload,
+            ...(assets ? { assets } : {}),
+            ...(textKeys ? { textKeys } : {}),
+        };
         if (getUiEditorClipboard()?.copyId === payload.copyId) {
             setUiEditorClipboard(published);
         }

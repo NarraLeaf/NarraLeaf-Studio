@@ -13,15 +13,15 @@
  * Comments in English per project convention.
  */
 
-import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
+import { resolveLocalizationKeyWords } from "@shared/types/localization";
 import type { GameLocalizationConfigSnapshot } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { readRuntimeLocale } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 
 /**
  * Whether the running game's localization knows this key.
  *
- * False with no localization at all, which is what a project without a source language ships: the
- * build carries neither keys nor translations then, so every key reads as unknown.
+ * A project without a source language ships its keys too (`keysOnlyLocalization`), so this answers
+ * for every project; false only outside a running game.
  */
 export function hasLocalizationKey(config: GameLocalizationConfigSnapshot | null, keyName: string): boolean {
     return Boolean(config?.keys && Object.prototype.hasOwnProperty.call(config.keys, keyName));
@@ -40,9 +40,8 @@ export function resolveLocalizationKeyText(
     if (!config || !hasLocalizationKey(config, keyName)) {
         return null;
     }
-    const tables = config.tables ?? {};
-    const translated = resolveLocalizedUnitText({ ...config, tables }, locale, localizationKeyUnitId(keyName));
-    return translated ?? config.keys?.[keyName] ?? null;
+    // The answer a keyed widget gives for the same key, from the same function.
+    return resolveLocalizationKeyWords({ ...config, tables: config.tables ?? {} }, locale, keyName);
 }
 
 /**

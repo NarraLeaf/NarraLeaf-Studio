@@ -52,6 +52,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { listLocalizationKeyUses } from "@/lib/workspace/services/localization/localizationKeyUses";
+import { removeLocalizationKeyKeepingWords } from "@/lib/workspace/services/localization/localizationKeyRemoval";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
@@ -714,9 +715,10 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
     }, [localizationService]);
 
     /**
-     * What removing a key leaves behind: the widgets and blueprints still naming it, each listed, so
-     * the author decides with the places in front of them rather than finding them afterwards one by
-     * one. Capped, because a key used on every page would otherwise push the buttons off the dialog.
+     * What removing a key does: the widgets naming it keep its words and translations as their own,
+     * and the blueprints naming it are left reading a key that is gone, which the project check
+     * reports. Both are listed, so the author decides with the places in front of them. Capped,
+     * because a key used on every page would otherwise push the buttons off the dialog.
      */
     const describeKeyRemoval = useCallback((name: string): string => {
         const blueprintService = context && isInitialized
@@ -728,26 +730,24 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             keyName: name,
             widgetName: element => widgetModuleRegistry.get(element.type)?.displayName ?? element.type,
         });
-        const places = [
-            ...uses.elements.map(use => t("workspace.localization.table.removeKeyUsedByElement", {
-                owner: use.ownerName,
-                element: use.elementName,
-            })),
-            ...uses.blueprints.map(blueprint => t("workspace.localization.table.removeKeyUsedByBlueprint", { name: blueprint })),
-        ];
-        const detail = t("workspace.localization.table.removeKeyConfirmDetail");
-        if (places.length === 0) {
-            return detail;
-        }
-        const shown = places.slice(0, KEY_REMOVAL_PLACES_SHOWN);
-        const more = places.length - shown.length;
+        const capped = (places: string[]): string[] => {
+            const shown = places.slice(0, KEY_REMOVAL_PLACES_SHOWN);
+            const more = places.length - shown.length;
+            return [...shown, ...(more > 0 ? [t("workspace.localization.table.removeKeyUsedByMore", { count: more })] : [])];
+        };
+        const widgets = uses.elements.map(use => t("workspace.localization.table.removeKeyUsedByElement", {
+            owner: use.ownerName,
+            element: use.elementName,
+        }));
+        const blueprints = uses.blueprints.map(blueprint => t("workspace.localization.table.removeKeyUsedByBlueprint", { name: blueprint }));
         return [
-            t("workspace.localization.table.removeKeyUsedBy"),
-            ...shown,
-            ...(more > 0 ? [t("workspace.localization.table.removeKeyUsedByMore", { count: more })] : []),
-            "",
-            t("workspace.localization.table.removeKeyUsedByAfter"),
-            detail,
+            ...(widgets.length > 0
+                ? [t("workspace.localization.table.removeKeyWidgets"), ...capped(widgets), ""]
+                : []),
+            ...(blueprints.length > 0
+                ? [t("workspace.localization.table.removeKeyBlueprints"), ...capped(blueprints), t("workspace.localization.table.removeKeyUsedByAfter"), ""]
+                : []),
+            t("workspace.localization.table.removeKeyConfirmDetail"),
         ].join("\n");
     }, [context, isInitialized, uiDocumentService, t]);
 
@@ -760,10 +760,15 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             t("workspace.localization.table.removeKeyConfirm", { name }),
             describeKeyRemoval(name),
         );
-        if (confirmed) {
-            localizationService.removeKey(name);
+        if (!confirmed) {
+            return;
         }
-    }, [localizationService, uiService, t, describeKeyRemoval]);
+        try {
+            await removeLocalizationKeyKeepingWords({ localization: localizationService, interfaceDocument: uiDocumentService }, name);
+        } catch (error) {
+            uiService.showError(error instanceof Error ? error : String(error));
+        }
+    }, [localizationService, uiDocumentService, uiService, t, describeKeyRemoval]);
 
     /** Create a named key from the add row; returns whether it succeeded. */
     const handleAddKey = useCallback((name: string, sourceText: string): boolean => {

@@ -13,7 +13,6 @@ import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldCont
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
-import { Switch } from "@/lib/components/elements/Switch";
 import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { useTranslation } from "@/lib/i18n";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -36,10 +35,7 @@ import { TextWritersList, useElementTextWriters } from "./TextWritersList";
 
 /** What a widget tells the source field about where its words live. */
 export type LabelSourceFieldConfig = {
-    /**
-     * The site the words sit on (`textSites.ts`): the prop holding them, the prop naming their key,
-     * and the switch that translates the element's own words.
-     */
+    /** The site the words sit on (`textSites.ts`): the prop holding them and the prop naming their key. */
     site: UITextSite;
     /**
      * The words' Blueprint Value, when the widget offers one. Its `propPath` is the prop holding the
@@ -49,11 +45,6 @@ export type LabelSourceFieldConfig = {
     blueprint?: BlueprintValueFieldConfig;
     /** How the words and their marks are read and written. */
     label: MarkedLabelProps;
-    /**
-     * The switch under the element's own words that translates them through its own unit (`Localize
-     * text`, `Localize label`), for a site that has one.
-     */
-    localizeLabel?: TranslationKey;
     /** The words are one line: the boxes are single-line and carry no marks (a placeholder). */
     singleLine?: boolean;
 };
@@ -68,8 +59,9 @@ function liveElementOf(data: UIInspectorData): UIElement {
  * text input's placeholder (which offers no Blueprint Value) are all this field.
  *
  * The choice is not stored; it is read off the element in the order the game resolves the words
- * (`uiTextSourceOf`), so a document written before this control existed opens on the source its game
- * already shows. Choosing writes that order's answer: a key is set, or cleared, or a binding made.
+ * (`uiTextSourceOf`). Choosing writes that order's answer: a key is set, or cleared, or a binding made.
+ * The element's own words are translated whenever the project has a second language, so there is
+ * nothing to switch on for them.
  *
  * Under a key the box edits the key's source text, which is what the game shows in the project's
  * source language and what the canvas draws. A key is shared, so the words change everywhere it is
@@ -108,16 +100,6 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         };
     }
 
-    /**
-     * The "localize" switch belongs to the element's own words: it translates them through the
-     * element's own unit. Under a key or a Blueprint Value it would be a setting nobody can see - and
-     * under a Blueprint Value one that replaces the bound words with a translation of words nothing
-     * shows.
-     */
-    function leaveLiteralPatch(data: UIInspectorData): Record<string, unknown> {
-        return site.unitProp && readUITextSite(liveElementOf(data), site).localizable ? { [site.unitProp]: undefined } : {};
-    }
-
     /** Pick a key: the words are read from it from now on, and from nothing else. */
     function chooseKey(data: UIInspectorData, name: string | undefined): void {
         const live = liveElementOf(data);
@@ -130,7 +112,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         } else if (binding?.kind === "listItemField") {
             data.documentService.setElementListItemFieldBinding(live.id, propPath, null);
         }
-        data.documentService.updateElementProps(live.id, { ...leaveLiteralPatch(data), [keyProp]: name });
+        data.documentService.updateElementProps(live.id, { [keyProp]: name });
     }
 
     const KeyPicker = createLocalizationKeyField({
@@ -152,10 +134,9 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             getDesignTimeLocalizationKeys,
             getDesignTimeLocalizationKeys,
         );
-        const keysApply = keys !== null;
         const blueprintState = useBlueprintValueBinding(config.blueprint ?? null, data);
         const live = blueprintState.live;
-        const source = uiTextSourceOf(live, site, keysApply);
+        const source = uiTextSourceOf(live, site);
         const writers = useElementTextWriters(live.id);
         const sampleCause = uiTextSampleCauseOf(live, site, writers);
         const writersList = <TextWritersList writers={writers} />;
@@ -178,7 +159,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                 onBound={fieldId => {
                     if (fieldId) {
                         setPickingKey(false);
-                        data.documentService.updateElementProps(live.id, { ...leaveKeyPatch(data), ...leaveLiteralPatch(data) });
+                        data.documentService.updateElementProps(live.id, leaveKeyPatch(data));
                     }
                 }}
             />
@@ -214,9 +195,8 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                 return;
             }
             // Blueprint Value: the blueprint's literal starts from the words the element shows.
-            const patch = { ...(source === "key" ? leaveKeyPatch(data) : {}), ...leaveLiteralPatch(data) };
-            if (Object.keys(patch).length > 0) {
-                data.documentService.updateElementProps(live.id, patch);
+            if (source === "key") {
+                data.documentService.updateElementProps(live.id, leaveKeyPatch(data));
             }
             blueprintState.create();
         };
@@ -282,8 +262,6 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                             id: "key",
                             icon: null,
                             label: t("widgets.localization.translationKey"),
-                            disabled: !keysApply,
-                            tip: keysApply ? undefined : t("widgets.localization.noSourceLanguage"),
                         },
                         ...(config.blueprint
                             ? [{
@@ -299,25 +277,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     ]}
                 />
                 {shown === "literal" && sampleCause === "written" ? sampleBlock("widgets.sampleText.hintWritten") : null}
-                {shown === "literal" && sampleCause !== "written" ? (
-                    <>
-                        {ownWordsEditor}
-                        {site.unitProp && config.localizeLabel ? (
-                            <div className="flex items-center gap-2">
-                                <Switch
-                                    size="sm"
-                                    checked={readUITextSite(live, site).localizable}
-                                    disabled={readOnly}
-                                    aria-label={t(config.localizeLabel)}
-                                    onCheckedChange={checked =>
-                                        data.documentService.updateElementProps(live.id, { [site.unitProp as string]: checked })
-                                    }
-                                />
-                                <span className="text-sm text-fg-muted">{t(config.localizeLabel)}</span>
-                            </div>
-                        ) : null}
-                    </>
-                ) : null}
+                {shown === "literal" && sampleCause !== "written" ? ownWordsEditor : null}
                 {shown === "key" ? (
                     <>
                         <KeyPicker {...props} readOnly={props.readOnly} />

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     STATIC_WIDGET_RUNTIME_SNAPSHOT,
@@ -105,6 +105,19 @@ export function useWidgetRuntimeElementKey(elementId: string): string {
     // (`widgetAddress.ts`), and a key built two ways stops matching the first time either is touched.
     const address = buildUIWidgetAddress(elementId, instance?.key);
     return runtimeScopeId ? `${runtimeScopeId}\0${address}` : address;
+}
+
+/**
+ * Keep the words this drawing shows where a value binding gave them, for a graph's `Get Text` and
+ * `Get Label` to read back (`WidgetRuntimeStateStore.recordDrawnBoundWords`). Words that are not a
+ * binding's are forgotten, because a graph reads those from the element itself.
+ */
+export function useRecordDrawnBoundWords(elementId: string, words: string, bound: boolean): void {
+    const store = useWidgetRuntimeStateStore();
+    const key = useWidgetRuntimeElementKey(elementId);
+    useLayoutEffect(() => {
+        store?.recordDrawnBoundWords(key, bound ? words : null);
+    }, [store, key, words, bound]);
 }
 
 /** Subscribe to any widget-runtime change (hover/active/focus/variant override). */

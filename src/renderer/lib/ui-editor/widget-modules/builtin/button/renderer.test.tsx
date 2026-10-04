@@ -226,7 +226,7 @@ describe("ButtonRenderer marked label", () => {
     });
 
     it("falls back to the plain label when the game is played in another language", () => {
-        const document = createDocument({ label: RUBY_LABEL, rich: RUBY_RUNS, localizable: true });
+        const document = createDocument({ label: RUBY_LABEL, rich: RUBY_RUNS });
         const wrap = (runtime: GameLocalizationRuntime) => (node: ReactNode) => (
             <GameLocalizationContext.Provider value={runtime}>{node}</GameLocalizationContext.Provider>
         );

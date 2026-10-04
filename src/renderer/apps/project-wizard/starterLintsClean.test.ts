@@ -16,7 +16,7 @@
  * builds; `--lint` on a freshly created project is the check for those.
  *
  * A zero is what a sweep that checks nothing also produces, so the same context is run once more
- * with the game's title no longer asking for its translation, and has to report exactly that.
+ * with the game's title missing its translation, and has to report exactly that.
  *
  * Comments in English per project convention.
  */
@@ -123,16 +123,16 @@ describe.each(LANGUAGES)("a project made from the starter template in $name", la
         expect(await sweep(contextFor(language))).toEqual([]);
     });
 
-    it("says so only because it can report: the game's title, left untranslatable, is found", async () => {
+    it("says so only because it can report: the game's title, with its translation gone, is found", async () => {
+        // The title is the one widget whose own words a player reads; since v13 they are translated
+        // without anything on the widget asking for it.
         const context = contextFor(language);
-        const document = context.uiDocument!;
-        const title = Object.values(document.elements).find(
-            element => element.type === "nl.text" && element.props?.localizable === true,
-        );
-        expect(title).toBeDefined();
-        delete (title!.props as Record<string, unknown>).localizable;
+        const [, document] = [...context.localization!.documents][0];
+        const unitId = Object.keys(document.units).find(id => id.startsWith("ui:") && id.endsWith(".text"));
+        expect(unitId).toBeDefined();
+        delete document.units[unitId!];
         const findings = await sweep(context);
-        expect(findings.filter(finding => finding.startsWith("ui/unlocalized-text"))).toHaveLength(1);
+        expect(findings.filter(finding => finding.startsWith("localization/missing"))).toHaveLength(1);
     });
 
     it("says so only because it can report: a menu word whose translation is gone is found", async () => {

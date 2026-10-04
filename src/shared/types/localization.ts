@@ -414,6 +414,40 @@ export function resolveLocalizedUnitText(
 }
 
 /**
+ * A named key's words in `locale`: its translation along the language's fallback chain, else its
+ * source words, else - for a key the bundle does not carry - the key's name, so a dangling key is seen
+ * where it is used rather than drawn as nothing.
+ *
+ * The one answer every reader of a key gives in a running game: a keyed widget, the latent `Get Text`
+ * and the pure `Translation Key Text`. A project without a source language ships a bundle that holds
+ * its keys and nothing else, so its keys read as their source words like any other project's.
+ */
+export function resolveLocalizationKeyWords(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables" | "keys">,
+    locale: LocaleCode,
+    keyName: string,
+): string {
+    return resolveLocalizedUnitText(bundle, locale, localizationKeyUnitId(keyName))
+        ?? (bundle.keys && Object.prototype.hasOwnProperty.call(bundle.keys, keyName) ? bundle.keys[keyName] : keyName);
+}
+
+/**
+ * The payload of a project without a source language: its keys, and no languages or translations.
+ *
+ * A key is first of all shared words - the same word said once wherever it is used - and that holds
+ * whether or not the project is translated. Story lines, scene and character names have nothing to
+ * read here and render as written, as they would with no payload at all.
+ */
+export function keysOnlyLocalization(keys: Readonly<Record<string, string>> | undefined): GameLocalizationBundle {
+    return { sourceLocale: "", locales: [], tables: {}, keys: { ...(keys ?? {}) } };
+}
+
+/** Whether a payload is {@link keysOnlyLocalization}'s: keys, and no language to translate into. */
+export function isKeysOnlyLocalization(bundle: Pick<GameLocalizationBundle, "sourceLocale">): boolean {
+    return !bundle.sourceLocale;
+}
+
+/**
  * A scene's name in the current language, or null when the bundle does not carry that scene.
  *
  * Falls back to the source-language name rather than to nothing: a project with no translation for

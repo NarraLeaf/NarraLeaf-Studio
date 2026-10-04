@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -31,6 +32,7 @@ import {
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
@@ -44,6 +46,7 @@ import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/c
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
@@ -76,9 +79,15 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextLabel)) {
         return;
     }
+    // Typed over a key the project does not have - drawn as its name - the words become the button's
+    // own and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getButtonProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel },
+        {
+            ...(docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 
@@ -284,9 +293,10 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         site: BUTTON_SITE,
         elementId: element.id,
         sourceText: p.label,
-        localizable: p.localizable,
         localizationKey: p.localizationKey,
+        origin: uiTextRuntimeOriginOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayLabel, uiTextRuntimeOriginOf(element) === "bound");
     const showLabel = displayLabel.trim().length > 0;
 
     // The label's marks, on the one rule a text label's follow: runs are drawn only while they still

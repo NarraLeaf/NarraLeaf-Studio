@@ -496,6 +496,13 @@ export const help = {
                 + "back. The import reports how many lines it applied, how many were unchanged and how many it "
                 + "could not match.\n"
                 + "- Export and import are in the language row's More menu.\n"
+                + "- Words written directly on an interface widget are translated like a line: each widget's own "
+                + "words have a row in the translation table, except words made only of digits and symbols, and "
+                + "sample text.\n"
+                + "- A translation key is words shared by every widget that names it. They show its words whether "
+                + "or not the project has a source language, and the key is translated once.\n"
+                + "- Removing a key, or bringing in widgets that use a key the project does not have, gives those "
+                + "widgets the key's words and translations as their own.\n"
                 + "- Changing language during a game restarts it and returns the player to the line they "
                 + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",
@@ -689,6 +696,9 @@ export const help = {
                 + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
                 + "Label, lists those blueprints under its text, and its own words are sample text as well. Append "
                 + "Text adds to the widget's own words, which therefore stay in the game.\n"
+                + "- Words a blueprint writes while the game runs are shown as written, in every language, ahead of "
+                + "a translation key and a Blueprint Value, until the page is opened again. Get Text and Get Label "
+                + "read the words on screen.\n"
                 + "- Writes made by a script layer are not listed. The words of a widget that only a script writes "
                 + "are built and translated as written.",
         },

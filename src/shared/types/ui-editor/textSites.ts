@@ -21,8 +21,9 @@
 /**
  * What the words on a site are.
  *
- * - `words`: what a player reads, as written - or as its translation key or translation unit
- *   replaces it.
+ * - `words`: what a player reads. Either the element's own, which are translated through the
+ *   element's own unit (`ui:<elementId>.<textProp>`) whenever the project has a second language, or
+ *   a translation key's.
  * - `sample`: stand-in words the canvas shows where the game draws something else in their place -
  *   the story's current line, in the dialogue slot and the NVL slot (`storySlot`).
  */
@@ -49,11 +50,6 @@ export type UITextSite = {
      * game reads the key before anything else the element carries (`resolveUITextWords`).
      */
     readonly keyProp?: "localizationKey" | "placeholderLocalizationKey";
-    /**
-     * The switch that translates the element's own words through its own unit
-     * (`ui:<elementId>.<textProp>`), when the site has one.
-     */
-    readonly unitProp?: "localizable";
     /** The marked runs (ruby, emphasis, ...) kept beside the words, when the site keeps them. */
     readonly marksProp?: "rich";
     /** Whether the canvas draws a keyed element's key text, as the game does in the source language. */
@@ -71,7 +67,6 @@ export const UI_TEXT_SITES: readonly UITextSite[] = [
         textProp: "text",
         role: "words",
         keyProp: "localizationKey",
-        unitProp: "localizable",
         marksProp: "rich",
         canvasDrawsKey: true,
         typedOnCanvas: true,
@@ -82,7 +77,6 @@ export const UI_TEXT_SITES: readonly UITextSite[] = [
         textProp: "label",
         role: "words",
         keyProp: "localizationKey",
-        unitProp: "localizable",
         marksProp: "rich",
         canvasDrawsKey: true,
         typedOnCanvas: true,

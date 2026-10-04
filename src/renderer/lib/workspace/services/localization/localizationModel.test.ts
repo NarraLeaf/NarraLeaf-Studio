@@ -299,12 +299,12 @@ describe("extractUiTranslationRows", () => {
     const document = {
         surfaces: [],
         elements: {
-            title: text("title", { text: "Your Game", localizable: true }),
-            nametag: text("nametag", { text: "Narra", localizable: true }, {
+            title: text("title", { text: "Your Game" }),
+            nametag: text("nametag", { text: "Narra" }, {
                 text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" },
             }),
-            place: text("place", { text: "The corridor", localizable: true }),
-            log: text("log", { text: "Log", localizable: true }),
+            place: text("place", { text: "The corridor" }),
+            log: text("log", { text: "Log" }),
         },
     } as unknown as UIDocument;
     const writer = (effect: "replace" | "append") => ({

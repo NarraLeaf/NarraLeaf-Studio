@@ -23,6 +23,7 @@ import type { Game, LiveGame, Scene } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
+    isKeysOnlyLocalization,
     localizationKeyUnitId,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
@@ -735,7 +736,8 @@ export class RuntimePluginHostController {
 
     private readLocale(): string {
         const attachment = this.attachment;
-        if (!attachment) {
+        // A project without a source language ships its keys and no language to read them in.
+        if (!attachment || (attachment.bundle.localization && isKeysOnlyLocalization(attachment.bundle.localization))) {
             return "";
         }
         const stored = attachment.scope.persistenceGet(LOCALE_STORAGE_KEY);

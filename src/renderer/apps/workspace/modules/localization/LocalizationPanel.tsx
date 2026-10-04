@@ -177,7 +177,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     }, [localizationService]);
 
     // Every translatable unit of the project: character names, scene names and
-    // story lines (narrative order), opted-in UI widget texts, and named keys —
+    // story lines (narrative order), widgets' own words, and named keys —
     // with translator-facing context (feeds both progress and CSV export).
     useEffect(() => {
         if (!storyService || !localizationService) {
