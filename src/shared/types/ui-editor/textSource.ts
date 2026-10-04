@@ -138,6 +138,46 @@ export function uiTextUnitBindingOf(element: UIElement, site: UITextSite): UITex
     return null;
 }
 
+/**
+ * Where the words a running game hands a widget came from, when they are not the element's own.
+ *
+ * - `written`: a runtime write - `Set Text`, `Set Label`, `Append Text`, `Clear Text`, a script's
+ *   write. Shown as written, in every language, ahead of a translation key, a translation and a value
+ *   binding, until the page is drawn afresh.
+ * - `bound`: a value binding or a list row's field. Shown as the binding gives them; a key still wins,
+ *   and the element's own unit, which translates the element's own words, is not read.
+ *
+ * Written onto the element a drawing hands its widget (`withUITextRuntimeWords`) and never stored: the
+ * document holds the element's own words, and only the drawing knows what replaced them.
+ */
+export type UITextRuntimeOrigin = "written" | "bound";
+
+/** The prop a drawing carries its words' origin in. Set by the drawing only; see {@link UITextRuntimeOrigin}. */
+export const UI_TEXT_RUNTIME_ORIGIN_PROP = "runtimeTextOrigin";
+
+/** The origin of the words a drawing hands a widget, or undefined for the element's own words. */
+export function uiTextRuntimeOriginOf(element: Pick<UIElement, "props">): UITextRuntimeOrigin | undefined {
+    const origin = (element.props as Record<string, unknown> | undefined)?.[UI_TEXT_RUNTIME_ORIGIN_PROP];
+    return origin === "written" || origin === "bound" ? origin : undefined;
+}
+
+/** The element as a drawing hands it to its widget: `words` on its site, and where they came from. */
+export function withUITextRuntimeWords(
+    element: UIElement,
+    site: UITextSite,
+    words: unknown,
+    origin: UITextRuntimeOrigin,
+): UIElement {
+    return {
+        ...element,
+        props: {
+            ...(element.props ?? {}),
+            [site.textProp]: words,
+            [UI_TEXT_RUNTIME_ORIGIN_PROP]: origin,
+        },
+    };
+}
+
 /** The words a site shows, as the renderer has them in hand. */
 export type UITextWordsInput = {
     site: UITextSite;
@@ -145,6 +185,8 @@ export type UITextWordsInput = {
     /** The words the element was handed - its own, or what a binding or a runtime write put there. */
     sourceText: string;
     localizationKey?: string;
+    /** Where `sourceText` came from when it is not the element's own words (`uiTextRuntimeOriginOf`). */
+    origin?: UITextRuntimeOrigin;
 };
 
 /**
@@ -161,12 +203,16 @@ export type UITextWordsHost =
 /**
  * The words a site shows.
  *
- * In a game: the key's translation, then the key's source text, then the words handed in; without a
- * key, the element's own unit, then the words handed in. On the canvas: a site that draws its key
- * shows the key's source text, and every other case shows the words handed in. A key the registry
- * does not hold falls back to the words handed in, in both.
+ * Words written at run time are shown as written, everywhere. Otherwise, in a game: the key's
+ * translation, then the key's source text, then the words handed in; without a key, words a binding
+ * gave as they are, and the element's own words through its own unit, then as written. On the canvas:
+ * a site that draws its key shows the key's source text, and every other case shows the words handed
+ * in. A key the registry does not hold falls back to the words handed in, in both.
  */
 export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHost): string {
+    if (input.origin === "written") {
+        return input.sourceText;
+    }
     const keyName = input.localizationKey?.trim();
     if (host.kind === "canvas") {
         return keyName && input.site.canvasDrawsKey
@@ -177,6 +223,9 @@ export function resolveUITextWords(input: UITextWordsInput, host: UITextWordsHos
         return resolveLocalizedUnitText(host.bundle, host.locale, localizationKeyUnitId(keyName))
             ?? host.bundle.keys?.[keyName]
             ?? input.sourceText;
+    }
+    if (input.origin === "bound") {
+        return input.sourceText;
     }
     return resolveLocalizedUnitText(host.bundle, host.locale, uiTextUnitId(input.elementId, input.site.textProp))
         ?? input.sourceText;

@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -31,6 +32,7 @@ import {
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
@@ -285,7 +287,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         elementId: element.id,
         sourceText: p.label,
         localizationKey: p.localizationKey,
+        origin: uiTextRuntimeOriginOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayLabel, uiTextRuntimeOriginOf(element) === "bound");
     const showLabel = displayLabel.trim().length > 0;
 
     // The label's marks, on the one rule a text label's follow: runs are drawn only while they still

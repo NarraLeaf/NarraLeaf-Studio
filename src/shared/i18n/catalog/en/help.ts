@@ -692,6 +692,9 @@ export const help = {
                 + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
                 + "Label, lists those blueprints under its text, and its own words are sample text as well. Append "
                 + "Text adds to the widget's own words, which therefore stay in the game.\n"
+                + "- Words a blueprint writes while the game runs are shown as written, in every language, ahead of "
+                + "a translation key and a Blueprint Value, until the page is opened again. Get Text and Get Label "
+                + "read the words on screen.\n"
                 + "- Writes made by a script layer are not listed. The words of a widget that only a script writes "
                 + "are built and translated as written.",
         },

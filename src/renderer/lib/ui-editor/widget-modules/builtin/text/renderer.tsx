@@ -15,6 +15,7 @@ import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -50,6 +51,7 @@ import {
     resolveTextVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
@@ -249,7 +251,9 @@ export function TextRenderer({
         elementId: element.id,
         sourceText: p.text,
         localizationKey: flatProps.localizationKey,
+        origin: uiTextRuntimeOriginOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayText, uiTextRuntimeOriginOf(element) === "bound");
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`
     // driven by a value blueprint and a list row's own field all arrive here as a different string,
