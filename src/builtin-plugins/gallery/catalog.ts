@@ -603,10 +603,27 @@ export type GalleryEntryView = {
     durationSec: number;
     /** `voice`: the shown member's unit id, for Resolve Voice Asset. */
     voiceUnitId: string;
+    /**
+     * `voice`: the shown member's line as it read when picked - what a voice row is recognised by,
+     * the way a CG row is recognised by its picture. Empty while locked, like the clip.
+     */
+    lineText: string;
     /** `scene`: where Start Game should replay from. Empty while locked. */
     storyId: string;
     sceneId: string;
     startBlockId: string;
+};
+
+/**
+ * The row fields the editor names for each column, beside the `Get Gallery` steps: the ones an item
+ * template for that column reaches for. Typed as keys of {@link GalleryEntryView} so the hint can
+ * never name a field the node does not hand out.
+ */
+export const GALLERY_ROW_FIELDS_BY_KIND: Record<GalleryEntryKind, readonly (keyof GalleryEntryView)[]> = {
+    cg: ["name", "image", "unlocked", "variantCount"],
+    scene: ["name", "image", "unlocked", "storyId", "sceneId"],
+    music: ["name", "audioAssetId", "durationSec", "unlocked"],
+    voice: ["name", "voiceUnitId", "lineText", "unlocked"],
 };
 
 /** One member of an entry: a differential, a track, or a voice line. */
@@ -719,6 +736,7 @@ export function projectGalleryEntries(
             audioAssetId: isUnlocked ? cover?.audioAssetId ?? "" : "",
             durationSec: isUnlocked ? cover?.durationSec ?? 0 : 0,
             voiceUnitId: isUnlocked ? cover?.voiceUnitId ?? "" : "",
+            lineText: isUnlocked ? cover?.lineText ?? "" : "",
             storyId: isUnlocked ? artwork.scene?.storyId ?? "" : "",
             sceneId: isUnlocked ? artwork.scene?.sceneId ?? "" : "",
             startBlockId: isUnlocked ? artwork.scene?.startBlockId ?? "" : "",

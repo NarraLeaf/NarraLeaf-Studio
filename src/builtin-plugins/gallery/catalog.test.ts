@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_LOCKED_NAME_MASK,
+    GALLERY_ENTRY_KINDS,
+    GALLERY_ROW_FIELDS_BY_KIND,
     collectAudioAssetVariantIds,
     collectSceneVariantIds,
     collectVoiceUnitVariantIds,
@@ -551,7 +553,7 @@ describe("v4 kinds", () => {
             sceneId: "scene-7",
             startBlockId: "block-3",
         });
-        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1" });
+        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1", lineText: "Good morning!" });
     });
 
     it("withholds the clip, the unit id and the scene coordinates while locked", () => {
@@ -566,6 +568,7 @@ describe("v4 kinds", () => {
         expect(rows[1]!.sceneId).toBe("");
         expect(rows[1]!.startBlockId).toBe("");
         expect(rows[2]!.voiceUnitId).toBe("");
+        expect(rows[2]!.lineText).toBe("");
     });
 
     it("carries the line text onto an unlocked voice member and withholds it when locked", () => {
@@ -574,6 +577,21 @@ describe("v4 kinds", () => {
         expect(projectGalleryVariants(store, line, new Set(["vo.v.1"]))[0])
             .toMatchObject({ lineText: "Good morning!", voiceUnitId: "text-uuid-1" });
         expect(projectGalleryVariants(store, line, new Set())[0]!.lineText).toBe("");
+    });
+
+    it("hands out every row field the editor names for a column", () => {
+        // The idle inspector lists these as what an item template can read off a Get Gallery row,
+        // so a name that is not on the row sends the author after a field that is always empty.
+        const store = storeOf({ items: [track, recollection, line, artwork({
+            id: "cg",
+            variants: [{ id: "cg.v", name: "A", imageAssetId: "i" }],
+        })] });
+        for (const kind of GALLERY_ENTRY_KINDS) {
+            const [row] = projectGalleryEntries(store, new Set(), { kind });
+            for (const field of GALLERY_ROW_FIELDS_BY_KIND[kind]) {
+                expect(row, `${kind}.${field}`).toHaveProperty(field);
+            }
+        }
     });
 
     it("filters entries and progress by kind", () => {
