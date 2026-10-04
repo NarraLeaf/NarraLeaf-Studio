@@ -50,6 +50,14 @@ export const blueprint = {
             other: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
         },
     },
+    wire: {
+        nodeDetail: "{node}（{detail}）",
+        end: "{node} · {pin}",
+        connectedTo: "{target} に接続",
+        goTo: "{target} へ移動",
+        goToNth: "{target}（{n}）へ移動",
+        goToConnected: "接続先のノードへ移動",
+    },
     crossProject: {
         pasted: {
             one: "{count} 個のノードを貼り付けた",
