@@ -31,6 +31,8 @@ import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FN_RETURN,
     BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
@@ -81,6 +83,10 @@ const SHOWS = {
     formatted: "formatted-text",
     /** The same key read inside a Fn the Blueprint Value calls. */
     throughFn: "fn-text",
+    /** The same key read by the latent `Get Text` inside a Fn the Blueprint Value calls. */
+    latentFn: "latent-fn-text",
+    /** `Get Current Language` inside a Fn the Blueprint Value calls. */
+    language: "language-text",
     /** An ordinary label with a translation key, drawn through the game's localization context. */
     keyed: "keyed-text",
 } as const;
@@ -116,11 +122,13 @@ const document: UIDocument = {
             id: `${PAGE}-root`,
             type: "nl.root",
             parentId: null,
-            childrenIds: [SHOWS.formatted, SHOWS.throughFn, SHOWS.keyed],
+            childrenIds: [SHOWS.formatted, SHOWS.throughFn, SHOWS.latentFn, SHOWS.language, SHOWS.keyed],
             layout: { x: 0, y: 0, width: 640, height: 360 },
         },
         [SHOWS.formatted]: boundText(SHOWS.formatted),
         [SHOWS.throughFn]: boundText(SHOWS.throughFn),
+        [SHOWS.latentFn]: boundText(SHOWS.latentFn),
+        [SHOWS.language]: boundText(SHOWS.language),
         [SHOWS.keyed]: {
             id: SHOWS.keyed,
             type: "nl.text",
@@ -150,6 +158,44 @@ function valueOwner(elementId: string): BlueprintOwnerRef {
     return { kind: "widgetValue", surfaceId: PAGE, elementId, propPath: "text" };
 }
 
+/** A value blueprint for one text: `Init -> Call Fn <fnName> -> Return Value`. */
+function showsFnResult(textId: string, fnName: string): Blueprint {
+    return blueprintOn(`bp-value-${textId}`, valueOwner(textId), {
+        init: graphOf({
+            nodes: {
+                head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                call: {
+                    type: BLUEPRINT_NODE_TYPE_FN_CALL,
+                    params: {
+                        [BLUEPRINT_NODE_PARAM_FN_REF]: createBlueprintFnRef(PAGE_BP, fnName),
+                        __fnSignatureSnapshot: {
+                            name: fnName,
+                            params: [],
+                            returns: [{ pinId: "ret_1_value", name: "value", valueType: "string" }],
+                        },
+                    },
+                },
+                ret: { type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            exec: ["head", "call", "ret"],
+            data: [["call", "ret_1_value", "ret", "value"]],
+        }),
+    });
+}
+
+/** A Fn named `name` that runs the latent `reader` and returns its `value` pin. */
+function fnReturning(name: string, reader: { type: string; params?: Record<string, unknown> }) {
+    return graphOf({
+        nodes: {
+            [name]: { type: BLUEPRINT_NODE_TYPE_FN_HEAD, params: { [BLUEPRINT_NODE_PARAM_FN_NAME]: name } },
+            read: reader,
+            ret: { type: BLUEPRINT_NODE_TYPE_FN_RETURN, params: { __fnReturnPinIds: ["ret_1_value"] } },
+        },
+        exec: [name, "read", "ret"],
+        data: [["read", "value", "ret", "ret_1_value"]],
+    });
+}
+
 const blueprints: readonly Blueprint[] = [
     blueprintOn(`bp-value-${SHOWS.formatted}`, valueOwner(SHOWS.formatted), {
         init: graphOf({
@@ -170,27 +216,9 @@ const blueprints: readonly Blueprint[] = [
             ],
         }),
     }),
-    blueprintOn(`bp-value-${SHOWS.throughFn}`, valueOwner(SHOWS.throughFn), {
-        init: graphOf({
-            nodes: {
-                head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-                call: {
-                    type: BLUEPRINT_NODE_TYPE_FN_CALL,
-                    params: {
-                        [BLUEPRINT_NODE_PARAM_FN_REF]: createBlueprintFnRef(PAGE_BP, "unit"),
-                        __fnSignatureSnapshot: {
-                            name: "unit",
-                            params: [],
-                            returns: [{ pinId: "ret_1_value", name: "value", valueType: "string" }],
-                        },
-                    },
-                },
-                ret: { type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
-            },
-            exec: ["head", "call", "ret"],
-            data: [["call", "ret_1_value", "ret", "value"]],
-        }),
-    }),
+    showsFnResult(SHOWS.throughFn, "unit"),
+    showsFnResult(SHOWS.latentFn, "latentUnit"),
+    showsFnResult(SHOWS.language, "language"),
     blueprintOn(PAGE_BP, { kind: "surfaceMain", surfaceId: PAGE }, {
         unit: graphOf({
             nodes: {
@@ -201,6 +229,8 @@ const blueprints: readonly Blueprint[] = [
             exec: ["unit", "ret"],
             data: [["read", "value", "ret", "ret_1_value"]],
         }),
+        latentUnit: fnReturning("latentUnit", { type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT, params: { key: "seconds" } }),
+        language: fnReturning("language", { type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE }),
         // A language button, as a settings page has one.
         switchToChinese: graphOf({
             nodes: {
@@ -390,6 +420,8 @@ describe("a label bound to a translated value", () => {
 
         expect(game.shown(SHOWS.formatted)).toBe("3 秒");
         expect(game.shown(SHOWS.throughFn)).toBe("{0} 秒");
+        expect(game.shown(SHOWS.latentFn)).toBe("{0} 秒");
+        expect(game.shown(SHOWS.language)).toBe("zh-CN");
         expect(game.shown(SHOWS.keyed)).toBe("设置");
         expect(game.errors).toEqual([]);
     });
@@ -406,6 +438,8 @@ describe("a label bound to a translated value", () => {
         expect(game.shown(SHOWS.keyed)).toBe("Config");
         expect(game.shown(SHOWS.formatted)).toBe("3 s");
         expect(game.shown(SHOWS.throughFn)).toBe("{0} s");
+        expect(game.shown(SHOWS.latentFn)).toBe("{0} s");
+        expect(game.shown(SHOWS.language)).toBe("en");
         expect(game.errors).toEqual([]);
     });
 
@@ -422,6 +456,8 @@ describe("a label bound to a translated value", () => {
         expect(game.shown(SHOWS.keyed)).toBe("设置");
         expect(game.shown(SHOWS.formatted)).toBe("3 秒");
         expect(game.shown(SHOWS.throughFn)).toBe("{0} 秒");
+        expect(game.shown(SHOWS.latentFn)).toBe("{0} 秒");
+        expect(game.shown(SHOWS.language)).toBe("zh-CN");
         expect(game.errors).toEqual([]);
     });
 });

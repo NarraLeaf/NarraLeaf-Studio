@@ -3987,6 +3987,26 @@ function isOutputPort(
 }
 
 /**
+ * {@link resolveNodeStoredAssetSet}, and the language it read, recorded for a value binding.
+ *
+ * A node whose stored asset the build answered per language - a picture that differs between the
+ * English and the Chinese release - resolves in the player's language on every read. A value binding
+ * that returned one has read the language, so it runs again when the player switches, and a bound
+ * picture changes with the unbound ones (`useLocalizedAssetId`) instead of keeping the old language's
+ * art until the page is drawn again. A node with no answers reads no language and records nothing.
+ */
+function resolveStoredAssetSetReadingLocale(
+    node: { assetVariants?: AssetVariantMap } | undefined,
+    value: unknown,
+    runtime: DataPinResolveRuntime | undefined,
+): unknown {
+    if (node?.assetVariants) {
+        runtime?.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
+    }
+    return resolveNodeStoredAssetSet(node, value);
+}
+
+/**
  * Resolve the value feeding an input data pin, or an output value for pure data nodes.
  */
 export function resolveDataPinValue(
@@ -4025,7 +4045,7 @@ export function resolveDataPinValue(
         if (consumerPortId === "condition") {
             return false;
         }
-        return resolveNodeStoredAssetSet(graph.nodes?.[consumerNodeId], params[consumerPortId]);
+        return resolveStoredAssetSetReadingLocale(graph.nodes?.[consumerNodeId], params[consumerPortId], runtime);
     }
 
     const src = graph.nodes?.[edge.from.nodeId];
@@ -4079,7 +4099,7 @@ export function resolveDataPinValue(
     return coerceEdgeValueForTarget({
         // Resolved against the SOURCE node, which is the one that stored the id: an asset pin fed by
         // a literal never sees a set at all, so the answer lives on the literal.
-        value: resolveNodeStoredAssetSet(src, value),
+        value: resolveStoredAssetSetReadingLocale(src, value, runtime),
         graph,
         edge,
         consumerParams: params,

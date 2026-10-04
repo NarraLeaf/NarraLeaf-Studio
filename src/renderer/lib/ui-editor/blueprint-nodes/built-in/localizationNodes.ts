@@ -22,6 +22,7 @@ import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import { hasLocalizationKey, resolveLocalizationKeyText } from "./localizationKeyText";
+import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
@@ -66,6 +67,9 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         ],
         async execute(ctx) {
             const api = requireHostApi(ctx);
+            // A value binding that reaches this through a Fn shows the language; it has to hear the
+            // next switch.
+            ctx.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
             return {
                 nextPort: "next",
                 outputValues: {
@@ -164,6 +168,9 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
                     ctx.node.id,
                 );
             }
+            // A value binding that reaches this through a Fn shows a translated word; it has to hear
+            // the next language switch, as one reading `Translation Key Text` directly does.
+            ctx.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
             const text = await resolveNamedKeyText(ctx, keyName);
             return {
                 nextPort: "next",
