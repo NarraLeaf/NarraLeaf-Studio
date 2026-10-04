@@ -97,12 +97,20 @@ describe("planCommandLineBuild", () => {
         expect(result.ok && result.plan.reportPath).toBe(path.join(WORKING_DIRECTORY, "out", "report.json"));
     });
 
-    it("refuses a platform this host cannot build for", () => {
+    it("builds a macOS zip from a host that is not a Mac", () => {
         const result = plan({ platform: "macos" });
+
+        expect(result.ok && result.plan.request.targets).toEqual([
+            expect.objectContaining({ platform: "macos", formats: ["zip"] }),
+        ]);
+    });
+
+    it("refuses a format this host cannot produce, and says what it can", () => {
+        const result = plan({ platform: "macos", format: "dmg" });
 
         expect(result).toEqual({
             ok: false,
-            reason: expect.stringContaining("Cannot build for macos on this machine"),
+            reason: expect.stringContaining("Cannot build macos dmg on this machine. On this machine, macOS builds offer zip only"),
         });
     });
 

@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -53,6 +54,17 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     // (`hotTrack`): this is the window's identity that happens to carry a menu, and crossing it on
     // the way to the File menu is not a request to see the project list. See `../ui/titleBarMenus`.
     const { ref: containerRef, open, toggle, close } = useTitleBarMenu("narraleaf-studio:project-switcher");
+    const menuRef = useRef<HTMLDivElement>(null);
+    // Focus moves onto the first row when the menu opens, the up and down arrows walk the rows, Tab
+    // out closes it, and closing gives focus back to the button. Escape is the bar's, which closes
+    // the menu ahead of this layer hearing the key.
+    useFloatingLayer({
+        open,
+        onClose: close,
+        panelRef: menuRef,
+        ownerRefs: [containerRef],
+        itemSelector: SWITCHER_ROW_SELECTOR,
+    });
     // The project the author picked, held while the dialog asks which window it should open in.
     const [pending, setPending] = useState<PendingOpen | null>(null);
 
@@ -175,6 +187,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
 
             {open && (
                 <div
+                    ref={menuRef}
                     className="absolute top-full left-0 mt-1 z-20 w-80 max-w-[80vw] bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
                     role="menu"
                     aria-label={t("workspace.shell.projectSwitcher.openAnother")}
@@ -218,6 +231,9 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
         </div>
     );
 }
+
+/** The rows of the open menu, for the keyboard walk. */
+const SWITCHER_ROW_SELECTOR = "[role=\"menuitem\"]";
 
 /** A project the author has picked, on its way to being opened or to the "which window" dialog. */
 type PendingOpen = {

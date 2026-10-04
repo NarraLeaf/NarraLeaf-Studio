@@ -80,8 +80,19 @@ export function createStudioPreloadScheduler(options?: {
     let compiled: CompiledNlrStory | null = null;
     /** Studio scene id per NLR scene object, which is the only handle a plan moment carries. */
     let sceneIdByScene = new Map<Scene, string>();
+    /**
+     * The scene a row-precise launch enters through, and the Studio scene it stands for.
+     *
+     * Kept apart from {@link sceneIdByScene} on purpose. That table decides which warm order a plan
+     * reads, and the synthetic scene must keep falling back to the player's own walk - it has no
+     * warm order of its own. But every row it plays IS a row of the scene it stands for, so a report
+     * raised while it is on stage names that scene rather than none.
+     */
+    let launchEntry: { scene: Scene; sceneId: string } | null = null;
     /** The row each action belongs to, so an advancing play head can be placed in the warm order. */
     let blockIdByActionId = new Map<string, string>();
+    /** The scene each row belongs to, for naming the row the play head is on. */
+    let sceneIdByBlockId = new Map<string, string>();
     /**
      * Per scene, the first row that asked for a url, so an unwarmed image can be reported against
      * something. Per scene because an image two scenes share is first asked for in each of them, and
@@ -90,6 +101,15 @@ export function createStudioPreloadScheduler(options?: {
     let blockIdByUrlByScene = new Map<string, Map<string, string>>();
     /** The scene the latest plan was for, which is the one a missing image belongs to. */
     let currentSceneId: string | null = null;
+    /**
+     * The row of the action the player is running, from the last `advance` moment.
+     *
+     * The engine announces every action just before it runs it, and a clip reports itself unbuffered
+     * from inside the action that plays it - so at that moment this is the very row that asked. It is
+     * a better answer than the scene of the latest plan, which trails a `/jump` by a render and
+     * cannot see a row-precise launch at all.
+     */
+    let playHeadBlockId: string | null = null;
     /** One image per scene: what a scene opens on, which is all that is worth warming for a scene nobody is in. */
     let openingFrames: string[] = [];
     let report: ((message: string) => void) | null = null;
@@ -101,9 +121,12 @@ export function createStudioPreloadScheduler(options?: {
         useCompiled(next: CompiledNlrStory | null): void {
             compiled = next;
             sceneIdByScene = new Map();
+            launchEntry = null;
             blockIdByActionId = new Map();
+            sceneIdByBlockId = new Map();
             blockIdByUrlByScene = new Map();
             currentSceneId = null;
+            playHeadBlockId = null;
             openingFrames = [];
             if (!next) {
                 timeline.useAssetIds(new Map());
@@ -111,6 +134,10 @@ export function createStudioPreloadScheduler(options?: {
             }
             for (const [sceneId, scene] of Object.entries(next.scenes)) {
                 sceneIdByScene.set(scene, sceneId);
+            }
+            // The entry scene is one of the compiled scenes, except for a row-precise launch.
+            if (next.scene && !sceneIdByScene.has(next.scene)) {
+                launchEntry = { scene: next.scene, sceneId: next.sceneId };
             }
             for (const binding of next.actionIdBindings) {
                 blockIdByActionId.set(binding.staticId, binding.blockId);
@@ -122,6 +149,7 @@ export function createStudioPreloadScheduler(options?: {
                 const blockIdByUrl = new Map<string, string>();
                 // `blockOrder` rather than the keys of `byBlock`, so "first" means first in the scene.
                 for (const blockId of order.blockOrder) {
+                    sceneIdByBlockId.set(blockId, sceneId);
                     for (const resource of order.byBlock[blockId] ?? []) {
                         if (!blockIdByUrl.has(resource.url)) {
                             blockIdByUrl.set(resource.url, blockId);
@@ -146,11 +174,14 @@ export function createStudioPreloadScheduler(options?: {
         },
 
         plan(moment: PreloadMoment): PreloadPlan | null | Promise<PreloadPlan | null> {
+            if (moment.kind === "advance") {
+                playHeadBlockId = moment.actionId ? blockIdByActionId.get(moment.actionId) ?? null : null;
+            }
             const scene = moment.scene;
             if (!scene) {
                 return null;
             }
-            currentSceneId = sceneIdByScene.get(scene) ?? null;
+            currentSceneId = sceneIdByScene.get(scene) ?? (launchEntry?.scene === scene ? launchEntry.sceneId : null);
             const order = warmOrderFor(scene);
             if (!order) {
                 // A scene with no warm order: the synthetic scene a row-precise launch enters
@@ -231,11 +262,25 @@ export function createStudioPreloadScheduler(options?: {
     };
 
     /**
-     * The row to name for a url: the first to ask for it in the scene being played, or else the
-     * first in any scene - an image the reader meets in a scene that never asked for it was still
-     * asked for somewhere, and that row is where the author will recognise it.
+     * The row to name for a url: the row being played when that row is the one asking for it, then
+     * the first to ask for it in the scene being played, or else the first in any scene - an image
+     * the reader meets in a scene that never asked for it was still asked for somewhere, and that
+     * row is where the author will recognise it.
+     *
+     * The play head comes first because the two later answers are both about a scene, and an asset
+     * several scenes share is asked for in each of them: the scene of the latest plan trails a
+     * `/jump`, and a row-precise launch enters through a scene no warm order describes, so either
+     * one used to send the author to the first scene that happened to use the same clip.
      */
     function rowAsking(url: string): { sceneName: string; row: number } | null {
+        const playHeadSceneId = playHeadBlockId ? sceneIdByBlockId.get(playHeadBlockId) : undefined;
+        if (playHeadBlockId && playHeadSceneId) {
+            const order = compiled?.sceneWarmOrder?.[playHeadSceneId];
+            const row = order?.rows[playHeadBlockId];
+            if (order && row !== undefined && (order.byBlock[playHeadBlockId] ?? []).some(resource => resource.url === url)) {
+                return { sceneName: order.sceneName, row };
+            }
+        }
         const candidates = currentSceneId ? [currentSceneId, ...blockIdByUrlByScene.keys()] : [...blockIdByUrlByScene.keys()];
         for (const sceneId of candidates) {
             const blockId = blockIdByUrlByScene.get(sceneId)?.get(url);
@@ -259,6 +304,11 @@ export function createStudioPreloadScheduler(options?: {
     /**
      * Where in the scene's rows the play head is, or the top when it cannot be placed.
      *
+     * A row that asks for no media - a line of dialogue, a pause - is placed where the next row that
+     * does would be ({@link SceneWarmOrder.placeOf}). Reading it as the top of the scene put every
+     * clip the story had already played back into the plan, and so back on the stage, hidden: a clip
+     * a play had cleared away came back for a later `/resume` to run unseen and heard.
+     *
      * A row-precise launch, an async branch and a plugin's injected action all produce actions this
      * cannot place, and the honest answer for all of them is the same: plan from the top of the
      * scene, which warms more than needed rather than less.
@@ -272,7 +322,10 @@ export function createStudioPreloadScheduler(options?: {
             return 0;
         }
         const index = order.blockOrder.indexOf(blockId);
-        return index < 0 ? 0 : index;
+        if (index >= 0) {
+            return index;
+        }
+        return order.placeOf?.[blockId] ?? 0;
     }
 
     function buildPlan(sceneId: string, order: SceneWarmOrder, from: number, gates: boolean): PreloadPlan {

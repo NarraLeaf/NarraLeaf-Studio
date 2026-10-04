@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "../layout/hostVisibility";
+import { useFloatingLayer } from "../layout/floatingLayer";
 import { ChevronRight } from "lucide-react";
+import { MenuShortcut } from "./MenuShortcut";
 import { cn } from "../../utils/cn";
 import { useHostWindow } from "../layout/hostWindow";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * True inside a menu's own subtree, which is where its submenus render.
@@ -58,6 +60,12 @@ export interface ContextMenuItemDef {
      * than in the label keeps a disabled menu a menu instead of a paragraph.
      */
     tooltip?: string;
+    /**
+     * The chord that runs the same command, already formatted for this platform (callers resolve it
+     * through `useShortcutLabels`, so a rebound key shows rebound). Printed at the right of the row:
+     * a menu that names a command without its key is the reason the key stays undiscovered.
+     */
+    shortcut?: string;
     onClick?: () => void;
     submenu?: ContextMenuItemDef[];
     /**
@@ -117,9 +125,17 @@ export function ContextMenu({
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const isSubmenu = useContext(InsideContextMenuContext);
-    // Portalled to the body, so the `display: none` that puts a kept-alive tab or panel away leaves
-    // this menu standing over whatever the author switched to.
-    useDismissWhenHidden(onClose, visible);
+    // A floating layer that leaves focus where it is: a right click in a text field opens this over
+    // the field, and Cut, Copy and Paste act on whatever holds focus - so the field keeps it, as it
+    // would under a native menu, and the keys are taken from it below instead. Being a layer is what
+    // closes the menu when focus moves on (Tab out of the field) and when its kept-alive tab or panel
+    // is put away, and what puts it on the stack Escape is decided against.
+    useFloatingLayer({
+        open: visible && !isSubmenu,
+        onClose,
+        panelRef: menuRef,
+        initialFocus: false,
+    });
     /** The window this menu is drawn in - the renderer's own, or a detached editor's. */
     const hostWindow = useHostWindow();
     const doc = hostWindow.document;
@@ -262,12 +278,32 @@ export function ContextMenu({
         );
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (enabledItems.length === 0) {
-                if (e.key === 'Escape') {
+            if (isImeKeyEvent(e)) return;
+            // Escape belongs to the top-level menu, and closes all of it.
+            if (e.key === 'Escape') {
+                if (isSubmenu) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+                return;
+            }
+            // While a submenu is open the keys are its own; this level only takes ArrowLeft back.
+            if (openSubmenuIndex !== null) {
+                if (e.key === 'ArrowLeft') {
                     e.preventDefault();
-                    onClose();
+                    e.stopPropagation();
+                    setOpenSubmenuIndex(null);
                 }
                 return;
+            }
+            if (enabledItems.length === 0) {
+                return;
+            }
+            const handled = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Enter', ' '].includes(e.key);
+            if (handled) {
+                // Focus is still on whatever the menu was opened over, so without this the arrows
+                // that walk the menu also move the caret in the field under it, and Enter submits it.
+                e.stopPropagation();
             }
 
             switch (e.key) {
@@ -305,16 +341,13 @@ export function ContextMenu({
                         }
                     }
                     break;
-                case 'Escape':
-                    e.preventDefault();
-                    onClose();
-                    break;
             }
         };
 
-        doc.addEventListener('keydown', handleKeyDown);
-        return () => doc.removeEventListener('keydown', handleKeyDown);
-    }, [doc, visible, focusedIndex, items, onClose]);
+        // Capture: ahead of the field that still holds focus, which would otherwise see every key first.
+        doc.addEventListener('keydown', handleKeyDown, true);
+        return () => doc.removeEventListener('keydown', handleKeyDown, true);
+    }, [doc, visible, focusedIndex, items, onClose, isSubmenu, openSubmenuIndex]);
 
     if (!visible) return null;
 
@@ -485,6 +518,12 @@ function ContextMenuItem({
 
                 {/* Label */}
                 <span className="flex-1">{item.label}</span>
+
+                {item.shortcut ? (
+                    <span className="pl-4">
+                        <MenuShortcut of={item.shortcut} />
+                    </span>
+                ) : null}
 
                 {/* Submenu indicator */}
                 {hasSubmenu && (

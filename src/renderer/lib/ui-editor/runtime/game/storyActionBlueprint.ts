@@ -1,12 +1,14 @@
 /**
- * Compiles a Story Action Blueprint (a graph blueprint bound 1:1 to a story action) into an NLR
- * `Script` action. The Script handler runs the blueprint's "On Call" graph through the shared
- * behavior-graph interpreter, mapping variable scopes onto NLR stores:
- *   - Var        -> ephemeral graph execution locals
+ * Compiles a Story Action Blueprint (a graph blueprint bound 1:1 to a story action) into an awaited
+ * NLR action (`storyAwaitedAction.ts`). Its handler runs the blueprint's "On Call" graph through the
+ * shared behavior-graph interpreter, mapping variable scopes onto NLR stores:
+ *   - Var        -> the row's own Vars start from their declared defaults on every run; a Var of
+ *                   the project blueprint is the live record the interface reads and writes
  *   - Scene var  -> NLR `Scene.local` (per-scene, in-save)
  *   - Saved var  -> NLR `Storable` namespace (per save-file)
  *   - Persistent -> shared host persistence bridge (app-level, cross-save)
- * The handler returns a `ScriptCleaner` so NLR can cancel in-flight async work on undo/load/interrupt.
+ * The story waits on the row until the graph has finished, latent nodes included, and rolling back
+ * past the row or loading a save while it runs aborts the graph's signal.
  * Comments in English per project convention.
  */
 
@@ -14,8 +16,8 @@ import type { PersistentVariableRuntimeTable } from "@shared/types/variables/reg
 // Diagnostics reach the Dev Mode Issues panel under the row that runs this blueprint, so they are
 // worded from the catalog in the window's language, like the story compiler's own.
 import { translate } from "@/lib/i18n";
-import { Script } from "narraleaf-react";
 import type { Scene, ScriptCtx } from "narraleaf-react";
+import { createStoryAwaitedAction } from "./storyAwaitedAction";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectStoryActionEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
@@ -27,10 +29,12 @@ import type {
     StorySceneVariableDefinition,
 } from "@shared/types/story";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
+import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
 import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
+import { acquireBlueprintExecutionLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -113,7 +117,7 @@ type StoryActionExecutionEnv = {
 };
 
 /**
- * Compile a Story Action Blueprint into an NLR `Script` action, or `null` when it cannot be compiled
+ * Compile a Story Action Blueprint into an awaited NLR action, or `null` when it cannot be compiled
  * (missing blueprint, or no "On Call" layer). The action form ignores any Return Value.
  *
  * A story row has one event head, so it has one layer, and that layer is a graph or one of the
@@ -130,27 +134,26 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
         return compileStoryActionScriptModule(input, bp.name, script);
     }
 
-    return Script.execute((ctx: ScriptCtx) => {
-        const abort = new AbortController();
-        const hostAdapter = buildStoryActionHostAdapter(input, ctx, abort.signal);
-        const env: StoryActionExecutionEnv = { input, hostAdapter, signal: abort.signal };
-        void runStoryActionOnCall(env).catch(err => {
-            if (!isBlueprintGraphExecutionCancelledError(err)) {
-                // Surface unexpected runtime errors; NLR treats the action itself as complete.
-                console.error("[storyActionBlueprint] execution error", err);
+    return createStoryAwaitedAction({
+        run: async (ctx, signal) => {
+            const hostAdapter = buildStoryActionHostAdapter(input, ctx, signal);
+            await runStoryActionOnCall({ input, hostAdapter, signal });
+        },
+        onError: error => {
+            if (!isBlueprintGraphExecutionCancelledError(error)) {
+                // A failed graph does not hold the story: the row is over, and the error is reported.
+                console.error("[storyActionBlueprint] execution error", error);
             }
-        });
-        // ScriptCleaner: cancel in-flight async graph work on undo / load / game interrupt.
-        return () => abort.abort();
+        },
     });
 }
 
 /**
  * A story row whose logic is a script: its default export, run with the story context.
  *
- * The same `Script.execute` shape a graph compiles to, so the row behaves identically from NLR's
- * side - the cleaner included, which aborts the signal the handler was given when the player undoes,
- * loads or interrupts. The export is resolved when the row runs rather than when it is compiled,
+ * The same awaited action a graph compiles to, so the row behaves identically from NLR's side: the
+ * story waits for the handler, and the signal it was given is aborted when the player rolls back past
+ * the row or loads while it runs. The export is resolved when the row runs rather than when it is compiled,
  * because Dev Mode remounts modules on every save and a handler captured here would be the one from
  * before the author's edit.
  */
@@ -159,20 +162,20 @@ function compileStoryActionScriptModule(
     name: string,
     layer: ScriptLayerEntry,
 ): unknown {
-    return Script.execute((ctx: ScriptCtx) => {
-        const abort = new AbortController();
-        const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
-        if (!handler) {
-            reportMissingDefaultExport(input, name, layer, "skipped");
-            return () => undefined;
-        }
-        const storyCtx = buildStoryScriptContext(input, ctx, abort.signal);
-        void Promise.resolve(handler(storyCtx)).catch(error => {
+    return createStoryAwaitedAction({
+        run: async (ctx, signal) => {
+            const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
+            if (!handler) {
+                reportMissingDefaultExport(input, name, layer, "skipped");
+                return;
+            }
+            await handler(buildStoryScriptContext(input, ctx, signal));
+        },
+        onError: error => {
             if (!isBlueprintGraphExecutionCancelledError(error)) {
                 console.error("[storyActionBlueprint] script error", error);
             }
-        });
-        return () => abort.abort();
+        },
     });
 }
 
@@ -262,7 +265,7 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: input.persistentVariables,
@@ -442,30 +445,60 @@ function buildStoryActionHostAdapter(
     return adapter as UIHostAdapter;
 }
 
+/**
+ * The variables one run of a story-row graph reads and writes through `Get Var` / `Set Var`.
+ *
+ * The same accessor a Surface blueprint's run is given, with no surface: the row's own Vars at their
+ * declared defaults, and the project blueprint's Vars as the live records. Each graph run gets a
+ * fresh object, because the node-output values a run writes into it are that run's alone.
+ */
+function storyActionLocals(document: BlueprintDocument, blueprintId: string): Record<string, unknown> {
+    return acquireBlueprintExecutionLocals({ blueprintDocument: document, currentBlueprintId: blueprintId });
+}
+
+/**
+ * Run every `On Call` head of the row's blueprint, all of them together, and wait for all of them -
+ * the story waits on the row until its last head is done.
+ *
+ * A head that fails stops none of the others. The row reports a failure the way it reports a lone
+ * head's, by rejecting - once every head has settled, with the first failure in head order. The value
+ * answered is still the last head's in head order to set one, not whichever happened to finish last.
+ */
 async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unknown> {
     const bp = resolveActiveStoryActionBlueprint(env.input.blueprintDocument, env.input.blueprintId);
     if (!bp) {
         return undefined;
     }
-    let lastReturn: unknown;
+    const runs: Array<() => Promise<{ returnValueSet: boolean; returnValue?: unknown }>> = [];
     for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
         const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("storyAction", bp.id, eventGraph.id));
         for (const headId of headIds) {
-            const result = await executeGraph({
+            runs.push(() => executeGraph({
                 graph,
                 entry: { start: { nodeId: headId, port: "then" as const } },
                 hostAdapter: env.hostAdapter,
-                blueprintLocals: {},
+                blueprintLocals: storyActionLocals(env.input.blueprintDocument, bp.id),
                 eventName: "onCall",
                 executionOwner: { blueprintId: bp.id },
                 persistentVariables: env.input.persistentVariables,
                 signal: env.signal,
-            });
-            if (result.returnValueSet) lastReturn = result.returnValue;
+            }));
         }
+    }
+    let lastReturn: unknown;
+    let firstFailure: { reason: unknown } | null = null;
+    for (const outcome of await startTogether(runs)) {
+        if (outcome.status === "rejected") {
+            firstFailure ??= { reason: outcome.reason };
+            continue;
+        }
+        if (outcome.value.returnValueSet) lastReturn = outcome.value.returnValue;
+    }
+    if (firstFailure) {
+        throw firstFailure.reason;
     }
     return lastReturn;
 }
@@ -496,7 +529,7 @@ async function invokeStoryActionFn(options: {
     if (!visible) {
         throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
-    const blueprintLocals: Record<string, unknown> = {};
+    const blueprintLocals = storyActionLocals(input.blueprintDocument, decl.blueprintId);
     const seededArgs: Record<string, unknown> = {};
     for (const param of decl.params) {
         seededArgs[param.pinId] = args[param.pinId];

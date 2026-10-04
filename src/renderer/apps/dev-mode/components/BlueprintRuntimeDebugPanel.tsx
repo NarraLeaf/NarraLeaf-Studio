@@ -24,6 +24,7 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { SAFE_AREA_FAMILY_LABELS } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
@@ -108,8 +109,11 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     const [expandedBp, setExpandedBp] = useState<Set<string>>(() => new Set());
     const [studioHint, setStudioHint] = useState<string | null>(null);
     const outputScrollRef = useRef<HTMLDivElement>(null);
+    /** Each menu's wrapper - trigger and menu together, for the outside-click test - and the menu itself. */
     const logLevelMenuRef = useRef<HTMLDivElement>(null);
+    const logLevelPanelRef = useRef<HTMLDivElement>(null);
     const safeAreaMenuRef = useRef<HTMLDivElement>(null);
+    const safeAreaPanelRef = useRef<HTMLDivElement>(null);
 
     const [surfaceSnap, setSurfaceSnap] = useState(() =>
         scopeBridge.getSurfaceStore(activeSurfaceId).getSnapshot(),
@@ -159,6 +163,23 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             el.scrollTop = el.scrollHeight;
         }
     }, [events, tab, outputLogLevels]);
+
+    // Both menus: focus goes in (to the ticked preset, or the first level), the arrows walk the rows,
+    // and Escape closes the menu alone - the drawer they sit in closes on an Escape nothing else took.
+    useFloatingLayer({
+        open: logLevelMenuOpen,
+        onClose: () => setLogLevelMenuOpen(false),
+        panelRef: logLevelPanelRef,
+        ownerRefs: [logLevelMenuRef],
+        itemSelector: "[data-log-level-option]",
+    });
+    useFloatingLayer({
+        open: safeAreaMenuOpen,
+        onClose: () => setSafeAreaMenuOpen(false),
+        panelRef: safeAreaPanelRef,
+        ownerRefs: [safeAreaMenuRef],
+        itemSelector: '[role="menuitemradio"]',
+    });
 
     useEffect(() => {
         if (!logLevelMenuOpen) {
@@ -316,6 +337,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         </ToolbarButton>
                         {safeAreaMenuOpen ? (
                             <div
+                                ref={safeAreaPanelRef}
                                 role="menu"
                                 aria-label={t("uiEditor.preview.safeArea")}
                                 // Right-anchored: the panel's right edge is the window's when docked.
@@ -468,12 +490,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 </button>
                                 {logLevelMenuOpen ? (
                                     <div
+                                        ref={logLevelPanelRef}
                                         role="menu"
                                         className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
                                             <Checkbox
                                                 key={level}
+                                                data-log-level-option=""
                                                 className="rounded-md px-1.5 py-1 text-2xs hover:bg-fill"
                                                 checked={outputLogLevels.has(level)}
                                                 onCheckedChange={() => toggleOutputLogLevel(level)}

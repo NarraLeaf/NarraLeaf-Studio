@@ -110,6 +110,9 @@ Run `node project/app/debug.js --help` for the full option list.
 All return JSON. `GET` only.
 
 - `GET /health` — server status, version, the endpoint list, and the live windows.
+  `windowTag` is the label this instance puts in front of its window titles
+  (`NLS_WINDOW_TAG`, set by `dev-electron.js --window-tag=`), or `null` - the
+  quickest way to confirm the port you are on belongs to the Studio you launched.
 - `GET /windows` — live windows plus buffered (including recently-closed) windows.
   Each live window carries `visible`, which is not the same as existing: a window that
   has not finished its first render, and a launcher held back for a project being opened,

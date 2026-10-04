@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "@/lib/components/layout";
 import { Check } from "lucide-react";
-import { useHostWindow } from "@/lib/components/layout";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 
 const PANEL_VIEWPORT_PADDING = 8;
 const PANEL_GAP = 4;
+/**
+ * What the arrow keys walk in an open panel: the shared rows, and the checkboxes a settings panel
+ * lists instead.
+ */
+const TOOLBAR_POPOVER_ITEM_SELECTOR = "[data-surface-toolbar-row], input[type=\"checkbox\"]";
 
 /**
  * Fixed popover position (viewport / client coordinates) for a trigger + measured panel.
@@ -58,7 +62,7 @@ export type SurfaceToolbarPopover = {
 };
 
 /**
- * Open/close state, outside-click and Escape dismissal, and flip-aware positioning for a canvas
+ * Open/close state, outside-click and keyboard dismissal, and flip-aware positioning for a canvas
  * toolbar dropdown. Shared by every dropdown in the surface editor toolbar so they dismiss and
  * position identically.
  *
@@ -79,9 +83,18 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
 
     const close = useCallback(() => setOpen(false), []);
     const toggle = useCallback(() => setOpen(v => !v), []);
-    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
-    // moved to unless it is told (`useDismissWhenHidden`).
-    useDismissWhenHidden(close, open);
+    // A floating layer: focus moves into the panel when it opens (onto the row already chosen, if
+    // there is one), the arrows walk its rows, Escape closes it and not the editor it was portalled
+    // out of, Tab out of it closes it, and closing gives focus back to the trigger. Portalled to the
+    // body, so a tab or panel switch would leave it hanging over what the author moved to; the layer
+    // puts it away then too.
+    useFloatingLayer({
+        open,
+        onClose: close,
+        panelRef,
+        ownerRefs: [triggerRef],
+        itemSelector: TOOLBAR_POPOVER_ITEM_SELECTOR,
+    });
 
     useLayoutEffect(() => {
         if (!open) {
@@ -134,19 +147,6 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
             hostWindow.clearTimeout(timer);
             hostWindow.document.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [close, hostWindow, open]);
-
-    useEffect(() => {
-        if (!open) {
-            return undefined;
-        }
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                close();
-            }
-        };
-        hostWindow.document.addEventListener("keydown", onKey);
-        return () => hostWindow.document.removeEventListener("keydown", onKey);
     }, [close, hostWindow, open]);
 
     return { open, toggle, close, triggerRef, panelRef, position };
@@ -239,6 +239,9 @@ export function SurfaceToolbarPopoverRow({
             disabled={disabled}
             onClick={onClick}
             aria-pressed={selected}
+            data-surface-toolbar-row=""
+            // The row already chosen is where the keyboard starts when the panel opens.
+            data-autofocus={selected ? "" : undefined}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-fg transition-colors hover:bg-fill-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >
             <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-muted">

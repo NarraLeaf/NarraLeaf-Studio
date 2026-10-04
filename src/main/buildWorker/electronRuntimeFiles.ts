@@ -31,8 +31,8 @@
  *     holds the rule against the complete file lists of real Electron releases, so it cannot drop
  *     anything a release contains.
  *  2. The two files electron-builder drops from a download are dropped from a copy too.
- *  3. On macOS, Electron's licence and Chromium's credits are put inside the bundle. See
- *     {@link macLicenceDestination}.
+ *  3. On macOS, Electron's licence and Chromium's credits are put inside the bundle, in
+ *     `Contents/Resources/`. See {@link macLicenceDestination}.
  */
 
 import fs from "fs/promises";
@@ -92,19 +92,24 @@ export interface ElectronStageReport {
 }
 
 /**
- * Where a macOS game keeps Electron's licences: `Contents/`, beside `THIRD-PARTY-NOTICES.txt` and
- * `COPYRIGHT.txt`.
+ * Where a macOS game keeps Electron's licences: `Contents/Resources/`, beside the game's own
+ * `THIRD-PARTY-NOTICES.txt` and `COPYRIGHT.txt` (see `extraFilesFor` in runGameBuild.ts).
  *
  * electron-builder deletes both files from a macOS app outright (`electronMac.js`, after it has
  * built the bundle), where on Windows and Linux it leaves them beside the executable. A macOS app
- * has no "beside the executable" a player sees; the bundle is the folder they have. `Contents/` is
- * what the game's own notices already use as that folder (`extraFiles`, whose destination is
- * `Contents/` on macOS), so all four notice files are in one place on every platform. Sealing is
- * unaffected: codesign treats a plain file in `Contents/` as a resource like any other, and
- * `codesign --verify --deep --strict` accepts the result.
+ * has no "beside the executable" a player sees; the bundle is the folder they have, and the notices
+ * belong inside it.
+ *
+ * Not `Contents/` itself, which is where they used to go. codesign's rules treat a top-level file
+ * in `Contents/` as nested code, and sign one that is not code by writing its signature into the
+ * file's extended attributes. The folder on the build machine verifies; a zip carries no extended
+ * attributes, so the app a player unpacks from one fails verification on the first of these files
+ * ("code object is not signed at all ... In subcomponent: Contents/LICENSE.electron.txt"). A file in
+ * `Resources/` is sealed by its hash in `_CodeSignature/CodeResources`, which travels in any
+ * archive.
  */
 function macLicenceDestination(appOutDir: string, shipped: string): string {
-    return path.join(appOutDir, MAC_DIST_BUNDLE, "Contents", shipped);
+    return path.join(appOutDir, MAC_DIST_BUNDLE, "Contents", "Resources", shipped);
 }
 
 /** Where electron-builder itself leaves a licence on Windows and Linux: the app root. */
@@ -160,7 +165,9 @@ async function placeMacLicence(
     ];
     for (const candidate of candidates) {
         if (await exists(candidate)) {
-            await fs.copyFile(candidate, macLicenceDestination(input.appOutDir, licence.shipped));
+            const destination = macLicenceDestination(input.appOutDir, licence.shipped);
+            await fs.mkdir(path.dirname(destination), { recursive: true });
+            await fs.copyFile(candidate, destination);
             return;
         }
     }

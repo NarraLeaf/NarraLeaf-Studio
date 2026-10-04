@@ -29,8 +29,9 @@ import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
 import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
+import { useStarterTitlePage } from "./panel/templates/useStarterTitlePage";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
-import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
+import { SurfaceList, type SurfaceListGlobalBlueprintCard, type SurfaceListStarterTile } from "./panel/SurfaceList";
 import { reorderSurfacesForDrop, type SurfaceDropGap } from "./panel/surfaceReorder";
 import {
     useOpenBlueprintTarget,
@@ -148,6 +149,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
     const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
     const blueprintRevision = useBlueprintDocumentRevision();
+    const starterTitlePage = useStarterTitlePage();
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context) return null;
@@ -664,12 +666,40 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             subtitle: t("uiEditor.panel.globalSubtitle"),
             typeLabel: t("uiEditor.panel.blueprintType"),
             // Fills the box the list gives it, which is sized like the surface previews beside it.
-            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-full" />,
+            // No layer name in the corner: at tile size it sat on top of the nodes, and the card's
+            // own caption already says which blueprint this is.
+            preview: (
+                <BlueprintLayerPreview
+                    model={globalBlueprintPreviewModel}
+                    heightClassName="h-full"
+                    showGraphName={false}
+                />
+            ),
             canOpen: Boolean(globalBlueprintId),
             onClick: () => handleOpenGlobalBlueprint(),
             onOpenInWindow: () => handleOpenGlobalBlueprint({ inOwnWindow: true }),
         };
     }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind, t]);
+
+    // A project that has no interface yet is offered a title page that already starts and continues
+    // the game, under the page it was created with. Only on the Pages side: a title page is a page.
+    const starterTile = useMemo<SurfaceListStarterTile | undefined>(() => {
+        if (kind !== "appSurface" || !starterTitlePage.offered) {
+            return undefined;
+        }
+        return {
+            title: t("uiEditor.panel.starterTitlePage.title"),
+            description: t("uiEditor.panel.starterTitlePage.description"),
+            onClick: () => {
+                void starterTitlePage.add().then(surface => {
+                    if (surface) {
+                        handleSurfaceClick(surface);
+                    }
+                });
+            },
+            writeProps: freeze.writes(!documentService),
+        };
+    }, [documentService, freeze, handleSurfaceClick, kind, starterTitlePage, t]);
 
     return (
         // One continuous sunken tray: filters, the create button, the surface list
@@ -700,6 +730,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
                 onReorder={documentService && !freeze.frozen ? handleReorderSurfaces : undefined}
+                starterTile={starterTile}
             />
             <ComponentLibraryPanel
                 documentService={documentService}

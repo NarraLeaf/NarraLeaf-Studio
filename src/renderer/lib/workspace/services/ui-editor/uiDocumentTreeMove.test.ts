@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import {
+    applyGroupElements,
     applyPlannedMove,
     applyUngroupContainer,
     canUngroupContainer,
     filterToTopLevelMovers,
     normalizeFlowChildLayouts,
+    planGroupElements,
     planMoveElementsInSurface,
 } from "./uiDocumentTreeMove";
 import { COMPONENT_EDITOR_VIRTUAL_ROOT_PREFIX } from "@/lib/ui-editor/componentEditorRoot";
@@ -356,5 +358,105 @@ describe("uiDocumentTreeMove structural parts", () => {
 
         expect(planned.ok).toBe(true);
         expect(planned.ok && planned.plan.movers).toEqual(["tpl"]);
+    });
+});
+
+describe("uiDocumentTreeMove group", () => {
+    const placed = (x: number, y: number, width: number, height: number): Partial<UIElement> => ({
+        layout: { x, y, width, height },
+    });
+
+    function freePage(): UIDocument {
+        return makeDocument({
+            root: element("root", "nl.root", null, ["a", "other", "b", "c"]),
+            a: element("a", "nl.text", "root", [], placed(100, 50, 200, 40)),
+            other: element("other", "nl.container", "root", [], placed(0, 0, 10, 10)),
+            b: element("b", "nl.button", "root", [], placed(150, 120, 100, 60)),
+            c: element("c", "nl.image", "root", [], placed(600, 400, 50, 50)),
+        });
+    }
+
+    function group(id: string): UIElement {
+        return element(id, "nl.container", null, [], placed(0, 0, 0, 0));
+    }
+
+    it("wraps whatever is selected, a text first included, in a new container that takes their place", () => {
+        const document = freePage();
+        const plan = planGroupElements(document, "surface", ["a", "b"]);
+
+        expect(plan).not.toBeNull();
+        applyGroupElements(document, plan!, group("g"));
+
+        // In front of what the front-most wrapped element was in front of; their own order kept inside.
+        expect(document.elements.root.childrenIds).toEqual(["other", "g", "c"]);
+        expect(document.elements.g.childrenIds).toEqual(["a", "b"]);
+        expect(document.elements.a.parentId).toBe("g");
+    });
+
+    it("covers exactly the wrapped boxes and leaves every element where it was on screen", () => {
+        const document = freePage();
+        applyGroupElements(document, planGroupElements(document, "surface", ["a", "b"])!, group("g"));
+
+        expect(document.elements.g.layout).toMatchObject({ x: 100, y: 50, width: 200, height: 130 });
+        expect(document.elements.a.layout).toMatchObject({ x: 0, y: 0, width: 200, height: 40 });
+        expect(document.elements.b.layout).toMatchObject({ x: 50, y: 70, width: 100, height: 60 });
+    });
+
+    it("wraps a single element", () => {
+        const document = freePage();
+        applyGroupElements(document, planGroupElements(document, "surface", ["c"])!, group("g"));
+
+        expect(document.elements.root.childrenIds).toEqual(["a", "other", "b", "g"]);
+        expect(document.elements.g.layout).toMatchObject({ x: 600, y: 400, width: 50, height: 50 });
+        expect(document.elements.c.layout).toMatchObject({ x: 0, y: 0 });
+    });
+
+    it("comes back out with Ungroup to the same places", () => {
+        const document = freePage();
+        applyGroupElements(document, planGroupElements(document, "surface", ["a", "b"])!, group("g"));
+        applyUngroupContainer(document, "surface", "g");
+
+        expect(document.elements.root.childrenIds).toEqual(["other", "a", "b", "c"]);
+        expect(document.elements.a.layout).toMatchObject({ x: 100, y: 50 });
+        expect(document.elements.b.layout).toMatchObject({ x: 150, y: 120 });
+    });
+
+    it("makes a group in a stack a stack of its own, in the first wrapped element's place", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["menu"]),
+            menu: element("menu", "nl.container", "root", ["start", "load", "quit"], {
+                layout: { x: 1480, y: 420, width: 300, height: 440 },
+                props: { layoutKind: "stack", stackDirection: "vertical", stackGap: 16, stackAlignItems: "stretch" },
+            }),
+            start: element("start", "nl.button", "menu", [], placed(0, 0, 300, 60)),
+            load: element("load", "nl.button", "menu", [], placed(0, 0, 280, 60)),
+            quit: element("quit", "nl.button", "menu", [], placed(0, 0, 300, 60)),
+        });
+        const plan = planGroupElements(document, "surface", ["quit", "load"]);
+
+        expect(plan?.flow).toEqual({ stackDirection: "vertical", stackGap: 16, stackAlignItems: "start" });
+        applyGroupElements(document, plan!, group("g"));
+        expect(document.elements.menu.childrenIds).toEqual(["start", "g"]);
+        expect(document.elements.g.childrenIds).toEqual(["load", "quit"]);
+        // Two 60-high buttons and one 16 gap, as wide as the wider one.
+        expect(document.elements.g.layout).toMatchObject({ x: 0, y: 0, width: 300, height: 136 });
+    });
+
+    it("does not wrap elements that do not share a parent, a surface root, or a list's template", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["panel", "loose", "list"]),
+            panel: element("panel", "nl.container", "root", ["inner"]),
+            inner: element("inner", "nl.text", "panel"),
+            loose: element("loose", "nl.text", "root"),
+            list: element("list", "nl.list", "root", ["row"]),
+            row: element("row", "nl.container", "list", [], { extra: { listSlot: "itemTemplate" } }),
+        });
+
+        expect(planGroupElements(document, "surface", ["inner", "loose"])).toBeNull();
+        expect(planGroupElements(document, "surface", ["root"])).toBeNull();
+        expect(planGroupElements(document, "surface", ["row"])).toBeNull();
+        expect(planGroupElements(document, "surface", [])).toBeNull();
+        // A selected ancestor takes its selected descendants with it.
+        expect(planGroupElements(document, "surface", ["panel", "inner", "loose"])?.movers).toEqual(["panel", "loose"]);
     });
 });

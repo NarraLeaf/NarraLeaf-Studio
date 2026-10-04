@@ -1054,3 +1054,68 @@ describe("ProjectSessionLockManager and a copy of a project that is open", () =>
         second.dispose();
     });
 });
+
+/**
+ * A claim writes `.nlstudio/` into the folder it is about. A folder opened by mistake, or a recent
+ * entry whose folder has gone, is not Studio's to write in - and before this, opening either one left
+ * a `.nlstudio/` behind, or brought the deleted folder back with nothing in it but the lock.
+ */
+describe("ProjectSessionLockManager and a folder that is not a project", () => {
+    /** Every path under `root`, relative to it, sorted. */
+    async function listing(root: string): Promise<string[]> {
+        const entries = await fs.readdir(root, { recursive: true });
+        return entries.map(entry => String(entry).split(path.sep).join("/")).sort();
+    }
+
+    it("writes nothing into a folder with no project config, and keeps nobody out of it", async () => {
+        const folder = await fs.mkdtemp(path.join(os.tmpdir(), "nl-session-lock-plain-"));
+        roots.push(folder);
+        await fs.writeFile(path.join(folder, "notes.txt"), "mine", "utf-8");
+        const locks = manager();
+
+        await expect(locks.acquire(folder)).resolves.toEqual({ ok: true });
+
+        expect(await listing(folder)).toEqual(["notes.txt"]);
+        expect(locks.holds(folder)).toBe(false);
+        expect(locks.heldElsewhere(folder)).toBeNull();
+        locks.dispose();
+    });
+
+    it("does not create a folder that is not there", async () => {
+        const parent = await fs.mkdtemp(path.join(os.tmpdir(), "nl-session-lock-gone-"));
+        roots.push(parent);
+        const gone = path.join(parent, "deleted project");
+        const locks = manager();
+
+        await expect(locks.acquire(gone)).resolves.toEqual({ ok: true });
+
+        expect(await listing(parent)).toEqual([]);
+        expect(locks.holds(gone)).toBe(false);
+        locks.dispose();
+    });
+
+    it("still claims a project folder, and still refuses a second Studio on it", async () => {
+        const project = await scratchProject();
+        const first = manager();
+        const second = manager({ pid: 5555, userDataDir: "C:/profiles/other", alive: new Set([4242, 5555]) });
+
+        await expect(first.acquire(project)).resolves.toEqual({ ok: true });
+        await expect(second.acquire(project)).resolves.toMatchObject({ ok: false });
+
+        expect((await readLock(project))?.pid).toBe(4242);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("does not bring back a project folder that was deleted while it was open", async () => {
+        const project = await scratchProject();
+        const locks = manager();
+        await locks.acquire(project);
+
+        await fs.rm(project, { recursive: true, force: true });
+        await locks.beat();
+
+        await expect(fs.stat(project)).rejects.toMatchObject({ code: "ENOENT" });
+        locks.dispose();
+    });
+});

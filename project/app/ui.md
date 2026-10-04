@@ -127,8 +127,11 @@ nl.switch
 ```
 
 The prop table is what a **new** widget of that type carries, not a closed set: a
-widget may hold keys its defaults do not name (`localizationKey` is the common
-one), which is why writing one is a note rather than a refusal.
+widget may hold keys its defaults do not name, which is why writing one is a note
+rather than a refusal. The props that say where a widget's words come from - its
+translation key (`localizationKey`, a text input's `placeholderLocalizationKey`),
+the switch that translates its own words (`localizable`) and its marks (`rich`) -
+are known for each widget that has them and are never reported.
 
 `hoverSound` and `clickSound` are on every type but `nl.root`, and are what the
 inspector's Sound section writes. Each holds an audio asset id or an asset set id,
@@ -147,6 +150,10 @@ the inspector offers as one choice: the element's own `text` (a button's
 `localizationKey`, and it wins over the other two - the game and the canvas both
 show the key's source text, so a keyed element's own `text` or `label` is never
 seen. Change the words of a keyed element by changing the key, not the prop.
+A text input's `placeholder` is the same choice without the Blueprint Value: its
+own words, or the key in `placeholderLocalizationKey`, whose text the canvas and
+the game both show. A dialogue line's or NVL line's `text` is sample words the
+canvas shows; in their slots the game draws the story's line instead.
 
 `--json` on any of these.
 
@@ -373,6 +380,17 @@ document no longer has (the game starts on the fallback page, and Studio drops
 the pointer the next time it opens the project), and **`ui.no_entry_page`** when
 there is no page at all.
 
+One more is about words:
+
+- **`ui.words_two_sources`** - a block writes `text` or `label` on an element
+  that also names a translation key, with words that are neither the key's text
+  nor what the element already stores: an edit that cannot show, since the key's
+  text is what the game and the canvas draw. An error when the project has a
+  source language; a warning when it has none, because a project without one
+  ships no keys and the element's own words show until it gets one. What `show`
+  prints for a keyed element passes. Needs `--project` (the keys and the source
+  language are read from it).
+
 Three findings are notes rather than refusals, deliberately:
 
 - **`ui.unknown_prop`** - see the note on the prop table above. Reported once per
@@ -397,7 +415,7 @@ node project/app/ui.js show --project D:/path/to/project --surface Title --out t
 `show` prints in the same format `apply` reads, ids and props included, so the
 way to change something that exists is to dump it, edit two lines and apply it
 back. Printing the shipped skeleton and compiling the result gives the same
-document - eleven surfaces, eleven components and nearly three hundred elements of it - which is
+document - twelve surfaces, three components and some two hundred and fifty elements of it - which is
 asserted in `dsl/roundTrip.test.ts`.
 
 ## Writing
@@ -436,11 +454,50 @@ Four things to know before using it:
   by id, and so is the semantic diff - so it is one reshuffle of the text and
   nothing after it.
 
+## Removing a component definition
+
+```sh
+node project/app/ui.js remove --project D:/path/to/project --component "Old entry"           # dry run
+node project/app/ui.js remove --project D:/path/to/project --component "Old entry" --write
+```
+
+`apply` replaces a component's element tree but never takes the definition away,
+so a component nothing places any more stays in the library until somebody
+deletes it. `remove` does that, and takes everything the definition owns with
+it: its elements, which live inside it, and its blueprints in `uigraphs.json`
+together with the owner entries that point at them - so no orphan is left for
+Studio to collect the next time it opens the project.
+
+- **One definition, named exactly.** `--component` takes an id or a whole name;
+  a name two definitions share lists their ids and removes neither.
+- **Only a definition nothing uses.** Each of these is a refusal,
+  `ui.remove_refused`, that says where it is, and nothing is written:
+  - a placement of it, on any surface or inside another component;
+  - one of its own blueprints that holds anything - nodes, a script layer,
+    members. Removing the definition would throw that work away with it; empty
+    the blueprint with `blueprint apply`, or take it out with `blueprint remove`,
+    first if that is what is meant;
+  - any other blueprint, element or document-wide record that names the
+    definition, one of its elements or one of its blueprints - an Element card
+    pointing into it, a variable read from one of its blueprints;
+  - any other authored file of the project that names one of those ids: what is
+    under `editor/` (but Studio's caches), and the scripts under `scripts/` (but
+    their generated declarations and installed packages).
+- **Close the project in Studio first**, for the same reason as `apply`. Both
+  documents must be at the current schema version, and both are checked before
+  either is written.
+
+Studio lets an author delete a placed component after one confirm, and every
+placement then draws nothing. That is a decision for someone looking at the
+canvas; a command run from a script has nobody to ask, which is why this one
+refuses instead.
+
 ## What this tool does not do
 
 - **It does not write blueprints.** Attaching a graph to a widget is
   `blueprint apply`'s job; this tool reads `uigraphs.json` to check bindings and
-  to warn about orphans, and never writes it.
+  to warn about orphans. The one thing it takes out of that file is what
+  `remove` takes with a component definition - its own, empty blueprints.
 - **It does not know what a widget means.** The catalogue is derived, and a
   derivation cannot say that a container written with `fillVisible = false` alone
   still paints white. The handful of facts like that are in the `notes` block of
@@ -454,4 +511,6 @@ The wrapper is `project/app/ui.js`; the commands are TypeScript under
 the tables it reads are. `dsl/` holds the format: `parse` (text to AST), `compile`
 (AST to document records, checked against the catalogue), `print` (the inverse).
 The scalar syntax is shared with `.bp` rather than restated -
-`blueprint-cli/dsl/values`.
+`blueprint-cli/dsl/values`. `remove.ts` is the `remove` command's plan, and it
+writes `uigraphs.json` through the blueprint tool's own reader and writer, so one
+place still knows how that file is written.

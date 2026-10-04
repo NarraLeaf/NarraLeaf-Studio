@@ -492,6 +492,16 @@
       "status": "translated",
       "target": "No Data"
     },
+    "key:splash.disclaimer": {
+      "sourceHash": "fnv1a:7a3bfb30",
+      "status": "translated",
+      "target": "This is a work of fiction.\nAny resemblance to actual persons, living or dead, or to actual events is purely coincidental."
+    },
+    "key:splash.wordmark": {
+      "sourceHash": "fnv1a:e1f0617a",
+      "status": "translated",
+      "target": "Your Studio"
+    },
     "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
       "sourceHash": "fnv1a:b762c709",
       "status": "translated",

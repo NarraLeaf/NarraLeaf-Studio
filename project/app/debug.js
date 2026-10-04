@@ -276,7 +276,7 @@ async function runCli(argv = process.argv.slice(2)) {
         case 'health': {
             const health = await getHealth(options);
             emit(health, h => {
-                console.log(`ok=${h.ok} version=${h.version} dev=${h.dev} port=${h.port}`);
+                console.log(`ok=${h.ok} version=${h.version} dev=${h.dev} port=${h.port} tag=${h.windowTag ? `[${h.windowTag}]` : '(none)'}`);
                 printWindows({ windows: h.windows });
             });
             return;

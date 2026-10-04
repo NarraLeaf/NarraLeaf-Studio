@@ -19,7 +19,10 @@ import {
     deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     gameBuildArtifactBaseName,
+    hostBuildLimitsSentence,
+    hostCanBuildFormat,
     hostCanBuildTarget,
+    hostPackagesWithoutPlatformTools,
     iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -213,6 +216,17 @@ type BuildSession = {
      * carry it. Null until they have run, which is every run that failed before them.
      */
     assetCompression: AssetCompressionReport | null;
+    /**
+     * The codec image directories this run's compiles produced, one per output root, removed when
+     * the run finishes successfully and left in place when it does not.
+     *
+     * Removed because nothing reads them again: each image is copied into its app dir during the
+     * compile, and the next compile under the same root writes its own. They sit inside the
+     * author's project folder and carry the title's material, so a finished run leaves none
+     * behind. A failed run keeps them, because what the codec step produced is part of what there
+     * is to look at when it is the step that failed.
+     */
+    codecScratch: string[];
 };
 
 /**
@@ -643,6 +657,17 @@ export class GameBuildManager {
                     section: "targets",
                     detail: { platform: target.platform },
                 });
+                continue;
+            }
+            for (const format of target.formats) {
+                if (!hostCanBuildFormat(hostPlatform, target.platform, format)) {
+                    findings.push({
+                        code: "unbuildable-format",
+                        severity: "error",
+                        section: "targets",
+                        detail: { platform: target.platform, format },
+                    });
+                }
             }
         }
         const crossTargets = desktopTargets.filter(
@@ -881,6 +906,12 @@ export class GameBuildManager {
         if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
         }
+        // Read through the same reader the build applies the key with, so the dialog and the build
+        // cannot disagree about whether there is one. Desktop targets only: the web export and the
+        // mobile packages read no patch whether or not there is a key.
+        if (desktopTargets.length > 0 && !readDistributionKey(projectConfig?.app)) {
+            findings.push({ code: "distribution-key-missing", severity: "warning", section: "content" });
+        }
         findings.push(...await collectProgressCarryFindings({
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
@@ -991,6 +1022,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         // Another Studio having the project is refused the same way and for a kindred reason: the
@@ -1090,6 +1122,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
@@ -1291,6 +1324,7 @@ export class GameBuildManager {
             onAudit: report => { contentAudit = report; },
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.emit(session, {
             level: "info",
             source: "Build",
@@ -1318,6 +1352,7 @@ export class GameBuildManager {
         const summary = await this.sealPatch(
             session,
             artifact.appDir,
+            artifact.codecImageDir,
             request,
             baselineAppDir,
             outputFile,
@@ -1470,6 +1505,7 @@ export class GameBuildManager {
                 cancelled: () => session.cancelled,
             });
             session.worker = null;
+            this.noteCodecScratch(session, artifact);
             this.ensureNotCancelled(session);
 
             const outputFile = resolveDlcDeliveryPath(
@@ -1482,6 +1518,7 @@ export class GameBuildManager {
             const summary = await this.sealPatch(
                 session,
                 artifact.appDir,
+                artifact.codecImageDir,
                 { outputFile, name: dlc.name },
                 options.baselineAppDir,
                 outputFile,
@@ -1564,6 +1601,7 @@ export class GameBuildManager {
             cancelled: () => session.cancelled,
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.ensureNotCancelled(session);
         return artifact.appDir;
     }
@@ -1682,6 +1720,11 @@ export class GameBuildManager {
     private async sealPatch(
         session: BuildSession,
         appDir: string,
+        /**
+         * Where the codec this process seals with is compiled: the codec image directory of the
+         * compile that produced `appDir`, which the run removes once it has succeeded.
+         */
+        codecScratchDir: string,
         request: GamePatchExportRequest,
         /**
          * The build being updated, already resolved: the folder the author named, or the one the
@@ -1755,11 +1798,18 @@ export class GameBuildManager {
              * to read, with no sign of trouble at the point it was made. The two
              * halves have to be built the same way or the patch is dead on
              * arrival.
+             *
+             * Compiled in this run's scratch directory, never beside the file.
+             * The folder the file is written into is the folder the author
+             * ships, and the codec compiled here stays loaded in this process,
+             * so on Windows it cannot be deleted until Studio exits: left beside
+             * the patch, it went out to players inside the zipped folder.
              */
+            await fs.mkdir(codecScratchDir, { recursive: true });
             const writer = await createAssetOverlay(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
-            }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
+            }, await this.titleCompileOptions(codecScratchDir, "Exporting a patch"));
             // Zero is the default the reader already applies, so it is left unsaid rather than
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
@@ -1956,12 +2006,11 @@ export class GameBuildManager {
         // stored selection carried across hosts (or any non-UI caller) could still
         // ask for one. Fail early and clearly rather than deep inside electron-builder.
         // (The web target builds everywhere and needs no check.)
-        const unbuildable = desktopTargets.filter(target => !hostCanBuildTarget(hostPlatform, target.platform));
+        const unbuildable = desktopTargets.flatMap(target => target.formats
+            .filter(format => !hostCanBuildFormat(hostPlatform, target.platform, format))
+            .map(format => `${target.platform} ${format}`));
         if (unbuildable.length > 0) {
-            throw new Error(
-                `Cannot build for ${unbuildable.map(t => t.platform).join(", ")} on this machine. ` +
-                `macOS builds require a Mac; Linux builds require a Unix host.`,
-            );
+            throw new Error(`Cannot build ${unbuildable.join(", ")} on this machine. ${hostBuildLimitsSentence(hostPlatform)}`);
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
         this.noteRunVariant(session, appTag);
@@ -2116,6 +2165,7 @@ export class GameBuildManager {
                 onAudit: report => { contentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, desktopArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -2171,6 +2221,7 @@ export class GameBuildManager {
                 onAudit: report => { webContentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, webArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -2265,6 +2316,8 @@ export class GameBuildManager {
             ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
+            hostCacheRoot: this.app.getCacheRootDir(),
+            downloadRewrites: currentDownloadRewrites(),
             asarUnpack: buildAsarUnpackPatterns(protectAssets),
             electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
@@ -2287,6 +2340,9 @@ export class GameBuildManager {
                     hostPlatform,
                 )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
+                    : {}),
+                ...(hostPackagesWithoutPlatformTools(hostPlatform, target.platform)
+                    ? { hostElectronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
                 ...await this.resolveDesktopTargetSigning(session, target.platform, signing),
@@ -3916,8 +3972,56 @@ export class GameBuildManager {
      */
     private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
         const stamped = this.stampRunVariant(session, snapshot);
+        if (stamped.status === "done") {
+            await this.discardCodecScratch(session);
+        }
         await writeLastGameBuildRun(session.projectPath, this.runRecord(session, stamped));
         session.snapshot = stamped;
+    }
+
+    /** Remember where one of this run's compiles produced its codec images; see `codecScratch`. */
+    private noteCodecScratch(session: BuildSession, artifact: GameRuntimeArtifactCompileResult): void {
+        if (!session.codecScratch.includes(artifact.codecImageDir)) {
+            session.codecScratch.push(artifact.codecImageDir);
+        }
+    }
+
+    /**
+     * Remove the codec images a successful run produced.
+     *
+     * Best effort and silent on the build console: the run has already succeeded, and a file that
+     * will not go is not a fact about the game. It is written to the application log instead, and
+     * the next successful run under the same root removes it.
+     *
+     * Entry by entry rather than in one recursive call, because one entry can be refused while the
+     * rest can go: the codec a patch is sealed with is compiled in this process and stays loaded in
+     * it, and on Windows a loaded image cannot be deleted until the process exits. One recursive
+     * removal stops at the first refusal and leaves the entries after it behind as well.
+     */
+    private async discardCodecScratch(session: BuildSession): Promise<void> {
+        for (const dir of session.codecScratch) {
+            let entries: string[];
+            try {
+                entries = await fs.readdir(dir);
+            } catch {
+                // Nothing there: a compile that needed no images, or a directory already gone.
+                continue;
+            }
+            const refused: string[] = [];
+            for (const entry of entries) {
+                try {
+                    await fs.rm(path.join(dir, entry), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+                } catch {
+                    refused.push(entry);
+                }
+            }
+            if (refused.length > 0) {
+                this.app.logger.warn(`[Build] left in ${dir} until nothing holds it: ${refused.join(", ")}`);
+                continue;
+            }
+            await fs.rmdir(dir).catch(() => undefined);
+        }
+        session.codecScratch = [];
     }
 
     /**

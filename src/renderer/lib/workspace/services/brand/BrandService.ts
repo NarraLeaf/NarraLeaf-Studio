@@ -339,6 +339,41 @@ export class BrandService extends Service<BrandService> implements IBrandService
         return this.getColor(color.id) ?? color;
     }
 
+    /**
+     * Add colours that arrive already named - the entries a page brought in from a template links to -
+     * under the ids they have.
+     *
+     * The id is what every link on that page holds, so a colour filed under a fresh one would leave
+     * the page pointing at nothing. An id this palette already has is left alone: that entry is the
+     * project's own, whatever it holds, and a seeded slot is always present. Returns how many were
+     * added.
+     */
+    public adoptColors(colors: readonly BrandColor[]): number {
+        const taken = new Set(this.getDocument().colors.map(color => color.id));
+        const local: BrandColor[] = [];
+        let added = 0;
+        for (const source of colors) {
+            if (taken.has(source.id) || isBuiltinBrandColorId(source.id)) {
+                continue;
+            }
+            taken.add(source.id);
+            const name = source.name?.trim();
+            const color: BrandColor = {
+                id: source.id,
+                ...(name ? { name } : {}),
+                value: source.value.trim() || NEW_BRAND_COLOR_VALUE,
+            };
+            added += 1;
+            if (!this.offer({ op: "create-brand-color", color })) {
+                local.push(color);
+            }
+        }
+        if (local.length > 0) {
+            this.applyColorMutation(existing => [...existing, ...local]);
+        }
+        return added;
+    }
+
     /** Rename. Blank is refused rather than stored, because a nameless row is a row with no label. */
     public renameColor(id: string, name: string): boolean {
         const next = name.trim();

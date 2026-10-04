@@ -4,7 +4,6 @@
  * Comments in English per project convention.
  */
 
-import { Clapperboard, ClockFading, Keyboard } from "lucide-react";
 import type { BlueprintLayerTemplate } from "../blueprintLayerTemplates";
 import { field, lines } from "./templateText";
 
@@ -13,7 +12,6 @@ export const PAGE_FLOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "splash",
         category: "pageFlow",
         owners: ["surfaceMain"],
-        icon: Clapperboard,
         featured: 1,
         text: {
             en: {
@@ -68,7 +66,6 @@ export const PAGE_FLOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "pressAnyKey",
         category: "pageFlow",
         owners: ["surfaceMain"],
-        icon: Keyboard,
         featured: 2,
         text: {
             en: { title: "Press any key", description: "Opens the next page on a click or any key." },
@@ -88,7 +85,6 @@ export const PAGE_FLOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
         id: "timedPage",
         category: "pageFlow",
         owners: ["surfaceMain"],
-        icon: ClockFading,
         text: {
             en: {
                 title: "Timed page",
@@ -115,5 +111,34 @@ export const PAGE_FLOW_TEMPLATES: readonly BlueprintLayerTemplate[] = [
             "    wait.token -> skip.timer",
         ),
         choices: { next: ["surfaceId"] },
+    },
+    {
+        id: "autoClose",
+        category: "pageFlow",
+        owners: ["surfaceMain"],
+        text: {
+            en: {
+                title: "Close on its own",
+                description: "Closes after a few seconds when opened on top of another page. A click or any key closes it at once.",
+            },
+            zh: { title: "自动关闭", description: "叠加在其他页面上时，数秒后自动关闭，点击或按任意键可立即关闭" },
+            ja: { title: "自動で閉じる", description: "別のページの上に重ねて表示すると数秒後に閉じ、クリックか任意のキーですぐに閉じる" },
+        },
+        // For a card shown over the story - a chapter title, a location, an unlocked notice. As with
+        // the timed page, a press skips the Delay rather than closing the page itself, so Close This
+        // Layer has one way in and a press during the closing does not close a second layer.
+        graph: () => lines(
+            "    init: blueprint.event.head.surfaceInit @0,0",
+            "    wait: blueprint.flow.delay @260,0",
+            "        duration = 3",
+            "    close: blueprint.layer.closeSelf @520,0",
+            "    click: blueprint.event.head.mouseClick @0,220",
+            "    key: blueprint.event.head.anyKeyDown @0,360",
+            "    skip: blueprint.flow.skipDelay @260,290",
+            "    init -> wait -> close",
+            "    click -> skip",
+            "    key -> skip",
+            "    wait.token -> skip.timer",
+        ),
     },
 ];

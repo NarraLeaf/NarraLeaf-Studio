@@ -29,9 +29,10 @@ export const storyVars = {
         title: "存档变量",
         hint: "在项目里定义，值保存在存档文件中",
     },
-    // 说明词跟随故事行上的写法：`/global` 声明的就叫「全局变量」，键名保持 persistent 不动
+    // 跨存档保留的项目变量在面板、蓝图、帮助与开发模式里都叫「持久变量」；「全局变量」留给应用逻辑蓝图
+    // 自己的变量，两者不能共用一个名字。键名保持 persistent 不动
     persistent: {
-        title: "全局变量",
+        title: "持久变量",
         hint: "在项目中定义，应用级，与蓝图共享",
     },
 } satisfies LocaleNamespace<"storyVars">;

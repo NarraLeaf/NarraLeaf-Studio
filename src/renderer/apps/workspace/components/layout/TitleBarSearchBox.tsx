@@ -121,6 +121,11 @@ export function TitleBarSearchBox() {
             ) : (
                 <button
                     type="button"
+                    // The press leaves focus where it was. The pill is replaced by the input as soon as
+                    // the session starts, so focus landing on it would be lost a moment later - and
+                    // the palette gives focus back on close to whatever had it when it opened, which
+                    // should be the editor the author was in, not this button.
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => openCommandPalette("")}
                     data-tip={placeholder}
 

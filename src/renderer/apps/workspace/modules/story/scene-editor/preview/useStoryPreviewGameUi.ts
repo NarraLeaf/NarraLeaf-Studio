@@ -275,6 +275,7 @@ export function useStoryPreviewGameUi(input: {
             // Navigation, application, and save APIs do not exist inside the editor preview;
             // blueprint calls reach these stubs and surface as execution.error debug events.
             onOpenSurface: async () => undefined,
+            onReplaceSurface: async () => undefined,
             onPageBack: async () => undefined,
             onClearPages: undefined,
             onClearGameOverlay: undefined,

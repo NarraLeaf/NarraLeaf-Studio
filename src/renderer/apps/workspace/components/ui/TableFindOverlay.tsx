@@ -9,7 +9,7 @@
  * State and matching live in {@link useTableFind}; this draws it.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -25,6 +25,9 @@ import type { TableFind } from "./useTableFind";
  */
 const ACTIVE_TOGGLE_CLASS = "bg-primary/15 text-primary";
 
+/** What in the table can take focus back when the bar closes, if nothing outside it held focus. */
+const TABLE_FOCUSABLE_SELECTOR = "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]";
+
 export function TableFindOverlay({ find, placeholder }: {
     find: TableFind;
     /** Names what this table searches, in that table's own words. */
@@ -32,6 +35,46 @@ export function TableFindOverlay({ find, placeholder }: {
 }) {
     const { t } = useTranslation();
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    // Closing gives focus back to the table. The bar is unmounted when it closes, and focus inside it
+    // would otherwise drop to the page, so the next arrow or Tab started from the top of the window
+    // rather than from the row the author was on. What it goes back to is the last thing outside the
+    // bar that held focus - the row Mod+F was pressed in, or one clicked since - else the first
+    // control in the table.
+    //
+    // Not a floating layer, which is what popovers use for this: the bar stays open while the author
+    // works in the table, so it must not close when focus leaves it, and an Escape pressed in the
+    // table is not addressed to it.
+    useLayoutEffect(() => {
+        const root = rootRef.current;
+        if (!root) {
+            return;
+        }
+        const doc = root.ownerDocument;
+        const outside = (node: unknown): node is HTMLElement =>
+            node instanceof HTMLElement && node !== doc.body && !root.contains(node);
+        let returnTo: HTMLElement | null = outside(doc.activeElement) ? doc.activeElement : null;
+        const onFocusIn = (event: FocusEvent) => {
+            if (outside(event.target)) {
+                returnTo = event.target;
+            }
+        };
+        doc.addEventListener("focusin", onFocusIn);
+        return () => {
+            doc.removeEventListener("focusin", onFocusIn);
+            const active = doc.activeElement;
+            const lost = !active || active === doc.body || !active.isConnected || root.contains(active);
+            if (!lost) {
+                return;
+            }
+            const target = returnTo?.isConnected
+                ? returnTo
+                : Array.from(root.parentElement?.querySelectorAll<HTMLElement>(TABLE_FOCUSABLE_SELECTOR) ?? [])
+                    .find(element => !root.contains(element) && element.tabIndex >= 0);
+            target?.focus({ preventScroll: true });
+        };
+    }, []);
 
     useEffect(() => {
         const input = inputRef.current;
@@ -46,6 +89,7 @@ export function TableFindOverlay({ find, placeholder }: {
 
     return (
         <div
+            ref={rootRef}
             className="absolute right-4 top-2 z-10 flex items-center gap-1.5 rounded-lg border border-edge bg-surface-overlay px-2 py-1.5 shadow-lg"
             // Deliberately without `stopPropagation`, which is where the scene find bar differs:
             // that one sits inside an editor with its own key handling, these tables have none. What

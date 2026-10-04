@@ -43,11 +43,10 @@ import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
-import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
-import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
 import { useShortcutLabels } from "../../hooks/useShortcutLabels";
-import { MenuShortcut } from "../../components/ui/MenuShortcut";
+import { MenuShortcut } from "@/lib/components/elements/MenuShortcut";
+import { useFloatingLayer } from "@/lib/components/layout";
 import { WorkspaceMenuAction, WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -88,6 +87,11 @@ const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
  */
 const PREVIEW_AS_SHIPPED_SETTINGS_KEY = "ui.previewAsShippedByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
+/**
+ * Every row of the open run menu: the mode radios, the edition and DLC pickers and what they
+ * expand to, and the reset flyout's own rows, which are drawn inside the menu beside their row.
+ */
+const RUN_MENU_ROW_SELECTOR = "[role=\"menuitem\"], [role=\"menuitemradio\"], [role=\"menuitemcheckbox\"]";
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
  * stops. Spelled out rather than derived so `keybindingCatalog.test.ts` - which reads source text,
@@ -172,6 +176,18 @@ export function RunControl() {
         setOpen: setMenuOpen,
         toggle: toggleMenu,
     } = useTitleBarMenu("narraleaf-studio:run");
+    const menuPanelRef = useRef<HTMLDivElement | null>(null);
+    // Opening moves focus onto the selected mode, the up and down arrows walk every row - the
+    // expanded variant and DLC lists and the reset flyout included, since they are drawn inside the
+    // panel - Tab out closes the menu, and closing gives focus back to the chevron. Escape is the
+    // bar's, which closes the menu ahead of this layer hearing the key.
+    useFloatingLayer({
+        open: menuOpen,
+        onClose: () => setMenuOpen(false),
+        panelRef: menuPanelRef,
+        ownerRefs: [menuRef],
+        itemSelector: RUN_MENU_ROW_SELECTOR,
+    });
     const shortcuts = useShortcutLabels();
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
@@ -536,43 +552,13 @@ export function RunControl() {
     const buildBlocked = frozen || distrusted;
 
     /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
-    /**
-     * Refresh the plugin dependency table before a run.
-     *
-     * Which plugin runtime entries go into the pack is decided from that table (see
-     * `selectProjectRuntimePlugins`), and until now only a build, an export, or a visit to the
-     * Project panel ever refreshed it. So the first run after an author added the row that USES a
-     * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
-     * and the feature simply did not happen with nothing on screen to say why.
-     *
-     * Best-effort and awaited: a scan failure must not stop the author running their game, but a
-     * run that starts before the scan lands would pack the stale answer, which is the bug.
-     * Skipped on a frozen workspace, for the reason the export path documents - nobody asked for
-     * this write, and it is bookkeeping rather than the thing being run.
-     *
-     * An automatic scan: a plugin Studio holds back from the project for its version stays held
-     * through any number of runs, until the author presses Rescan.
-     */
-    const refreshDependenciesForRun = async () => {
-        if (!context || getProjectWriteFreeze() !== null) {
-            return;
-        }
-        try {
-            await context.services
-                .get<ProjectDependencyService>(Services.ProjectDependency)
-                .rescanAndPersist("automatic");
-        } catch (error) {
-            console.warn("[run] plugin dependency rescan failed", error);
-        }
-    };
-
     const launchMode = (target: RunMode) => {
         if (!workspace || !context) {
             return;
         }
         if (target === "preview") {
             void (async () => {
-                await refreshDependenciesForRun();
+                // The launch refreshes the plugin dependency table itself (`refreshDependenciesForRun`).
                 // No page named: the compile opens the project's entry page, read from the document
                 // it builds the game from.
                 await context.services.get<PreviewService>(Services.Preview).launch({ kind: "surface" });
@@ -586,7 +572,6 @@ export function RunControl() {
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
-            await refreshDependenciesForRun();
             // No page and no safeAreaId, on purpose: the top bar runs the game the way a player gets
             // it, so it opens on the project's entry page (read by the window from the bundle it
             // loads) with no design aid over it. The orientation is project context rather than a
@@ -1054,6 +1039,7 @@ export function RunControl() {
                         onClick={() => setMenuOpen(false)}
                     />
                     <div
+                        ref={menuPanelRef}
                         role="menu"
                         aria-label={t("actions.run.menu")}
                         className="absolute left-0 top-full z-20 mt-1 min-w-52 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"

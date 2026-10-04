@@ -212,6 +212,12 @@
     },
     "slot.empty": {
       "sourceText": "No Data"
+    },
+    "splash.disclaimer": {
+      "sourceText": "This is a work of fiction.\nAny resemblance to actual persons, living or dead, or to actual events is purely coincidental."
+    },
+    "splash.wordmark": {
+      "sourceText": "Your Studio"
     }
   },
   "schemaVersion": 1

@@ -19,6 +19,7 @@ import { Button, EmptyState, Modal, SearchInput } from "@/lib/components/element
 import { resolveBlueprintNodeEditorCatalogEntryForNode } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_TEMPLATE_CATEGORIES,
+    blueprintTemplateIcon,
     blueprintTemplateText,
     type BlueprintLayerTemplate,
     type BlueprintTemplateCategory,
@@ -198,7 +199,7 @@ function TemplateCard(props: {
 }) {
     const { t, locale } = useTranslation();
     const text = blueprintTemplateText(props.template, locale);
-    const Icon = props.template.icon;
+    const Icon = blueprintTemplateIcon(props.template);
     // The card answers hover as one piece, Add included: the state belongs to the template the
     // pointer is over, not to whichever of its two controls happens to be under it.
     return (
@@ -250,7 +251,7 @@ function TemplateDetail(props: {
 }) {
     const { t, locale } = useTranslation();
     const text = blueprintTemplateText(props.template, locale);
-    const Icon = props.template.icon;
+    const Icon = blueprintTemplateIcon(props.template);
     // What is left to choose, as the node card and inspector name it: "Go Page · Page".
     const choices = useMemo(() => {
         const nodes = props.built?.ir.nodes ?? {};

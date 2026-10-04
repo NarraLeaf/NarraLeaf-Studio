@@ -46,6 +46,7 @@ import {
 import {
     DEFAULT_LOCKED_NAME_MASK,
     GALLERY_ENTRY_KINDS,
+    GALLERY_ROW_FIELDS_BY_KIND,
     isAudioGalleryKind,
     resolveCoverVariant,
     type GalleryArtwork,
@@ -84,8 +85,6 @@ type KindMeta = {
     icon: typeof Images;
     /** Grid for kinds identified by a picture, list for kinds identified by sound or text. */
     layout: "grid" | "list";
-    /** What the idle inspector says a row of this kind carries: field names, never translated. */
-    rowFields: string;
     /**
      * Message key naming what collects a row of this kind. A `{node}` in it is filled with the
      * `Unlock Gallery` node's title as its card shows it.
@@ -102,7 +101,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         emptyKey: "emptyCg",
         icon: Images,
         layout: "grid",
-        rowFields: "name, image, unlocked, variantCount",
         unlockKey: "unlockCg",
     },
     scene: {
@@ -110,7 +108,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         emptyKey: "emptyScene",
         icon: Clapperboard,
         layout: "grid",
-        rowFields: "name, image, unlocked, storyId, sceneId",
         unlockKey: "unlockScene",
     },
     music: {
@@ -118,7 +115,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         emptyKey: "emptyMusic",
         icon: Music,
         layout: "list",
-        rowFields: "name, audioAssetId, durationSec, unlocked",
         unlockKey: "unlockMusic",
     },
     voice: {
@@ -126,7 +122,6 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         emptyKey: "emptyVoice",
         icon: MessageSquareQuote,
         layout: "list",
-        rowFields: "name, voiceUnitId, lineText, unlocked",
         unlockKey: "unlockVoice",
     },
 };
@@ -951,7 +946,9 @@ function IdleInspector({ kind, meta, tr }: { kind: GalleryEntryKind; meta: KindM
                 </ol>
                 <div className="text-2xs text-fg-subtle">
                     <span className="mr-1">{tr.t("idleRowFields")}</span>
-                    <span className="text-fg-muted">{meta.rowFields}</span>
+                    {/* Field names are JSON keys an author types into Get JSON Field, so they are
+                        never translated. */}
+                    <span className="text-fg-muted">{GALLERY_ROW_FIELDS_BY_KIND[kind].join(", ")}</span>
                 </div>
                 {/* The three self-collecting columns and the one that is not. An author who does
                     not know which is which reads the difference as a broken column. */}

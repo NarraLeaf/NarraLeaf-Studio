@@ -31,7 +31,7 @@ function sectionsOf(context: StoryCommandContext): Section[] {
         { title: "one-off speakers", hint: "already used in this story", values: [...context.tempSpeakers] },
         { title: "images", hint: "/bg, /image, /show, /swap", values: names(context.images) },
         { title: "audio", hint: "/bgm, /sound", values: names(context.audio) },
-        { title: "videos", hint: "/video, /show, /play", values: names(context.videos) },
+        { title: "videos", hint: "/play", values: names(context.videos) },
         { title: "audio tracks", hint: "track= on a sound command", values: names(context.audioTracks) },
         { title: "variables", hint: "/set, /inc, /if", values: names(context.variables) },
         { title: "scenes", hint: "/jump", values: names(context.scenes) },

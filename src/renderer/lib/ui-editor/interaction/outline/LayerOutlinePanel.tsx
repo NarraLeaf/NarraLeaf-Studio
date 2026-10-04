@@ -14,7 +14,9 @@ import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragSt
 import { DndContext, MeasuringStrategy, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@services/ui/UIStore";
-import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
+import { UI_EDITOR_MENU_SHORTCUTS } from "@/lib/ui-editor/context-menu/menuShortcutBindings";
 import type { InputDialog } from "@/lib/components/dialogs";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -527,7 +529,13 @@ export function UILayersPanel({
                 <OutlineSubtree parentId={outlineRoot.id} depth={0} {...rowBase} />
             </DndContext>
             {dragPreview}
-            <ContextMenu items={menuItems} position={menuState.position} visible={menuState.visible} onClose={hideMenu} />
+            <ShortcutContextMenu
+                shortcuts={UI_EDITOR_MENU_SHORTCUTS}
+                items={menuItems}
+                position={menuState.position}
+                visible={menuState.visible}
+                onClose={hideMenu}
+            />
         </div>
     );
 }

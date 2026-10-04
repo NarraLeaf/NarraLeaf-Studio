@@ -20,6 +20,7 @@ import {
     listSceneLabels,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    DEFAULT_VIDEO_LEAVE_FADE_MS,
     revealCreates,
     storyVariableRefKey,
 } from "@shared/types/story";
@@ -203,15 +204,11 @@ export type StoryCommandLineRef =
      */
     | { kind: "variable"; target: StoryVariableRef }
     /**
-     * A row — the label a `/goto` lands on, or the row that declares a stage object.
-     *
-     * `sceneId` is absent for all but one of them, and absent MEANS "this row's own scene": every
-     * declaration index a line reads is scene-scoped, because every stage object but one ends with
-     * the scene that made it. The exception is the ambience overlay, which the engine holds at game
-     * level, so the row that declares the rain a scene hides is usually somewhere else entirely -
-     * and a link to it has to say where.
+     * A row in this row's own scene — the label a `/goto` lands on, or the row that declares a stage
+     * object. Every declaration index a line reads is scene-scoped, because every stage object ends
+     * with the scene that made it.
      */
-    | { kind: "block"; blockId: string; sceneId?: string };
+    | { kind: "block"; blockId: string };
 
 /**
  * One pointing word inside the line: where it sits, and what it points at.
@@ -636,32 +633,6 @@ function stageObjectLink(
     }
     const key = name?.trim().toLowerCase();
     return blockLink(lookups, key ? lookups.commandContext?.stageObjectSources?.[kind]?.[key] : undefined);
-}
-
-/**
- * The row that declares an ambience overlay, wherever in the story it is.
- *
- * The one link that may leave this scene, because the overlay is the one stage object that outlives
- * one: a `/hide rain` is very often written in a scene that never mentions rain otherwise, and being
- * taken to the row that started it is exactly what an author is asking for there.
- *
- * The row's own reference is still tried first and still wins, on the same terms as every other
- * subject - it is the stable anchor and it follows a rename - but only when it points into THIS
- * scene, which is all a bare block id can address. Anything else resolves by name through the
- * story-wide index, which is also how the compiler resolves it.
- */
-function vfxLink(
-    lookups: StoryCommandLineLookups,
-    ref: { builtin?: string; sourceBlockId?: string } | undefined,
-    name: string | undefined,
-): Pick<Arg, "link"> {
-    const bound = blockLink(lookups, ref?.sourceBlockId);
-    if (bound.link) {
-        return bound;
-    }
-    const key = name?.trim().toLowerCase();
-    const declared = key ? lookups.commandContext?.vfxSources?.[key] : undefined;
-    return declared ? { link: { kind: "block", blockId: declared.blockId, sceneId: declared.sceneId } } : {};
 }
 
 /**
@@ -1293,40 +1264,78 @@ function videoSentence(
         ...(pickStageObject(lookups, "video", name, next => retargetActionable(payload, lookups, "video", next)) ?? {}),
         ...stageObjectLink(lookups, "video", payload.target, name),
     };
-    if (payload.operation === "create") {
-        return {
-            commandId,
-            args: [
-                positional("video", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
-                arg("name", name),
-                arg("muted", booleanValue(payload.muted), { apply: next => ({ ...payload, muted: next === "true" }) }),
-            ],
-        };
-    }
     if (payload.operation === "seek") {
         return {
             commandId,
             args: [positional("target", name, object), positional("time", seconds(payload.timeMs), { apply: next => ({ ...payload, timeMs: msOf(next) }) })],
         };
     }
-    // The one-row form, `/show` or `/play` naming its own clip - see `imageSentence`. A clip carries
-    // no placement and no fade, so the line is the file and the name and nothing else.
-    if (revealCreates(payload)) {
-        return {
-            commandId,
-            args: [
-                positional("target", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
-                arg("name", name),
-            ],
-        };
+    if (payload.operation === "play") {
+        return { commandId, args: playArgs(payload, lookups, name, object) };
     }
-    return { commandId, args: [positional("target", name, object)] };
+    const subject = [positional("target", name, object)];
+    if (payload.operation === "hide") {
+        return { commandId, args: [...subject, ...clipLeaveArgs(payload, DEFAULT_VIDEO_LEAVE_FADE_MS)] };
+    }
+    return { commandId, args: subject };
+}
+
+type VideoPayload = Extract<StoryActionPayload, { action: "video" }>;
+
+/**
+ * A `/play` line: the file and the clip's name - see `imageSentence` for why `name=` is printed even
+ * when it repeats the file's name - then the row's own settings, as its build reads them back.
+ *
+ * A play with no file is a row the inspector left half-made, and it prints the clip's name where the
+ * file goes: the line then reads as a play of that clip again, which is the nearest thing it can be.
+ */
+function playArgs(
+    payload: VideoPayload,
+    lookups: StoryCommandLineLookups,
+    name: string | undefined,
+    object: Omit<Arg, "param" | "value" | "positional">,
+): (Arg | null)[] {
+    const file = payload.assetId
+        ? [
+            positional("target", assetWord(lookups, payload.assetId), {
+                ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                ...assetLink(lookups, payload.assetId),
+            }),
+            arg("name", name),
+        ]
+        : [positional("target", name, object)];
+    return [
+        ...file,
+        arg("muted", booleanValue(payload.muted), { apply: next => ({ ...payload, muted: next === "true" }) }),
+        arg("wait", booleanValue(payload.waitForEnd), { apply: next => ({ ...payload, waitForEnd: next === "true" }) }),
+        arg("hide", booleanValue(payload.hideOnEnd), { apply: next => ({ ...payload, hideOnEnd: next === "true" }) }),
+        ...clipLeaveArgs(payload, undefined),
+    ];
+}
+
+/**
+ * How a clip leaves, as `out=` and `d=` - the inverse of `clipLeaveDurationMs`.
+ *
+ * A cut is `out=none`; a fade is `out=fade` with its length. A row that states no fade of its own
+ * prints neither, and picking `fade` on the word gives it `unstatedFadeMs` - the default fade a
+ * `/hide` writes down, or nothing on a `/play`, whose unstated fade already is the default one.
+ */
+function clipLeaveArgs(payload: VideoPayload, unstatedFadeMs: number | undefined): Arg[] {
+    const durationMs = payload.durationMs;
+    if (durationMs === undefined || !Number.isFinite(durationMs)) {
+        return [];
+    }
+    const word = arg("out", durationMs > 0 ? "fade" : "none", {
+        enum: true,
+        apply: next => ({
+            ...payload,
+            durationMs: next === "none" ? 0 : durationMs > 0 ? durationMs : unstatedFadeMs,
+        }),
+    });
+    const length = durationMs > 0
+        ? arg("d", seconds(durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })
+        : null;
+    return [word, length].filter((item): item is Arg => item !== null);
 }
 
 function vfxSentence(
@@ -1359,7 +1368,7 @@ function vfxSentence(
     }
     const object = {
         ...(pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {}),
-        ...vfxLink(lookups, payload.target, name),
+        ...stageObjectLink(lookups, "vfx", payload.target, name),
     };
     if (payload.operation === "setRate") {
         return {

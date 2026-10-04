@@ -7,6 +7,7 @@ import {
     ASSET_CATEGORY_TYPES,
     AssetCategory,
     AssetType,
+    categoryOfAssetType,
     isBundleAssetCategory,
     isBundleAssetType,
 } from '@/lib/workspace/services/assets/assetTypes';
@@ -74,6 +75,14 @@ export interface UseAssetActionsParams {
     expandGroup?: (groupId: string) => void;
     /** Receives per-file import progress and the failures the panel offers a retry for. */
     importQueue?: ImportQueueController;
+    /**
+     * Where a paste from the keyboard lands, for a view that has a place the author is standing in.
+     *
+     * The bottom tray's browser always shows one folder, and a keystroke pastes into it whatever
+     * happens to be selected inside it - the folder every file browser pastes into. Absent (the
+     * sidebar's tree, or the browser showing search results) leaves the focused row to decide.
+     */
+    pastePlace?: { category: AssetCategory; groupId?: string } | null;
 }
 
 /** How many reference lines to spell out per asset in the delete warning before collapsing. */
@@ -174,6 +183,7 @@ export function useAssetActions({
     setActionLoading,
     expandGroup,
     importQueue,
+    pastePlace,
 }: UseAssetActionsParams) {
     const { t, tn } = useTranslation();
     // Import is the one asset write with no control to grey out: files arrive by being dropped on the
@@ -775,7 +785,10 @@ export function useAssetActions({
     const handleCreateGroup = useCallback(async (category: AssetCategory, parentGroupId?: string) => {
         notifyLoading(true);
         try {
-            const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(category, parentGroupId) : null;
+            const parentName = parentGroupId
+                ? groups[category]?.find(group => group.id === parentGroupId)?.name
+                : undefined;
+            const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(category, parentName) : null;
             if (!groupName) return;
 
             await withAssetsService(async (assetsService) => {
@@ -805,7 +818,7 @@ export function useAssetActions({
         } finally {
             notifyLoading(false);
         }
-    }, [inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
+    }, [groups, inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
 
     /**
      * Create an empty text file under Other and open it.
@@ -923,18 +936,34 @@ export function useAssetActions({
         if (!context || !clipboard) return;
         notifyLoading(true);
 
-        let targetGroupId: string | undefined;
+        // The folder the paste lands in, and the category that folder belongs to.
+        let target: { category?: AssetCategory; groupId?: string } = {};
         if (contextMenuTarget) {
-            targetGroupId = contextMenuTarget.isGroup ? (contextMenuTarget.item as AssetGroup)?.id : (contextMenuTarget.item as Asset)?.groupId;
+            const item = contextMenuTarget.item;
+            target = {
+                category: contextMenuTarget.category,
+                groupId: !item
+                    ? contextMenuTarget.placeGroupId
+                    : contextMenuTarget.isGroup ? (item as AssetGroup).id : (item as Asset).groupId,
+            };
+        } else if (pastePlace) {
+            target = { category: pastePlace.category, groupId: pastePlace.groupId };
         } else if (focusedItemId) {
             if (focusedItemId.startsWith('group:')) {
-                targetGroupId = focusedItemId.replace('group:', '');
+                const groupId = focusedItemId.replace('group:', '');
+                const group = Object.values(groups).flat().find(g => g.id === groupId);
+                target = { category: group?.category, groupId };
             } else if (focusedItemId.startsWith('asset:')) {
                 const assetId = focusedItemId.replace('asset:', '');
                 const asset = Object.values(assets).flat().find(a => a.id === assetId);
-                targetGroupId = asset?.groupId;
+                target = { category: asset ? categoryOfAssetType(asset.type) : undefined, groupId: asset?.groupId };
             }
         }
+        // A folder only takes rows of its own category. A row from another one lands at the root of
+        // its own: filed under a folder of the wrong category, it is drawn nowhere.
+        const groupIdFor = (category: AssetCategory): string | undefined =>
+            target.category && target.category !== category ? undefined : target.groupId;
+        const targetGroupId = target.groupId;
 
         // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
         // read by looking for the three, and the list re-renders looking almost right either way.
@@ -960,7 +989,7 @@ export function useAssetActions({
                     if (clipboard.type === 'cut') {
                         // Move assets
                         for (const a of clipboard.assets) {
-                            const moveResult = await svc.moveAssetToGroup(a, targetGroupId);
+                            const moveResult = await svc.moveAssetToGroup(a, groupIdFor(categoryOfAssetType(a.type)));
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
@@ -969,7 +998,7 @@ export function useAssetActions({
                         }
                         // Move groups
                         for (const g of clipboard.groups) {
-                            const moveResult = await svc.moveGroupToParent(g.category, g.id, targetGroupId);
+                            const moveResult = await svc.moveGroupToParent(g.category, g.id, groupIdFor(g.category));
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
@@ -987,7 +1016,7 @@ export function useAssetActions({
                             }
                             // A copy that was made but not moved is still a row the author cannot find
                             // where they pasted, so it is named too.
-                            const moveResult = await svc.moveAssetToGroup(dupResult.data, targetGroupId);
+                            const moveResult = await svc.moveAssetToGroup(dupResult.data, groupIdFor(categoryOfAssetType(a.type)));
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
@@ -996,7 +1025,7 @@ export function useAssetActions({
                         }
                         // Duplicate groups (recursively copies all assets and child groups)
                         for (const g of clipboard.groups) {
-                            const dupResult = await svc.duplicateGroup(g.category, g.id, targetGroupId);
+                            const dupResult = await svc.duplicateGroup(g.category, g.id, groupIdFor(g.category));
                             if (dupResult.success) {
                                 pastedCount += 1;
                             } else {
@@ -1033,7 +1062,7 @@ export function useAssetActions({
         } finally {
             notifyLoading(false);
         }
-    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup, t]);
+    }, [clipboard, context, contextMenuTarget, pastePlace, focusedItemId, assets, groups, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup, t]);
     
     const handleRename = useCallback(async () => {
         if (!context || !inputDialog) return;

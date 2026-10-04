@@ -43,6 +43,8 @@ export type CompositeStackGameUiSurfaceRow = {
     slotId: UIStageSlotId;
     /** Stepped off the screen while a page is drawn over the stage. */
     concealed: boolean;
+    /** The dialogue box, put away with `Hide Dialog`: transparent, and still mounted. */
+    hidden: boolean;
     interactive: boolean;
     /** False for a display-only slot, which takes neither clicks nor keys. */
     takesInput: boolean;
@@ -159,6 +161,7 @@ export function buildCompositeStackView(composite: GameAppCompositeView): Compos
             label: surface.surfaceName,
             slotId: surface.slotId,
             concealed: surface.concealed,
+            hidden: surface.hidden,
             interactive: surface.interactive,
             takesInput: surface.takesInput,
         }));

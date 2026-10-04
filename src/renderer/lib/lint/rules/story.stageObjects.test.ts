@@ -290,14 +290,12 @@ describe("story/stage-object-missing", () => {
         expect(await reportedRows("story/stage-object-missing", [
             actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
             actionBlock("hide", { action: "image", operation: "hide", objectName: "sunset" }),
-            actionBlock("clip", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
-            actionBlock("play", { action: "video", operation: "play", objectName: "intro" }),
         ])).toEqual([]);
     });
 
-    it("treats a play row that names its own clip as the row that creates it", async () => {
-        // The one-row cutscene: a scene whose first row plays a clip out of the library. Nothing above
-        // it declares the clip and nothing has to; the rows after it find the clip it left on stage.
+    it("treats a play row as the row that creates its clip", async () => {
+        // A play is the one row a clip comes on with: a scene whose first row plays a clip out of the
+        // library needs nothing above it, and the rows after it find the clip it defined.
         expect(await reportedRows("story/stage-object-missing", [
             actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
             actionBlock("pause", { action: "video", operation: "pause", objectName: "festival" }),
@@ -306,10 +304,10 @@ describe("story/stage-object-missing", () => {
         ])).toEqual([]);
     });
 
-    it("still reports a play row that names neither a clip nor anything on stage", async () => {
+    it("reports a row naming a clip no play in the scene defines", async () => {
         expect(await reportedRows("story/stage-object-missing", [
-            actionBlock("play", { action: "video", operation: "play", objectName: "festival" }),
-        ])).toEqual(["play"]);
+            actionBlock("pause", { action: "video", operation: "pause", objectName: "festival" }),
+        ])).toEqual(["pause"]);
     });
 
     it("does not run at all when the project switches it off", async () => {
@@ -349,25 +347,15 @@ describe("story/declared-never-shown", () => {
         ])).toEqual([]);
     });
 
-    it("does not count playing a video as showing it", async () => {
-        // The distinction the split exists for: a declared video is on stage and buffering, and a
-        // `/play` on its own is a clip the player hears and never sees.
-        expect(await reportedRows("story/declared-never-shown", [
-            actionBlock("create", { action: "video", operation: "create", objectName: "opening", assetId: "asset-video" }),
-            actionBlock("play", { action: "video", operation: "play", objectName: "opening" }),
-        ])).toEqual(["create"]);
-    });
-
     it("says nothing about a show row that names its own source", async () => {
         // The one-row form declares and reveals together, so there is no later row for it to be
         // waiting on - reporting it would put a warning on every `/show <asset>` in a project.
         expect(await reportedRows("story/declared-never-shown", [
             actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
-            actionBlock("clip", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
         ])).toEqual([]);
     });
 
-    it("says nothing about a play row that names its own clip, which reveals it too", async () => {
+    it("says nothing about a play row, which reveals its clip itself", async () => {
         expect(await reportedRows("story/declared-never-shown", [
             actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival" }),
         ])).toEqual([]);
@@ -379,10 +367,9 @@ describe("story/declared-never-shown", () => {
         ])).toEqual([]);
     });
 
-    it("reads an ambience overlay across the whole story, not one scene", async () => {
-        // An overlay is game-level: rain declared in a prologue and shown two scenes later is the
-        // ordinary way to write one, and reporting it would make the rule wrong exactly where the
-        // feature is used properly.
+    it("reads an ambience overlay within its own scene, as every other stage object", async () => {
+        // An overlay leaves the stage with the scene that declares it, so a show in a later scene
+        // reveals nothing of it: the declaration is never shown, and says so.
         const declare = actionBlock("declare", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" });
         const reveal = actionBlock("reveal", { action: "vfx", operation: "show", objectName: "rain" });
         const entry: LintStoryEntry = {
@@ -407,7 +394,8 @@ describe("story/declared-never-shown", () => {
         };
 
         const findings = await run("story/declared-never-shown", createTestLintContext({ stories: [entry] }));
-        expect(findings).toEqual([]);
+        expect(findings.map(finding => finding.ruleId)).toEqual(["story/declared-never-shown"]);
+        expect(findings[0].location).toMatchObject({ blockId: "declare" });
     });
 });
 
@@ -441,20 +429,20 @@ describe("story/stage-object-duplicate", () => {
         ])).toEqual([]);
     });
 
-    it("reports a play row naming its own clip under a name an earlier row already declared", async () => {
-        // The same rule `/show <clip>` follows: the first declaration stands and this row runs it,
-        // so the clip this row picked is the part that goes nowhere.
+    it("reports a play naming a different file under a name an earlier play already defined", async () => {
+        // The first play stands and the later ones run its clip, so the file a later row picked is
+        // the part that goes nowhere.
         expect(await reportedRows("story/stage-object-duplicate", [
-            actionBlock("create", { action: "video", operation: "create", objectName: "festival", assetId: "asset-a" }),
-            actionBlock("show", { action: "video", operation: "show", objectName: "festival", assetId: "asset-b" }),
-            actionBlock("play", { action: "video", operation: "play", objectName: "festival", assetId: "asset-c" }),
-        ])).toEqual(["show", "play"]);
+            actionBlock("first", { action: "video", operation: "play", objectName: "festival", assetId: "asset-a" }),
+            actionBlock("second", { action: "video", operation: "play", objectName: "festival", assetId: "asset-b" }),
+            actionBlock("third", { action: "video", operation: "play", objectName: "festival", assetId: "asset-c" }),
+        ])).toEqual(["second", "third"]);
     });
 
-    it("says nothing about a play row that only runs a clip an earlier row declared", async () => {
+    it("says nothing about a play of the same file again, which is how a clip is played twice", async () => {
         expect(await reportedRows("story/stage-object-duplicate", [
-            actionBlock("create", { action: "video", operation: "create", objectName: "festival", assetId: "asset-a" }),
-            actionBlock("play", { action: "video", operation: "play", objectName: "festival" }),
+            actionBlock("first", { action: "video", operation: "play", objectName: "festival", assetId: "asset-a" }),
+            actionBlock("again", { action: "video", operation: "play", objectName: "festival", assetId: "asset-a" }),
         ])).toEqual([]);
     });
 
@@ -464,6 +452,74 @@ describe("story/stage-object-duplicate", () => {
             actionBlock("exit", { action: "character", operation: "exit", characterId: "char-1" }),
             actionBlock("again", { action: "character", operation: "enter", characterId: "char-1" }),
         ])).toEqual([]);
+    });
+});
+
+// --- story/video-control-after-end ------------------------------------------
+
+describe("story/video-control-after-end", () => {
+    const play = (id: string, waitForEnd?: boolean): StoryBlock =>
+        actionBlock(id, { action: "video", operation: "play", objectName: "festival", assetId: "asset-festival", ...(waitForEnd === undefined ? {} : { waitForEnd }) });
+    const control = (id: string, operation: "pause" | "resume" | "seek" | "stop" | "hide"): StoryBlock =>
+        actionBlock(id, { action: "video", operation, objectName: "festival", ...(operation === "seek" ? { timeMs: 1000 } : {}) });
+    const group = (id: string, control: "parallel" | "sequence" | "race" | "repeat", children: StoryBlock[]): StoryBlock[] => [
+        { id, kind: "control", parentId: null, childrenIds: children.map(child => child.id), payload: { control } } as StoryBlock,
+        ...children.map(child => ({ ...child, parentId: id }) as StoryBlock),
+    ];
+    /** A scene whose top level is `top`, with `nested` filed under the groups that name them. */
+    async function reportedIn(top: StoryBlock[], nested: StoryBlock[] = []): Promise<string[]> {
+        const all = [...top, ...nested];
+        const entry: LintStoryEntry = {
+            id: "story-1",
+            name: "Story",
+            document: {
+                ...document(all),
+                scenes: { [SCENE_ID]: { ...scene(all), rootBlockIds: top.map(block => block.id) } },
+            } as StoryDocument,
+        };
+        const findings = await run("story/video-control-after-end", createTestLintContext({ stories: [entry] }));
+        return findings.map(finding => (finding.location.kind === "story" ? finding.location.blockId ?? "" : ""));
+    }
+
+    it("is a warning", () => {
+        expect(rule("story/video-control-after-end").defaultSeverity).toBe("warning");
+    });
+
+    it("reports every control row after a play that waits, and none after one that does not", async () => {
+        expect(await reportedIn([
+            play("waits"),
+            control("pause", "pause"),
+            control("resume", "resume"),
+            control("seek", "seek"),
+            control("stop", "stop"),
+            control("hide", "hide"),
+        ])).toEqual(["pause", "resume", "seek", "stop"]);
+        expect(await reportedIn([play("moves-on", false), control("pause", "pause"), control("stop", "stop")])).toEqual([]);
+    });
+
+    it("goes by the latest play of the clip", async () => {
+        expect(await reportedIn([play("waits"), play("moves-on", false), control("stop", "stop")])).toEqual([]);
+        expect(await reportedIn([play("moves-on", false), play("waits"), control("stop", "stop")])).toEqual(["stop"]);
+    });
+
+    it("says nothing inside a parallel group, where the rows run side by side", async () => {
+        const [parallel, ...children] = group("parallel", "parallel", [play("waits"), control("stop", "stop")]);
+        expect(await reportedIn([parallel], children)).toEqual([]);
+    });
+
+    it("still reports inside a sequence, which runs its rows in order", async () => {
+        const [sequence, ...children] = group("sequence", "sequence", [play("waits"), control("stop", "stop")]);
+        expect(await reportedIn([sequence], children)).toEqual(["stop"]);
+    });
+
+    it("says nothing when a group between the two rows could play the clip again", async () => {
+        const [parallel, ...children] = group("parallel", "parallel", [play("moves-on", false)]);
+        expect(await reportedIn([play("waits"), parallel, control("stop", "stop")], children)).toEqual([]);
+    });
+
+    it("says nothing across a label, which a goto may reach without passing the play", async () => {
+        const label = { id: "label", kind: "control", parentId: null, childrenIds: [], payload: { control: "label", name: "again" } } as StoryBlock;
+        expect(await reportedIn([play("waits"), label, control("stop", "stop")])).toEqual([]);
     });
 });
 
@@ -621,7 +677,7 @@ describe("lint and the story compiler answer as one", () => {
         actionBlock("image-missing", { action: "image", operation: "hide", objectName: "ghost" }),
         actionBlock("text-missing", { action: "text", operation: "setText", objectName: "sign", text: "Open" }),
         actionBlock("layer-missing", { action: "layer", operation: "setZIndex", objectName: "foreground", zIndex: 3 }),
-        actionBlock("video-missing", { action: "video", operation: "play", objectName: "intro" }),
+        actionBlock("video-missing", { action: "video", operation: "pause", objectName: "intro" }),
         actionBlock("vfx-missing", { action: "vfx", operation: "show", objectName: "snow" }),
         actionBlock("sound-missing", { action: "audio", operation: "setVolume", objectName: "piano", volume: 0.5 }),
         // The two exemptions: the built-in displayable layer, and the reserved music channel.

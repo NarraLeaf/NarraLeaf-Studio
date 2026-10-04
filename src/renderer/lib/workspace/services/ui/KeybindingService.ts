@@ -168,6 +168,8 @@ export class KeybindingService {
      */
     private overrides = new Map<string, string>();
     private overrideListeners = new Set<() => void>();
+    /** Bumped on every override change, so a reader can tell "changed" without copying the map. */
+    private overridesRevision = 0;
 
     constructor(focusManager: FocusManager, uiStore: UIStore) {
         this.keybindings = new Map();
@@ -223,7 +225,16 @@ export class KeybindingService {
         };
     }
 
+    /**
+     * A number that changes whenever the overrides do. Stable between changes, which is what
+     * `useSyncExternalStore` needs from a snapshot - the map copy above is a new object every call.
+     */
+    public getOverridesRevision(): number {
+        return this.overridesRevision;
+    }
+
     private emitOverridesChanged(): void {
+        this.overridesRevision += 1;
         for (const listener of this.overrideListeners) {
             listener();
         }
@@ -261,6 +272,23 @@ export class KeybindingService {
      */
     public getAll(): Keybinding[] {
         return Array.from(this.keybindings.values());
+    }
+
+    /**
+     * Catalog ids of the bindings scoped to where focus is now: those with a `when` that admits the
+     * current focus. Bindings with no `when` are workspace-wide and say nothing about where the author
+     * is, so they are left out. This is what "the shortcuts of the editor in front of you" means to
+     * the dispatcher, which is why the cheat sheet asks it rather than guessing from the tab.
+     */
+    public getFocusedCatalogIds(): string[] {
+        const focus = this.focusManager.getFocus();
+        const ids: string[] = [];
+        for (const keybinding of this.keybindings.values()) {
+            if (keybinding.when && keybinding.when(focus)) {
+                ids.push(keybinding.catalogId ?? keybinding.id);
+            }
+        }
+        return ids;
     }
 
     /**

@@ -13,6 +13,7 @@ import {
 } from "@/lib/settings/editorFontOptions";
 import { loadSystemFontFamilies, type SystemFontFamily, type SystemFontsResult } from "@/lib/settings/systemFonts";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 
 /**
  * Font chooser for a `SettingValueType.Font` row: the four presets, then every family installed on
@@ -100,6 +101,8 @@ export function SettingFontPicker({
     const panelRef = useRef<HTMLDivElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
 
     const families = load.status === "ok" ? load.families : [];
 
@@ -257,6 +260,17 @@ export function SettingFontPicker({
         setOpen(true);
     }, [beginLoad, close, disabled, open, stacks, value]);
 
+    // Escape and Tab out close it, focus starts in the search field, and closing - by either key or
+    // by a pick - hands focus back to the trigger. The rows are not focusable: the search field keeps
+    // focus and walks them itself (see `onKeyDown`), so the layer is given no item selector.
+    useFloatingLayer({
+        open,
+        onClose: close,
+        panelRef,
+        ownerRefs: [triggerRef],
+        initialFocus: inputRef,
+    });
+
     // Dismiss on a click anywhere that is neither the trigger nor the panel. Capture phase, like
     // every other menu in Studio, so a click on a control underneath does not act before we close.
     useEffect(() => {
@@ -270,9 +284,9 @@ export function SettingFontPicker({
             }
             close();
         };
-        document.addEventListener("mousedown", onPointerDown, true);
-        return () => document.removeEventListener("mousedown", onPointerDown, true);
-    }, [close, open]);
+        hostDocument.addEventListener("mousedown", onPointerDown, true);
+        return () => hostDocument.removeEventListener("mousedown", onPointerDown, true);
+    }, [close, hostDocument, open]);
 
     // Fixed-position portal rather than an absolute child: this row lives in a scrolling pane inside
     // a window that hides its overflow, so a 380px panel anchored in the flow is clipped long before
@@ -289,13 +303,13 @@ export function SettingFontPicker({
             }
             const width = Math.min(
                 Math.max(trigger.width, PANEL_MIN_WIDTH_PX),
-                Math.max(PANEL_MIN_WIDTH_PX, window.innerWidth - VIEWPORT_MARGIN_PX * 2),
+                Math.max(PANEL_MIN_WIDTH_PX, hostWindow.innerWidth - VIEWPORT_MARGIN_PX * 2),
             );
             const left = Math.min(
                 Math.max(VIEWPORT_MARGIN_PX, trigger.right - width),
-                Math.max(VIEWPORT_MARGIN_PX, window.innerWidth - width - VIEWPORT_MARGIN_PX),
+                Math.max(VIEWPORT_MARGIN_PX, hostWindow.innerWidth - width - VIEWPORT_MARGIN_PX),
             );
-            const spaceBelow = window.innerHeight - trigger.bottom - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
+            const spaceBelow = hostWindow.innerHeight - trigger.bottom - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
             const spaceAbove = trigger.top - PANEL_GAP_PX - VIEWPORT_MARGIN_PX;
             const openAbove = spaceBelow < PANEL_MIN_USEFUL_HEIGHT_PX && spaceAbove > spaceBelow;
             const maxHeight = Math.max(120, Math.min(PANEL_MAX_HEIGHT_PX, openAbove ? spaceAbove : spaceBelow));
@@ -305,25 +319,19 @@ export function SettingFontPicker({
                 left,
                 maxHeight,
                 ...(openAbove
-                    ? { bottom: Math.max(VIEWPORT_MARGIN_PX, window.innerHeight - trigger.top + PANEL_GAP_PX) }
+                    ? { bottom: Math.max(VIEWPORT_MARGIN_PX, hostWindow.innerHeight - trigger.top + PANEL_GAP_PX) }
                     : { top: trigger.bottom + PANEL_GAP_PX }),
                 zIndex: 100,
             });
         };
         place();
-        window.addEventListener("resize", place);
-        window.addEventListener("scroll", place, true);
+        hostWindow.addEventListener("resize", place);
+        hostWindow.addEventListener("scroll", place, true);
         return () => {
-            window.removeEventListener("resize", place);
-            window.removeEventListener("scroll", place, true);
+            hostWindow.removeEventListener("resize", place);
+            hostWindow.removeEventListener("scroll", place, true);
         };
-    }, [open]);
-
-    useEffect(() => {
-        if (open) {
-            inputRef.current?.focus();
-        }
-    }, [open]);
+    }, [hostWindow, open]);
 
     // Follow the keyboard cursor. Also runs when the list arrives, so a picker opened on a font far
     // down the alphabet shows it rather than opening at "A".
@@ -383,20 +391,10 @@ export function SettingFontPicker({
                     }
                     return;
                 }
-                case "Escape":
-                    // Stopped here rather than left to bubble: the query is this popover's state,
-                    // and Escape closing the popover is the one thing the key means while it is open.
-                    event.preventDefault();
-                    event.stopPropagation();
-                    close();
-                    return;
-                case "Tab":
-                    close();
-                    return;
                 default:
             }
         },
-        [activeIndex, close, commit, moveActive, rows],
+        [activeIndex, commit, moveActive, rows],
     );
 
     const triggerLabel = stacks[value] ? presetLabel(value) : (value || presetLabel(presets[0] ?? "Default"));
@@ -580,7 +578,7 @@ export function SettingFontPicker({
                     className={cn("h-4 w-4 shrink-0 text-fg-muted transition-transform duration-150", open && "rotate-180")}
                 />
             </Button>
-            {panel && createPortal(panel, document.body)}
+            {panel && createPortal(panel, hostDocument.body)}
         </div>
     );
 }

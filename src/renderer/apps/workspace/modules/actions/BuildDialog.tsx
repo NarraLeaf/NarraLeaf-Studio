@@ -16,9 +16,11 @@ import {
     deriveGameAppId,
     GAME_BUILD_ARCHS_BY_PLATFORM,
     gameBuildArtifactBaseName,
+    hostCanBuildFormat,
     hostCanBuildTarget,
     platformFromSystem,
     predictGameBuildArtifacts,
+    type BuildPreflightCode,
     type BuildPreflightFinding,
     type BuildPreflightSection,
     type BuildPreflightSeverity,
@@ -67,6 +69,7 @@ import type {
 } from "@shared/types/pluginDependencies";
 import { getInterface } from "@/lib/app/bridge";
 import { openProjectPanel } from "../project";
+import { rotateDistributionKey } from "../project/distributionKeyAction";
 import {
     appTagSelection,
     BUILD_DIALOG_SECTIONS,
@@ -246,6 +249,7 @@ export function BuildDialogContent({
     onCommit,
     onCancel,
     runPreflight,
+    onCreateDistributionKey,
 }: {
     info: BuildDialogInfo;
     initialState: BuildDialogState;
@@ -292,6 +296,12 @@ export function BuildDialogContent({
     onCommit: (request: GameBuildRequest) => void;
     onCancel: () => void;
     runPreflight: (request: GameBuildRequest) => Promise<BuildPreflightFinding[]>;
+    /**
+     * Creates the project's distribution key, through the same action as the button on
+     * Project ▸ Project. Resolves true once the key is written and false when it was not, having
+     * already told the author why. Absent, the notice asking for a key is shown without a button.
+     */
+    onCreateDistributionKey?: () => Promise<boolean>;
 }) {
     const { t, locale } = useTranslation();
     const [state, setState] = useState<BuildDialogState>(initialState);
@@ -355,6 +365,8 @@ export function BuildDialogContent({
     // Bumped only once a Content write has landed on disk. Preflight reads the project from the
     // file, so re-checking on the optimistic state would judge the previous one.
     const [contentRevision, setContentRevision] = useState(0);
+    // Whether the key the Content page's notice asks for is being created right now.
+    const [creatingKey, setCreatingKey] = useState(false);
 
     const request = useMemo(() => stateToRequest(state), [state]);
 
@@ -393,6 +405,28 @@ export function BuildDialogContent({
             setSavingContent(null);
         }
     }, [content, onPersistContent, savingContent]);
+
+    /**
+     * Create the distribution key the Content page's notice asks for.
+     *
+     * The notice goes as soon as the key is written rather than when the next check answers, and the
+     * check then runs again for everything else: preflight reads the manifest from disk, so it is
+     * bumped only once the write has landed, the same order a Content switch keeps.
+     */
+    const createDistributionKey = useCallback(async () => {
+        if (!onCreateDistributionKey || creatingKey) {
+            return;
+        }
+        setCreatingKey(true);
+        try {
+            if (await onCreateDistributionKey()) {
+                setFindings(current => current.filter(finding => finding.code !== "distribution-key-missing"));
+                setContentRevision(revision => revision + 1);
+            }
+        } finally {
+            setCreatingKey(false);
+        }
+    }, [creatingKey, onCreateDistributionKey]);
 
     const rescanPlugins = useCallback(async () => {
         if (rescanning) {
@@ -568,6 +602,9 @@ export function BuildDialogContent({
                             findings={findings}
                             onContentChange={(field, value) => { void commitContent(field, value); }}
                             onRescanPlugins={() => { void rescanPlugins(); }}
+                            {...(onCreateDistributionKey
+                                ? { onCreateDistributionKey: () => { void createDistributionKey(); }, creatingKey }
+                                : {})}
                         />
                     )}
                     {page === "plugins" && (
@@ -655,10 +692,15 @@ const PLATFORM_DETAIL_FIELDS: Record<string, "one" | "list"> = {
     platforms: "list",
 };
 
-/** A finding's detail with every platform id replaced by its display name. */
+/**
+ * A finding's detail with every platform id replaced by its display name.
+ *
+ * A list of platforms is joined the way the interface's language writes a list - 、 in Chinese and
+ * Japanese - in the narrow style, which is a plain enumeration with no "and".
+ */
 function localizePlatformDetail(
     detail: BuildPreflightFinding["detail"],
-    t: ReturnType<typeof useTranslation>["t"],
+    { t, formatList }: Pick<ReturnType<typeof useTranslation>, "t" | "formatList">,
 ): Record<string, string> {
     const name = (id: string): string => {
         const key = `build.platform.${id as GameBuildPlatform}` as const;
@@ -674,14 +716,32 @@ function localizePlatformDetail(
             continue;
         }
         localized[field] = arity === "list"
-            ? value.split(",").map(part => name(part.trim())).join(", ")
+            ? formatList(value.split(",").map(part => name(part.trim())), { style: "narrow" })
             : name(value);
+    }
+    if (detail?.format) {
+        const key = `build.format.${detail.format as GameBuildFormat}` as const;
+        const translated = t(key);
+        localized.format = translated === key ? detail.format : translated;
     }
     return localized;
 }
 
-function Findings({ findings, section }: { findings: BuildPreflightFinding[]; section: BuildPreflightSection }) {
-    const { t } = useTranslation();
+function Findings({
+    findings,
+    section,
+    actions,
+}: {
+    findings: BuildPreflightFinding[];
+    section: BuildPreflightSection;
+    /**
+     * A control to put beside a finding of the given code, for the few that this dialog can answer
+     * in place. The sentence stays the same sentence; the control sits at the end of its line.
+     */
+    actions?: Partial<Record<BuildPreflightCode, React.ReactNode>>;
+}) {
+    const translation = useTranslation();
+    const { t } = translation;
     const mine = findings.filter(finding => finding.section === section);
     if (mine.length === 0) {
         return null;
@@ -691,17 +751,33 @@ function Findings({ findings, section }: { findings: BuildPreflightFinding[]; se
             {/* Keyed by position: one code can be filed several times over details that are not the
                 platform (a plugin value missing for two fields), and two of them under one key is a
                 row React may reuse for the wrong finding. The list is rebuilt whole on every check. */}
-            {mine.map((finding, index) => (
-                <p
-                    key={`${finding.code}-${index}`}
-                    className={cn(
-                        "whitespace-pre-wrap text-2xs leading-relaxed",
-                        finding.severity === "error" ? "text-danger" : "text-fg-subtle",
-                    )}
-                >
-                    {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
-                </p>
-            ))}
+            {mine.map((finding, index) => {
+                const sentence = (
+                    <p
+                        key={`${finding.code}-${index}`}
+                        className={cn(
+                            "whitespace-pre-wrap text-2xs leading-relaxed",
+                            finding.severity === "error" ? "text-danger" : "text-fg-subtle",
+                        )}
+                    >
+                        {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, translation))}
+                    </p>
+                );
+                const action = actions?.[finding.code];
+                if (!action) {
+                    return sentence;
+                }
+                return (
+                    <div
+                        key={`${finding.code}-${index}`}
+                        className="flex items-center justify-between gap-3"
+                        data-build-finding={finding.code}
+                    >
+                        <div className="min-w-0">{sentence}</div>
+                        {action}
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -838,7 +914,8 @@ function VariantBlocking({
     findings: BuildPreflightFinding[];
     onOpenSection: (section: BuildPreflightSection) => void;
 }) {
-    const { t } = useTranslation();
+    const translation = useTranslation();
+    const { t } = translation;
     const blocking = findings.filter(finding => finding.severity === "error");
 
     return (
@@ -866,7 +943,7 @@ function VariantBlocking({
                                     "nl-focus-ring transition-colors duration-150 hover:bg-fill",
                                 )}
                             >
-                                {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, t))}
+                                {t(`build.preflight.${finding.code}`, localizePlatformDetail(finding.detail, translation))}
                             </button>
                         ))}
                     </div>
@@ -900,7 +977,7 @@ function TargetsSection({
                                 <Switch
                                     checked={enabled}
                                     disabled={!canBuild}
-                                    onCheckedChange={value => onChange(togglePlatform(state, platform, value))}
+                                    onCheckedChange={value => onChange(togglePlatform(state, platform, value, info.hostPlatform))}
                                     size="sm"
                                 />
                                 <span
@@ -931,12 +1008,16 @@ function TargetsSection({
                         {enabled && canBuild && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                                 {OFFERED_FORMATS[platform].map(format => (
-                                    <FormatPill
-                                        key={format}
-                                        format={format}
-                                        active={state.formats[platform].has(format)}
-                                        onClick={() => onChange(toggleFormat(state, platform, format))}
-                                    />
+                                    hostCanBuildFormat(info.hostPlatform, platform, format)
+                                        ? (
+                                            <FormatPill
+                                                key={format}
+                                                format={format}
+                                                active={state.formats[platform].has(format)}
+                                                onClick={() => onChange(toggleFormat(state, platform, format))}
+                                            />
+                                        )
+                                        : <UnavailableFormatPill key={format} format={format} platform={platform} />
                                 ))}
                             </div>
                         )}
@@ -973,6 +1054,23 @@ function FormatPill({
             {active && <Check className="h-3 w-3" />}
             {t(`build.format.${format}`)}
         </button>
+    );
+}
+
+/**
+ * A format this machine cannot produce for a platform it otherwise builds - a macOS disk image
+ * anywhere but a Mac, for instance. Shown rather than left out, so what the platform offers stays
+ * visible, with the reason in a tooltip on a plain element: a disabled button receives no hover.
+ */
+function UnavailableFormatPill({ format, platform }: { format: GameBuildFormat; platform: GameBuildPlatform }) {
+    const { t } = useTranslation();
+    return (
+        <span
+            className="inline-flex cursor-not-allowed items-center rounded-md bg-fill-subtle px-2 py-1 text-xs text-fg-muted opacity-50"
+            data-tip={t(`build.formatUnavailable.${platform}`)}
+        >
+            {t(`build.format.${format}`)}
+        </span>
     );
 }
 
@@ -1155,6 +1253,8 @@ export function ContentSection({
     findings,
     onContentChange,
     onRescanPlugins,
+    onCreateDistributionKey,
+    creatingKey = false,
 }: {
     info: BuildDialogInfo;
     state: BuildDialogState;
@@ -1168,6 +1268,13 @@ export function ContentSection({
         value: BuildContentSettings[keyof BuildContentSettings],
     ) => void;
     onRescanPlugins: () => void;
+    /**
+     * Creates the distribution key from the notice that says this build will not accept patches.
+     * Absent, that notice is shown without its button.
+     */
+    onCreateDistributionKey?: () => void;
+    /** True while that key is being created, so the button cannot be pressed twice. */
+    creatingKey?: boolean;
 }) {
     const { t } = useTranslation();
     // Every one of these writes `project.json`, so the section goes read-only with the workspace.
@@ -1222,7 +1329,27 @@ export function ContentSection({
                         .join(" · ")
                     : t("build.content.localesNone")}
             />
-            <Findings findings={findings} section="content" />
+            {/* The key is the one finding here this dialog can settle on the spot, and the moment
+                to settle it is before the build ships: a game built without one never accepts a
+                patch. The button is Project ▸ Project's own Create, and it writes the manifest, so
+                it goes read-only with the workspace like the switches above. */}
+            <Findings
+                findings={findings}
+                section="content"
+                actions={onCreateDistributionKey ? {
+                    "distribution-key-missing": (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="shrink-0"
+                            {...freeze.writes(creatingKey)}
+                            onClick={onCreateDistributionKey}
+                        >
+                            {t("project.distribution.createAction")}
+                        </Button>
+                    ),
+                } : undefined}
+            />
         </div>
     );
 }
@@ -1733,6 +1860,9 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                     await startBuild(workspace, committed);
                 }}
                 runPreflight={nextRequest => buildService.preflight(nextRequest)}
+                // Project ▸ Project's own action, so the key is minted, written and reported the one
+                // way. The panel follows the manifest, so it shows the key the moment this lands.
+                onCreateDistributionKey={async () => Boolean(await rotateDistributionKey(projectService, uiService))}
             />
         ),
     });

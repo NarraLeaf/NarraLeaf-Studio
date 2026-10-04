@@ -474,16 +474,16 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
 /**
  * A Story Action Blueprint gets a narrow host adapter, and that is why `requiresHostApi` exists.
  *
- * It runs inside a compiled NLR `Script`, and `buildStoryActionHostAdapter` gives it `persistence`
- * and the story's own variable stores - no `navigation`, no `game`, no `widget`, no `sound`. Every
- * node that reaches for one of those throws on the first property access, and the throw goes
- * nowhere: a story action is fire-and-forget (`void run(...).catch(console.error)`) and its graph
- * runs without a debug trace, so nothing reaches the issues panel, the lint report or the game log.
- * The author sees a row that silently did nothing.
+ * It runs inside a compiled story action (`storyAwaitedAction.ts`), and `buildStoryActionHostAdapter`
+ * gives it `persistence` and the story's own variable stores - no `navigation`, no `game`, no
+ * `widget`, no `sound`. Every node that reaches for one of those throws on the first property access,
+ * and the throw goes nowhere useful: the row's error handler only writes it to the console, and the
+ * graph runs without a debug trace, so nothing reaches the issues panel, the lint report or the game
+ * log. The author sees a row that silently did nothing.
  *
  * The fix is to keep those nodes out of the story's palette rather than to widen the adapter: a
  * story row that navigates would be a second way to leave a scene, competing with the rows that
- * already say so (`/jump`, `/ending`, `/quit`), and it could not block on the result anyway.
+ * already say so (`/jump`, `/ending`, `/quit`).
  *
  * This used to be a list of the five owner kinds that are *not* story calls, which meant a new
  * owner position had to be remembered in it. `BlueprintNodeRegistry` asks

@@ -35,6 +35,7 @@ import {
     type SaveCompatibilityStamp,
 } from "@shared/types/saveCompatibility";
 import { isReservedSaveId } from "@shared/types/saves";
+import { translateLegacyElementIds, type LegacyElementIdTable } from "./legacyElementIds";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -213,6 +214,21 @@ export type SaveLoadGameSeam = {
      * has already been asked, and anything that fails after it is put back through {@link restore}.
      */
     switchStory?: (target: SaveStoryTarget) => Promise<void>;
+    /**
+     * Mount the story already on the stage again, entered where the save can be received.
+     *
+     * Only ever called after {@link resolveStoryMount} answered `remount`. The same terms as
+     * {@link switchStory}: the run is spent from here on, and put back through {@link restore} if
+     * the load fails after it. Mounting rather than starting - the save is applied over the mount,
+     * as it is on a title screen.
+     */
+    remountStory?: (target: SaveStoryTarget) => Promise<void>;
+    /**
+     * The running story's answer for names a save may hold from before the camera and the sounds
+     * had stable ones - see `legacyElementIds.ts`. Asked after any switch or remount, of the story
+     * the save will be applied to. Omitted, or null, the save is applied as written.
+     */
+    legacyElementIds?: () => LegacyElementIdTable | null;
 };
 
 /** The story a save belongs to, as its anchors name it. */
@@ -220,14 +236,25 @@ export type SaveStoryTarget = {
     /** Blank when the save's position named only a scene; the host resolves one from the library. */
     storyId: string;
     sceneId: string;
+    /**
+     * Every scene the save's ids name (see {@link readSaveSceneIds}), for a host deciding whether the
+     * session on the stage can receive it. Scenes of other stories are the host's to ignore.
+     */
+    sceneIds: readonly string[];
 };
 
 /** Where the save's story is, relative to the one currently on the stage. */
 export type SaveStoryMount =
-    /** It is the story already mounted. Nothing has to happen. */
+    /** It is the story already mounted, and the session on the stage can receive the save. */
     | "same"
     /** It is another of the project's stories, and that one has to be mounted first. */
     | "switch"
+    /**
+     * It is the story already mounted, but the session on the stage cannot receive this save: it
+     * was entered where the save's scenes are out of reach - a row launch above all - so the story
+     * has to be mounted again first. See `planSaveMount`.
+     */
+    | "remount"
     /** No story in this build holds that scene. */
     | "nowhere";
 
@@ -391,6 +418,105 @@ function collectStackActionIds(stack: unknown, found: Set<string>): void {
     }
 }
 
+/** Every element and scene id a save's stage, element states and clips name. */
+function collectSaveElementIds(savedGame: SavedGame): string[] {
+    const ids: string[] = [];
+    const take = (id: unknown): void => {
+        if (typeof id === "string" && id) {
+            ids.push(id);
+        }
+    };
+    const game = savedGame.game as unknown as Record<string, unknown>;
+    for (const entry of game.elementStates as unknown[]) {
+        if (isRecord(entry)) {
+            take(entry.id);
+        }
+    }
+    const stage = game.stage as unknown as Record<string, unknown>;
+    for (const scene of stage.scenes as unknown[]) {
+        if (!isRecord(scene)) {
+            continue;
+        }
+        take(scene.sceneId);
+        const layers = isRecord(scene.elements) ? scene.elements.layers : undefined;
+        if (isRecord(layers)) {
+            for (const [layerId, displayables] of Object.entries(layers)) {
+                take(layerId);
+                if (Array.isArray(displayables)) {
+                    displayables.forEach(take);
+                }
+            }
+        }
+    }
+    for (const entry of stage.videos as unknown[]) {
+        if (Array.isArray(entry)) {
+            take(entry[0]);
+        }
+    }
+    return ids;
+}
+
+/**
+ * The prefix the compiler names everything under that the opening scene of a row-precise launch
+ * builds - the scene itself, its layers and every element posed on it. See `launchSceneIdPrefix` in
+ * the story compiler, which is the one place it is written.
+ */
+const ROW_LAUNCH_ID_PREFIX = "nl:launch:";
+
+/**
+ * Whether the save was written in a run started from a story row (Dev Mode's "Play from this row").
+ *
+ * Such a run enters through a scene built for that one launch, and a save written there names it -
+ * on the stage while that scene is up, and among the element states for the rest of the run. No
+ * other compile has that scene, so the save loads as written only into a launch of the same row.
+ * Everywhere else it is put back at the line it records instead (see {@link loadSaveIntoGame}).
+ */
+export function isRowLaunchSave(savedGame: SavedGame): boolean {
+    return collectSaveElementIds(savedGame).some(id => id.startsWith(ROW_LAUNCH_ID_PREFIX));
+}
+
+/** Element ids the compiler names under the scene that built them: `nl:<kind>:<scene id>:<name>`. */
+const SCENE_SCOPED_ELEMENT_KINDS = new Set(["image", "text", "layer", "video", "puppet", "bgm", "sound"]);
+
+/**
+ * Every scene of the project a save's ids name, in no particular order.
+ *
+ * Read from the same ids the pre-check resolves - the posed scenes and their layers, the element
+ * states, the clips, the rows the execution stacks stand on - because those are exactly the ones a
+ * running session has to be able to reach. A save carries the state of every element a run touched,
+ * not only of the scene on screen, so a save written in the third scene names the first two as well,
+ * and a session that cannot reach them cannot take it.
+ *
+ * What names no scene is left out: the narrator, characters and ambience overlays belong to the
+ * whole story, a row launch's own scene is not a scene of the document, and an engine-numbered id
+ * (`e-12`) says nothing about where it came from.
+ */
+export function readSaveSceneIds(savedGame: SavedGame): string[] {
+    const sceneIds = new Set<string>();
+    for (const id of collectSaveElementIds(savedGame)) {
+        const parts = id.split(":");
+        if (parts[0] !== "nl" || !parts[2]) {
+            continue;
+        }
+        if (parts[1] === "scene" || SCENE_SCOPED_ELEMENT_KINDS.has(parts[1])) {
+            sceneIds.add(parts[2]);
+        }
+    }
+    const game = savedGame.game as unknown as Record<string, unknown>;
+    const actionIds = new Set<string>();
+    collectStackActionIds(game.stackModel, actionIds);
+    for (const stack of game.asyncStackModels as unknown[]) {
+        collectStackActionIds(stack, actionIds);
+    }
+    for (const actionId of actionIds) {
+        const position = parseActionAnchor(actionId);
+        if (position) {
+            sceneIds.add(position.sceneId);
+        }
+    }
+    return [...sceneIds];
+}
+
 /**
  * What a save named that the running story does not have, split by what kind of thing it is.
  *
@@ -411,6 +537,43 @@ export type UnresolvedSaveReferences = {
 };
 
 const NO_UNRESOLVED_REFERENCES: UnresolvedSaveReferences = { scenes: [], elements: [], actions: [], all: [] };
+
+/** The prefix every ambience overlay's element id carries; see `getVfx` in the story compiler. */
+const OVERLAY_ID_PREFIX = "nl:vfx:";
+
+/**
+ * The save, less the ambience overlays it names that the running story does not have.
+ *
+ * An overlay is decoration: loading a save without the rain it had is far better than refusing the
+ * save, and the engine already drops an overlay it cannot find on the stage rather than throwing.
+ * Its element-state record is the one place a missing overlay would still throw, so that goes too.
+ *
+ * It matters most for saves written before overlays belonged to scenes. An overlay was then named
+ * for the whole story (`nl:vfx:rain`), and is now named under the scene that declares it, so every
+ * such save names an overlay no story has any more - and would otherwise be refused outright over
+ * weather.
+ */
+export function withoutStrandedOverlays(savedGame: SavedGame, maps: SaveStoryMaps): SavedGame {
+    const stranded = (id: unknown): boolean =>
+        typeof id === "string" && id.startsWith(OVERLAY_ID_PREFIX) && !maps.hasElement(id);
+    const game = savedGame.game as unknown as Record<string, unknown>;
+    const stage = game.stage as unknown as Record<string, unknown>;
+    const elementStates = Array.isArray(game.elementStates) ? game.elementStates as unknown[] : [];
+    const overlays = Array.isArray(stage?.vfx) ? stage.vfx as unknown[] : [];
+    const keptStates = elementStates.filter(entry => !(isRecord(entry) && stranded(entry.id)));
+    const keptOverlays = overlays.filter(entry => !(Array.isArray(entry) && stranded(entry[0])));
+    if (keptStates.length === elementStates.length && keptOverlays.length === overlays.length) {
+        return savedGame;
+    }
+    return {
+        ...savedGame,
+        game: {
+            ...savedGame.game,
+            elementStates: keptStates,
+            stage: { ...stage, vfx: keptOverlays },
+        },
+    } as unknown as SavedGame;
+}
 
 /**
  * What the save names that the running story does not have.
@@ -764,17 +927,56 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         return refuse("malformed", translate("game.saveLoad.detail.malformed"));
     }
 
-    const savedGame = record.savedGame;
+    let savedGame = record.savedGame;
     // Both of these read the running story, and both are allowed to be unavailable. An engine that
     // refuses to answer costs a report its precision, or costs the pre-check, and neither is worth
     // failing a load the player asked for.
-    let liveStoryHash: string | null;
-    try {
-        liveStoryHash = game.readStoryHash();
-    } catch {
-        liveStoryHash = null;
-    }
-    const origin = compareSaveStory(savedGame, liveStoryHash);
+    const readOrigin = (): SaveStoryOrigin => {
+        let liveStoryHash: string | null;
+        try {
+            liveStoryHash = game.readStoryHash();
+        } catch {
+            liveStoryHash = null;
+        }
+        return compareSaveStory(savedGame, liveStoryHash);
+    };
+    // Read again once a mount has replaced the story it was compared against.
+    let origin = readOrigin();
+
+    /**
+     * Start the story again at the position the save records, carrying its saved-scope values,
+     * instead of applying it - and say so in the words the caller chose.
+     *
+     * The row is always asked for. Whether it is still there is the host's to answer, and it answers
+     * by saying where it landed rather than by throwing - see `relaunch`.
+     */
+    const relaunchFromSave = async (
+        position: SavePosition,
+        reports: { row: TranslationKey; scene: TranslationKey },
+    ): Promise<SaveLoadOutcome> => {
+        let landing: SaveRelaunchLanding;
+        try {
+            landing = await game.relaunch!({
+                storyId: position.storyId,
+                sceneId: position.sceneId,
+                blockId: position.blockId,
+                savedGame,
+            });
+        } catch (error) {
+            // A relaunch that threw got far enough to recompile and remount, so whatever is on
+            // stage is neither the save nor what was running. Said plainly rather than reported as
+            // an untouched game. "Nowhere to go" is not this: it comes back as a landing.
+            return refuse("relaunch", translate("game.saveLoad.detail.relaunch", { error: errorText(error) }), {
+                origin,
+                game: "lost",
+            });
+        }
+        if (landing === "nowhere") {
+            return refuse("unanchored", translate("game.saveLoad.detail.sceneGone"), { origin });
+        }
+        report("warning", translate(landing === "row" ? reports.row : reports.scene, { id }));
+        return { status: "loaded", applied: landing, origin, compatibility, storyChanged: false };
+    };
 
     // The author's policy, before anything is touched and from the same header the listing read.
     const resume = planSaveResume(
@@ -797,33 +999,10 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         if (!position || !game.relaunch) {
             return refuse("unanchored", translate("game.saveLoad.detail.unanchored"), { origin });
         }
-        // The row is always asked for. Whether it is still there is the host's to answer, and it
-        // answers by saying where it landed rather than by throwing - see `relaunch`.
-        let landing: SaveRelaunchLanding;
-        try {
-            landing = await game.relaunch({
-                storyId: position.storyId,
-                sceneId: position.sceneId,
-                blockId: position.blockId,
-                savedGame,
-            });
-        } catch (error) {
-            // A relaunch that threw got far enough to recompile and remount, so whatever is on
-            // stage is neither the save nor what was running. Said plainly rather than reported as
-            // an untouched game. "Nowhere to go" is not this: it comes back as a landing.
-            return refuse("relaunch", translate("game.saveLoad.detail.relaunch", { error: errorText(error) }), {
-                origin,
-                game: "lost",
-            });
-        }
-        if (landing === "nowhere") {
-            return refuse("unanchored", translate("game.saveLoad.detail.sceneGone"), { origin });
-        }
-        report("warning", translate(
-            landing === "row" ? "game.saveLoad.relaunchedRow" : "game.saveLoad.relaunchedScene",
-            { id },
-        ));
-        return { status: "loaded", applied: landing, origin, compatibility, storyChanged: false };
+        return relaunchFromSave(position, {
+            row: "game.saveLoad.relaunchedRow",
+            scene: "game.saveLoad.relaunchedScene",
+        });
     }
 
     /**
@@ -881,9 +1060,20 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
      * no snapshot, no remount - which is the common load and the one on the title screen.
      */
     let storyChanged = false;
-    const position = game.resolveStoryMount ? readSavePosition(savedGame) : null;
+    let remounted = false;
+    /**
+     * A save written in a run started from a story row is not mounted for: no plain compile has the
+     * scene that launch entered through, so remounting could only spend the run. It either loads into
+     * the session on the stage - a launch of that same row - or is put back at its line below.
+     */
+    const rowLaunchSave = isRowLaunchSave(savedGame);
+    const position = game.resolveStoryMount && !rowLaunchSave ? readSavePosition(savedGame) : null;
     if (game.resolveStoryMount && position) {
-        const target = { storyId: position.storyId, sceneId: position.sceneId };
+        const target: SaveStoryTarget = {
+            storyId: position.storyId,
+            sceneId: position.sceneId,
+            sceneIds: readSaveSceneIds(savedGame),
+        };
         let mount: SaveStoryMount;
         try {
             mount = game.resolveStoryMount(target);
@@ -911,6 +1101,70 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             }
             storyChanged = true;
         }
+        if (mount === "remount" && game.remountStory) {
+            takeRollback();
+            try {
+                await game.remountStory(target);
+            } catch (error) {
+                // The same position a failed switch leaves: the session was replaced, and only the
+                // snapshot can put the run back.
+                return refuse(
+                    "storySwitch",
+                    translate("game.saveLoad.detail.storySwitch", { error: errorText(error) }),
+                    { origin, game: await putRunBack() },
+                );
+            }
+            remounted = true;
+        }
+        if (storyChanged || remounted) {
+            origin = readOrigin();
+        }
+    }
+
+    /**
+     * The save under today's names for the camera and the sounds, which a build before they had
+     * stable ones wrote by position. Everything after this reads it rather than the record.
+     *
+     * The walk that reproduces the old numbering is trusted only for the story the save was written
+     * against: the same document, by the hash the record was stamped with, entered at the same
+     * scene, by the engine's own hash. Anything less and only the two rules that do not depend on
+     * the walk apply - see `legacyElementIds.ts`.
+     */
+    let restorable: SavedGame = savedGame;
+    let legacy: LegacyElementIdTable | null = null;
+    try {
+        legacy = game.legacyElementIds?.() ?? null;
+    } catch {
+        legacy = null;
+    }
+    if (legacy) {
+        const stamp = readSaveCompatibilityStamp(record.metadata?.compatibility);
+        const buildHash = stamp?.storyId ? options.build?.storyHashes[stamp.storyId] : undefined;
+        const sameDocument = Boolean(stamp?.storyHash && buildHash && stamp.storyHash === buildHash);
+        const translation = translateLegacyElementIds(savedGame, legacy, sameDocument && origin === "sameStory");
+        if (translation.unmappable.length > 0) {
+            // A save from a row launch is not applied anyway anywhere but in a launch of its own row,
+            // and is started again at its line instead - which needs none of these names.
+            const rowLaunchPosition = rowLaunchSave && game.relaunch ? readSavePosition(savedGame) : null;
+            if (rowLaunchPosition) {
+                return relaunchFromSave(rowLaunchPosition, {
+                    row: "game.saveLoad.rowLaunchRelaunchedRow",
+                    scene: "game.saveLoad.rowLaunchRelaunchedScene",
+                });
+            }
+            const line = readSaveLastLine(savedGame);
+            const what = translate("game.saveLoad.detail.unresolvedElement");
+            return refuse(
+                "unresolved",
+                line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,
+                {
+                    unresolvedIds: translation.unmappable,
+                    origin,
+                    ...(storyChanged || remounted ? { game: await putRunBack() } : {}),
+                },
+            );
+        }
+        restorable = translation.savedGame;
     }
 
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
@@ -920,12 +1174,23 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     try {
         const maps = game.resolveStoryMaps();
         if (maps) {
-            unresolved = collectUnresolvedSaveReferences(savedGame, maps);
+            restorable = withoutStrandedOverlays(restorable, maps);
+            unresolved = collectUnresolvedSaveReferences(restorable, maps);
         }
     } catch {
         unresolved = NO_UNRESOLVED_REFERENCES;
     }
     if (unresolved.all.length > 0) {
+        // Written in a run started from a story row, and this is not a launch of that row: the
+        // scene the save stands in exists nowhere else. The author still asked to go back to where
+        // they saved, and that place is a line of the document, so the story is started there.
+        const rowLaunchPosition = rowLaunchSave && game.relaunch ? readSavePosition(savedGame) : null;
+        if (rowLaunchPosition) {
+            return relaunchFromSave(rowLaunchPosition, {
+                row: "game.saveLoad.rowLaunchRelaunchedRow",
+                scene: "game.saveLoad.rowLaunchRelaunchedScene",
+            });
+        }
         const line = readSaveLastLine(savedGame);
         const what = translate(unresolvedDetailKey(unresolved));
         return refuse(
@@ -936,16 +1201,16 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             {
                 unresolvedIds: unresolved.all,
                 origin,
-                // Only a switch leaves something to put back. Without one the run was never
-                // entered, and saying anything but "unchanged" about it would be false.
-                ...(storyChanged ? { game: await putRunBack() } : {}),
+                // Only a switch or a remount leaves something to put back. Without one the run was
+                // never entered, and saying anything but "unchanged" about it would be false.
+                ...(storyChanged || remounted ? { game: await putRunBack() } : {}),
             },
         );
     }
 
     takeRollback();
     try {
-        game.apply(savedGame);
+        game.apply(restorable);
     } catch (error) {
         return refuse("engine", translate("game.saveLoad.detail.engine", { error: errorText(error) }), {
             origin,

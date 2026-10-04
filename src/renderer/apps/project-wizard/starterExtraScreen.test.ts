@@ -55,18 +55,20 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
-    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
     BLUEPRINT_NODE_TYPE_MATH_MODULO,
@@ -247,6 +249,32 @@ describe("the starter template's EXTRA screen", () => {
         expect(visible.map(segment => segment.list)).toEqual(["CG grid"]);
     });
 
+    it("opens on the CG segment with its button lit, every time the page opens", () => {
+        // The list shown at rest and the lit button have to agree: a pane showing CG pictures beside
+        // four unlit buttons does not say which segment it is. The page's own blueprint sets both
+        // as the page opens, the way the segment buttons set them when pressed.
+        const page = blueprints.find(candidate =>
+            candidate.owner.kind === "surfaceMain" && candidate.owner.surfaceId === EXTRA.id);
+        expect(page, "the Extra page has no blueprint").toBeDefined();
+        const opening = Object.values(page!.graphs.events).map(entry => entry.graph).filter(graph =>
+            Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT));
+        expect(opening, "the Extra page has no layer that runs as it opens").toHaveLength(1);
+        const graph = opening[0]!;
+        const head = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT);
+
+        const shown = ranAfter(graph, head.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            .map(node => [elementAt(graph, node.id), node.params?.property, node.params?.value]);
+        expect(shown).toEqual(expect.arrayContaining(SEGMENTS.map(({ list }) =>
+            [on(list, "nl.list").id, "visible", list === "CG grid"])));
+        expect(shown).toHaveLength(SEGMENTS.length);
+
+        const lit = ranAfter(graph, head.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)
+            .map(node => [elementAt(graph, node.id), node.params?.variantId]);
+        expect(lit).toEqual(expect.arrayContaining(SEGMENTS.map(({ button }) =>
+            [on(button, "nl.button").id, button === "CG" ? "selected" : "default"])));
+        expect(lit).toHaveLength(SEGMENTS.length);
+    });
+
     it.each(SEGMENTS)("$button lays its rows out as the content deserves", ({ list, wraps }) => {
         // The claim design.md P2 makes, in the two props that carry it. A grid is one item template
         // flowing along a direction and breaking at the pane's edge; a row list is the same widget
@@ -275,8 +303,9 @@ describe("the starter template's EXTRA screen", () => {
         const entries = only(graph, GET_ENTRIES);
         expect(entries.params?.galleryKind).toBe(kind);
         // Straight into the widget, with nothing in between: every row the node hands over already
-        // carries its own lock state, its resolved picture and a masked name.
-        const fill = only(graph, BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
+        // carries its own lock state, its resolved picture and a masked name. The graph is the
+        // list's own, so it is the Set List Content that fills the list it belongs to.
+        const fill = only(graph, BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS);
         expect(wired(graph, entries.id, "entries", fill.id, "items")).toBe(true);
 
         // On Init rather than on the surface: a pane that is not visible is not mounted, so each

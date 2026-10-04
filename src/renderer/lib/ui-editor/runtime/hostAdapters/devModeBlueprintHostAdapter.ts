@@ -21,8 +21,10 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
+import { startTogether } from "@/lib/ui-editor/blueprint-runtime/startTogether";
 import { createWidgetDrawingRegistry } from "./widgetDrawingRegistry";
 import { playUIElementInteractionSound } from "../interactionSounds";
+import { pointerPayloadFor } from "../elementPointerPosition";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -97,7 +99,10 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      *
      * Three listener kinds, all of which the element may have at once: the element's own private
      * blueprint (its `mouseClick` graph), the surface-wide `On Element Flush` heads that name it,
-     * and the surface-wide `On Element Click` heads that name it.
+     * and the surface-wide `On Element Click` heads that name it. They all hear the event at this
+     * element, so they start together and this settles when all of them have; the walk up to the
+     * parent reads the propagation control only after that. A control stopped before the event got
+     * here - a scroller that owns the pointer - still reaches none of them.
      */
     const fireElementListeners = async (
         elementId: string,
@@ -105,41 +110,45 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         eventPayload?: Record<string, unknown>,
         eventOptions?: UIHostAdapterElementEventOptions,
     ): Promise<void> => {
-        const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
-        const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
-        await dispatchBlueprintUiEvent({
-            document,
-            blueprintDocument,
-            persistentVariables,
-            surfaceId: surface.id,
-            runtimeScopeId: effectiveRuntimeScopeId,
-            elementId,
-            eventName,
-            eventPayload,
-            listItemScope: eventOptions?.listItemScope,
-            instanceKey: eventOptions?.instanceKey,
-            componentId: eventOptions?.componentId,
-            componentParams: eventOptions?.componentParams,
-            eventControl: eventOptions?.eventControl,
-            hostAdapter: adapter,
-            debug,
-            getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
-            setSurfaceState: (key, value) => {
-                hostApi.state.set("surface", key, value);
-            },
-            executionManager,
-            allowClosedScopeExecution: eventOptions?.allowClosedScopeExecution,
-        });
         if (eventOptions?.eventControl?.isPropagationStopped()) {
             return;
         }
+        const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
+        const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
+        const getSurfaceState = (key: string) => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key);
+        const setSurfaceState = (key: string, value: unknown) => {
+            hostApi.state.set("surface", key, value);
+        };
+        const listeners: Array<() => Promise<unknown>> = [
+            () => dispatchBlueprintUiEvent({
+                document,
+                blueprintDocument,
+                persistentVariables,
+                surfaceId: surface.id,
+                runtimeScopeId: effectiveRuntimeScopeId,
+                elementId,
+                eventName,
+                eventPayload,
+                listItemScope: eventOptions?.listItemScope,
+                instanceKey: eventOptions?.instanceKey,
+                componentId: eventOptions?.componentId,
+                componentParams: eventOptions?.componentParams,
+                eventControl: eventOptions?.eventControl,
+                hostAdapter: adapter,
+                debug,
+                getSurfaceState,
+                setSurfaceState,
+                executionManager,
+                allowClosedScopeExecution: eventOptions?.allowClosedScopeExecution,
+            }),
+        ];
         if (eventName === "flush" && flushedElement) {
             const target = {
                 surfaceId: surface.id,
                 elementId,
                 elementType: flushedElement.type,
             };
-            await dispatchBlueprintElementFlushEvent({
+            listeners.push(() => dispatchBlueprintElementFlushEvent({
                 document,
                 blueprintDocument,
                 persistentVariables,
@@ -149,12 +158,10 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 eventPayload: eventPayload ?? { element: target },
                 hostAdapter: adapter,
                 debug,
-                getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
-                setSurfaceState: (key, value) => {
-                    hostApi.state.set("surface", key, value);
-                },
+                getSurfaceState,
+                setSurfaceState,
                 executionManager,
-            });
+            }));
         }
         if (eventName === "mouseClick" && clickedElement) {
             const target = {
@@ -162,7 +169,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 elementId,
                 elementType: clickedElement.type,
             };
-            await dispatchBlueprintElementClickEvent({
+            listeners.push(() => dispatchBlueprintElementClickEvent({
                 document,
                 blueprintDocument,
                 persistentVariables,
@@ -172,13 +179,12 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 eventPayload: { ...(eventPayload ?? {}), element: target },
                 hostAdapter: adapter,
                 debug,
-                getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
-                setSurfaceState: (key, value) => {
-                    hostApi.state.set("surface", key, value);
-                },
+                getSurfaceState,
+                setSurfaceState,
                 executionManager,
-            });
+            }));
         }
+        await startTogether(listeners);
     };
 
     /**
@@ -198,6 +204,16 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      * The propagation control still ends the walk. It is the DOM half of the same event, and it is
      * how something that really does own a pointer for the moment - a scroller mid-scroll, a drag in
      * progress - says so; "I am listening" never was that statement, which is the whole change here.
+     *
+     * Which is why the walk is the one place an event still waits for its listeners before going on:
+     * each element's listeners start together, but the parent's start once they have settled, because
+     * a script's `ctx.stopPropagation()` is promised to keep the parent from hearing the event and the
+     * control can only be read once the element's listeners are done.
+     *
+     * Each element up the chain is handed the press in its own box: `x` / `y` are local to the
+     * element whose head reads them, as they are for the element that was hit, so a panel's click
+     * reads the same point whichever of its children was under the pointer. The positions were read
+     * once, as the press arrived (`elementPointerPosition`).
      */
     const dispatchElementBlueprintEventNow: UIHostAdapterBlueprintRuntime["dispatchElementBlueprintEvent"] = async (
         elementId,
@@ -224,7 +240,12 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             }
             visited.add(next.id);
             options = next.options;
-            await fireElementListeners(next.id, eventName, eventPayload, options);
+            await fireElementListeners(
+                next.id,
+                eventName,
+                pointerPayloadFor(eventPayload, next.id, options?.pointerPositions),
+                options,
+            );
             currentId = next.id;
         }
     };
@@ -545,7 +566,9 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             callerListItemScope: input.callerListItemScope,
             document,
             runtimeScopeId: effectiveRuntimeScopeId,
-            hostAdapter: adapter,
+            // The caller's host when it stands in front of this one (the global blueprint's), so the
+            // body reads what the calling graph reads.
+            hostAdapter: (input.hostAdapter as UIHostAdapter | undefined) ?? adapter,
             debug,
             fnRef: input.fnRef,
             args: input.args,

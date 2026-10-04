@@ -144,6 +144,18 @@ export function useAssetsContextMenu({
         showMenu(event);
     }, [setContextMenuTarget, showMenu]);
 
+    /** The menu for empty space inside a folder, or inside a section's root when `groupId` is absent. */
+    const showPlaceContextMenu = useCallback((
+        event: React.MouseEvent,
+        category: AssetCategory,
+        groupId?: string,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenuTarget({ category, item: null, isGroup: false, ...(groupId ? { placeGroupId: groupId } : {}) });
+        showMenu(event);
+    }, [setContextMenuTarget, showMenu]);
+
     const closeContextMenu = useCallback(() => {
         setContextMenuTarget(null);
         hideMenu();
@@ -357,6 +369,16 @@ export function useAssetsContextMenu({
             items.push({ separator: true as const, id: "sep-actions" });
         }
 
+        // The folder that New Group and Import land in: the folder row the menu was opened on, the
+        // folder a file row is filed in, or the section root. A file is not an enclosure, so "here"
+        // on a file is where the file is - handing its id on as a parent filed the new folder and the
+        // imported files under a folder that does not exist, and none of them was ever drawn.
+        const placeGroupId = !contextMenuTarget.item
+            ? contextMenuTarget.placeGroupId
+            : contextMenuTarget.isGroup
+                ? (contextMenuTarget.item as AssetGroup).id
+                : (contextMenuTarget.item as Asset).groupId || undefined;
+
         // The one asset Studio can make rather than import, so it is offered only where it means
         // something: the Other section itself, or a folder inside it. An asset row is not an
         // enclosure, and "new file here" on top of a file would have to guess what "here" meant.
@@ -368,10 +390,7 @@ export function useAssetsContextMenu({
                 id: "new-text-file",
                 label: t("assets.menu.newTextFile"),
                 onClick: async () => {
-                    const groupId = contextMenuTarget.isGroup
-                        ? (contextMenuTarget.item as AssetGroup).id
-                        : undefined;
-                    await handleCreateTextFile(groupId);
+                    await handleCreateTextFile(placeGroupId);
                     closeContextMenu();
                 },
             });
@@ -396,10 +415,7 @@ export function useAssetsContextMenu({
             id: "new-group",
             label: contextMenuTarget.isGroup ? t("assets.menu.newSubGroup") : t("assets.menu.newGroup"),
             onClick: async () => {
-                const parentGroupId = contextMenuTarget.item
-                    ? (contextMenuTarget.item as AssetGroup).id
-                    : undefined;
-                await handleCreateGroup(contextMenuTarget.category, parentGroupId);
+                await handleCreateGroup(contextMenuTarget.category, placeGroupId);
                 closeContextMenu();
             },
         });
@@ -411,10 +427,7 @@ export function useAssetsContextMenu({
                 id: "new-asset-set",
                 label: t("assets.sets.menu.createHere"),
                 onClick: () => {
-                    handleCreateAssetSetIn(
-                        contextMenuTarget.category,
-                        contextMenuTarget.isGroup ? (contextMenuTarget.item as AssetGroup).id : undefined,
-                    );
+                    handleCreateAssetSetIn(contextMenuTarget.category, placeGroupId);
                     closeContextMenu();
                 },
             });
@@ -424,10 +437,7 @@ export function useAssetsContextMenu({
             id: "import-assets",
             label: t("assets.menu.importAssets"),
             onClick: async () => {
-                const groupId = contextMenuTarget.item
-                    ? (contextMenuTarget.item as AssetGroup).id
-                    : undefined;
-                await handleImportToGroup(contextMenuTarget.category, groupId);
+                await handleImportToGroup(contextMenuTarget.category, placeGroupId);
                 closeContextMenu();
             },
         });
@@ -450,6 +460,7 @@ export function useAssetsContextMenu({
         menuState,
         contextMenu,
         showContextMenu,
+        showPlaceContextMenu,
         closeContextMenu,
     } as const;
 }

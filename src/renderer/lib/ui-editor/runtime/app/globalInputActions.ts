@@ -25,7 +25,8 @@
  * stop a global key head has (`ctx.stopPropagation()` in a script).
  *
  * One function for both routes, running on the host every other global dispatch from the app uses
- * (the active page's), so neither route can drift into running the global blueprint somewhere else.
+ * (the active page's, with `Is Game Overlay` answered for the game - see `globalHost`), so neither
+ * route can drift into running the global blueprint somewhere else.
  *
  * Comments in English per project convention.
  */
@@ -45,8 +46,9 @@ export type GlobalBlueprintDispatch = {
     core: Pick<BlueprintRuntimeCore, "scopeBridge" | "debug" | "executionManager">;
     /**
      * The host the global blueprint runs on: the active page's, which is the host every other global
-     * dispatch from the app uses. Whoever owns the keyboard and whichever lane a click landed on, the
-     * global blueprint is the game's rather than anything's on screen.
+     * dispatch from the app uses, with `Is Game Overlay` answered for the game (`globalHost`). Whoever
+     * owns the keyboard and whichever lane a click landed on, the global blueprint is the game's
+     * rather than anything's on screen.
      */
     globalHost: HostAdapterBundle;
 };

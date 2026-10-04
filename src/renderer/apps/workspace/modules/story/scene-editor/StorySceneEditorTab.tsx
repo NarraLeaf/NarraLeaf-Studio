@@ -38,6 +38,7 @@ import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEdit
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
     isSameStoryBlockSelection,
@@ -108,6 +109,17 @@ import {
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+
+/**
+ * The catalog id of the command each row-menu entry runs, so the menu prints the chord beside it.
+ * Insert below is Shift+Enter's insert after the selection; right-clicking a row outside the
+ * selection selects it first.
+ */
+const STORY_ROW_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    "insert-below": "story.insert-blank-after-selection",
+    duplicate: "story.duplicate",
+    delete: "story.delete",
+};
 
 /**
  * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
@@ -896,6 +908,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * is taller than a `/bg` row and the estimate only has to be close enough to size the scrollbar.
      */
     const rowListRef = useRef<HTMLDivElement | null>(null);
+    /**
+     * The list element as state, so the margin is measured when the list actually mounts.
+     *
+     * The tab renders a loading view first, and the scene, its rows and the active flag can all be
+     * settled before the list exists. Effects keyed on those never ran again once it did: the margin
+     * stayed 0, every row sat a whole overview card lower than the virtualiser believed, and once that
+     * was more than the overscan the top of the viewport came up empty.
+     */
+    const [rowListElement, setRowListElement] = useState<HTMLDivElement | null>(null);
+    const attachRowList = useCallback((element: HTMLDivElement | null) => {
+        rowListRef.current = element;
+        setRowListElement(element);
+    }, []);
     const [rowListMargin, setRowListMargin] = useState(0);
 
     // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
@@ -948,7 +973,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     }, [editor.scrollContainerRef]);
 
     useLayoutEffect(() => {
-        const list = rowListRef.current;
+        const list = rowListElement;
         const scroller = editor.scrollContainerRef.current;
         if (!list || !scroller) {
             return;
@@ -963,7 +988,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             observer.observe(above);
         }
         return () => observer.disconnect();
-    }, [measureRowListMargin, editor.scrollContainerRef, editor.scene?.id]);
+    }, [measureRowListMargin, editor.scrollContainerRef, editor.scene?.id, rowListElement]);
 
     // A commit that can move the list's start without resizing anything the observer watches.
     useLayoutEffect(() => {
@@ -2322,7 +2347,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                         only about the rows currently on screen would make "which index is this" mean
                         something different from what the document says. */}
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
-                    <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+                    <div ref={attachRowList} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                         {rowVirtualizer.getVirtualItems().map(virtualRow => {
                             const projected = editor.visibleRows[virtualRow.index];
                             if (!projected) {
@@ -2540,7 +2565,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </span>
                 </div>
             ) : null}
-            <ContextMenu
+            <ShortcutContextMenu
+                shortcuts={STORY_ROW_MENU_SHORTCUTS}
                 items={rowMenuItemsWithDeveloperRows}
                 position={rowMenu.menuState.position}
                 visible={rowMenu.menuState.visible}

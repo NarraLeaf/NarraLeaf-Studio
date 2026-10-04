@@ -27,7 +27,8 @@ import {
     uiEditorDuplicateSelection,
     uiEditorSelectAllInSurface,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
-import { getMoversToGroupIntoLeaderContainer } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { canGroupSelection } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { planGroupElements } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { getUiEditorArrangeAvailability } from "@/lib/ui-editor/commands/uiEditorArrange";
 import { getUiEditorAlignAvailability } from "@/lib/ui-editor/commands/uiEditorAlign";
 import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
@@ -142,7 +143,7 @@ function menuActions() {
         selectAll: vi.fn(),
         renamePrimary: vi.fn(),
         setSelectedVisible: vi.fn(),
-        addSelectionToLeaderGroup: vi.fn(),
+        groupSelection: vi.fn(),
         ungroupSelection: vi.fn(),
         addSelectionToComponentLibrary: vi.fn(),
         pasteIntoParent: vi.fn(),
@@ -222,7 +223,8 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
     it("never moves the frame into a group, reorders it, aligns it or dissolves it", () => {
         const { service, document, surfaceId } = componentEditor(rootName);
 
-        expect(getMoversToGroupIntoLeaderContainer(document, selection(surfaceId, ["panel", "frame", "label"]))).toEqual(["label"]);
+        expect(planGroupElements(document, surfaceId, ["panel", "frame", "label"])?.movers).toEqual(["panel", "label"]);
+        expect(canGroupSelection(document, surfaceId, selection(surfaceId, ["frame"]))).toBe(false);
         expect(canUngroupContainer(document, surfaceId, "frame")).toBe(false);
         expect(Object.values(getUiEditorArrangeAvailability(document, surfaceId, selection(surfaceId, ["frame"])))).not.toContain(true);
         expect(Object.values(getUiEditorAlignAvailability(document, surfaceId, selection(surfaceId, ["frame"])))).not.toContain(true);
@@ -239,7 +241,7 @@ describe.each(ROOT_NAMES)("a component whose root is called %s", rootName => {
             hasClipboard: true,
             widgetModules: [{ type: "nl.text", displayName: "Text" } as never],
             documentService: service,
-            canAddToGroup: false,
+            canGroup: false,
             canUngroup: false,
             allowAddToComponentLibrary: false,
         };

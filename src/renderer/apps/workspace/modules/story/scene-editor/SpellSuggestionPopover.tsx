@@ -8,9 +8,11 @@ import type { DictionaryService } from "@/lib/workspace/services/dictionary/Dict
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 const PANEL_WIDTH_PX = 208;
+const MENU_ITEM_SELECTOR = "[role=\"menuitem\"]";
 
 /** The word a right click landed on, and where it is drawn. */
 export type SpellingTarget = {
@@ -44,9 +46,6 @@ export function SpellSuggestionPopover(props: {
     /** Take the panel down. The caller clears the state that renders it. */
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     // Deliberately UNSCOPED, unlike the sibling {@link DictionaryMarkPopover}: the only control this
@@ -60,6 +59,29 @@ export function SpellSuggestionPopover(props: {
     const freeze = useFreezeGuard();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [suggestions, setSuggestions] = useState<string[] | null>(null);
+    const doc = useHostDocument();
+    /**
+     * The panel's first live row, read when the layer asks rather than captured: the rows are not all
+     * there at open (the suggestions arrive a round trip later), and the one that is may be disabled.
+     */
+    const firstItem = useMemo(() => ({
+        get current(): HTMLElement | null {
+            const panel = panelRef.current;
+            return panel?.querySelector<HTMLElement>(`${MENU_ITEM_SELECTOR}:not(:disabled)`) ?? panel;
+        },
+    }), []);
+    // The menu takes the focus, so the arrows walk its rows and Enter applies one. Left in the field,
+    // those keys moved the caret under the open menu and Enter committed the row. Tab stays inside, as
+    // it does in every popover over the row being edited (see `PausePopover`); Escape closes the menu
+    // and the caller puts the caret back in the line - one rung, not the row's own Escape as well.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        scope: "trap",
+        initialFocus: firstItem,
+        itemSelector: MENU_ITEM_SELECTOR,
+    });
 
     const dictionaryService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -70,6 +92,22 @@ export function SpellSuggestionPopover(props: {
 
     const { word, anchor } = props.target;
     const language = props.language;
+
+    // The suggestions land after the menu has opened on whatever it had then - the panel, or the
+    // dictionary row below them. While the author has not moved off that, the first suggestion is
+    // where the menu should have opened, so focus goes there.
+    useEffect(() => {
+        const panel = panelRef.current;
+        if (!panel || !suggestions || suggestions.length === 0) {
+            return;
+        }
+        const active = doc.activeElement;
+        const items = panel.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR);
+        const resting = active === panel || active === items[items.length - 1] || !active || active === doc.body;
+        if (resting) {
+            items[0]?.focus({ preventScroll: true });
+        }
+    }, [doc, suggestions]);
 
     useEffect(() => {
         let mounted = true;
@@ -86,20 +124,6 @@ export function SpellSuggestionPopover(props: {
         };
     }, [language, word]);
 
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
-                return;
-            }
-            // One rung per press: this closes the panel and leaves the row being edited. The row's
-            // own Escape leaves edit mode entirely, which is a rung further out.
-            event.stopPropagation();
-            props.onClose();
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
     // Light dismiss, letting the event through to whatever was clicked so leaving the panel keeps
     // the author's place in the sentence.
     useEffect(() => {
@@ -109,9 +133,9 @@ export function SpellSuggestionPopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const anchorBox = useCallback(
         () => ({ top: anchor.top, bottom: anchor.bottom, left: anchor.left }),
@@ -146,6 +170,8 @@ export function SpellSuggestionPopover(props: {
             aria-label={word}
             className="z-[70] rounded-lg border border-edge bg-surface-overlay py-1 shadow-2xl"
         >
+            {/* `contents`, so the rows stay the panel's own children; it is only here to hear the keys. */}
+            <div className="contents" onKeyDown={keepStoryKeysInPopover}>
             <p className="truncate px-2 pb-1 text-2xs text-fg-subtle" aria-hidden="true">{word}</p>
             {suggestions === null ? (
                 <p className="px-2 py-1 text-xs text-fg-subtle">{t("story.spellcheck.checking")}</p>
@@ -184,6 +210,7 @@ export function SpellSuggestionPopover(props: {
                         the author's own vocabulary and it travels with the repository. */}
                     <span className="truncate">{t("story.spellcheck.addToDictionary")}</span>
                 </button>
+            </div>
             </div>
         </AnchoredPanel>
     );

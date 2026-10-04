@@ -15,6 +15,7 @@ import { AssetTransferSweep, assetLibraryFreezeScope } from "../assetLiveSession
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { cn } from "@/lib/utils/cn";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
+import { assetsInSubtree } from "../browser/assetBrowserModel";
 import type { AssetSetCell } from "@shared/types/assetSet";
 
 interface AssetsIconViewProps {
@@ -22,8 +23,8 @@ interface AssetsIconViewProps {
     handleRootDrop: (event: DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => Promise<void>;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
-    handleImport: (category: AssetCategory) => void;
-    handleImportRemote: (category: AssetCategory) => void;
+    handleImport: (category: AssetCategory, groupId?: string) => void;
+    handleImportRemote: (category: AssetCategory, groupId?: string) => void;
     /**
      * Why downloading is off, or absent when it is on.
      *
@@ -32,7 +33,7 @@ interface AssetsIconViewProps {
      * available - only the download is started on the project's behalf.
      */
     remoteImportBlockedReason?: string;
-    handleCreateGroup: (category: AssetCategory) => void;
+    handleCreateGroup: (category: AssetCategory, parentGroupId?: string) => void;
     iconSize: number;
     onIconSizeChange: (nextSize: number) => void;
     groupPathIds: string[];
@@ -51,40 +52,6 @@ const TILE_GAP_PX = 12;
  * Only the first frame and the scrollbar depend on it - every mounted row of tiles measures itself.
  */
 const TILE_CHROME_PX = 52;
-
-/** `groupId` plus every group nested under it, so a subtree can be counted or previewed in one pass. */
-function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<string> {
-    const ids = new Set<string>([rootId]);
-    let grew = true;
-    while (grew) {
-        grew = false;
-        for (const group of groups) {
-            if (group.parentGroupId && ids.has(group.parentGroupId) && !ids.has(group.id)) {
-                ids.add(group.id);
-                grew = true;
-            }
-        }
-    }
-    return ids;
-}
-
-/**
- * Every asset a group holds, however deep.
- *
- * The header used to print only the assets sitting loose at this level, which reads `0 assets` for a
- * category whose every file is filed in a group.
- */
-function assetsInSubtree(
-    assets: readonly Asset[],
-    groups: readonly AssetGroup[],
-    rootId: string | null,
-): Asset[] {
-    if (!rootId) {
-        return [...assets];
-    }
-    const ids = subtreeGroupIds(groups, rootId);
-    return assets.filter(asset => !!asset.groupId && ids.has(asset.groupId));
-}
 
 export function AssetsIconView({
     dropTargetId,
@@ -110,8 +77,6 @@ export function AssetsIconView({
         filteredGroups,
         draggedItem,
         showContextMenu,
-        compactToolbar,
-        setAssetsIconToolbarCenter,
         isNarrowed,
         matchedGroupIds,
         assetSets,
@@ -208,39 +173,15 @@ export function AssetsIconView({
         onGroupPathChange(groupPathIds.slice(0, -1));
     }, [groupPathIds, onGroupPathChange, setPathIds.length]);
 
-    // The compact toolbar draws the breadcrumb, so this handler leaves the component and is held in
-    // the panel's state. It goes out through a constant identity on purpose: published directly,
-    // `handleBack` changes whenever the caller re-creates `onGroupPathChange` - which callers written
-    // inline do on every render - and the effect below would re-publish, re-render, and never settle.
-    const backRef = useRef(handleBack);
-    useLayoutEffect(() => {
-        backRef.current = handleBack;
-    }, [handleBack]);
-    const publishedBack = useCallback(() => backRef.current(), []);
-
-    useLayoutEffect(() => {
-        if (!compactToolbar) {
-            setAssetsIconToolbarCenter(null);
-            return;
-        }
-        const crumb = insideSet ? insideSet.set.name : activeGroup && !isNarrowed ? activeGroup.group.name : null;
-        if (crumb) {
-            const title = crumb;
-            // Same folder, same breadcrumb: keep the object React already has rather than writing an
-            // equal-but-new one, which would count as a change and schedule another render.
-            setAssetsIconToolbarCenter(prev => (
-                prev && prev.title === title && prev.onBack === publishedBack
-                    ? prev
-                    : { title, onBack: publishedBack }
-            ));
-        } else {
-            setAssetsIconToolbarCenter(null);
-        }
-    }, [compactToolbar, activeGroup, insideSet, isNarrowed, publishedBack, setAssetsIconToolbarCenter]);
-
-    useEffect(() => {
-        return () => setAssetsIconToolbarCenter(null);
-    }, [setAssetsIconToolbarCenter]);
+    /**
+     * The folder the grid is showing, which is where the header's import and new-group buttons put
+     * what they make. Inside a set it is the folder the set is filed in; a search flattens the grid
+     * and has no folder, so it is the section root. The buttons used to ignore the walk entirely and
+     * always made things at the root, under a header showing some folder's contents.
+     */
+    const placeGroupId = isNarrowed
+        ? undefined
+        : insideSet ? insideSet.set.groupId : activeGroup?.group.id;
 
     const displayCategories = useMemo(() => (insideSet
         ? [insideSet.category]
@@ -325,7 +266,7 @@ export function AssetsIconView({
                 }
             }}
         >
-            {(insideSet || (activeGroup && !isNarrowed)) && !compactToolbar && (
+            {(insideSet || (activeGroup && !isNarrowed)) && (
                 <div
                     // `bg-surface-sunken`, like the other sticky group headers (localization, voice):
                     // a base `bg-surface` is cleared under a workspace wallpaper, and the grid would
@@ -399,7 +340,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleImport(category);
+                                                    handleImport(category, placeGroupId);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(false, t("common.import"))}
@@ -409,7 +350,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleImportRemote(category);
+                                                    handleImportRemote(category, placeGroupId);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(
@@ -422,7 +363,7 @@ export function AssetsIconView({
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleCreateGroup(category);
+                                                    handleCreateGroup(category, placeGroupId);
                                                 }}
                                                 className="p-1 rounded-md hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                                                 {...freeze.writes(false, t("assets.menu.newGroup"))}

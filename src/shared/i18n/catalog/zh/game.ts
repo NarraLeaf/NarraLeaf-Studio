@@ -11,6 +11,8 @@ export const game = {
         storyStarted: "读取存档：「{id}」写在本项目的另一个故事里，已启动那个故事来承接它。",
         relaunchedRow: "读取存档：「{id}」来自另一次构建，已从该存档记录的行重新开始故事。",
         relaunchedScene: "读取存档：「{id}」来自另一次构建，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
+        rowLaunchRelaunchedRow: "读取存档：「{id}」来自一次「从这一行开始播放」的运行，已从该存档记录的行重新开始故事。",
+        rowLaunchRelaunchedScene: "读取存档：「{id}」来自一次「从这一行开始播放」的运行，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
         detail: {
             unreadable: "该存档无法读取。{error}",
             missing: "该 id 下没有存档。",
@@ -34,8 +36,8 @@ export const game = {
         choiceVoicePlayFailed: "该选项的配音无法播放。",
         savedVariableUndeclared: "“{node}”：运行中的故事未声明该存档变量。",
         valueNotSerializable: "“{node}”：存档变量只能保存可写入存档文件的值。",
-        variablesNotSerializable: "存档变量与持久化变量只能保存可写入存档文件的值。",
-        persistenceUnavailable: "此处无法使用持久化变量。",
+        variablesNotSerializable: "存档变量与持久变量只能保存可写入存档文件的值。",
+        persistenceUnavailable: "此处无法使用持久变量。",
         storyMissing: "“{node}”：指定的故事已不在本项目中。",
         sceneMissing: "“{node}”：指定的场景已不在本项目中。",
         noChoiceMenu: "“{node}”：当前没有显示菜单。",
@@ -54,7 +56,7 @@ export const game = {
             rowGoneSceneStart: "正在播放的行已不存在，已从场景开头继续。",
         },
         language: {
-            noRestart: "游戏进行中切换了语言，但此处无法重新启动游戏。屏幕上的文本、回顾与正在播放的配音仍为原先的语言。",
+            noRestart: "游戏进行中切换了语言，但此处无法重新启动游戏。屏幕上的文本、对话记录与正在播放的配音仍为原先的语言。",
             restartFresh: "语言已切换，游戏将重新启动，不保留本次游玩进度。",
             saveFailed: "语言已切换，但无法保存本次游玩进度，因此未重新启动游戏：{error}",
             parked: "已为切换语言暂存本次游玩进度，游戏将重新启动。",

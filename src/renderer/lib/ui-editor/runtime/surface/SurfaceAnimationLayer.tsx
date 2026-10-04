@@ -9,6 +9,7 @@ import {
     useState,
     type ContextType,
     type CSSProperties,
+    type MouseEventHandler,
     type ReactNode,
     type RefObject,
 } from "react";
@@ -99,6 +100,13 @@ type SurfaceAnimationLayerProps = {
      */
     onReturn?: (key: string) => void;
     onEnterComplete?: (key: string) => void;
+    /**
+     * A click or a right click that reached the layer - on the surface it draws, or bubbling up from
+     * one of its elements. For a host that answers presses on the surface itself, as a frame's page
+     * does with its own `Mouse Click` and `Right Click` heads.
+     */
+    onClick?: MouseEventHandler<HTMLDivElement>;
+    onContextMenu?: MouseEventHandler<HTMLDivElement>;
     children: ReactNode;
 };
 
@@ -361,6 +369,8 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         onBeforeExit,
         onReturn,
         onEnterComplete,
+        onClick,
+        onContextMenu,
         children,
     } = props;
     const contentRef = useRef<HTMLDivElement | null>(null);
@@ -488,6 +498,8 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
             data-ui-surface-id={surfaceId}
             data-ui-surface-kind={surfaceKind}
             data-ui-surface-prepaint={prepaintReady ? "ready" : "pending"}
+            onClick={onClick}
+            onContextMenu={onContextMenu}
             onAnimationComplete={definition => {
                 if (definition === "animate" && prepaintReady && isPresent) {
                     reportEnterComplete();

@@ -12,10 +12,10 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "../layout/hostVisibility";
+import { useFloatingLayer } from "../layout/floatingLayer";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
-import { guardImeKeys, isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { guardImeKeys } from "@/lib/utils/imeComposition";
 import { CONTROL_FIXED_HEIGHT_CLASS, CONTROL_TEXT_CLASS, type ControlSize } from "@/lib/components/elements/controlSize";
 
 export interface EnhancedInputProps
@@ -69,14 +69,20 @@ export function EnhancedInput({
     const { t } = useTranslation();
     const [hasFocus, setHasFocus] = useState(false);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
-    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
-    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
-    useDismissWhenHidden(() => setIsPopoverOpen(false), isPopoverOpen);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
     const [popoverPosition, setPopoverPosition] = useState({ left: 0, top: 0, width: 220 });
     const containerRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const popoverInputRef = useRef<HTMLInputElement | null>(null);
+    // The popover is the field itself, widened: focus goes straight into its input, Escape closes it
+    // and nothing under it, and focus comes back to the collapsed trigger.
+    useFloatingLayer({
+        open: isPopoverOpen,
+        onClose: () => setIsPopoverOpen(false),
+        panelRef,
+        ownerRefs: [containerRef],
+        initialFocus: popoverInputRef,
+    });
     const roundingPrecision = precision ?? null;
     const displayValue = useMemo(() => {
         if (hasFocus) {
@@ -219,10 +225,6 @@ export function EnhancedInput({
             return;
         }
 
-        const focusTimer = setTimeout(() => {
-            popoverInputRef.current?.focus();
-        }, 0);
-
         const handleClickOutside = (event: globalThis.MouseEvent) => {
             const target = event.target as Node | null;
             if (!target) {
@@ -234,25 +236,13 @@ export function EnhancedInput({
             closePopover();
         };
 
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (isImeKeyEvent(event)) {
-                return;
-            }
-            if (event.key === "Escape") {
-                closePopover();
-            }
-        };
-
         const listenerTimer = setTimeout(() => {
             document.addEventListener("mousedown", handleClickOutside, true);
         }, 0);
-        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            clearTimeout(focusTimer);
             clearTimeout(listenerTimer);
             document.removeEventListener("mousedown", handleClickOutside, true);
-            document.removeEventListener("keydown", handleKeyDown);
         };
     }, [closePopover, isPopoverOpen]);
 

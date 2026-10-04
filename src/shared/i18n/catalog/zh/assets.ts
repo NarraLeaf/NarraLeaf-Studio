@@ -124,6 +124,7 @@ export const assets = {
         list: "列表视图",
         icons: "图标视图",
         overview: "总览",
+        details: "详细信息视图",
     },
     filter: {
         label: "筛选",
@@ -141,6 +142,15 @@ export const assets = {
     },
     list: {
         emptyFiltered: "没有符合当前筛选的资产",
+    },
+    browser: {
+        results: {
+            other: "{count} 个结果",
+        },
+        selected: {
+            other: "已选 {count} 项",
+        },
+        location: "位置",
     },
     iconView: {
         updating: "正在更新…",
@@ -284,7 +294,7 @@ export const assets = {
      * 资产集：库里的一个条目，代表按轴索引的一族文件。
      *
      * 叫「资产集」不叫「分组」，因为这个面板里的分组已经是文件夹。这里的词说的是作者拿它做什么
-     * （声明轴、看哪些变体有对应文件），不说构建怎么读它。
+     * （声明轴、看哪些取值有对应文件），不说构建怎么读它。
      */
     sets: {
         itemType: "资产集",
@@ -296,13 +306,13 @@ export const assets = {
             locale: "语言",
             release: "变体",
         },
-        deletedVariant: "已删除的变体",
+        deletedVariant: "已删除的取值",
         variantCount: {
-            one: "{count} 个变体",
-            other: "{count} 个变体",
+            one: "{count} 个取值",
+            other: "{count} 个取值",
         },
-        variantsResolved: "{total} 个变体中的 {resolved} 个",
-        unfinished: "尚未声明变体",
+        variantsResolved: "{total} 个取值中的 {resolved} 个",
+        unfinished: "尚未声明取值",
         inUseTitle: "{name} 仍被引用",
         inUseMessage: "以下位置指向它，之后将无法解析：",
         deleteConfirmMessage: "该资产集内的全部文件也会一并删除",
@@ -317,7 +327,7 @@ export const assets = {
         },
         create: {
             title: "新建资产集",
-            subTitle: "在该变体下新建资产集",
+            subTitle: "在该取值下新建资产集",
             no: {
                 locale: "本项目只声明了一种语言。",
                 release: "本项目没有变体。",
@@ -329,9 +339,9 @@ export const assets = {
             axes: "按什么变化",
             filter: "成员共同带有",
             residencyBlocked: "按变体变化的资产集不能位于按语言变化的资产集之下。",
-            fallback: "兜底变体",
-            fallbackMissing: "该变体没有文件，整个资产集都无法解析。",
-            variants: "变体",
+            fallback: "兜底取值",
+            fallbackMissing: "该取值没有文件，整个资产集都无法解析。",
+            variants: "取值",
             variantInherited: "兜底",
             variantMissing: "无文件",
             variantAmbiguous: "{count} 个文件",

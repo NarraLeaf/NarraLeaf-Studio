@@ -294,7 +294,7 @@ describe("getCommandCandidates", () => {
         // a shared name, so the list leads with what a typed name would resolve to.
         expect(values("/show |")).toEqual([
             "Alice", "Bob", "Doll", "Ghost",
-            "hero", "portrait", "title", "intro", "fx", "rain",
+            "hero", "portrait", "title", "fx", "rain",
             "forest_day", "forest_night", "city rain",
         ]);
         expect(values("/show he|")).toEqual(["hero"]);
@@ -448,7 +448,7 @@ describe("candidate marks", () => {
 
     it("marks each row of a mixed list by what that row is", () => {
         // `/show` reaches characters and every stage kind at once, which is exactly the list a
-        // param-level reading got wrong: four faces followed by six object glyphs, not ten of either.
+        // param-level reading got wrong: four faces followed by five object glyphs, not nine of either.
         expect(marks("/show |")).toEqual([
             { kind: "character", characterId: "c1" },
             { kind: "character", characterId: "c2" },
@@ -457,7 +457,6 @@ describe("candidate marks", () => {
             { kind: "stageObject", objectKind: "image" },
             { kind: "stageObject", objectKind: "image" },
             { kind: "stageObject", objectKind: "text" },
-            { kind: "stageObject", objectKind: "video" },
             { kind: "stageObject", objectKind: "layer" },
             { kind: "stageObject", objectKind: "vfx" },
             // The libraries this verb can bring a subject out of. A file carries its id so the menu

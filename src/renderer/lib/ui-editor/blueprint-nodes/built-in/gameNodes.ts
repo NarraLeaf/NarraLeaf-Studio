@@ -1429,6 +1429,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
         displayName: "Is Game Overlay",
+        description: "blueprint.nodeDescription.isGameOverlay",
         category: "Game",
         keywords: ["game", "overlay", "layer", "page", "surface", "pause", "menu"],
         graphKinds: ["event", "function", "macro"],

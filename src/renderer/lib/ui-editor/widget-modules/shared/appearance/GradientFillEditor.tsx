@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
     DndContext,
@@ -22,8 +22,7 @@ import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { useEscapeToClose } from "@/lib/components/elements/Modal";
-import { useWindowOverlayHost } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument, useHostWindow, useWindowOverlayHost } from "@/lib/components/layout";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import {
@@ -73,6 +72,8 @@ import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths"
 const PANEL_WIDTH = 300;
 const PANEL_SPACING = 8;
 const PANEL_MARGIN = 8;
+/** A stop's colour picker, which is portalled on its own and is still part of this panel. */
+const COLOR_PICKER_PANEL_SELECTOR = "[data-color-picker-panel]";
 /** White is what an unreadable stored colour has always shown elsewhere (see `parseColorValue`). */
 const STOP_COLOR_FALLBACK: ColorValue = { hex: "#ffffff", alpha: 1 };
 
@@ -310,6 +311,8 @@ export function useGradientCss(fill: GradientFill): string {
 export function GradientFillEditor({ value, onChange, draftResetKey, className }: GradientFillEditorProps) {
     const { t } = useTranslation();
     const overlayHost = useWindowOverlayHost();
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState({ left: 0, top: 0 });
     const triggerRef = useRef<HTMLSpanElement | null>(null);
@@ -325,7 +328,39 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
     const css = useGradientCss(fill);
 
     const close = useCallback(() => setOpen(false), []);
-    useEscapeToClose(open, close);
+    // Focus goes into the panel, Escape closes it and not the inspector it was portalled out of, Tab
+    // out of it closes it, and closing hands focus back to the swatch.
+    useFloatingLayer({
+        open,
+        onClose: close,
+        panelRef,
+        ownerRefs: [triggerRef],
+    });
+
+    // A press anywhere else puts it away, as it does every other popover in the inspector. The swatch
+    // is left to its own toggle, and a stop's colour picker - portalled separately - counts as inside.
+    useEffect(() => {
+        if (!open) {
+            return undefined;
+        }
+        const handlePointerDown = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target) {
+                return;
+            }
+            const targetElement = target instanceof Element ? target : target.parentElement;
+            if (
+                triggerRef.current?.contains(target) ||
+                panelRef.current?.contains(target) ||
+                Boolean(targetElement?.closest(COLOR_PICKER_PANEL_SELECTOR))
+            ) {
+                return;
+            }
+            close();
+        };
+        hostDocument.addEventListener("mousedown", handlePointerDown, true);
+        return () => hostDocument.removeEventListener("mousedown", handlePointerDown, true);
+    }, [close, hostDocument, open]);
 
     const handlePosition = useCallback(() => {
         const trigger = triggerRef.current;
@@ -334,16 +369,16 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
         }
         const rect = trigger.getBoundingClientRect();
         const panelHeight = panelRef.current?.offsetHeight ?? 320;
-        let left = Math.min(rect.left, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN);
+        let left = Math.min(rect.left, hostWindow.innerWidth - PANEL_WIDTH - PANEL_MARGIN);
         let top = rect.bottom + PANEL_SPACING;
         if (left < PANEL_MARGIN) {
             left = PANEL_MARGIN;
         }
-        if (top + panelHeight > window.innerHeight - PANEL_MARGIN) {
+        if (top + panelHeight > hostWindow.innerHeight - PANEL_MARGIN) {
             top = Math.max(PANEL_MARGIN, rect.top - panelHeight - PANEL_SPACING);
         }
         setPosition({ left, top });
-    }, []);
+    }, [hostWindow]);
 
     useLayoutEffect(() => {
         if (!open) {
@@ -351,13 +386,13 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
         }
         handlePosition();
         const reposition = () => handlePosition();
-        window.addEventListener("resize", reposition);
-        window.addEventListener("scroll", reposition, true);
+        hostWindow.addEventListener("resize", reposition);
+        hostWindow.addEventListener("scroll", reposition, true);
         return () => {
-            window.removeEventListener("resize", reposition);
-            window.removeEventListener("scroll", reposition, true);
+            hostWindow.removeEventListener("resize", reposition);
+            hostWindow.removeEventListener("scroll", reposition, true);
         };
-    }, [handlePosition, open]);
+    }, [handlePosition, hostWindow, open]);
 
     const patch = useCallback((next: GradientFill) => onChange(next), [onChange]);
 

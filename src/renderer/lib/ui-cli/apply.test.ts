@@ -241,6 +241,11 @@ describe("the entry page in a .ui file", () => {
 
     it("prints the entry only when the document stores one, so a round trip writes nothing new", () => {
         const document = loadSkeleton();
+        // The shipped skeleton starts on its splash page, so it stores a pointer and prints it; the
+        // same document without the pointer prints none.
+        expect(document.entrySurfaceId).toBeTruthy();
+        expect(printUiDocument(document)).toContain(`entry=${document.entrySurfaceId}`);
+        delete document.entrySurfaceId;
         expect(printUiDocument(document)).not.toContain("entry=");
 
         document.entrySurfaceId = configId(document);

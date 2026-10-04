@@ -722,8 +722,10 @@ function validateSidecars(
             return `Plugin sidecar "${id}" kind must be "executable" or "node"`;
         }
         const transport = item.transport ?? SIDECAR_DEFAULTS.transport;
-        if (transport !== "stdio-jsonl") {
-            return `Plugin sidecar "${id}" transport must be "stdio-jsonl"`;
+        // `jsonl` names the framing; `stdio-jsonl` is its older spelling and stays valid for
+        // manifests already published with it.
+        if (transport !== "jsonl" && transport !== "stdio-jsonl") {
+            return `Plugin sidecar "${id}" transport must be "jsonl" (or the older "stdio-jsonl")`;
         }
         const autostart = item.autostart ?? SIDECAR_DEFAULTS.autostart;
         if (autostart !== "onGameStart" && autostart !== "onRequest") {

@@ -75,7 +75,7 @@ import {
     resolveSurfaceInputActionHits,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import type { AmbientSurfaceTarget } from "./ambientSurfaceEvents";
-import type { EngineNvlKeys } from "./engineNvlKeys";
+import { isDialogueSlotSurface, type DialogueAdvanceObserver, type EngineNvlKeys } from "./engineNvlKeys";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -115,6 +115,12 @@ export type KeyboardOwner =
            * read the box on read it on too (see `engineNvlKeys`). Absent otherwise.
            */
           engineNvl?: EngineNvlKeys | null;
+          /**
+           * Told which of a press's actions read the dialogue box on, when the box answers them -
+           * how a box whose `Next` is in a script layer gets its keys onto the NVL page too (see
+           * `createDialogueAdvanceRecord`). Absent where nothing learns from it.
+           */
+          dialogueAdvance?: DialogueAdvanceObserver | null;
       };
 
 /** The surfaces an owner hears a key through: the entry's one, or every one on the stage. */
@@ -233,6 +239,9 @@ async function dispatchKeyToOwner(
             enablements: surface.actions,
             signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
         });
+        // Whether the dialogue box reads on in answer, whatever layer does it - see `dialogueAdvance`.
+        const observer = "stage" in owner && isDialogueSlotSurface(surface) ? owner.dialogueAdvance ?? null : null;
+        const nextCallsBefore = observer?.nextCalls() ?? 0;
         await Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
             blueprintDocument,
             persistentVariables,
@@ -245,6 +254,9 @@ async function dispatchKeyToOwner(
             ...state,
             executionManager: core.executionManager,
         })));
+        if (observer && actionHits.length > 0 && observer.nextCalls() !== nextCallsBefore) {
+            observer.witnessed(actionHits.map(hit => hit.actionId));
+        }
     }
 }
 
@@ -269,8 +281,8 @@ export async function dispatchGameKey(
     event: KeyboardEvent,
 ): Promise<void> {
     // Typing into a text field must not also drive the game's keys - otherwise entering a name would
-    // advance dialogue on space and open the menu on Escape. The widget's own keyboard event still
-    // fires: it arrives through DOM bubbling, not here.
+    // advance dialogue on space and open the menu on Escape. Widget key heads stand down for the
+    // same key on their own (see `isTextEntryTarget`); the field reports Value Changed and Submit.
     if (isTextEntryTarget(event.target)) {
         return;
     }

@@ -197,6 +197,11 @@ export const lint = {
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
         },
+        storyVideoControlAfterEnd: {
+            title: "已播放完毕的视频",
+            description: "播放行等待播放结束，其后暂停、继续、跳转或停止该视频的行",
+            message: "{object} 在该行已播放完毕；如需在播放时继续，请关闭其播放行的“等待播放结束”",
+        },
         storyCharacterMissing: {
             title: "不存在的角色",
             description: "该行指定的角色不在本项目中",
@@ -310,6 +315,16 @@ export const lint = {
             title: "条目字段不存在",
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
+        uiListTextUntranslated: {
+            title: "不会翻译的列表内容",
+            description: "项目已有第二种语言，列表内容中写有文字",
+            message: "{text} 等列表内容在所有语言中按原文显示",
+        },
+        uiLocalizationKeyMissing: {
+            title: "不存在的本地化键",
+            description: "控件的文字来自项目中不存在的键",
+            message: "文字来自键 {key}，该键在项目中不存在",
         },
         uiGestureAnsweredTwice: {
             title: "被响应两次的手势",

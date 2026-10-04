@@ -13,8 +13,8 @@ export const uiEditor = {
     ownerLabel: {
         globalMain: "アプリロジック",
         surfaceMain: "ページロジック",
-        widgetMain: "コンポーネントロジック",
-        widgetValue: "コンポーネントの値",
+        widgetMain: "ウィジェットロジック",
+        widgetValue: "ウィジェットの値",
         storyAction: "ストーリーアクション",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
@@ -55,6 +55,10 @@ export const uiEditor = {
         pageValidationHint: "作成する前にページ名と大きさを確認する",
         gameUiSlotHint: "作成する前に空いているゲーム UI スロットを選ぶ",
         allSlotsUsed: "ゲーム UI のスロットはすべて埋まっている。一覧から既存のゲーム UI を開く",
+        starterTitlePage: {
+            title: "タイトルページを作成",
+            description: "「はじめから」「つづきから」ボタンは接続済み。空の入口ページと置き換える",
+        },
     },
     naming: {
         page: "ページ {index}",
@@ -161,6 +165,8 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "不明なウィジェット",
         widgetRenderFailed: "ウィジェットの描画に失敗",
+        wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
+        wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",
@@ -211,7 +217,7 @@ export const uiEditor = {
         showSelected: "選択中のものを表示",
         hideSelected: "選択中のものを隠す",
         addToComponentLibrary: "コンポーネントライブラリに追加",
-        addToGroup: "グループに追加",
+        group: "グループにする",
         ungroup: "グループを解除",
         addState: "状態を追加",
         arrange: {

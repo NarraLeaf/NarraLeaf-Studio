@@ -158,6 +158,15 @@ export class NavigationController {
         this.dispatch({ type: "COLLAPSE_TO_ACTIVE" });
     }
 
+    /**
+     * Take one page out of the stack without showing anything: the page `Replace Page` replaced,
+     * once the page that took its place is up. The page on top is never taken, and an entry already
+     * gone is not an error.
+     */
+    public forget(entryKey: string): void {
+        this.dispatch({ type: "FORGET_ENTRY", entryKey });
+    }
+
     /** The game stage covered the page stack: hide all current entries and settle any wait. */
     public hideAllForGame(): void {
         this.dispatch({ type: "HIDE_ALL_FOR_GAME" });

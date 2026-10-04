@@ -1,6 +1,15 @@
 import { resolveEntrySurfaceId } from "@shared/types/ui-editor/entrySurface";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_CLEAR,
+    BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
 } from "@shared/types/blueprint/graph";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
@@ -9,7 +18,14 @@ import {
     resolveSurfaceActionBindings,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
-import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
+import {
+    readUITextSite,
+    uiTextSiteOf,
+    uiTextUnitBindingOf,
+    uiTextUnitId,
+    type UITextSite,
+    type UITextUnitBinding,
+} from "@shared/types/ui-editor/textSource";
 import {
     buildUIFrameGraph,
     getUIFrameWidgetProps,
@@ -17,7 +33,7 @@ import {
     UI_FRAME_ELEMENT_TYPE,
     type UIFrameSite,
 } from "@shared/types/ui-editor/frame";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
@@ -27,7 +43,7 @@ import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/Blueprint
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
-import { listBlueprintGraphSites } from "../blueprintSites";
+import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
@@ -169,21 +185,17 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Widget text an author writes and a player reads, with the two ways of binding it.
- *
- * The same three sites `useLocalizedWidgetText` resolves at run time, which is what makes the answer
- * checkable: a prop this table did not list would be translated by the runtime and reported as
- * unlocalized here, and a prop it listed by mistake would be reported while nothing can translate
- * it. `optInProp` is the implicit unit (`ui:<elementId>.<prop>`); a text input has no such flag on
- * its props at all, so its placeholder is bound by a named key or not at all.
+ * The site of an element's words a player reads, when it has one - read from the shared table
+ * (`textSites.ts`), the one `useLocalizedWidgetText` resolves at run time. That is what makes the
+ * answers here checkable: a prop the table did not list would be translated by the runtime and
+ * reported as unlocalized here, and a prop it listed by mistake would be reported while nothing can
+ * translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
+ * replaces with the story's, so no player reads them and nothing here looks at them.
  */
-const LOCALIZABLE_TEXT_SITES: Readonly<
-    Record<string, { readonly textProp: string; readonly keyProp: string; readonly optInProp?: string }>
-> = {
-    "nl.text": { textProp: "text", keyProp: "localizationKey", optInProp: "localizable" },
-    "nl.button": { textProp: "label", keyProp: "localizationKey", optInProp: "localizable" },
-    "nl.textInput": { textProp: "placeholder", keyProp: "placeholderLocalizationKey" },
-};
+function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
+    const site = uiTextSiteOf(element.type);
+    return site?.role === "words" ? site : undefined;
+}
 
 
 /** The literal a widget shows a player, with the unit that translates it and the face it chose. */
@@ -213,16 +225,15 @@ export type SurfaceTextSite = {
 export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     const sites: SurfaceTextSite[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site) {
             continue;
         }
-        const props = elementProps(element);
-        const text = readStringProp(props, site.textProp);
+        const text = readUITextSite(element, site).text;
         if (!text.trim()) {
             continue;
         }
-        const fontAssetId = readStringProp(props, "fontAssetId").trim();
+        const fontAssetId = readStringProp(elementProps(element), "fontAssetId").trim();
         sites.push({
             surface,
             element,
@@ -234,16 +245,8 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     return sites;
 }
 
-/**
- * The translation unit a widget's text is read through at run time, when it has one.
- *
- * `key` is a named key (`key:<name>`), whose source words live in the key registry rather than on
- * the widget; `implicit` is the widget's own unit (`ui:<elementId>.<prop>`), whose source words are
- * the literal the author typed.
- */
-export type InterfaceTextUnitBinding =
-    | { kind: "key"; keyName: string }
-    | { kind: "implicit"; unitId: string; sourceText: string };
+/** The translation unit a widget's text is read through at run time (`uiTextUnitBindingOf`). */
+export type InterfaceTextUnitBinding = UITextUnitBinding;
 
 /** One widget whose words a target locale is expected to translate, and where it lives. */
 export type InterfaceTextUnitSite = {
@@ -259,8 +262,8 @@ export type InterfaceTextUnitSite = {
  * Every widget on a page or in a component definition that reads its words through a translation
  * unit, in the order the pages and then the definitions are listed.
  *
- * The same precedence `useLocalizedWidgetText` applies: a named key wins over the opt-in, and the
- * opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
+ * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins over the opt-in, and
+ * the opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
  * the localization panel leaves it out - there is no row for it to be translated in. Component
  * definitions are walked once each, under the definition, for the reason the Page widget rules give;
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
@@ -268,25 +271,13 @@ export type InterfaceTextUnitSite = {
 export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
             return;
         }
-        const props = elementProps(element);
-        const literal = readStringProp(props, site.textProp);
-        const keyName = readStringProp(props, site.keyProp).trim();
-        if (keyName) {
-            sites.push({ element, location, target, literal, binding: { kind: "key", keyName } });
-            return;
-        }
-        if (site.optInProp !== undefined && props[site.optInProp] === true && literal.trim()) {
-            sites.push({
-                element,
-                location,
-                target,
-                literal,
-                binding: { kind: "implicit", unitId: uiTextUnitId(element.id, site.textProp), sourceText: literal },
-            });
+        const binding = uiTextUnitBindingOf(element, site);
+        if (binding) {
+            sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
         }
     };
     for (const { surface, element } of listSurfaceElements(document)) {
@@ -360,21 +351,18 @@ function runUnlocalizedText(ctx: LintContext): LintFinding[] {
     }
     const findings: LintFinding[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        const site = playerWordsSiteOf(element);
         if (!site || getUIComponentLink(element)) {
             continue;
         }
-        const props = elementProps(element);
-        const text = readStringProp(props, site.textProp);
-        if (!hasTranslatableWord(text)) {
+        const reading = readUITextSite(element, site);
+        if (!hasTranslatableWord(reading.text)) {
             continue;
         }
-        const boundToKey = readStringProp(props, site.keyProp).trim().length > 0;
-        const boundToUnit = site.optInProp !== undefined && props[site.optInProp] === true;
-        const boundToValue = element.valueBindings?.[site.textProp] !== undefined;
-        if (boundToKey || boundToUnit || boundToValue) {
+        if (reading.key || reading.localizable || reading.binding !== undefined) {
             continue;
         }
+        const text = reading.text;
         findings.push({
             ruleId: "ui/unlocalized-text",
             messageKey: "lint.rule.uiUnlocalizedText.message",
@@ -878,6 +866,200 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// ui/list-text-untranslated
+// ---------------------------------------------------------------------------
+
+/**
+ * Nodes in a list's own blueprint that write its rows. A list whose own graph writes them shows the
+ * graph's rows, not the ones written into its content.
+ */
+const LIST_ROW_WRITER_NODE_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_CLEAR,
+    BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT,
+    BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS,
+]);
+
+/**
+ * Lists whose rows something other than their written content may decide: every list a graph names
+ * by id anywhere in the project, every list whose own graph writes rows, and every list whose own
+ * blueprint has a script layer (a script cannot be read, so it is credited with writing them).
+ *
+ * Over-counting here only keeps the rule quiet about a list it could have reported; under-counting
+ * would report a list whose rows a graph replaces, telling the author words no player reads are not
+ * translated.
+ */
+function listsWithRowsFromElsewhere(ctx: LintContext): Set<string> {
+    const ids = new Set<string>();
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const owner = site.owner as BlueprintGraphSite["owner"] | undefined;
+        const ownElementId = owner?.kind === "widgetMain" || owner?.kind === "componentWidgetMain" ? owner.elementId : null;
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (ownElementId && LIST_ROW_WRITER_NODE_TYPES.has(node.type)) {
+                ids.add(ownElementId);
+            }
+            for (const value of Object.values(node.params ?? {})) {
+                if (typeof value === "string" && value.trim()) {
+                    ids.add(value.trim());
+                }
+            }
+        }
+    }
+    for (const blueprint of Object.values(ctx.blueprintDocument?.blueprints ?? {})) {
+        const owner = blueprint.owner;
+        if (owner && (owner.kind === "widgetMain" || owner.kind === "componentWidgetMain")) {
+            const layers = Object.values(blueprint.graphs?.events ?? {});
+            if (layers.some(layer => Boolean((layer as { script?: unknown }).script))) {
+                ids.add(owner.elementId);
+            }
+        }
+    }
+    return ids;
+}
+
+/**
+ * The first word-bearing string the list's rows put on screen: a value in its written content of a
+ * field that a text in its row template is bound to. Undefined when the rows show none.
+ */
+function firstShownListWords(document: UIDocument, list: UIElement): string | undefined {
+    const props = elementProps(list);
+    const items = Array.isArray(props.items) ? (props.items as unknown[]) : [];
+    if (items.length === 0) {
+        return undefined;
+    }
+    const struct = resolveUIStruct(document, typeof props.itemStructId === "string" ? props.itemStructId : null);
+    const shownKeys: string[] = [];
+    const visit = (elementId: string): void => {
+        const element = document.elements[elementId];
+        if (!element) {
+            return;
+        }
+        const site = playerWordsSiteOf(element);
+        const binding = site ? element.valueBindings?.[site.textProp] : undefined;
+        if (binding?.kind === "listItemField") {
+            const field = findUIStructField(struct, binding.fieldId);
+            if (field) {
+                shownKeys.push(field.key);
+            }
+        }
+        // A list inside the row reads its own rows, from its own shape.
+        if (isListLikeWidgetType(element.type)) {
+            return;
+        }
+        for (const childId of element.childrenIds ?? []) {
+            visit(childId);
+        }
+    };
+    for (const childId of list.childrenIds ?? []) {
+        if (isUIListItemTemplateChild(document.elements[childId])) {
+            visit(childId);
+        }
+    }
+    for (const item of items) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        for (const key of shownKeys) {
+            const value = (item as Record<string, unknown>)[key];
+            if (typeof value === "string" && hasTranslatableWord(value)) {
+                return value;
+            }
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Words written into a list's content, in a project that has a second language.
+ *
+ * A list that no data source and no graph fills draws its written content in the game, row for row,
+ * and those words have no translation unit: they read the same in every language. Reported once per
+ * list, with the first such word, at info severity - the words are shown as written, which is what
+ * the author wrote; what the note adds is that no locale changes them.
+ *
+ * Silent until the project has a second language, for the reason `ui/unlocalized-text` is. A list
+ * fed by the engine in its stage slot (the choice, notification and NVL lists), bound to a data
+ * source, or named by any graph is left out: its written content is a layout placeholder there.
+ */
+function runListTextUntranslated(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    const localization = ctx.localization;
+    if (!document || !localization) {
+        return [];
+    }
+    const secondLanguages = localization.targetLocales.filter(
+        locale => locale && locale !== localization.sourceLocale,
+    );
+    if (secondLanguages.length === 0) {
+        return [];
+    }
+    const fedElsewhere = listsWithRowsFromElsewhere(ctx);
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        if (element.type !== "nl.list" || getUIComponentLink(element) || fedElsewhere.has(element.id)) {
+            continue;
+        }
+        if (elementProps(element).itemsBinding) {
+            continue;
+        }
+        const words = firstShownListWords(document, element);
+        if (words === undefined) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/list-text-untranslated",
+            messageKey: "lint.rule.uiListTextUntranslated.message",
+            messageParams: { text: clipLiteral(words) },
+            location: surfaceLocation(surface, element),
+            target: surfaceTarget(surface),
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
+// ui/localization-key-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A widget whose words are read from a translation key the project does not have.
+ *
+ * A key removed from the registry, or brought in on a pasted element, leaves the widget naming
+ * nothing: it shows its own stored words in the source language and whatever translation of the old
+ * key a language file still holds in the others, and nothing in the editor says the two came apart.
+ * Every place a widget names a key is checked - pages and component definitions - and each widget is
+ * reported, since each is fixed on its own.
+ *
+ * Quiet when the key registry was not read (`null`), which is not a project with no keys.
+ */
+function runLocalizationKeyMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    const keys = ctx.localizationKeys;
+    if (!document || !keys) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listInterfaceTextUnitSites(document)) {
+        if (site.binding.kind !== "key" || keys.has(site.binding.keyName)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/localization-key-missing",
+            messageKey: "lint.rule.uiLocalizationKeyMissing.message",
+            messageParams: { key: site.binding.keyName },
+            location: site.location,
+            target: site.target,
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // ui/gesture-answered-twice
 // ---------------------------------------------------------------------------
 
@@ -1067,5 +1249,24 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "uiGestureAnsweredTwice",
         run: ctx => runGestureAnsweredTwice(ctx),
+    },
+    {
+        id: "ui/list-text-untranslated",
+        category: "ui",
+        // Info: the words are shown exactly as written, so nothing deviates from what the author
+        // wrote; the note is that no locale changes them.
+        defaultSeverity: "info",
+        slug: "uiListTextUntranslated",
+        run: ctx => runListTextUntranslated(ctx),
+    },
+    {
+        id: "ui/localization-key-missing",
+        category: "ui",
+        // A warning rather than an error: the widget still shows words - its own stored ones, or an
+        // old translation - so the page is whole; what is wrong is that they no longer come from
+        // where the author pointed them.
+        defaultSeverity: "warning",
+        slug: "uiLocalizationKeyMissing",
+        run: ctx => runLocalizationKeyMissing(ctx),
     },
 ];

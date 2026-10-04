@@ -200,6 +200,11 @@ export const lint = {
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
         },
+        storyVideoControlAfterEnd: {
+            title: "再生を終えた動画",
+            description: "終了を待つ再生の後で、その動画を一時停止・再開・シーク・停止する行",
+            message: "{object} はこの行ではすでに再生を終えている。再生中に先へ進むには、再生の行の「再生の終了を待つ」をオフにする",
+        },
         storyCharacterMissing: {
             title: "存在しないキャラクター",
             description: "プロジェクトに存在しないキャラクターを指定した行",
@@ -314,6 +319,16 @@ export const lint = {
             title: "項目が見つかりません",
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
             message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
+        },
+        uiListTextUntranslated: {
+            title: "翻訳されないリストの内容",
+            description: "第二の言語があるプロジェクトで、リストの内容に書かれた文字",
+            message: "{text} などリストの内容はどの言語でも書かれたまま表示される",
+        },
+        uiLocalizationKeyMissing: {
+            title: "存在しないローカライズキー",
+            description: "プロジェクトにないキーから文字を読むウィジェット",
+            message: "文字を {key} から読むが、このキーはプロジェクトにない",
         },
         uiGestureAnsweredTwice: {
             title: "二重に反応する操作",
