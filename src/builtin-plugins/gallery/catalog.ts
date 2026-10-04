@@ -677,6 +677,82 @@ function lockedPlaceholderAssetId(artwork: GalleryArtwork, settings: GallerySett
 }
 
 /**
+ * The ids the words an author writes in the Gallery editor are offered for translation under - the
+ * studio entry lists them (`galleryWords`), the game reads them back (`localizeGalleryStore`), and the
+ * translation unit is `plugin:narraleaf.gallery/<id>`. Keyed by the entry's, member's or group's own
+ * id, so correcting a name keeps its translations.
+ */
+export const GALLERY_WORDS_IDS = {
+    entryName: (artworkId: string) => `entry.${artworkId}.name`,
+    entryDescription: (artworkId: string) => `entry.${artworkId}.description`,
+    memberName: (variantId: string) => `member.${variantId}.name`,
+    groupName: (groupId: string) => `group.${groupId}.name`,
+    lockedNameMask: "lockedNameMask",
+} as const;
+
+/** One of the gallery's words, as the studio entry offers it for translation. */
+export type GalleryWordsEntry = { id: string; text: string; context?: string };
+
+/**
+ * Every word a player reads that the author wrote in the Gallery editor: each entry's name and
+ * description, each member's name, each group's name, and the title locked entries are shown by.
+ * The context is where the words sit, for a translator. Hidden entries are listed too - they are
+ * shown once found.
+ */
+export function galleryWords(data: GalleryStoreData): GalleryWordsEntry[] {
+    const out: GalleryWordsEntry[] = [];
+    const groupNames = new Map(data.groups.map(group => [group.id, group.name] as const));
+    for (const group of data.groups) {
+        out.push({ id: GALLERY_WORDS_IDS.groupName(group.id), text: group.name });
+    }
+    for (const artwork of data.items) {
+        const group = artwork.groupId ? groupNames.get(artwork.groupId) : undefined;
+        out.push({ id: GALLERY_WORDS_IDS.entryName(artwork.id), text: artwork.name, ...(group ? { context: group } : {}) });
+        if (artwork.description) {
+            out.push({ id: GALLERY_WORDS_IDS.entryDescription(artwork.id), text: artwork.description, context: artwork.name });
+        }
+        for (const variant of artwork.variants) {
+            out.push({ id: GALLERY_WORDS_IDS.memberName(variant.id), text: variant.name, context: artwork.name });
+        }
+    }
+    if (data.settings.lockedNameMask) {
+        out.push({ id: GALLERY_WORDS_IDS.lockedNameMask, text: data.settings.lockedNameMask });
+    }
+    return out;
+}
+
+/**
+ * The catalog with every word the author wrote in the player's language - `words(id, text)` answers
+ * one word (`app.game.locale.words` in a game), the words as written where there is no translation.
+ * Ids, art and unlock bookkeeping are untouched, so every projection reads it as it reads the authored
+ * catalog, and the lock discipline - a locked entry's real name never leaves - applies to the
+ * translated names alike.
+ */
+export function localizeGalleryStore(data: GalleryStoreData, words: (id: string, text: string) => string): GalleryStoreData {
+    return {
+        ...data,
+        groups: data.groups.map(group => ({ ...group, name: words(GALLERY_WORDS_IDS.groupName(group.id), group.name) })),
+        items: data.items.map(artwork => ({
+            ...artwork,
+            name: words(GALLERY_WORDS_IDS.entryName(artwork.id), artwork.name),
+            description: artwork.description
+                ? words(GALLERY_WORDS_IDS.entryDescription(artwork.id), artwork.description)
+                : artwork.description,
+            variants: artwork.variants.map(variant => ({
+                ...variant,
+                name: words(GALLERY_WORDS_IDS.memberName(variant.id), variant.name),
+            })),
+        })),
+        settings: {
+            ...data.settings,
+            lockedNameMask: data.settings.lockedNameMask
+                ? words(GALLERY_WORDS_IDS.lockedNameMask, data.settings.lockedNameMask)
+                : data.settings.lockedNameMask,
+        },
+    };
+}
+
+/**
  * The title anything locked is shown by: its own name once unlocked, the catalog's mask while
  * locked. An empty mask is the author asking for real names throughout.
  *
