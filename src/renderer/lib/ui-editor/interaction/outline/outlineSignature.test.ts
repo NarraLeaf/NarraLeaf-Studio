@@ -99,6 +99,13 @@ describe("computeOutlineSignature", () => {
         expect(signature(document)).not.toBe(before);
     });
 
+    it("notices a container switching to a flow layout, because its rows change order", () => {
+        const document = surfaceDocument();
+        const before = signature(document);
+        document.elements.a.props = { layoutKind: "stack" };
+        expect(signature(document)).not.toBe(before);
+    });
+
     // Only reachable from a damaged document, but this runs on every change and must not hang.
     it("terminates on a parent cycle", () => {
         const document = surfaceDocument();
