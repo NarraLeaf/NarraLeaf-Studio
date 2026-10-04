@@ -203,6 +203,7 @@ import { translate } from "@/lib/i18n";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import { authoredNameOrNull } from "@shared/utils/generatedId";
 import { classifyAssetFailure } from "../assetResolution";
+import { sceneMusicElementId, STORY_CAMERA_ELEMENT_ID } from "./stableElementIds";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -1277,6 +1278,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     }
     const actionIdBindings: NlrActionIdBinding[] = [];
     const elementIdBindings: string[] = [];
+    // The story's one stage camera carries state into a save - every pan, zoom and darken - and the
+    // engine would otherwise number it by where the walk of the action tree first meets it, which
+    // moves with the scene the story is entered at and with every line added ahead of it.
+    setStableElementId(elementIdBindings, nlrStory.camera, STORY_CAMERA_ELEMENT_ID);
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
     const avatarAssetIdByUrl = new Map<string, string>();
@@ -1617,6 +1622,9 @@ async function buildLaunchEntryScene(params: {
     );
     const launchIdPrefix = launchSceneIdPrefix(scene.id, launch.targetBlockId ?? "");
     setSceneOwnElementIds(params.elementIdBindings, launchScene, `${launchIdPrefix}:scene`);
+    if (launchMusic) {
+        setStableElementId(params.elementIdBindings, launchMusic.sound, sceneMusicElementId(`${launchIdPrefix}:scene`));
+    }
 
     const ctx: SceneCompileContext = {
         document: input.document,
@@ -2451,6 +2459,10 @@ async function createNlrScenes(input: {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
             input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId, assetId: music.assetId, clip: music.clip });
+            // Owned by the scene like its background, and named under it for the same reason: a save
+            // holds the music's place and the scene's pointer to it, and a number counted across the
+            // whole story moved whenever another scene gained or lost music.
+            setStableElementId(input.elementIdBindings, music.sound, sceneMusicElementId(`nl:scene:${scene.id}`));
         }
         const built = new Scene(
             runtimeName,
@@ -4186,6 +4198,9 @@ async function compileAudioAction(
             loop: playback.loop,
             ...clipSoundConfig(clip, playback),
         });
+        // Named by its row: every `/bgm` with an asset builds a track of its own, and the row is what
+        // that track is.
+        setStableElementId(ctx.elementIdBindings, sound, sceneElementStaticId(ctx, "bgm", block.id));
         // The reserved name the sound-control family defaults to: `/vol 0.5` addresses the music
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
         ctx.sounds.set(BGM_SOUND_NAME, sound);
@@ -5345,6 +5360,7 @@ async function getSound(
         rate: payload.rate ?? 1,
         ...clipSoundConfig(clip, playback),
     });
+    setStableElementId(ctx.elementIdBindings, sound, sceneElementStaticId(ctx, "sound", name));
     ctx.sounds.set(name, sound);
     ctx.soundTrackIds.set(name, track.id);
     ctx.soundAssetIds.set(name, assetId);
@@ -7495,7 +7511,7 @@ function launchSceneIdPrefix(sceneId: string, targetBlockId: string): string {
 /** The id an element a scene builds is stamped with: its kind and name, under the scene's own namespace. */
 function sceneElementStaticId(
     ctx: SceneCompileContext,
-    kind: "image" | "text" | "layer" | "video" | "puppet",
+    kind: "image" | "text" | "layer" | "video" | "puppet" | "bgm" | "sound",
     name: string,
 ): string {
     return ctx.launchElementIdPrefix
