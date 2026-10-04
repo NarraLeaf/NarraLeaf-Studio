@@ -644,6 +644,18 @@ function lockedPlaceholderAssetId(artwork: GalleryArtwork, settings: GallerySett
 }
 
 /**
+ * The title anything locked is shown by: its own name once unlocked, the catalog's mask while
+ * locked. An empty mask is the author asking for real names throughout.
+ *
+ * Every reader that hands out a name goes through this, the single-item nodes as much as the
+ * projections below - a title is as much a spoiler as the art, and a node that forgot the mask
+ * would print the name of a CG the player has not reached.
+ */
+export function shownGalleryName(name: string, unlocked: boolean, settings: GallerySettings): string {
+    return unlocked || !settings.lockedNameMask ? name : settings.lockedNameMask;
+}
+
+/**
  * Project the catalog into gallery rows.
  *
  * Lock state is resolved *here* rather than left to the author's graph, so a
@@ -687,9 +699,7 @@ export function projectGalleryEntries(
             // position in the array the List widget receives.
             index: views.length,
             id: artwork.id,
-            name: isUnlocked || !store.settings.lockedNameMask
-                ? artwork.name
-                : store.settings.lockedNameMask,
+            name: shownGalleryName(artwork.name, isUnlocked, store.settings),
             description: isUnlocked ? artwork.description : "",
             kind: artwork.kind,
             groupId: artwork.groupId ?? "",
@@ -741,9 +751,7 @@ export function projectGalleryVariants(
             index: views.length,
             id: variant.id,
             artworkId: artwork.id,
-            name: isUnlocked || !store.settings.lockedNameMask
-                ? variant.name
-                : store.settings.lockedNameMask,
+            name: shownGalleryName(variant.name, isUnlocked, store.settings),
             unlocked: isUnlocked,
             locked: !isUnlocked,
             image: toImageAssetValue(assetId),

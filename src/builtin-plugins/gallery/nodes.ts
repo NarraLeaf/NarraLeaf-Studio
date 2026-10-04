@@ -43,6 +43,7 @@ import {
     projectGalleryVariants,
     readUnlockedVariantIds,
     resolveCoverVariant,
+    shownGalleryName,
     toImageAssetValue,
     type GalleryArtwork,
     type GalleryStoreData,
@@ -736,7 +737,9 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                         // silhouette without needing a separate check.
                         image: isUnlocked ? toImageAssetValue(variant.imageAssetId) : null,
                         unlocked: isUnlocked,
-                        name: variant.name,
+                        // Masked like the rows of Get Gallery Variants: a viewer stepping
+                        // through differentials must not spell out the one still locked.
+                        name: shownGalleryName(variant.name, isUnlocked, data.settings),
                         variantId: variant.id,
                     },
                 };
@@ -800,7 +803,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                     outputValues: {
                         image: isUnlocked ? toImageAssetValue(cover?.imageAssetId) : null,
                         unlocked: isUnlocked,
-                        name: artwork.name,
+                        name: shownGalleryName(artwork.name, isUnlocked, data.settings),
                     },
                 };
             },
@@ -848,12 +851,13 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                     };
                 }
                 const unlocked = await readUnlocked(ctx, data.items);
+                const isUnlocked = isArtworkUnlocked(artwork, unlocked);
                 return {
                     nextPort: "next",
                     outputValues: {
                         artworkId: artwork.id,
-                        name: artwork.name,
-                        unlocked: isArtworkUnlocked(artwork, unlocked),
+                        name: shownGalleryName(artwork.name, isUnlocked, data.settings),
+                        unlocked: isUnlocked,
                         variantCount: artwork.variants.length,
                     },
                 };
