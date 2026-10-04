@@ -46,6 +46,7 @@ import {
     type LocalizationUnitState,
     type StoryTranslationRow,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -311,14 +312,26 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                         keyName: row.keyName,
                     }))
                     : [];
-                setRows([...uiRows, ...keyRows]);
+                // A plugin's words - a menu row's label, a gallery entry's name - grouped under the
+                // plugin, between the interface's widgets and the named keys.
+                const pluginRows: TableRow[] = listPluginWordsRows().map(row => ({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    interpolationCount: 0,
+                    groupKey: `plugin:${row.pluginId}`,
+                    groupName: row.pluginName,
+                    speaker: row.context,
+                }));
+                setRows([...uiRows, ...pluginRows, ...keyRows]);
             };
             read();
             void localizationService.loadKeys().then(read).catch(() => undefined);
             const unsubscribe = localizationService.onKeysChanged(read);
+            const unsubscribePluginWords = subscribePluginWords(read);
             return () => {
                 disposed = true;
                 unsubscribe();
+                unsubscribePluginWords();
             };
         }
         if (!storyService) {

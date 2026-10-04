@@ -70,7 +70,7 @@ describe("the plugin locale backend", () => {
                 sourceLocale: "en",
                 locales: [{ code: "en", displayName: "English" }, { code: "ja", displayName: "日本語" }],
                 keys: { "menu.file": "File" },
-                tables: { ja: { "key:menu.file": "ファイル" } },
+                tables: { ja: { "key:menu.file": "ファイル", "plugin:acme.gallery/entry.e1.name": "放課後の廊下" } },
             },
         } as unknown as DevModeBundle;
         controller.attachRuntime({ scope, bundle });
@@ -91,5 +91,16 @@ describe("the plugin locale backend", () => {
 
     it("answers null before a game is attached, rather than guessing", () => {
         expect(new RuntimePluginHostController({}).host.locale?.text("menu.file")).toBeNull();
+    });
+
+    it("reads a plugin's own words back in the player's language, and as written where there is no translation", () => {
+        const controller = new RuntimePluginHostController({});
+        attach(controller, "ja");
+        expect(controller.host.locale?.words("acme.gallery", "entry.e1.name", "放学后的走廊")).toBe("放課後の廊下");
+        expect(controller.host.locale?.words("acme.gallery", "entry.e2.name", "空无一人的教室")).toBe("空无一人的教室");
+        // Only the plugin's own unit: another plugin naming the same id reads its own words.
+        expect(controller.host.locale?.words("acme.other", "entry.e1.name", "Other")).toBe("Other");
+        expect(controller.host.locale?.words("acme.gallery", "not an id", "As written")).toBe("As written");
+        expect(new RuntimePluginHostController({}).host.locale?.words("acme.gallery", "entry.e1.name", "x")).toBe("x");
     });
 });

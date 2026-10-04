@@ -45,6 +45,7 @@ import {
     type TranslatableUnitContext,
     type TranslationExportScope,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -228,6 +229,11 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                     });
                 }
             }
+            // The words plugins offer - a menu row's label, a gallery entry's name - beside the
+            // interface's own, under the plugin that holds them.
+            for (const row of listPluginWordsRows()) {
+                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.context });
+            }
             let keysDocument = localizationService.getKeysIfLoaded();
             if (!keysDocument) {
                 keysDocument = await localizationService.loadKeys().catch(() => undefined);
@@ -244,12 +250,14 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         const unsubscribeDocument = storyService.onDocumentChanged(() => void recompute());
         const unsubscribeKeys = localizationService.onKeysChanged(() => void recompute());
         const unsubscribeCharacters = characterService?.subscribe(() => void recompute());
+        const unsubscribePluginWords = subscribePluginWords(() => void recompute());
         return () => {
             disposed = true;
             unsubscribeLibrary();
             unsubscribeDocument();
             unsubscribeKeys();
             unsubscribeCharacters?.();
+            unsubscribePluginWords();
         };
     }, [storyService, localizationService, characterService, uiDocumentService, uiDocumentRevision]);
 

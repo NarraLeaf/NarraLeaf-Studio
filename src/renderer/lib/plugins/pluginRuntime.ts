@@ -33,6 +33,7 @@ import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/type
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
 import { guardPluginWidgetModule } from "./pluginWidgetGuard";
 import { uiTextSitesFromPluginDeclaration } from "@shared/types/ui-editor/textSource";
+import { registerPluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import type { PluginWidgetModule } from "./pluginWidgetApi";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -902,6 +903,9 @@ export function createPluginApp(
                         .map(([name, definition]) => ({ name, sourceText: definition.sourceText }))
                         .sort((a, b) => a.name.localeCompare(b.name));
                 },
+                // Scoped to this plugin by the registry (`plugin:<id>/<word id>`), and taken back on
+                // unload with everything else the plugin registered.
+                registerWords: source => trackReturn(registerPluginWords(descriptor.plugin.id, shownName, source)),
             },
             story: {
                 listStories: () => story.listStories().map(entry => ({

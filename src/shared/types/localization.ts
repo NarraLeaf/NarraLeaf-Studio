@@ -306,6 +306,28 @@ export function characterTranslationUnitId(characterId: string): string {
     return `char:${characterId}`;
 }
 
+/**
+ * Prefix of the unit space a plugin's words live in: what an author writes in a plugin's own editor
+ * (a menu row's label, a gallery entry's name) and the plugin offers for translation.
+ */
+export const PLUGIN_WORDS_UNIT_PREFIX = "plugin:";
+
+/** A plugin's id for one of its words: the key-name charset, a little longer, since it nests ids. */
+const PLUGIN_WORDS_ID_PATTERN = /^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$/;
+
+export function isValidPluginWordsId(id: unknown): id is string {
+    return typeof id === "string" && id.length <= 240 && PLUGIN_WORDS_ID_PATTERN.test(id);
+}
+
+/**
+ * Translation-unit id of one of a plugin's words: `plugin:<pluginId>/<id>`, the id being the plugin's
+ * own. Scoped by the plugin so two plugins - and a plugin and Studio's own units - can never name the
+ * same unit, and so a plugin reads back only the words it offered.
+ */
+export function pluginWordsUnitId(pluginId: string, id: string): string {
+    return `${PLUGIN_WORDS_UNIT_PREFIX}${pluginId}/${id}`;
+}
+
 /** Prefix of the scene-name unit space. Exported so id parsing has one spelling. */
 export const SCENE_UNIT_PREFIX = "scene:";
 

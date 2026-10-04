@@ -48,6 +48,7 @@ import {
 } from "@shared/types/ui-editor/contributedWidgets";
 import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { uiTextSitesFromPluginDeclaration, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { qualifyGameMenuWords } from "@shared/types/gameMenu";
 import { useLocalizedWidgetSites } from "../localization/GameLocalizationContext";
 import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 
@@ -695,6 +696,8 @@ function buildCapabilityDomains(
                 },
                 onChange: listener => backend.onChange(listener),
                 text: key => backend.text(key),
+                // The plugin's own id, never one it names: it reads back only the words it offered.
+                words: (id, text) => backend.words(pluginId, id, text),
             };
         }
     }
@@ -730,7 +733,9 @@ function buildCapabilityDomains(
             // on the web export, where it simply has nowhere to put one.
             unavailable("menu");
         } else {
-            domains.menu = { set: spec => backend.set(spec) };
+            // A label's own words are named by the plugin's id for them; qualified here with this
+            // plugin, so the bar reads back only words this plugin offered.
+            domains.menu = { set: spec => backend.set(qualifyGameMenuWords(spec, pluginId)) };
         }
     }
 

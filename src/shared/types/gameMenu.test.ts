@@ -4,6 +4,7 @@ import {
     isGameMenuModelEmpty,
     normalizeGameMenuModel,
     normalizeGameMenuSpec,
+    qualifyGameMenuWords,
 } from "./gameMenu";
 
 describe("normalizeGameMenuSpec", () => {
@@ -124,6 +125,34 @@ describe("normalizeGameMenuSpec", () => {
         expect(normalizeGameMenuSpec(null).menus).toEqual([]);
         expect(normalizeGameMenuSpec("File").menus).toEqual([]);
         expect(normalizeGameMenuSpec({ menus: "File" }).menus).toEqual([]);
+    });
+});
+
+describe("qualifyGameMenuWords", () => {
+    it("names each label's own words as the publishing plugin's unit, and drops an id a plugin cannot offer", () => {
+        const spec = qualifyGameMenuWords({
+            menus: [{
+                label: { key: null, text: "Game", words: "menu-game.label" },
+                items: [
+                    {
+                        kind: "submenu",
+                        label: { key: null, text: "More", words: "item-more.label" },
+                        items: [{ kind: "action", label: { key: null, text: "Skip", words: "ui:other.text" }, action: { type: "toggleSkipping" } }],
+                    },
+                    { kind: "separator" },
+                ],
+            }],
+        }, "narraleaf.menu-bar");
+        expect(spec.menus[0]?.label).toEqual({ key: null, text: "Game", words: "plugin:narraleaf.menu-bar/menu-game.label" });
+        const more = spec.menus[0]?.items[0];
+        expect(more?.kind === "submenu" && more.label.words).toBe("plugin:narraleaf.menu-bar/item-more.label");
+        const skip = more?.kind === "submenu" ? more.items[0] : undefined;
+        expect(skip?.kind === "action" && skip.label).toEqual({ key: null, text: "Skip" });
+    });
+
+    it("keeps a label's words through normalization", () => {
+        expect(normalizeGameMenuSpec({ menus: [{ label: { text: "Game", words: "plugin:a.b/c" }, items: [{ kind: "action", label: "Next", action: { type: "next" } }] }] })
+            .menus[0]?.label).toEqual({ key: null, text: "Game", words: "plugin:a.b/c" });
     });
 });
 
