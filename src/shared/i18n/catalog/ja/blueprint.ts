@@ -122,7 +122,7 @@ export const blueprint = {
         },
         interaction: {
             hiddenEvents: "要素「{name}」は表示されていないのに、操作の結びつけを持っている",
-            hiddenEventsHint: "イベントを取り除くか、要素を表示する。隠れている要素は入力を受け取らない",
+            hiddenEventsHint: "イベントを取り除くか、要素を表示状態にするか、ブループリントから表示する。隠れている要素は入力を受け取らない",
             opaqueEvents: "要素「{name}」はほとんど見えない不透明度なのに、操作の結びつけを持っている",
             opaqueEventsHint: "プレイヤーにはこのコントロールが見えないかもしれない。開発モードで確かめる",
             smallHit: "要素「{name}」は当たり判定が小さいのに操作を持っている",

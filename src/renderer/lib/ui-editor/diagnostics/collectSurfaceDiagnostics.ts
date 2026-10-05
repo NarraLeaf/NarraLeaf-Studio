@@ -8,6 +8,7 @@ import { collectResourceDiagnostics } from "./rules/resourceDiagnostics";
 import { collectStageDiagnostics } from "./rules/stageDiagnostics";
 import { collectLayoutDiagnostics } from "./rules/layoutDiagnostics";
 import { collectInteractionDiagnostics } from "./rules/interactionDiagnostics";
+import { collectScriptedElements } from "./scriptedElements";
 import type { UISurfaceDiagnostic } from "./types";
 import { sortSurfaceDiagnostics } from "./types";
 
@@ -43,15 +44,17 @@ export function collectSurfaceDiagnostics(
 
     const rootId = resolveSurfaceRootElementId(document, surfaceId);
     const elements = collectSubtreeElements(document, rootId);
+    const scripted = collectScriptedElements(options?.blueprintDocument);
 
     const parts: UISurfaceDiagnostic[] = [
         ...collectStageDiagnostics(surface),
-        ...collectResourceDiagnostics(elements),
+        ...collectResourceDiagnostics(elements, scripted),
         ...collectLayoutDiagnostics(document, surface, elements),
         ...collectInteractionDiagnostics(document, elements, {
             surfaceId,
             componentId: options?.componentId,
             blueprintDocument: options?.blueprintDocument,
+            elementsNamedByBlueprints: scripted.named,
         }),
     ];
 

@@ -136,7 +136,7 @@ export const blueprint = {
         },
         interaction: {
             hiddenEvents: "Element “{name}” is not visible but still has interaction bindings",
-            hiddenEventsHint: "Remove the events, or make the element visible. A hidden element receives no input.",
+            hiddenEventsHint: "Remove the events, make the element visible, or show it from a blueprint. A hidden element receives no input.",
             opaqueEvents: "Element “{name}” is nearly invisible (opacity) but has interaction bindings",
             opaqueEventsHint: "Players may not see this control. Check it in Dev Mode.",
             smallHit: "Element “{name}” has a small hit area with interactions",

@@ -80,6 +80,48 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
     } as unknown as BlueprintDocument;
 }
 
+/**
+ * The page's own blueprint, holding an element literal for `elementId` - the way a tab button shows
+ * its panel. `owned: false` leaves it without an owner record, which is a blueprint that never runs.
+ */
+function withPageNaming(document: BlueprintDocument, elementId: string, owned = true): BlueprintDocument {
+    const owner = { kind: "surfaceMain", surfaceId: SURFACE_ID };
+    return {
+        ...document,
+        ownerRecords: {
+            ...document.ownerRecords,
+            ...(owned ? { [encodeBlueprintOwnerKey(owner as never)]: { blueprintId: "bp-page" } } : {}),
+        },
+        blueprints: {
+            ...document.blueprints,
+            "bp-page": {
+                id: "bp-page",
+                name: "Page",
+                owner,
+                graphs: {
+                    events: {
+                        open: {
+                            id: "open",
+                            name: "Open the panel",
+                            graph: {
+                                nodes: {
+                                    panel: {
+                                        id: "panel",
+                                        type: "blueprint.element.ref",
+                                        params: { surfaceId: SURFACE_ID, elementId, elementType: "nl.container" },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        },
+    } as unknown as BlueprintDocument;
+}
+
 function idsFor(element: UIElement, blueprintDocument?: BlueprintDocument): string[] {
     return collectInteractionDiagnostics(documentWith(element), [element], {
         surfaceId: SURFACE_ID,
@@ -124,5 +166,43 @@ describe("collectInteractionDiagnostics", () => {
      */
     it("claims nothing when no blueprint document is supplied", () => {
         expect(idsFor(unreachable("btn", "nl.button"), undefined)).toEqual([]);
+    });
+
+    /**
+     * The starter's Extra page, in miniature: its lists and its picture viewer rest hidden and are
+     * shown by the page's blueprint, so on the canvas they are exactly a hidden widget with handlers.
+     * Reporting them put two warning boxes over the whole page of a template nobody had touched.
+     */
+    describe("a widget the game shows", () => {
+        const clickable = () => blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick");
+
+        it("is not reported as hidden when a blueprint names it", () => {
+            expect(idsFor(unreachable("btn", "nl.button"), withPageNaming(clickable(), "btn")))
+                .toEqual(["ix:small-hit:btn"]);
+        });
+
+        it("is not reported as transparent when a blueprint names it", () => {
+            const faded = unreachable("btn", "nl.button");
+            faded.layout = { ...faded.layout, visible: true, opacity: 0 };
+
+            expect(idsFor(faded, withPageNaming(clickable(), "btn"))).toEqual(["ix:small-hit:btn"]);
+        });
+
+        it("is not reported as hidden when its visibility is bound", () => {
+            const bound = { ...unreachable("btn", "nl.button"), valueBindings: { "layout.visible": { kind: "listItemField", fieldId: "unlocked" } } } as UIElement;
+
+            expect(idsFor(bound, clickable())).toEqual(["ix:small-hit:btn"]);
+        });
+
+        /** No owner record means the runtime never resolves the blueprint, so nothing it names is shown. */
+        it("is still reported when the blueprint naming it never runs", () => {
+            expect(idsFor(unreachable("btn", "nl.button"), withPageNaming(clickable(), "btn", false)))
+                .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
+        });
+
+        it("is still reported when the blueprint names a different widget", () => {
+            expect(idsFor(unreachable("btn", "nl.button"), withPageNaming(clickable(), "other")))
+                .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
+        });
     });
 });
