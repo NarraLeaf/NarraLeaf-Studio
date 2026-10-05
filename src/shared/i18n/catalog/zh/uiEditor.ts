@@ -31,6 +31,7 @@ export const uiEditor = {
         nvl: "全屏小说模式的对白历史",
     },
     panel: {
+        interfaces: "界面",
         interfaceType: "界面类型",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
@@ -253,6 +254,12 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    reference: {
+        label: "游戏 UI 参考",
+        heading: "其他游戏 UI",
+        none: "本项目没有其他游戏 UI",
+        sizeDiffers: "尺寸不同：{name} {width}×{height}",
     },
     crossProject: {
         pasted: {

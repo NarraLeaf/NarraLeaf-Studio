@@ -98,6 +98,13 @@ export type GameUiSlotHostOptions = {
      * on a host with no keyboard dispatch of its own, such as the story editor's preview.
      */
     stageKeyboardSurfaces?: AmbientSurfaceTargets;
+    /**
+     * The only slots a press may reach, when not every slot may. Absent means all of them, as in any
+     * game. The story editor's preview passes the choice slot alone: its stage is a still the author
+     * steps through, so a press anywhere else is the preview's own, and picking an option is the one
+     * press that means the same there as in the game.
+     */
+    pressableSlots?: ReadonlySet<UIStageSlotId>;
 };
 
 export type StageSlotSurfaceRuntime = {
@@ -304,6 +311,7 @@ export function StageSlotSurfaceBody(props: {
     // menu's Log opened a page underneath a confirmation that had declared everything below it inert.
     const covered = useStageCovered();
     const hearsKeys = !covered;
+    const pressable = !options.pressableSlots || options.pressableSlots.has(surface.mount.slotId);
     // The runtime store comes from the game's capabilities rather than from a second field beside
     // them: the store the widgets render against has to be the one the host API writes into.
     const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetPatchesByScopeRef } = options;
@@ -408,8 +416,9 @@ export function StageSlotSurfaceBody(props: {
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
                     // Covered, the slot is display-only for as long as the cover stays: inert, so no
-                    // widget on it takes a press (see `passive`).
-                    passive={passive || covered}
+                    // widget on it takes a press (see `passive`). So is a slot the host keeps presses
+                    // away from (see `pressableSlots`).
+                    passive={passive || covered || !pressable}
                     concealed={concealed}
                     keyboardInteractive={hearsKeys}
                     // A Game UI slot has no page animation of its own - it appears when the scene

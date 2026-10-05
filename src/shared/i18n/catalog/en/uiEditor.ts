@@ -39,6 +39,10 @@ export const uiEditor = {
         nvl: "Full-screen novel-mode dialog history.",
     },
     panel: {
+        // The rail's first section: every page and Game UI in the project. Named for what it holds,
+        // beside "Component Library" and "Input Actions" below it.
+        interfaces: "Interfaces",
+        // Not shown: what a screen reader calls the Pages / Game UI switch at the top of that section.
         interfaceType: "Interface Type",
         createPage: "Create Page",
         createGameUi: "Create Game UI",
@@ -272,6 +276,17 @@ export const uiEditor = {
             bottom: "bottom",
             left: "left",
         },
+    },
+    /**
+     * Other Game UI drawn faintly on a Game UI canvas, where and in the order the game draws it.
+     * View state, like the screen preview frames.
+     */
+    reference: {
+        label: "Game UI reference",
+        heading: "Other game UI",
+        none: "This project has no other game UI.",
+        /** Readout when a shown surface is not the size of the one being edited. */
+        sizeDiffers: "Different size: {name} {width}×{height}",
     },
     /**
      * A paste of elements, or of a whole interface, copied in another project.

@@ -628,6 +628,9 @@ export const workspace = {
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",
         resizeSplit: "Resize split",
+        // The seam between two sections of a sidebar panel, e.g. the UI rail's component library
+        // and input actions.
+        resizeSections: "Resize sections",
         noActiveEditor: "No active editor",
         closePanel: "Close panel",
         closeTab: "Close {name}",

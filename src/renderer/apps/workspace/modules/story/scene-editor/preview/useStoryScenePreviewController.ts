@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveGame } from "narraleaf-react";
-import type { StoryAnimationAsset, StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import {
     compileStagePreviewToNlr,
     type NlrStoryCompileDiagnostic,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
-import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { computeStoryStageSnapshot, resolveTakenConditionBranch } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import {
     waitForPaintFrames,
     waitForStageVisualReadyWithTimeout,
@@ -21,8 +21,9 @@ import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleServic
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import { registerCharacterAvatarAssets } from "@/lib/ui-editor/runtime/characterAvatarAssets";
-import { useStoryPreviewGameUi, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
+import { useStoryPreviewGameUi, type StoryPreviewGame, type StoryPreviewIssue } from "./useStoryPreviewGameUi";
 import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
+import { resolveChosenOptionStop, resolveNextPreviewStop, type StoryPreviewStepOptions } from "./storyPreviewStep";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 import { needsRunningGame } from "@/lib/ui-editor/runtime/app/runtimeRefusals";
 
@@ -74,6 +75,12 @@ export type StoryScenePreviewController = {
     onLiveGameReady: (sessionId: string, liveGame: LiveGame) => void;
     /** Wire into NlrStageLayer's onError. */
     onStageError: (error: Error, sessionId: string) => void;
+    /**
+     * A press on the stage: the reader's "next". A line still revealing is shown in full, as in the
+     * game; otherwise the cursor moves to the next row the game stops on (see `storyPreviewStep`).
+     * A menu answers only a pick from its options, made on the stage itself.
+     */
+    advanceFromStage: () => void;
 };
 
 /** Everything one compile run owns; the display run keeps the visible frame, the pending run builds hidden. */
@@ -96,6 +103,13 @@ type PreviewRun = {
     posed: boolean;
     arrived: boolean;
     targetBlockId: string | null;
+    /** The game's own advance on this session's line (see `StoryPreviewGame.advance`). */
+    advance: () => Promise<void>;
+    /**
+     * A press was handed to the line to finish it. If the line had finished by the time it landed,
+     * the press settled it instead and the story ran past the target - which is the press moving on.
+     */
+    advanceRequested: boolean;
 };
 
 /**
@@ -120,6 +134,13 @@ export function useStoryScenePreviewController(input: {
     active: boolean;
     /** Preview pane visibility. */
     open: boolean;
+    /**
+     * Move the editor's cursor to a row, as a step: a press on the stage asks for the next row the
+     * game stops on, and the preview follows the cursor there.
+     */
+    onStepTo?: (blockId: StoryBlockId) => void;
+    /** Whether the editor is showing a row; a stop it is not showing is passed over. */
+    isRowShown?: (blockId: StoryBlockId) => boolean;
 }): StoryScenePreviewController {
     const { context, document, scene, sceneId, activeBlockId, active, open } = input;
 
@@ -233,6 +254,35 @@ export function useStoryScenePreviewController(input: {
         () => (scene ? resolvePreviewTargetBlockId(scene, activeBlockId) : null),
         [scene, activeBlockId],
     );
+
+    /**
+     * What a press on the stage reads, as of the latest render. The press and the engine's markers
+     * arrive between renders, and a press made while the previous one's row is still building has to
+     * step on from the row the cursor is on now, not from the one the stage last showed.
+     */
+    const latestRef = useRef({ document, scene, sceneId, activeBlockId, resolvedTargetId, variableTables, onStepTo: input.onStepTo, isRowShown: input.isRowShown });
+    latestRef.current = { document, scene, sceneId, activeBlockId, resolvedTargetId, variableTables, onStepTo: input.onStepTo, isRowShown: input.isRowShown };
+
+    /**
+     * How a step reads the scene. A condition is decided the way the stage snapshot decides one, from
+     * the variables play reaches it with - walked through `via`, the row the step leaves, so the
+     * option the author is reading counts.
+     */
+    const stepOptions = useCallback((via: StoryBlockId | null): StoryPreviewStepOptions => {
+        const latest = latestRef.current;
+        return {
+            chooseBranch: condition => (latest.document && latest.sceneId
+                ? resolveTakenConditionBranch({
+                    document: latest.document,
+                    sceneId: latest.sceneId,
+                    conditionBlockId: condition.id,
+                    via,
+                    savedVariables: latest.variableTables?.saved,
+                })
+                : null),
+            isShown: latest.isRowShown,
+        };
+    }, []);
 
     const clearDriveTimers = useCallback(() => {
         if (settleTimeoutRef.current !== null) {
@@ -364,6 +414,30 @@ export function useStoryScenePreviewController(input: {
         setPhase("settled");
     }, [clearDriveTimers, setPhase]);
 
+    /** Answers a pick on a menu target's stage; assigned once `startRun` exists (see below). */
+    const choiceTakenRef = useRef<(runId: number, optionBlockId: StoryBlockId) => void>(() => undefined);
+
+    /** Move the cursor to the next row play stops on after the one it is on. */
+    const stepOn = useCallback(() => {
+        const { scene: currentScene, activeBlockId: fromBlockId, onStepTo } = latestRef.current;
+        if (!currentScene || !onStepTo) {
+            return;
+        }
+        const next = resolveNextPreviewStop(currentScene, fromBlockId, stepOptions(fromBlockId));
+        if (next) {
+            onStepTo(next);
+        }
+    }, [stepOptions]);
+
+    const handleAfterTarget = useCallback((runId: number) => {
+        const run = displayRunRef.current;
+        if (!run || run.runId !== runId || !run.advanceRequested || pendingRunRef.current) {
+            return;
+        }
+        run.advanceRequested = false;
+        stepOn();
+    }, [stepOn]);
+
     /** Kick a mounted run's compiled story into motion. */
     const beginRun = useCallback((run: PreviewRun) => {
         if (run.runId !== runIdRef.current || !run.liveGame) {
@@ -448,8 +522,11 @@ export function useStoryScenePreviewController(input: {
                 onStagePosed: () => handleStagePosed(runId),
                 revealGate,
                 onBeforeTarget: () => handleBeforeTarget(runId),
-                // Follow mode holds on the target frame; there is no continuation to observe.
-                onAfterTarget: () => undefined,
+                // The frame holds on the target. The story runs past it only when a press handed to
+                // a line settled it, and that press is then the step on.
+                onAfterTarget: () => handleAfterTarget(runId),
+                // A pick on a menu target is a request to look at its branch.
+                onChoiceTaken: optionBlockId => choiceTakenRef.current(runId, optionBlockId),
             });
             if (runId !== runIdRef.current) {
                 return;
@@ -468,7 +545,7 @@ export function useStoryScenePreviewController(input: {
             }
             loggedDiagnosticKeysRef.current = diagnosticKeys;
             const sessionId = `story-preview-${runId}`;
-            const previewGame = host.createPreviewGame({
+            const previewGame: StoryPreviewGame = host.createPreviewGame({
                 sessionId,
                 requireLiveGame: asker => {
                     const liveGame = findRunBySessionId(sessionId)?.liveGame ?? null;
@@ -508,6 +585,8 @@ export function useStoryScenePreviewController(input: {
                 posed: false,
                 arrived: false,
                 targetBlockId,
+                advance: previewGame.advance,
+                advanceRequested: false,
             };
             pendingRunRef.current = run;
             setPhase("mounting");
@@ -523,6 +602,7 @@ export function useStoryScenePreviewController(input: {
         document,
         failRun,
         findRunBySessionId,
+        handleAfterTarget,
         handleBeforeTarget,
         handleStagePosed,
         host,
@@ -539,6 +619,46 @@ export function useStoryScenePreviewController(input: {
 
     const startRunRef = useRef(startRun);
     startRunRef.current = startRun;
+
+    /**
+     * An option was picked on the stage. The cursor moves to the first row the pick stops on; when
+     * there is none - an empty branch at the end of the scene - the menu row is rebuilt, so the stage
+     * goes back to showing the menu the cursor is still on.
+     */
+    choiceTakenRef.current = (runId, optionBlockId) => {
+        const { scene: currentScene, onStepTo } = latestRef.current;
+        if (runId !== displayRunRef.current?.runId || !currentScene || !onStepTo) {
+            return;
+        }
+        const next = resolveChosenOptionStop(currentScene, optionBlockId, stepOptions(optionBlockId));
+        if (next) {
+            onStepTo(next);
+        } else {
+            void startRunRef.current();
+        }
+    };
+
+    const advanceFromStage = useCallback(() => {
+        const { scene: currentScene, resolvedTargetId: targetId } = latestRef.current;
+        if (!currentScene || !open || !active) {
+            return;
+        }
+        const target = targetId ? currentScene.blocks[targetId] : undefined;
+        // A menu waits for a pick, made on one of its options (see `choiceTakenRef`). A press
+        // anywhere else moves nothing, as in the game.
+        if (target?.kind === "nodeAction" && target.payload.action === "choice") {
+            return;
+        }
+        // A line still revealing is shown in full first, as a press does in the game - but only on
+        // the row's own frame. While a newer row builds beneath it, the press is about that row.
+        const display = displayRunRef.current;
+        if (display?.liveGame && !pendingRunRef.current && display.targetBlockId === targetId && isLineRevealing(display.liveGame)) {
+            display.advanceRequested = true;
+            void display.advance().catch(() => undefined);
+            return;
+        }
+        stepOn();
+    }, [active, open, stepOn]);
 
     const disposeAllRuns = useCallback(() => {
         clearDriveTimers();
@@ -661,7 +781,27 @@ export function useStoryScenePreviewController(input: {
         getStageContext,
         onLiveGameReady: handleLiveGameReady,
         onStageError: handleStageError,
+        advanceFromStage,
     };
+}
+
+/**
+ * True while the line on the stage is still revealing, so the press that shows the rest of it comes
+ * before the press that moves on. The engine's own record of the line: an ADV box that has not run
+ * out of characters, or an NVL page still typing.
+ */
+function isLineRevealing(liveGame: LiveGame): boolean {
+    try {
+        const state = liveGame.getGameState();
+        const adv = state?.getAdvDialogState();
+        if (adv) {
+            return !adv.ended;
+        }
+        const nvl = state?.getNvlState();
+        return nvl?.active === true && nvl.phase === "typing";
+    } catch {
+        return false;
+    }
 }
 
 /** Load every animation asset the scene references (`animationId` refs), skipping unresolvable ones. */
