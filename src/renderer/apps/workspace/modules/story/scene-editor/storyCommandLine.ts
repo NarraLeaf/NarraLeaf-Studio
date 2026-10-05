@@ -27,6 +27,7 @@ import {
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { parseSceneTranslationUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { translate } from "@/lib/i18n";
 
 import {
@@ -38,7 +39,7 @@ import {
     variableRefShortLabel,
     type StoryRowLookups,
 } from "@/lib/story/storyRowProjection";
-import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
+import { storyAssignmentShorthand, storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { isNeutralStoryTransformProps } from "@shared/story/transformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
@@ -336,6 +337,40 @@ function arg(param: string, value: string | undefined | null, extra: Omit<Arg, "
 
 function positional(param: string, value: string | undefined | null, extra: Omit<Arg, "param" | "value" | "positional"> = {}): Arg | null {
     return arg(param, value, { ...extra, positional: true });
+}
+
+/**
+ * The same assignment, made to another variable.
+ *
+ * A plain `/set` keeps its right-hand side: `/set gold 100` pointed at `silver` sets silver to 100.
+ * An `/inc`, `/dec` or `/toggle` row stores an expression that reads the variable it writes, so
+ * retargeting only the write would leave `silver = gold + (5)` - a row that reads as an increment of
+ * one variable and assigns another. The read moves with the write, spelled the way the command spells
+ * it, so the row keeps reading back as the shorthand it was typed as.
+ */
+function retargetAssignment(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    target: StoryVariableRef,
+    name: string,
+): Extract<StoryActionPayload, { action: "setVariable" }> {
+    const shorthand = storyAssignmentShorthand(payload);
+    const ast = payload.expression?.ast;
+    if (!shorthand || !ast) {
+        return { ...payload, target };
+    }
+    const self = { kind: "var" as const, target, name };
+    const spelled = formatStoryExpressionName(name);
+    if (ast.kind === "unary") {
+        return { ...payload, target, expression: { source: `!${spelled}`, ast: { ...ast, operand: self } } };
+    }
+    if (ast.kind === "binary" && shorthand.commandId !== "toggle") {
+        return {
+            ...payload,
+            target,
+            expression: { source: `${spelled} ${ast.op} (${String(shorthand.step)})`, ast: { ...ast, left: self } },
+        };
+    }
+    return { ...payload, target };
 }
 
 /**
@@ -1662,32 +1697,35 @@ function actionSentence(
             return displayableSentence(payload, lookups, commandId);
         case "setVariable": {
             const variables = lookups.commandContext?.variables ?? [];
-            return {
-                commandId,
-                args: [
-                    positional("variable", variableRefShortLabel(payload.target, lookups), {
-                        ...(variables.length === 0 ? {} : {
-                            // Keyed by the ref's own key, since a variable is a scope plus an id rather
-                            // than a name — two scopes may hold the same word.
-                            choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
-                            editValue: storyVariableRefKey(payload.target),
-                            apply: (next: string) => {
-                                const found = variables.find(entry => storyVariableRefKey(entry.ref) === next);
-                                return found ? { ...payload, target: found.ref } : payload;
-                            },
-                        }),
-                        // The ref, and only the ref: a scene variable is declared by a row in this
-                        // scene while a project one is declared in the registry, so where each opens
-                        // is a navigation decision rather than a fact the line can state. Gated on the
-                        // name having RESOLVED, since the alternative spelling is the localised
-                        // fallback word — a row saying "variable" points at nothing.
-                        ...(resolveStoryVariableName(payload.target, lookups) !== null
-                            ? { link: { kind: "variable" as const, target: payload.target } }
-                            : {}),
-                    }),
-                    assignedValueArg(payload, lookups),
-                ],
-            };
+            const shorthand = storyAssignmentShorthand(payload);
+            const variable = positional("variable", variableRefShortLabel(payload.target, lookups), {
+                ...(variables.length === 0 ? {} : {
+                    // Keyed by the ref's own key, since a variable is a scope plus an id rather
+                    // than a name — two scopes may hold the same word.
+                    choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
+                    editValue: storyVariableRefKey(payload.target),
+                    apply: (next: string) => {
+                        const found = variables.find(entry => storyVariableRefKey(entry.ref) === next);
+                        return found ? retargetAssignment(payload, found.ref, found.name) : payload;
+                    },
+                }),
+                // The ref, and only the ref: a scene variable is declared by a row in this
+                // scene while a project one is declared in the registry, so where each opens
+                // is a navigation decision rather than a fact the line can state. Gated on the
+                // name having RESOLVED, since the alternative spelling is the localised
+                // fallback word — a row saying "variable" points at nothing.
+                ...(resolveStoryVariableName(payload.target, lookups) !== null
+                    ? { link: { kind: "variable" as const, target: payload.target } }
+                    : {}),
+            });
+            if (shorthand?.commandId === "toggle") {
+                return { commandId, args: [variable] };
+            }
+            if (shorthand) {
+                // `/inc gold` is the line the command exists for, so a step of one is left unsaid.
+                return { commandId, args: [variable, positional("by", shorthand.step === 1 ? undefined : String(shorthand.step))] };
+            }
+            return { commandId, args: [variable, assignedValueArg(payload, lookups)] };
         }
         case "wait":
             return {
