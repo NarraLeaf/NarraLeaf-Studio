@@ -33,6 +33,7 @@ import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
 import { narralangUiEnabled } from "../../modules/story/narralang/narralangUi";
+import { StoryScenePreviewFloatHost } from "../../modules/story/scene-editor/preview/StoryScenePreviewFloatHost";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { WorkspaceHelp } from "./WorkspaceHelp";
@@ -868,6 +869,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
     const rootStyle = backgroundUrl ? (backgroundPlateStyle(backgroundSettings) as React.CSSProperties) : undefined;
 
+    // The content area - docks, editors and the rails between them - is what the floating story
+    // preview may cover; the host is handed this element to measure and stay inside.
+    const contentAreaRef = useRef<HTMLDivElement | null>(null);
+
     return (
         <TeamProjectProvider surface={versionSurface}>
             <div
@@ -944,8 +949,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                 <ExperimentalNotice />
 
-                {/* Main Content */}
-                <div className="flex-1 flex overflow-hidden">
+                {/* Main Content. `isolate` seals every z-index inside the docks and the editors into
+                    this row, so the window-level layers above it - the floating story preview, the
+                    palette, dialogs - outrank anything a panel draws, whatever number it uses. */}
+                <div ref={contentAreaRef} className="flex-1 flex overflow-hidden isolate">
                     {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
                         a past version the author still needs the sidebar, the assets and the scene tree.
                         Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
@@ -1052,6 +1059,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         onActivatePanelForDrop={activateBottomPanelForDrop}
                     />
                 </div>
+
+                {/* The floating live preview: over the content area, under the overlays below. A
+                    recovery window has no story to preview. */}
+                {!recovery && <StoryScenePreviewFloatHost areaRef={contentAreaRef} />}
 
                 {/* UI Overlays */}
                 <BackgroundImageDialog />

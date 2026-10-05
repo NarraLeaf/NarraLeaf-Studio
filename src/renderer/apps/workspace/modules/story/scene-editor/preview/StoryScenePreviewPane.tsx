@@ -36,9 +36,14 @@ export function StoryScenePreviewPane(props: {
     mode?: StoryScenePreviewPaneMode;
     onToggleFloat?: () => void;
     onHeaderPointerDown?: (event: ReactPointerEvent) => void;
+    /**
+     * The scene on the stage. The floating window names it, because it stays on screen over editors
+     * that are not that scene's; the docked pane sits inside the scene's own editor and does not.
+     */
+    sceneName?: string | null;
 }) {
     const { t } = useTranslation();
-    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown } = props;
+    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -75,7 +80,12 @@ export function StoryScenePreviewPane(props: {
                 onPointerDown={onHeaderPointerDown}
             >
                 <MonitorPlay className="h-4 w-4 shrink-0 text-primary" />
-                <span className="truncate text-xs font-medium text-fg">{t("story.preview.title")}</span>
+                <span className="shrink-0 text-xs font-medium text-fg">{t("story.preview.title")}</span>
+                {sceneName ? (
+                    <span className="min-w-0 truncate text-xs text-fg-muted" data-story-preview-scene="">
+                        {sceneName}
+                    </span>
+                ) : null}
                 {/* Refreshes keep the previous frame visible; the spinner is the only indicator. */}
                 {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-fg-subtle" /> : null}
                 <div className="flex-1" />
