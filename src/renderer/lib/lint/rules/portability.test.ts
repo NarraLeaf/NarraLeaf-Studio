@@ -30,11 +30,6 @@ function asset(id: string, name: string, overrides: Partial<LintAssetEntry> = {}
     return { id, type: AssetType.Image, name, ext: "png", meta: {}, tags: [], ...overrides };
 }
 
-async function flaggedNames(assets: readonly LintAssetEntry[]): Promise<string[]> {
-    const findings = await runRule("portability/asset-name", createTestLintContext({ assets }));
-    return findings.map(finding => String(finding.messageParams?.asset));
-}
-
 describe("portability/media-format", () => {
     const oggAssets = [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })];
 
