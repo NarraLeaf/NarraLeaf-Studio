@@ -1601,6 +1601,7 @@ export const workspace = {
                     nudgeRightLarge: "Move right 10 px",
                     nudgeUpLarge: "Move up 10 px",
                     nudgeDownLarge: "Move down 10 px",
+                    snapToGrid: "Snap to grid",
                 },
                 blueprint: {
                     undo: "Undo",

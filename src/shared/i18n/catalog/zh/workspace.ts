@@ -1306,6 +1306,7 @@ export const workspace = {
                     nudgeRightLarge: "右移 10 像素",
                     nudgeUpLarge: "上移 10 像素",
                     nudgeDownLarge: "下移 10 像素",
+                    snapToGrid: "吸附到网格",
                 },
                 blueprint: {
                     undo: "撤销",

@@ -1358,6 +1358,7 @@ export const workspace = {
                     nudgeRightLarge: "右へ 10 px 移動",
                     nudgeUpLarge: "上へ 10 px 移動",
                     nudgeDownLarge: "下へ 10 px 移動",
+                    snapToGrid: "グリッドに吸着",
                 },
                 blueprint: {
                     undo: "元に戻す",
