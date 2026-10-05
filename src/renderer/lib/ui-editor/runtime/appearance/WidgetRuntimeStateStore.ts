@@ -181,6 +181,16 @@ export class WidgetRuntimeStateStore {
      * re-renders for it.
      */
     private readonly drawnBoundWords = new Map<string, string>();
+    /**
+     * Every drawing that can be hovered, by runtime element key, each able to say whether a node lies
+     * inside it.
+     *
+     * Hover is written by the drawings' own pointer enter and leave, and the browser only sends those
+     * when the pointer moves - so whatever moves the drawing under a pointer that stays put leaves
+     * hover where it was. This table is how the store can look again without the pointer's help; see
+     * {@link retargetHover}. Nothing here re-renders for it.
+     */
+    private readonly pointerTargets = new Map<string, Set<(node: Node) => boolean>>();
     private readonly listeners = new Set<() => void>();
     private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
@@ -304,6 +314,75 @@ export class WidgetRuntimeStateStore {
             changed = true;
         }
 
+        if (changed) {
+            this.emit();
+        }
+    }
+
+    /**
+     * Record a drawing of `id` that the pointer can be over; returns the call that takes it away. An
+     * element drawn twice under one key is over the pointer when either drawing is.
+     *
+     * When the last drawing of an element goes, the element stops being hovered or pressed: a drawing
+     * that is gone is under no pointer and held by none. Nothing else would say so - the leave and
+     * the release are never sent to a node that has been removed - so an element hidden while the
+     * pointer was on it, or while it was being pressed, came back hovered or pressed whenever it was
+     * next drawn, wherever the pointer was by then.
+     */
+    registerPointerTarget(id: string, contains: (node: Node) => boolean): () => void {
+        let drawings = this.pointerTargets.get(id);
+        if (!drawings) {
+            drawings = new Set();
+            this.pointerTargets.set(id, drawings);
+        }
+        const own = drawings;
+        own.add(contains);
+        return () => {
+            own.delete(contains);
+            if (own.size > 0 || this.pointerTargets.get(id) !== own) {
+                return;
+            }
+            this.pointerTargets.delete(id);
+            const wasHovered = this.hoverTargetIds.delete(id);
+            const wasPressed = this.activePointerId === id;
+            if (wasPressed) {
+                this.activePointerId = null;
+            }
+            if (wasHovered || wasPressed) {
+                this.emit();
+            }
+        };
+    }
+
+    /**
+     * Hover the drawings `hit` lies inside and only those - what the pointer's next move would make
+     * of it, said now. `hit` is what is under the pointer (`elementFromPoint`), or null for nothing.
+     *
+     * The editor's canvas pans and zooms by a transform, and edits move, remove and restore elements,
+     * all under a pointer that need not move; the browser does not look again at what the pointer is
+     * over until it does, so an element that slid away kept its hovered look, and one deleted while
+     * hovered came back from an undo still drawn hovered. Only registered drawings are touched, and
+     * the store announces the result once.
+     */
+    retargetHover(hit: Node | null): void {
+        let changed = false;
+        for (const [id, drawings] of this.pointerTargets) {
+            let over = false;
+            if (hit) {
+                for (const contains of drawings) {
+                    if (contains(hit)) {
+                        over = true;
+                        break;
+                    }
+                }
+            }
+            if (over && !this.hoverTargetIds.has(id)) {
+                this.hoverTargetIds.add(id);
+                changed = true;
+            } else if (!over && this.hoverTargetIds.delete(id)) {
+                changed = true;
+            }
+        }
         if (changed) {
             this.emit();
         }

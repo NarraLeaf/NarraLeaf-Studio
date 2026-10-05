@@ -120,6 +120,29 @@ describe("EditorNodeWrapper", () => {
  * the channels that move, and React must never write them again - one writer per channel, or the last
  * React render wins over a motion mid-flight. These hold that handover.
  */
+describe("EditorNodeWrapper pointer state", () => {
+    it("does not come back hovered or pressed after it stopped being drawn", () => {
+        const store = new WidgetRuntimeStateStore();
+        const interactiveTree = (drawn: boolean) => (
+            <WidgetRuntimeStateProvider externalStore={store}>
+                <WidgetRuntimeScopeProvider runtimeScopeId="scope">
+                    {drawn ? <EditorNodeWrapper element={element} layout={element.layout} interactive /> : null}
+                </WidgetRuntimeScopeProvider>
+            </WidgetRuntimeStateProvider>
+        );
+        const view = render(interactiveTree(true));
+        act(() => {
+            store.setHoverTarget(KEY);
+            store.setActivePointerTarget(KEY);
+        });
+
+        view.rerender(interactiveTree(false));
+        view.rerender(interactiveTree(true));
+
+        expect(store.getSignalsForElement(KEY, false)).toMatchObject({ hovered: false, active: false });
+    });
+});
+
 describe("EditorNodeWrapper motion handover", () => {
     it("draws a motion's first frame in the commit that starts it", () => {
         const store = new WidgetRuntimeStateStore();
