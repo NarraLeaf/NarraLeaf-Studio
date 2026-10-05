@@ -599,6 +599,10 @@ export type LiveHistoryPort = {
      * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
      * scenes are at risk; the interface is one document with every Surface in it, and every stack
      * over it is about to become historical.
+     *
+     * The interface's library-level steps on the project's stack go too (`HistoryEntryTag.UILibrary`):
+     * taking back a page or a component this author added would, after a session, remove whatever the
+     * room built inside it. The rest of the project's stack is left to its owners.
      */
     forgetInterfaceEditors(): void;
 };

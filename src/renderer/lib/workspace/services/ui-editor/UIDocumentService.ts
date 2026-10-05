@@ -76,7 +76,7 @@ import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
-import { projectHistoryScope } from "../history/historyScopes";
+import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -2580,6 +2580,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: { key: "uiEditor.history.moveSurface" as TranslationKey, params: { name } },
             undo: () => this.applySurfaceOrder(before),
             redo: () => this.applySurfaceOrder(after),
+            tag: HistoryEntryTag.UILibrary,
         });
     }
 
@@ -2613,6 +2614,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             label: { key: "uiEditor.history.setEntryPage" as TranslationKey, params: { name: target.name } },
             undo: () => this.applyEntrySurface(before),
             redo: () => this.applyEntrySurface(after),
+            tag: HistoryEntryTag.UILibrary,
         });
     }
 
