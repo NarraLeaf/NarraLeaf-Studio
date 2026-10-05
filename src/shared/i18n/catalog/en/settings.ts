@@ -268,8 +268,7 @@ export const settings = {
         },
         useSystemProxy: {
             label: "Use this computer's proxy",
-            description:
-                "When on, Studio downloads use the proxy this computer already uses. When off, they connect directly.",
+            description: "For the plugin store, templates, updates and builds.",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",

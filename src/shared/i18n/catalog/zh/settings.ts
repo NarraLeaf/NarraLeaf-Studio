@@ -248,8 +248,8 @@ export const settings = {
             label: "下载地址替换",
         },
         useSystemProxy: {
-            label: "使用本机代理",
-            description: "开启后，Studio 的下载使用本机已有的代理；关闭则直接连接。",
+            label: "使用本机已有的代理",
+            description: "用于插件商店、模板、更新与构建下载",
         },
         pluginRegistryUrl: {
             label: "插件注册表地址",

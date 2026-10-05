@@ -122,15 +122,14 @@ export async function studioFetch(url: string, init?: RequestInit): Promise<Resp
 }
 
 async function fetchViaSystemProxy(url: string, init?: RequestInit): Promise<Response> {
-    const { net, session } = await import("electron");
+    const { session } = await import("electron");
     const downloadSession = session.fromPartition(DOWNLOAD_PARTITION);
     await downloadSession.setProxy({ mode: "system" });
-    return net.fetch(url, {
+    return downloadSession.fetch(url, {
         method: init?.method,
         headers: init?.headers,
         signal: init?.signal,
         redirect: init?.redirect,
-        session: downloadSession,
     });
 }
 
