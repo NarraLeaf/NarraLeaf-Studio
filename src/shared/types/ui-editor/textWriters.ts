@@ -203,6 +203,21 @@ function collectGraphWriters(
 }
 
 /**
+ * Whether one of an element's writers replaces the words on `site` while the game runs - `Set Text`,
+ * `Clear Text`, `Set Label`, the words pin of `Set All Properties`. The words the element holds are
+ * then its default value: what the game shows until the first write lands. A writer that only appends
+ * keeps them on screen as the start of what it adds, the same as words nothing writes.
+ *
+ * `writers` are the element's own (`UITextWriterIndex.get(element.id)`).
+ */
+export function uiTextSiteIsWrittenOver(
+    writers: readonly UITextWriter[] | undefined,
+    site: Pick<UITextSite, "textProp">,
+): boolean {
+    return writers?.some(writer => writer.textProp === site.textProp && writer.effect === "replace") ?? false;
+}
+
+/**
  * Every write of a widget's words that the project's graphs hold, by the element written.
  *
  * In document order within each element: blueprints as the document lists them, then each blueprint's

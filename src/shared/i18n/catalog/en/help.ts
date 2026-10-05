@@ -704,16 +704,16 @@ export const help = {
                 + "- A widget inside a list row can also show one field of that row, chosen under Field.\n"
                 + "- A widget inside a component can show one of the component's Text parameters, chosen under "
                 + "Parameter. Its own words are then sample text, drawn only while the component is edited.\n"
-                + "- Under a Blueprint Value, the widget's own words are sample text. They are drawn in the editor "
-                + "only, are not part of the built game and are not translated.\n"
+                + "- Under a Blueprint Value, a field of a list row or a Text parameter of a component, the widget's "
+                + "own words are sample text. They are drawn in the editor only, are not part of the built game and "
+                + "are not translated.\n"
                 + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
-                + "Label, lists those blueprints under its text, and its own words are sample text as well. Append "
-                + "Text adds to the widget's own words, which therefore stay in the game.\n"
+                + "Label, lists those blueprints under its text. Its own words are the default value, which the game "
+                + "shows in the player's language until the first write. Append Text adds to the words on screen.\n"
                 + "- Words a blueprint writes while the game runs are shown as written, in every language, ahead of "
                 + "a translation key and a Blueprint Value, until the page is opened again. Get Text and Get Label "
                 + "read the words on screen.\n"
-                + "- Writes made by a script layer are not listed. The words of a widget that only a script writes "
-                + "are built and translated as written.",
+                + "- Writes made by a script layer are not listed.",
         },
         networkNodes: {
             title: "Network requests",
