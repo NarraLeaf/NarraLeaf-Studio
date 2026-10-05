@@ -8362,12 +8362,25 @@ describe("Saved variables outside a story", () => {
         }
     });
 
-    it("keeps both out of a Blueprint Value graph, where a write would feed itself", () => {
+    it("lets a Blueprint Value read one, and keeps the write out, where it would feed itself", () => {
         registerCoreBlueprintNodes();
-        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET]) {
-            const def = storyVariableBlueprintNodes.find(entry => entry.type === type)!;
-            expect(isBlueprintNodeAllowedInBlueprintValueGraph(def)).toBe(false);
-        }
+        const read = storyVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_SAVED_GET)!;
+        const write = storyVariableBlueprintNodes.find(entry => entry.type === BLUEPRINT_NODE_TYPE_SAVED_SET)!;
+        // A HUD bound to a saved variable reads it directly; the read is tracked, so the binding
+        // follows the next write (`boundVariablesFollowWrites.test.tsx`).
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(read)).toBe(true);
+        expect(isBlueprintNodeAllowedInBlueprintValueGraph(write)).toBe(false);
+
+        const valuePaletteTypes = new Set(
+            listBlueprintNodePaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_GET)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_SAVED_SET)).toBe(false);
     });
 
     it("reads the running playthrough through the host, and reports when there is none", async () => {

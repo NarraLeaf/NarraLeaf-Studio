@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { contributedWidgetNamesHead } from "@shared/types/ui-editor/contributedWidgets";
@@ -133,6 +134,14 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     // Same treatment as Get/Set Var, and for the same reason: an exec node, but a synchronous one
     // whose whole effect is on the blueprint's own locals.
     if (def.type === BLUEPRINT_NODE_TYPE_DATA_MEMO) {
+        return !def.isLatent;
+    }
+    // An exec node too, and a read: a HUD showing a saved variable is the commonest thing a binding
+    // on a Game UI screen does. The read is recorded, so a write from the story or a screen runs the
+    // binding again, and with no playthrough it reports the default rather than throwing. Its write
+    // half stays out - a binding re-runs whenever what it read changes, and a write there is one the
+    // player never asked for.
+    if (def.type === BLUEPRINT_NODE_TYPE_SAVED_GET) {
         return !def.isLatent;
     }
     if (def.category === "Flow") {

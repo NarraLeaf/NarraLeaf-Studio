@@ -743,9 +743,9 @@ export const BLUEPRINT_NODE_TYPE_PERSISTENT_SET = "blueprint.persistent.set" as 
 export const BLUEPRINT_NODE_TYPE_SCENE_GET = "blueprint.scene.get" as const;
 /** Write a Story scene variable (NLR Scene.local); story-action blueprints only. */
 export const BLUEPRINT_NODE_TYPE_SCENE_SET = "blueprint.scene.set" as const;
-/** Read a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+/** Read a Story saved variable (NLR Storable, per save-file): story actions, Game UI screens and Blueprint Values. */
 export const BLUEPRINT_NODE_TYPE_SAVED_GET = "blueprint.saved.get" as const;
-/** Write a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+/** Write a Story saved variable (NLR Storable, per save-file): story actions and Game UI screens. */
 export const BLUEPRINT_NODE_TYPE_SAVED_SET = "blueprint.saved.set" as const;
 /** Persisted helper param for variableRef nodes whose pin type follows the selected variable. */
 export const BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE = "__variableValueType" as const;
