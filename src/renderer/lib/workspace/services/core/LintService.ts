@@ -335,6 +335,7 @@ export class LintService extends Service<LintService> implements ILintService {
     /** Forget every probe answer; the next sweep reads the disk again. */
     private clearProbeCache(): void {
         this.probeCache.exists.clear();
+        this.probeCache.size.clear();
         this.probeCache.image.clear();
         this.probeCache.videoAlpha.clear();
     }
@@ -791,8 +792,15 @@ export class LintService extends Service<LintService> implements ILintService {
 
         const videoProbeQueue = createConcurrencyLimiter(VIDEO_PROBE_CONCURRENCY);
 
+        const byteSize = (assetId: string): Promise<number | null> => remember(cache.size, assetId, async () => {
+            const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+            const result = await fs.details(shardPath(assetId));
+            return result.ok && result.data.type === "file" ? result.data.size : null;
+        });
+
         return {
             exists,
+            byteSize,
             readBytes,
             /**
              * The content shard, handed to the main process's ffprobe.
@@ -908,12 +916,13 @@ export class LintService extends Service<LintService> implements ILintService {
 /** The probe answers kept between background sweeps; see `LintService.probeCache`. */
 type LintProbeCache = {
     exists: Map<string, Promise<boolean>>;
+    size: Map<string, Promise<number | null>>;
     image: Map<string, Promise<LintImageProbe>>;
     videoAlpha: Map<string, Promise<LintAlphaProbe>>;
 };
 
 function createLintProbeCache(): LintProbeCache {
-    return { exists: new Map(), image: new Map(), videoAlpha: new Map() };
+    return { exists: new Map(), size: new Map(), image: new Map(), videoAlpha: new Map() };
 }
 
 /**

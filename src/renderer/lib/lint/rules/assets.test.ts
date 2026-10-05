@@ -454,6 +454,27 @@ describe("assets/oversized", () => {
 
         expect(await runOversized(ctx)).toEqual([]);
     });
+
+    // What a real project looks like: no record carries a size, so the file on disk is measured.
+    it("measures the file when the record carries no size", async () => {
+        const measured: string[] = [];
+        const ctx = createTestLintContext({
+            assets: [asset("cover", { meta: {} }), asset("spare", { meta: {} })],
+            assetReferences: new Map([["cover", [widgetReference("cover")]]]),
+            io: {
+                byteSize: async id => {
+                    measured.push(id);
+                    return big;
+                },
+            },
+        });
+
+        const findings = await runOversized(ctx);
+
+        expect(findings.map(finding => finding.messageParams)).toEqual([{ asset: "cover.png", size: "4.0 MB", limit: "1.0 MB" }]);
+        // Only what a build carries is measured; the rest is `assets/unused`'s business.
+        expect(measured).toEqual(["cover"]);
+    });
 });
 
 /**

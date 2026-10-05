@@ -329,7 +329,13 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
         options: {
             maxMegabytes: { kind: "number", default: 64, min: 1, max: 4096 },
         },
-        run(ctx, options) {
+        /**
+         * Measured on disk. The library's records carry no size - nothing has ever written one - so a
+         * rule that read the record alone said nothing on every real project, while its tests passed
+         * against records that had a size typed into them. Only the files a build carries are
+         * measured, and the background sweeps reuse a file's answer until its content changes.
+         */
+        async run(ctx, options) {
             const megabytes = Number(options.maxMegabytes);
             if (!Number.isFinite(megabytes) || megabytes <= 0) {
                 return [];
@@ -338,11 +344,14 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
             const carried = shippedAssetIds(ctx);
             const findings: LintFinding[] = [];
             for (const asset of ctx.assets) {
-                const size = assetByteSize(asset);
-                // A record with no size has never been measured - a remote asset that has not been
-                // fetched is the case - and a rule that read that as zero would say nothing while a
-                // rule that read it as huge would report a file it has never seen.
-                if (size === null || size <= limit || !carried.has(asset.id)) {
+                if (!carried.has(asset.id)) {
+                    continue;
+                }
+                const size = assetByteSize(asset) ?? await ctx.io.byteSize(asset.id);
+                // No size is "not measured" - a remote asset that has not been fetched, a model
+                // bundle - and a rule that read that as zero would say nothing while a rule that read
+                // it as huge would report a file it has never seen.
+                if (size === null || size <= limit) {
                     continue;
                 }
                 findings.push({
