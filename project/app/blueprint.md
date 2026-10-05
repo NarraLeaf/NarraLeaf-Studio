@@ -104,6 +104,37 @@ A node from a plugin nobody bundles is still unknown here, as it is in the edito
 type, which is what decides its event heads. `--all` includes nodes kept for old
 graphs but hidden from the palette. `--json` on any of these.
 
+## Structs: what is inside an ending
+
+Some pins carry a value whose fields the engine fixes: `Get Endings` hands out endings, `Get History`
+history entries, `List Auto Saves` save entries. Their type says so - `array<struct:nl.ending>` - and
+`node` lists the fields of every shape its pins carry:
+
+```sh
+node project/app/blueprint.js node blueprint.game.getEndings
+node project/app/blueprint.js structs                 # every shape the engine hands out
+```
+
+The array nodes pass the item type along (`Array Filter By Key` on endings gives endings, `Array
+First` gives one ending), and `check` follows the wires the way the canvas does. A field is then read
+with Get Field (`blueprint.list.getItemField`), which names the struct it reads and the field:
+
+```
+    first: blueprint.collection.arrayFirst
+    name: blueprint.list.getItemField
+        struct = nl.ending
+        field = name
+
+    endings.endings -> first.array
+    first.item -> name.object
+```
+
+`struct` is the node's own record of what it reads, set by the first struct wired in; a file writes
+it beside `field`. For the engine's shapes a field is named by its key. Left unwired inside a list
+row, Get Field reads the row instead - write no `struct` then, and name the field by the id the list
+gives it. A field the shape does not have, and an array node's `key` that names no field of its
+items, are reported by `check`.
+
 ## Finding a project's surfaces, components and elements
 
 An owner line needs ids. This prints them, already spelled as owner fields:

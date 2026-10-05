@@ -6,6 +6,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
 } from "@shared/types/blueprint/graph";
@@ -39,6 +41,14 @@ import { createAssetNameDescriber } from "../../workspace/services/references/as
 import { extractStoryVariableWrites, findAssetNameGaps } from "../../workspace/services/references/assetNameGaps";
 import { assetNameGapMessage } from "../../workspace/services/references/assetNameGapText";
 import { assetNameGapTarget } from "../../workspace/services/references/referenceModel";
+import {
+    analyzeBlueprintStructTypes,
+    buildBlueprintStructTypeContext,
+    type BlueprintNodeStructTypes,
+} from "../../workspace/services/ui-editor/blueprint/graphStructTypeInference";
+import { blueprintStructNameKey } from "../../ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintNodeTitleKey } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import { anchorElementId } from "@shared/blueprint/ownerShape";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -144,6 +154,9 @@ export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
     // against one shape, and the set of all shapes would call every id in the project valid.
     // `ui/list-item-field-missing` asks the question against the right shape.
     "listItemFields",
+    // The same, for Get Field: its fields are those of the one struct it reads, and
+    // `blueprint/field-missing` asks against that struct.
+    "structFields",
 ]);
 
 const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, TranslationKey>> = {
@@ -840,6 +853,83 @@ function runRequiredInputUnwired(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/field-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A node that names a field the value it reads does not have.
+ *
+ * Two nodes name fields: Get Field, by the field's id, and the array nodes keyed by a field, by its
+ * key. Either reads nothing when the name is not in the shape - an empty value, an empty filter - and
+ * neither says so at run time. That was the failure an untyped key always had, and what typing these
+ * pins makes visible: once the shape is known (`graphStructTypeInference.ts`, the pass the canvas
+ * types its pins with), a name outside it is a finding rather than a value that happens to be empty.
+ *
+ * Only where the shape is known. A key into an array whose items nobody declared is the author's own
+ * business, and reporting it would be guessing.
+ *
+ * A warning: the game runs, and what is lost is the value the node was placed to read.
+ */
+function runFieldMissing(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        // A blueprint document written by hand can carry a graph with no owner; it has no row either.
+        const elementId = site.owner ? anchorElementId(site.owner) : null;
+        const typed = analyzeBlueprintStructTypes(
+            site.ir,
+            buildBlueprintStructTypeContext({
+                uiDocument: ctx.uiDocument,
+                widgetElement: elementId ? ctx.uiDocument?.elements[elementId] : null,
+            }),
+        );
+        if (typed.size === 0) {
+            continue;
+        }
+        const live = collectLiveBlueprintGraphNodeIds(site.ir);
+        for (const [nodeId, info] of typed) {
+            const node = site.ir.nodes?.[nodeId];
+            if (!node || !live.has(nodeId) || !info.struct) {
+                continue;
+            }
+            const named = missingFieldName(node, info);
+            if (!named) {
+                continue;
+            }
+            const titleKey = blueprintNodeTitleKey(blueprintNodeDisplayName(node.type));
+            findings.push({
+                ruleId: "blueprint/field-missing",
+                messageKey: "lint.rule.blueprintFieldMissing.message" as TranslationKey,
+                messageParams: { node: blueprintNodeDisplayName(node.type), struct: info.structId ?? "", field: named },
+                messageParamKeys: {
+                    ...(titleKey ? { node: titleKey } : {}),
+                    struct: blueprintStructNameKey(info.structId),
+                },
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
+/** The field this node names and its shape does not have, or null when there is none. */
+function missingFieldName(node: BlueprintGraphNode, info: BlueprintNodeStructTypes): string | null {
+    if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+        const fieldId = typeof node.params?.[BLUEPRINT_NODE_PARAM_FIELD] === "string"
+            ? String(node.params[BLUEPRINT_NODE_PARAM_FIELD]).trim()
+            : "";
+        return fieldId && !info.field ? fieldId : null;
+    }
+    const keyPin = blueprintNodeRegistry.get(node.type)?.elementTypeFlow?.keyPin;
+    if (!keyPin || info.keyWired) {
+        return null;
+    }
+    const key = typeof node.params?.[keyPin] === "string" ? String(node.params[keyPin]).trim() : "";
+    return key && !info.struct?.fields.some(field => field.key === key) ? key : null;
+}
+
 /**
  * A node whose type the project cannot load - the plugin that defined it is uninstalled, disabled,
  * or failed to load. The graph editor already shows the node as unknown; the build has to refuse it,
@@ -947,6 +1037,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "blueprintRequiredInputUnwired",
         run: ctx => runRequiredInputUnwired(ctx),
+    },
+    {
+        id: "blueprint/field-missing",
+        category: "blueprint",
+        // A warning, beside the empty input it most resembles: the node runs and reads nothing.
+        defaultSeverity: "warning",
+        slug: "blueprintFieldMissing",
+        run: ctx => runFieldMissing(ctx),
     },
     {
         id: "blueprint/assembled-asset-name",

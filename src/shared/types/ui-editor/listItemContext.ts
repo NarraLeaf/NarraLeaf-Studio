@@ -67,7 +67,7 @@ export function isListItemContextElement(
  *  - the element is drawn once per row, so everything on it runs with that row in scope;
  *  - the element *is* the list, whose Item Click, Item Render, Item Hover and Selection Changed
  *    heads each run for one row. The shipped backlog and save screens read the clicked row exactly
- *    this way, from a `Get Item Field` on the list's own graph.
+ *    this way, from a `Get Field` on the list's own graph.
  *
  * This is the reachability question - may a node that reads the row be here at all - and it is
  * deliberately separate from the template question above, which is about the shape a row has and so
@@ -81,4 +81,29 @@ export function isListItemScopeReachable(
         return false;
     }
     return isListLikeWidgetType(element.type) || isListItemContextElement(document, element);
+}
+
+/**
+ * The shape of the row in scope while a blueprint attached to this element runs.
+ *
+ * The two cases of {@link isListItemScopeReachable}, each answered with the list whose row it is: the
+ * list itself for its own item heads, the drawing list for an element in its item template. `null`
+ * when no row can be in scope; a context with a null `structId` when one can but its list declares no
+ * shape.
+ */
+export function resolveListRowContext(
+    document: Pick<UIDocument, "elements">,
+    element: UIElement | undefined | null,
+): UIListItemTemplateContext | null {
+    if (!element) {
+        return null;
+    }
+    if (isListLikeWidgetType(element.type)) {
+        const structId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+        return {
+            listElementId: element.id,
+            structId: typeof structId === "string" && structId.trim() ? structId.trim() : null,
+        };
+    }
+    return findOwningListItemTemplate(document, element);
 }

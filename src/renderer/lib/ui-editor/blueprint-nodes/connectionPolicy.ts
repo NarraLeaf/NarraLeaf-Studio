@@ -16,8 +16,16 @@ import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
     BLUEPRINT_VALUE_TYPE_RECT,
+    blueprintArrayElementType,
     isBlueprintElementValueType,
 } from "@shared/types/blueprint/valueTypes";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import {
+    isUIStructValueType,
+    structsAreCompatible,
+    UI_STRUCT_VALUE_TYPE_ANY,
+    uiStructIdFromValueType,
+} from "@shared/types/ui-editor/struct";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 
 function readParamString(params: Record<string, unknown> | undefined, key: string): string | undefined {
@@ -42,6 +50,57 @@ function resolvePinValueType(input: {
     return input.pinValueType;
 }
 
+/**
+ * Whether a value of one struct type may flow into a pin of another.
+ *
+ * Structs widen into `json` and `any`, so every pin that took the untyped object before it had a
+ * shape still takes it - a graph wired before its source was typed keeps every wire. Nothing narrows
+ * into a struct except `any`: an untyped object has no declared fields, and a field reader fed one
+ * would be offering a list of fields the value may not have.
+ *
+ * Two different ids are compared by shape, which is the struct library's own rule (`structsAreCompatible`).
+ * An id this function cannot resolve - a list's own shape, which lives in the interface document -
+ * is left to the field checks rather than refused here: refusing it would cut a wire whose only
+ * fault is that the shape it carries is out of this function's sight.
+ */
+function areStructValueTypesCompatible(sourceType: string, targetType: string): boolean {
+    const sourceIsStruct = isUIStructValueType(sourceType);
+    const targetIsStruct = isUIStructValueType(targetType);
+    if (sourceIsStruct && !targetIsStruct) {
+        return targetType === "json" || targetType === "any";
+    }
+    if (!sourceIsStruct) {
+        return sourceType === "any";
+    }
+    if (targetType === UI_STRUCT_VALUE_TYPE_ANY || sourceType === UI_STRUCT_VALUE_TYPE_ANY) {
+        return true;
+    }
+    const sourceStruct = resolveUIStruct(null, uiStructIdFromValueType(sourceType));
+    const targetStruct = resolveUIStruct(null, uiStructIdFromValueType(targetType));
+    if (!sourceStruct || !targetStruct) {
+        return true;
+    }
+    return structsAreCompatible(sourceStruct, targetStruct);
+}
+
+/**
+ * Whether an array whose item type may be known can flow into a pin.
+ *
+ * `array<T>` is only ever an output (see `blueprintArrayValueType`), and it goes everywhere a plain
+ * array goes. Two typed arrays compare by their items.
+ */
+function areArrayValueTypesCompatible(sourceType: string, targetType: string): boolean {
+    const sourceElement = blueprintArrayElementType(sourceType);
+    const targetElement = blueprintArrayElementType(targetType);
+    if (sourceElement !== undefined && targetElement !== undefined) {
+        return areDataValueTypesCompatible(sourceElement, targetElement);
+    }
+    if (sourceElement !== undefined) {
+        return targetType === BLUEPRINT_VALUE_TYPE_ARRAY || targetType === "json" || targetType === "any";
+    }
+    return sourceType === BLUEPRINT_VALUE_TYPE_ARRAY || sourceType === "any";
+}
+
 function areDataValueTypesCompatible(sourceType: string | undefined, targetType: string | undefined): boolean {
     if (!sourceType || !targetType) {
         return true;
@@ -51,6 +110,12 @@ function areDataValueTypesCompatible(sourceType: string | undefined, targetType:
     }
     if (isBlueprintElementValueType(sourceType) || isBlueprintElementValueType(targetType)) {
         return areBlueprintElementValueTypesCompatible(sourceType, targetType);
+    }
+    if (isUIStructValueType(sourceType) || isUIStructValueType(targetType)) {
+        return areStructValueTypesCompatible(sourceType, targetType);
+    }
+    if (blueprintArrayElementType(sourceType) !== undefined || blueprintArrayElementType(targetType) !== undefined) {
+        return areArrayValueTypesCompatible(sourceType, targetType);
     }
     if (sourceType === BLUEPRINT_VALUE_TYPE_ARRAY && targetType === "json") {
         return true;

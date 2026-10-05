@@ -27,7 +27,9 @@ import {
     describeNode,
     formatNodeDetail,
     formatNodeList,
+    formatStructList,
     knownWidgetElementTypes,
+    listBuiltinStructs,
     listNodeCategories,
     queryNodes,
     resolveNodeType,
@@ -69,6 +71,7 @@ const USAGE = `blueprint - query the node catalogue, write blueprints as text, c
   nodes [search words]        List node types. --category --graph-kind --owner --widget --all --limit
   node <type|name>            Everything about one node type: pins, fields, scope.
   categories                  Node categories and how many nodes each holds.
+  structs                     The shapes the engine hands out (an ending, a history entry) and their fields.
 
   targets [search]            Surfaces and elements of a project, for owner= lines. Needs --project.
   list [search]               Blueprints a project holds. Needs --project. --with-graphs
@@ -128,6 +131,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     node: { flags: {}, run: commandNode },
     categories: { flags: {}, run: commandCategories },
+    structs: { flags: {}, run: commandStructs },
     targets: { flags: { project: "string" }, run: commandTargets },
     list: { flags: { project: "string", "with-graphs": "boolean" }, run: commandList },
     show: {
@@ -249,6 +253,16 @@ function commandCategories(args: Args, io: CliIo): number {
     }
     const width = Math.max(...categories.map(item => item.category.length));
     io.out(categories.map(item => `${item.category.padEnd(width)}  ${item.count}`).join("\n"));
+    return 0;
+}
+
+function commandStructs(args: Args, io: CliIo): number {
+    const structs = listBuiltinStructs();
+    if (args.flags.json === true) {
+        io.out(JSON.stringify(structs, null, 2));
+        return 0;
+    }
+    io.out(formatStructList(structs).join("\n"));
     return 0;
 }
 
@@ -436,6 +450,7 @@ function commandCheck(args: Args, io: CliIo): number {
             savedVariables: variables.saved,
             resolveWidgetElement: widgetElementResolver(targets),
             uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+            uiStructs: targets.structs,
             assetNameContext: readAssetNameContext(projectDir),
         });
         io.out(
@@ -462,6 +477,7 @@ function commandCheck(args: Args, io: CliIo): number {
         uiElements: projectDir
             ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
             : undefined,
+        uiStructs: projectDir ? readUiDocumentTargets(projectDir).structs : undefined,
         assetNameContext: projectDir ? readAssetNameContext(projectDir) : undefined,
     });
     io.out(
@@ -494,6 +510,7 @@ function commandFormat(args: Args, io: CliIo): number {
                   existing: readUiGraphs(projectDir).blueprintDocument,
                   resolveElementType: elementTypeResolver(targets),
                   uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+                  uiStructs: targets.structs,
               }
             : {},
     });
@@ -548,6 +565,7 @@ function commandApply(args: Args, io: CliIo): number {
         resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
         uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
+        uiStructs: readUiDocumentTargets(projectDir).structs,
         assetNameContext: readAssetNameContext(projectDir),
     });
     const report = formatDiagnostics(result.diagnostics, {

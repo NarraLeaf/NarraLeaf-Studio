@@ -75,6 +75,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "blueprint/save-field-empty",
     "blueprint/start-scene-foreign",
     "blueprint/required-input-unwired",
+    "blueprint/field-missing",
     "variables/undeclared",
     "variables/unused",
     "variables/name-collision",
@@ -102,7 +103,7 @@ const JA_KEYS = flattenCatalog(ja);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(72);
+        expect(LINT_RULES).toHaveLength(73);
     });
 
     it("gives every rule a unique id", () => {

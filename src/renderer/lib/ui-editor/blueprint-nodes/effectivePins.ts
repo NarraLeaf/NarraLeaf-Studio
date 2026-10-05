@@ -11,8 +11,11 @@ import type {
 } from "./types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN, BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES } from "./types";
 import {
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
+    BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -22,6 +25,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { UI_STRUCT_VALUE_TYPE_ANY, uiStructValueType } from "@shared/types/ui-editor/struct";
 
 /**
  * What a save-schema pin id starts with.
@@ -249,9 +253,83 @@ function withSaveSchemaPins(def: BlueprintNodeDef, basePins: BlueprintNodePinDef
 }
 
 /**
+ * The pin types the editor worked out from the wires, read off the params.
+ *
+ * An input that gains a type an author can type into the card gains the card field too: once
+ * `Filter By Key` knows its `key` names a boolean, its `value` is a tick box rather than a wire
+ * hanging off a Boolean node. The runtime already reads an unwired input from the params, so the
+ * field needs nothing new to take effect.
+ */
+function readInferredPinTypes(params: Record<string, unknown> | undefined): Record<string, string> {
+    const raw = params?.[BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [pinId, valueType] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof valueType === "string" && valueType.trim()) {
+            out[pinId] = valueType.trim();
+        }
+    }
+    return out;
+}
+
+function withInferredPinTypes(pins: BlueprintNodePinDef[], params: Record<string, unknown> | undefined): BlueprintNodePinDef[] {
+    const inferred = readInferredPinTypes(params);
+    if (Object.keys(inferred).length === 0) {
+        return pins;
+    }
+    return pins.map(pin => {
+        const valueType = pin.semantic === "data" ? inferred[pin.id] : undefined;
+        if (!valueType || valueType === pin.valueType) {
+            return pin;
+        }
+        const literal =
+            pin.kind === "input" && (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType);
+        return { ...pin, valueType, ...(literal ? { allowInlineLiteral: true } : {}) };
+    });
+}
+
+/** The input a field reader reads its struct from. */
+export const BLUEPRINT_FIELD_READER_INPUT_PIN = "object";
+
+/**
+ * Get Field's `object` input takes the struct the node was pointed at, and keeps it.
+ *
+ * Read from a persisted param rather than worked out from the wire, which is the difference between
+ * this and the array nodes: a reader knows which field it reads, and a field only means something in
+ * one shape. Unwired, it is still that shape's reader - offered only that shape when it is wired
+ * again - rather than a node that forgets what it was for.
+ *
+ * The same param decides whether the input is required. An unpinned reader may be left unwired to
+ * read the list row it sits in; a pinned one reads its shape from the wire or nothing, so an unwired
+ * one is an ordinary missing input - reported by the canvas, the project check and the running game
+ * in the one sentence they share (`requiredInputPins.ts`).
+ */
+function withFieldReaderInputType(def: BlueprintNodeDef, pins: BlueprintNodePinDef[], params: Record<string, unknown> | undefined): BlueprintNodePinDef[] {
+    if (def.type !== BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+        return pins;
+    }
+    const structId = readParamString(params, BLUEPRINT_NODE_PARAM_FIELD_STRUCT);
+    const valueType = structId ? uiStructValueType(structId) : UI_STRUCT_VALUE_TYPE_ANY;
+    return pins.map(pin =>
+        pin.kind === "input" && pin.id === BLUEPRINT_FIELD_READER_INPUT_PIN
+            ? { ...pin, valueType, optional: !structId }
+            : pin,
+    );
+}
+
+/**
  * Effective pin defs for execution / validation: exec inputs, fixed data inputs, dynamic data inputs, outputs.
  */
 export function resolveEffectiveBlueprintNodePins(
+    def: BlueprintNodeDef,
+    params?: Record<string, unknown>,
+): BlueprintNodePinDef[] {
+    return withInferredPinTypes(withFieldReaderInputType(def, resolveDeclaredBlueprintNodePins(def, params), params), params);
+}
+
+function resolveDeclaredBlueprintNodePins(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {

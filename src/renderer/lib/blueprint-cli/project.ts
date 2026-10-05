@@ -14,6 +14,8 @@
  * Comments in English per project convention.
  */
 
+import { normalizeUIStructLibrary } from "@shared/types/ui-editor/structLibrary";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
@@ -198,6 +200,8 @@ export type UiDocumentTargets = {
     elements: ElementTarget[];
     /** The raw element records, which the graph validator wants whole. */
     raw: Record<string, UiDocumentElement>;
+    /** The document's list shapes, by id - what a field reader in a list row reads. */
+    structs: Record<string, UIStructDef>;
 };
 
 /**
@@ -212,12 +216,13 @@ export type UiDocumentTargets = {
 export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
     const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return { surfaces: [], components: [], elements: [], raw: {} };
+        return { surfaces: [], components: [], elements: [], raw: {}, structs: {} };
     }
     let raw: {
         surfaces?: SurfaceTarget[];
         components?: UiDocumentComponent[];
         elements?: Record<string, UiDocumentElement>;
+        structs?: unknown;
     };
     try {
         raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -258,7 +263,7 @@ export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
             walkElements(component.rootElementId, { surfaceId: null, componentId: component.id }, [], own, out);
         }
     }
-    return { surfaces, components, elements: out, raw: pool };
+    return { surfaces, components, elements: out, raw: pool, structs: normalizeUIStructLibrary(raw.structs) };
 }
 
 function walkElements(

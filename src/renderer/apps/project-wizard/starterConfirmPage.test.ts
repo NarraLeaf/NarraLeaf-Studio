@@ -153,7 +153,7 @@ function onlyGraph(blueprint: Blueprint) {
         });
     };
     /**
-     * Whether a pin is fed by the pressed row's own field, read with `Get Item Field`.
+     * Whether a pin is fed by the pressed row's own field, read with `Get Field`.
      *
      * The other way to hand on the pressed index: the rows are the `buttons` Show Confirm passed in,
      * each carrying its `index`, so reading the field where the answer is given gives the same number

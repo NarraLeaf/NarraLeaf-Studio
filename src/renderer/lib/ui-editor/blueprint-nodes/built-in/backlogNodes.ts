@@ -25,7 +25,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
 } from "@shared/types/blueprint/graph";
-import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_HISTORY_ENTRY } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
@@ -42,7 +44,7 @@ const entriesOut: BlueprintNodePinDef = {
     id: "entries",
     kind: "output",
     semantic: "data",
-    valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+    valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_HISTORY_ENTRY)),
     label: "Entries",
 };
 

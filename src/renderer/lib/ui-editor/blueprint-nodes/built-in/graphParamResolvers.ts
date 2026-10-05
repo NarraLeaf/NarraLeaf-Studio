@@ -227,6 +227,8 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_PARAM_FIELD_STRUCT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
@@ -393,9 +395,11 @@ import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import {
+    BLUEPRINT_FIELD_READER_INPUT_PIN,
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
     resolveEffectiveBlueprintNodePins,
@@ -3382,10 +3386,33 @@ function resolveSelfOutput(
         return runtime?.listItemScope?.key ?? "";
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD && portId === "value") {
-        // Read off the scope, not the list: the row being drawn is the whole context this node has,
-        // and it already carries the shape the list resolved for its own columns.
+        const fieldId = typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD] === "string"
+            ? selfNode.params[BLUEPRINT_NODE_PARAM_FIELD]
+            : "";
+        const wired = graph.edges?.some(edge => edge.to.nodeId === nodeId && edge.to.port === BLUEPRINT_FIELD_READER_INPUT_PIN);
+        if (wired) {
+            const object = resolveDataPinValue(graph, nodeId, BLUEPRINT_FIELD_READER_INPUT_PIN, params, blueprintLocals, depth + 1, runtime);
+            // The engine's own shapes resolve here without a document. Their field ids are their
+            // keys (`builtinStructs.ts`), which is also what makes the fallback below exact for
+            // them: a shape this build does not know is read by the id the field was stored under.
+            const structId = selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT];
+            const struct = resolveUIStruct(null, typeof structId === "string" ? structId : null);
+            const value = struct
+                ? readUIStructFieldValue(struct, fieldId, object)
+                : object && typeof object === "object" && !Array.isArray(object)
+                    ? (object as Record<string, unknown>)[fieldId]
+                    : undefined;
+            return value === undefined ? null : value;
+        }
+        // Pointed at a shape and since unwired: it reads that shape or nothing, never a row that
+        // happens to be in scope - the editor shows it as unconnected, and it behaves as it shows.
+        if (typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT] === "string" && selfNode.params[BLUEPRINT_NODE_PARAM_FIELD_STRUCT]) {
+            return null;
+        }
+        // Unwired, the row being drawn is the struct. Read off the scope, not the list: the scope is
+        // the whole context this node has, and it already carries the shape the list resolved for
+        // its own columns.
         const scope = runtime?.listItemScope;
-        const fieldId = typeof selfNode.params?.field === "string" ? selfNode.params.field : "";
         const value = readUIStructFieldValue(scope?.struct ?? null, fieldId, scope?.item);
         return value === undefined ? null : value;
     }

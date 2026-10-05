@@ -24,6 +24,9 @@ import {
     BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE,
     BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_VOICE_LANGUAGE } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
@@ -114,7 +117,13 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
-            { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Languages" },
+            {
+                id: "value",
+                kind: "output",
+                semantic: "data",
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_VOICE_LANGUAGE)),
+                label: "Languages",
+            },
         ],
         async execute(ctx) {
             const api = requireHostApi(ctx);

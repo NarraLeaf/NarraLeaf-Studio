@@ -20,6 +20,9 @@ import {
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
@@ -674,6 +677,33 @@ const FIXTURES: Record<RegisteredLintRuleId, Case[]> = {
                             setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } },
                         },
                         edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "setText", port: "in" } }],
+                    } as unknown as BlueprintGraphIr,
+                },
+            }),
+        }),
+    }],
+    "blueprint/field-missing": [{
+        context: () => createTestLintContext({
+            blueprintDocument: blueprints({
+                [PAGE_OWNER]: {
+                    click: {
+                        nodes: {
+                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                            endings: { id: "endings", type: BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS, params: {} },
+                            first: { id: "first", type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST, params: {} },
+                            read: {
+                                id: "read",
+                                type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+                                params: { struct: "nl.ending", field: "title" },
+                            },
+                            log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+                        },
+                        edges: [
+                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                            { from: { nodeId: "endings", port: "endings" }, to: { nodeId: "first", port: "array" } },
+                            { from: { nodeId: "first", port: "item" }, to: { nodeId: "read", port: "object" } },
+                            { from: { nodeId: "read", port: "value" }, to: { nodeId: "log", port: "value" } },
+                        ],
                     } as unknown as BlueprintGraphIr,
                 },
             }),

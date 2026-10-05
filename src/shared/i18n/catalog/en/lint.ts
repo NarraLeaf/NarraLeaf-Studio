@@ -979,6 +979,22 @@ export const lint = {
                 + "- Wire a value into the pin, or type one on the card.\n"
                 + "- If the node should not run, disconnect it from the chain or delete it.",
         },
+        blueprintFieldMissing: {
+            title: "Field not in shape",
+            description: "A node that names a field the value it reads does not have",
+            message: "{node}: {struct} has no field {field}",
+            help:
+                "A Get Field node names a field that the struct it reads does not have, or the Key of Array "
+                + "Filter By Key, Array Sort By Key or Array Find By Key names a field the items do not have. "
+                + "This happens after a list's field is deleted, or when a key is typed by hand. Only nodes "
+                + "that will run are checked, and only where the shape of the value is known.\n"
+                + "\n"
+                + "When the node runs, it reads nothing: Get Field gives an empty value, Filter By Key keeps "
+                + "no items, and Sort By Key leaves the order as it was.\n"
+                + "\n"
+                + "- Pick the field again from the node's Field list.\n"
+                + "- On an array node, pick the key from the Key list on the card.",
+        },
         blueprintStartSceneForeign: {
             title: "Scene from another story",
             description: "A Start Game node whose scene is not in the story it names",

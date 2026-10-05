@@ -98,6 +98,26 @@ export const blueprint = {
         targetTooltip: "Target: {label} ({type})",
         fromPin: "Create from pin",
         connectEmpty: "No nodes can connect to this pin.",
+        fieldsCategory: "Fields",
+        readField: "Get {field}",
+        filterByField: "Filter by {field}",
+        sortByField: "Sort by {field}",
+        findByField: "Find by {field}",
+    },
+    /** The names a struct type goes by on a pin, in the add-node menu and in a diagnostic. */
+    struct: {
+        any: "Struct",
+        listRow: "List row",
+        arrayOf: "{name} list",
+        choiceItem: "Choice",
+        notificationItem: "Notification",
+        nvlItem: "NVL line",
+        historyEntry: "History entry",
+        saveEntry: "Save entry",
+        confirmButton: "Confirm button",
+        ending: "Ending",
+        language: "Language",
+        voiceLanguage: "Voice language",
     },
     diagnostics: {
         empty: "No diagnostics.",
@@ -177,6 +197,9 @@ export const blueprint = {
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
             savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
+            fieldMissing: "\"{node}\": {struct} has no field \"{field}\".",
+            fieldUnpicked: "Node \"{node}\": pick a field.",
+            keyNotAField: "\"{node}\": {struct} has no field \"{key}\". No item matches.",
         },
         fn: {
             nameMissing: "Fn \"{node}\": set a function name.",
@@ -484,6 +507,7 @@ export const blueprint = {
         editValue: "Edit value on card",
         removeOutput: "Remove output pin",
         jsonFieldName: "JSON object field name",
+        readsRow: "Current row",
     },
     comment: {
         color: {
@@ -579,6 +603,7 @@ export const blueprint = {
         unnamedInputAction: "Unnamed action",
         // Same job as the character stand-in above, for an action the project no longer declares.
         missingInputAction: "Missing action",
+        missingField: "Missing field “{field}”",
     },
     script: {
         fileLabel: "Script file",
@@ -1251,7 +1276,7 @@ export const blueprint = {
         getLineHeight: "Get Line Height",
         findItemByField: "Find Item By Field",
         getItemAt: "Get Item At",
-        getItemField: "Get Item Field",
+        getField: "Get Field",
         getListContent: "Get List Content",
         getListLength: "Get List Length",
         setItemFieldAt: "Set Item Field At",
@@ -1586,6 +1611,7 @@ export const blueprint = {
         translationKeyText: "A translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. The same text as Get Text, and also usable in Blueprint Value and functions. A Blueprint Value that shows it updates when the player changes language.",
         format: "Replaces the placeholders in Template with values: {0}, {1} and so on with the items of an array, {name} with the field of that name in an object. A placeholder with no value becomes empty. A translated template comes from Translation Key Text.",
         formatText: "Replaces {0}, {1} and so on in Text with the items of Values. Format does the same, also fills {name} from an object, and can be used in Blueprint Value and functions.",
+        getField: "One field of the struct wired into Object, picked from that struct's fields. Inside a list row, leave Object unwired to read the row. Use Get JSON Field for an object whose fields are not declared.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

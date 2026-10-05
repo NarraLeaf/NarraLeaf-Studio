@@ -153,6 +153,7 @@ export type LintRuleId =
     | "blueprint/save-field-empty"
     | "blueprint/start-scene-foreign"
     | "blueprint/required-input-unwired"
+    | "blueprint/field-missing"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

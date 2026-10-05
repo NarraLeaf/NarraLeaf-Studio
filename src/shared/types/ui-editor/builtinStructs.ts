@@ -19,6 +19,9 @@ export const UI_STRUCT_ID_SAVE_ENTRY = "nl.saveEntry" as const;
 export const UI_STRUCT_ID_CONFIRM_BUTTON = "nl.confirmButton" as const;
 export const UI_STRUCT_ID_NOTIFICATION_ITEM = "nl.notificationItem" as const;
 export const UI_STRUCT_ID_NVL_ITEM = "nl.nvlItem" as const;
+export const UI_STRUCT_ID_ENDING = "nl.ending" as const;
+export const UI_STRUCT_ID_LANGUAGE = "nl.language" as const;
+export const UI_STRUCT_ID_VOICE_LANGUAGE = "nl.voiceLanguage" as const;
 
 /**
  * Field ids equal their keys here, and only here.
@@ -123,6 +126,41 @@ const CONFIRM_BUTTON_STRUCT: UIStructDef = {
     ],
 };
 
+/**
+ * Mirrors `BlueprintStoryEnding`, the rows `Get Endings` hands out.
+ *
+ * Declared for the reason the history entry is: every project with endings reads these five fields,
+ * and before they were declared an author learned that `isReached` exists from a page of
+ * documentation and then typed it into a key field, where a typo answered "no ending reached".
+ */
+const ENDING_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_ENDING,
+    fields: [
+        field("endingId", "string"),
+        field("name", "string"),
+        field("sceneId", "string"),
+        field("sceneName", "string"),
+        field("isReached", "boolean"),
+    ],
+};
+
+/** Mirrors the rows `Get Available Languages` hands out, one per locale the project ships. */
+const LANGUAGE_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_LANGUAGE,
+    fields: [field("code", "string"), field("displayName", "string"), field("isSource", "boolean")],
+};
+
+/**
+ * Mirrors the rows `Get Available Voice Languages` hands out.
+ *
+ * A shape of its own rather than the language one with a field missing: a voice track has no
+ * source locale, and a field that is always false would read as information.
+ */
+const VOICE_LANGUAGE_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_VOICE_LANGUAGE,
+    fields: [field("code", "string"), field("displayName", "string")],
+};
+
 export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Object.freeze({
     [UI_STRUCT_ID_CHOICE_ITEM]: CHOICE_ITEM_STRUCT,
     [UI_STRUCT_ID_NOTIFICATION_ITEM]: NOTIFICATION_ITEM_STRUCT,
@@ -130,6 +168,9 @@ export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Obj
     [UI_STRUCT_ID_HISTORY_ENTRY]: HISTORY_ENTRY_STRUCT,
     [UI_STRUCT_ID_SAVE_ENTRY]: SAVE_ENTRY_STRUCT,
     [UI_STRUCT_ID_CONFIRM_BUTTON]: CONFIRM_BUTTON_STRUCT,
+    [UI_STRUCT_ID_ENDING]: ENDING_STRUCT,
+    [UI_STRUCT_ID_LANGUAGE]: LANGUAGE_STRUCT,
+    [UI_STRUCT_ID_VOICE_LANGUAGE]: VOICE_LANGUAGE_STRUCT,
 });
 
 /** True for a shape the engine owns: its fields are shown, never edited. */

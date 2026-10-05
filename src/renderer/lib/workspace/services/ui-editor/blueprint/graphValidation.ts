@@ -26,6 +26,8 @@ import {
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
     readBlueprintFnSignatureSnapshot,
+    BLUEPRINT_NODE_PARAM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
 } from "@shared/types/blueprint/graph";
 import {
     collectDeclaredBlueprintFns,
@@ -47,6 +49,13 @@ import {
     type BlueprintVariableTypeOption,
 } from "./graphVariableTypeInference";
 import { isBlueprintFanOutOutputPin } from "./graphEditing";
+import {
+    analyzeBlueprintStructTypes,
+    applyBlueprintStructTypes,
+    buildBlueprintStructTypeContext,
+    type BlueprintNodeStructTypes,
+} from "./graphStructTypeInference";
+import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -97,7 +106,7 @@ export type ValidateBlueprintDocumentGraphsOptions = {
      * merely skipped, it is *unavailable* - so `buildBlueprintGraphContext` treats such a scope as
      * reachable rather than refusing a graph on a fact nothing established.
      */
-    uiDocument?: Pick<UIDocument, "elements"> | null;
+    uiDocument?: (Pick<UIDocument, "elements"> & Partial<Pick<UIDocument, "structs">>) | null;
     /** Surface id for the widget; used with widgetElement to match blueprint owner. */
     widgetSurfaceId?: string;
     /** Runtime widget event catalog used to validate scoped event-head nodes. */
@@ -187,7 +196,7 @@ function buildNodeValidationPaletteContext(ctx: {
     blueprintOwner?: BlueprintOwnerRef;
     widgetElement?: UIElement | null;
     widgetElementType?: string;
-    uiDocument?: Pick<UIDocument, "elements"> | null;
+    uiDocument?: (Pick<UIDocument, "elements"> & Partial<Pick<UIDocument, "structs">>) | null;
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
@@ -424,6 +433,83 @@ function validateBlueprintFnRules(
     }
 }
 
+/**
+ * What a struct-typed node says about its fields.
+ *
+ * A reader left unwired outside any list row has nothing to read, and speaks the required-input
+ * sentence, which is what it is: the same words the card uses for any unwired pin, so an author meets
+ * one explanation for one fault. (A reader pointed at a shape and since unwired needs nothing here:
+ * its input is required outright, and the required-input check reports it with every other node.)
+ * A reader whose shape lacks the field it names, and an array node keyed by a name its items do not
+ * have, each read nothing at run time without a word - the failure that typing these pins was for,
+ * and so the two things said here.
+ */
+function reportStructFieldDiagnostics(
+    out: BlueprintGraphEditorDiagnostic[],
+    node: { nodeId: string; def: BlueprintNodeDef; params: Record<string, unknown> | undefined; typed: BlueprintNodeStructTypes },
+    ctx: { graphKind: "event" | "function"; graphId: string },
+): void {
+    const target = { kind: "node" as const, graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: node.nodeId };
+    const title = resolveBlueprintNodeTitle(node.def.displayName, translate);
+    const { typed } = node;
+    if (node.def.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+        if (typed.readerSource === "none") {
+            out.push({
+                severity: "warning",
+                code: "node.input_missing",
+                message: translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                    node: title,
+                    pin: resolveBlueprintLabel("Object", translate),
+                }),
+                target,
+            });
+        }
+        if (!typed.struct) {
+            return;
+        }
+        const fieldId = typeof node.params?.[BLUEPRINT_NODE_PARAM_FIELD] === "string"
+            ? String(node.params[BLUEPRINT_NODE_PARAM_FIELD]).trim()
+            : "";
+        if (!fieldId) {
+            out.push({
+                severity: "warning",
+                code: "node.field_unpicked",
+                message: translate("blueprint.diagnostics.node.fieldUnpicked", { node: title }),
+                target,
+            });
+        } else if (!typed.field) {
+            out.push({
+                severity: "warning",
+                code: "node.field_missing",
+                message: translate("blueprint.diagnostics.node.fieldMissing", {
+                    node: title,
+                    struct: blueprintStructName(typed.structId, translate),
+                    field: fieldId,
+                }),
+                target,
+            });
+        }
+        return;
+    }
+    const keyPin = node.def.elementTypeFlow?.keyPin;
+    if (!keyPin || !typed.struct) {
+        return;
+    }
+    const key = typeof node.params?.[keyPin] === "string" ? String(node.params[keyPin]).trim() : "";
+    if (key && !typed.struct.fields.some(field => field.key === key) && !typed.keyWired) {
+        out.push({
+            severity: "warning",
+            code: "node.key_not_a_field",
+            message: translate("blueprint.diagnostics.node.keyNotAField", {
+                node: title,
+                struct: blueprintStructName(typed.structId, translate),
+                key,
+            }),
+            target,
+        });
+    }
+}
+
 export function validateBlueprintGraphIr(
     ir: BlueprintGraphIr,
     ctx: {
@@ -438,7 +524,7 @@ export function validateBlueprintGraphIr(
         widgetElement?: UIElement | null;
         widgetElementType?: string;
         /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
-        uiDocument?: Pick<UIDocument, "elements"> | null;
+        uiDocument?: (Pick<UIDocument, "elements"> & Partial<Pick<UIDocument, "structs">>) | null;
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
         isComponentDefinitionGraph?: boolean;
@@ -447,6 +533,13 @@ export function validateBlueprintGraphIr(
     },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
+    // Typed before anything reads a pin, so a wire from endings into a field reader is judged with
+    // both ends typed the way the canvas draws them.
+    const structTypes = analyzeBlueprintStructTypes(
+        ir,
+        buildBlueprintStructTypeContext({ uiDocument: ctx.uiDocument, widgetElement: ctx.widgetElement }),
+    );
+    ir = applyBlueprintStructTypes(ir, structTypes);
     const nodes = ir.nodes ?? {};
     const edges = ir.edges ?? [];
     const nodeIds = new Set(Object.keys(nodes));
@@ -711,6 +804,10 @@ export function validateBlueprintGraphIr(
         // Only on nodes something will actually ask to work: an unwired draft is already
         // `blueprint/unreachable-node`'s to report, and saying it twice helps nobody.
         if (def && liveNodeIds.has(nid)) {
+            const typed = structTypes.get(nid);
+            if (typed) {
+                reportStructFieldDiagnostics(out, { nodeId: nid, def, params: n.params, typed }, ctx);
+            }
             const wired = wiredInputPorts.get(nid);
             const missing = listUnwiredRequiredInputPins(n.type, n.params, pinId => wired?.has(pinId) === true);
             for (const pin of missing) {

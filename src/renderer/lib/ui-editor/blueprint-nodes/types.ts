@@ -28,6 +28,17 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+
+/**
+ * The dynamic option source a pin's card field is offered values from, when it has one.
+ *
+ * A text pin whose value names one of a known set - an array node's key, once the items it keys are
+ * known to be endings - is drawn as a picker of that set rather than a text box, and still stores the
+ * same text. Keyed by pin so one node could offer more than one.
+ */
+export function blueprintPinLiteralOptionsSource(pinId: string): string {
+    return `pinLiteral:${pinId}`;
+}
 /**
  * Persisted on node.params: the node's pin shape as last resolved while its type was known.
  *
@@ -468,6 +479,37 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
      * published plugin type surface.
      */
     alternativeInputs?: readonly (readonly string[])[];
+    /**
+     * Outputs whose type follows the items of an array input.
+     *
+     * The array nodes take any array and hand back the same items, so what comes out is whatever went
+     * in: `Array Filter By Key` fed endings answers endings, and `Array Get` on it answers one ending.
+     * Declared here and worked out by `graphStructTypeInference.ts`, which follows the wire into
+     * `input` and stamps the result into the node's params for {@link resolveEffectiveBlueprintNodePins}
+     * to read. The runtime never consults it.
+     *
+     * `keyPin` names a pin that holds a field name of those items, and `keyValuePins` the pins that
+     * then carry that field's value - `Filter By Key` compares `value` with the field `key` names, so
+     * once the field is known `value` takes its type, and a boolean field is ticked on the card rather
+     * than wired from a Boolean node.
+     *
+     * Not on {@link BlueprintNodeDeclaration}: plugins declare their nodes through that type, and
+     * which array nodes pass their items through is the host's own catalogue.
+     */
+    /**
+     * Params the node keeps that no inspector field edits.
+     *
+     * Get Field remembers the struct it reads this way: the shape is set by what is first wired in
+     * (or by the add-node menu that made it) and is shown on the card as the type of its input pin,
+     * not as a picker. Listed so a tool writing the node by hand knows the key is the node's own.
+     */
+    storedParams?: readonly string[];
+    elementTypeFlow?: {
+        input: string;
+        outputs: Readonly<Record<string, "array" | "item">>;
+        keyPin?: string;
+        keyValuePins?: readonly string[];
+    };
     execute: BlueprintNodeExecuteFn;
 };
 
@@ -614,6 +656,17 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicPinsGenerateOutputs?: boolean;
     /** Present when this palette entry was derived from a bound Element output. */
     magicElementRef?: BlueprintMagicElementRefPaletteEntry;
+    /**
+     * Present on an entry the add-node menu made for one field of a dragged struct: the node is
+     * created with these params already set, and the menu shows `title` instead of the node's name.
+     */
+    preset?: {
+        /** Tells two presets of one node type apart, for the menu's list keys. */
+        key: string;
+        params: Record<string, unknown>;
+        title: string;
+        subtitle: string;
+    };
 };
 
 export type { BehaviorNodeExecutionContext };

@@ -1584,7 +1584,32 @@ export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemPr
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY = "blueprint.list.getItemKey" as const;
+/**
+ * Get Field: one field of a struct, picked from the struct's own list of fields.
+ *
+ * The id is older than the node. It began as the list row's field reader and was widened into the
+ * reader for every struct; a row is now what it reads when its `object` input is left empty inside
+ * a list row. Kept rather than renamed so every graph written against the row reader is still this
+ * node, with no migration and nothing for an old project to lose.
+ */
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD = "blueprint.list.getItemField" as const;
+/** Get Field: the struct its `object` input takes, as a struct id. Absent until something is wired or picked. */
+export const BLUEPRINT_NODE_PARAM_FIELD_STRUCT = "struct" as const;
+/** Get Field: the field it reads, as a field id. */
+export const BLUEPRINT_NODE_PARAM_FIELD = "field" as const;
+/**
+ * Pin types the editor worked out from the wires, by pin id.
+ *
+ * Written by `graphStructTypeInference.ts` onto a copy of the params, every time a graph is drawn or
+ * checked, and read by the effective-pin resolver. Never authored and never needed at run time: a
+ * stored one is harmless and overwritten on the next pass.
+ */
+export const BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES = "__pinTypes" as const;
+/**
+ * Get Field, unwired inside a list row: it reads the row. Stamped beside the pin types for the card,
+ * which shows the row as what its input carries; never authored and never read at run time.
+ */
+export const BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW = "__readsRow" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH = "blueprint.list.getLength" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT = "blueprint.list.getItemAt" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT = "blueprint.list.setItemFieldAt" as const;

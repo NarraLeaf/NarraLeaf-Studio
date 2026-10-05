@@ -4,7 +4,7 @@
  *
  * A Fn is a piece of the calling graph pulled out to be given a name. Moving three nodes out of Item
  * Click into one used to change what they did without a word: the body ran with the caller's drawing
- * but not its row, so `Get Item Field` read nothing, and a Fn declared on a list inside a component
+ * but not its row, so `Get Field` read nothing, and a Fn declared on a list inside a component
  * kept its variables in no placement at all - apart from everything the list's own events had set.
  *
  * Comments in English per project convention.

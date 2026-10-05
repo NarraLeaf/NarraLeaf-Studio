@@ -81,7 +81,10 @@ import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+    blueprintArrayValueType,
 } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_NOTIFICATION_ITEM, UI_STRUCT_ID_SAVE_ENTRY } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import {
     BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
@@ -999,7 +1002,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
                 id: "entries",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_SAVE_ENTRY)),
                 label: "Entries",
             },
             {
@@ -1467,7 +1470,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 id: "notifications",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_NOTIFICATION_ITEM)),
                 label: "Notifications",
             },
         ],

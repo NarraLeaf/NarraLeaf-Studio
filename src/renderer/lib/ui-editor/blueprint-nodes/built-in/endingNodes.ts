@@ -32,6 +32,9 @@
  * Comments in English per project convention.
  */
 
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
+import { UI_STRUCT_ID_ENDING } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructValueType } from "@shared/types/ui-editor/struct";
 import {
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDINGS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDING_STATE,
@@ -123,7 +126,7 @@ export const endingBlueprintNodes: BlueprintNodeDef[] = [
                 id: "endings",
                 kind: "output",
                 semantic: "data",
-                valueType: "array",
+                valueType: blueprintArrayValueType(uiStructValueType(UI_STRUCT_ID_ENDING)),
                 label: "Endings",
             },
         ],

@@ -85,6 +85,26 @@ export const blueprint = {
         targetTooltip: "対象：{label}（{type}）",
         fromPin: "ピンから作る",
         connectEmpty: "このピンにつなげるノードがない",
+        fieldsCategory: "フィールド",
+        readField: "{field} を取得",
+        filterByField: "{field} で絞り込み",
+        sortByField: "{field} で並べ替え",
+        findByField: "{field} で検索",
+    },
+    /** 構造体の型がピン、ノード追加メニュー、診断で呼ばれる名前。 */
+    struct: {
+        any: "構造体",
+        listRow: "リストの行",
+        arrayOf: "{name}のリスト",
+        choiceItem: "選択肢",
+        notificationItem: "通知",
+        nvlItem: "NVL の行",
+        historyEntry: "履歴の項目",
+        saveEntry: "セーブの項目",
+        confirmButton: "確認ボタン",
+        ending: "エンディング",
+        language: "言語",
+        voiceLanguage: "ボイスの言語",
     },
     diagnostics: {
         empty: "指摘なし",
@@ -163,6 +183,9 @@ export const blueprint = {
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",
             savedVariableIdInvalid: "ノード「{node}」：セーブ変数を選ぶ",
+            fieldMissing: "「{node}」：{struct}にフィールド「{field}」がない",
+            fieldUnpicked: "ノード「{node}」：フィールドを選ぶ",
+            keyNotAField: "「{node}」：{struct}にフィールド「{key}」がない。一致する項目はない",
         },
         fn: {
             nameMissing: "関数「{node}」：関数名を決める",
@@ -439,6 +462,7 @@ export const blueprint = {
         editValue: "カード上で値を編集",
         removeOutput: "出力ピンを取り除く",
         jsonFieldName: "JSON オブジェクトのフィールド名",
+        readsRow: "現在の行",
     },
     comment: {
         color: {
@@ -533,6 +557,7 @@ export const blueprint = {
         missingCharacter: "キャラクターが見つからない",
         unnamedInputAction: "名前のないアクション",
         missingInputAction: "アクションが見つからない",
+        missingField: "フィールド「{field}」が見つからない",
     },
     script: {
         fileLabel: "スクリプトファイル",
@@ -1195,7 +1220,7 @@ export const blueprint = {
         getLineHeight: "行の高さを取得",
         findItemByField: "項目を項目名で検索",
         getItemAt: "指定位置の項目を取得",
-        getItemField: "項目の値を取得",
+        getField: "フィールドを取得",
         getListContent: "リストの中身を取得",
         getListLength: "リストの長さを取得",
         setItemFieldAt: "項目の値を設定",
@@ -1525,6 +1550,7 @@ export const blueprint = {
         translationKeyText: "翻訳キーの、プレイヤーの現在の言語でのテキスト。その言語に翻訳がないときは原文。存在しないキーはキー名そのものになる。「テキストを取得」と同じ結果で、ブループリント値と関数でも使える。これを表示するブループリント値は、プレイヤーが言語を切り替えると更新される",
         format: "テンプレートのプレースホルダを値に置き換える。{0}、{1} などは配列の各要素、{name} はオブジェクトの同名のフィールドになる。対応する値がないプレースホルダは空になる。翻訳したテンプレートは「翻訳キーのテキスト」から取れる",
         formatText: "テキストの {0}、{1} などを値の一覧の各要素に置き換える。「整形」も同じことをし、オブジェクトで {name} も埋められ、ブループリント値と関数でも使える",
+        getField: "「オブジェクト」につないだ構造体のフィールドを一つ取得する。フィールドはその構造体のフィールドから選ぶ。リストの行の中で「オブジェクト」をつながないときは、その行を読む。フィールドが宣言されていないオブジェクトは「JSON のフィールドを取得」で読む",
     },
     live: {
         nodeClaimed: "{name} がこのノードを編集している",

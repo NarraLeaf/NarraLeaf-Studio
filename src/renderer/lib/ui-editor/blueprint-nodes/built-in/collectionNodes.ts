@@ -72,6 +72,13 @@ const stringIn = (id: string, label: string): BlueprintNodePinDef => inPin(id, l
 const arrayOut = (id: string, label: string): BlueprintNodePinDef => outPin(id, label, BLUEPRINT_VALUE_TYPE_ARRAY);
 const jsonOut = (id: string, label: string): BlueprintNodePinDef => outPin(id, label, "json");
 
+/** The items come back as they went in: see `BlueprintNodeDef.elementTypeFlow`. */
+const passesArray = (input = "array"): NonNullable<BlueprintNodeDef["elementTypeFlow"]> => ({
+    input,
+    outputs: { result: "array" },
+});
+const passesItem: NonNullable<BlueprintNodeDef["elementTypeFlow"]> = { input: "array", outputs: { item: "item" } };
+
 function collectionNode(input: {
     type: string;
     displayName: string;
@@ -80,10 +87,12 @@ function collectionNode(input: {
     hideInPalette?: boolean;
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
+    elementTypeFlow?: BlueprintNodeDef["elementTypeFlow"];
 }): BlueprintNodeDef {
     return {
         type: input.type,
         ...(input.assetNames ? { assetNames: input.assetNames } : {}),
+        ...(input.elementTypeFlow ? { elementTypeFlow: input.elementTypeFlow } : {}),
         displayName: input.displayName,
         category: "Data",
         keywords: input.keywords,
@@ -106,6 +115,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
         assetNames: "forward",
         displayName: "Array Get",
+        elementTypeFlow: passesItem,
         keywords: ["array", "get", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), jsonOut("item", "Item")],
     }),
@@ -113,6 +123,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET,
         assetNames: "forward",
         displayName: "Array Set",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "set", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
@@ -120,6 +131,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH,
         assetNames: "forward",
         displayName: "Array Push",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "push", "append", "item", "collection"],
         pins: [arrayIn("array", "Array"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
@@ -127,6 +139,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT,
         assetNames: "forward",
         displayName: "Array Insert",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "insert", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
@@ -134,6 +147,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE,
         assetNames: "forward",
         displayName: "Array Remove",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "remove", "delete", "item", "collection"],
         pins: [arrayIn("array", "Array"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
@@ -141,6 +155,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT,
         assetNames: "forward",
         displayName: "Array Remove At",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "remove", "delete", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), arrayOut("result", "Array")],
     }),
@@ -154,6 +169,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
         assetNames: "forward",
         displayName: "Array Slice",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "slice", "range", "collection"],
         pins: [arrayIn("array", "Array"), intIn("start", "Start"), intIn("end", "End"), arrayOut("result", "Array")],
     }),
@@ -174,6 +190,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
         assetNames: "forward",
         displayName: "Array First",
+        elementTypeFlow: passesItem,
         keywords: ["array", "first", "head", "front", "collection"],
         pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
     }),
@@ -181,6 +198,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
         assetNames: "forward",
         displayName: "Array Last",
+        elementTypeFlow: passesItem,
         keywords: ["array", "last", "tail", "back", "collection"],
         pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
     }),
@@ -194,6 +212,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
         assetNames: "forward",
         displayName: "Array Reverse",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "reverse", "flip", "backwards", "collection"],
         pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
     }),
@@ -201,6 +220,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
         assetNames: "forward",
         displayName: "Array Concat",
+        elementTypeFlow: passesArray("a"),
         keywords: ["array", "concat", "join", "append", "combine", "collection"],
         pins: [arrayIn("a", "A"), arrayIn("b", "B"), arrayOut("result", "Array")],
     }),
@@ -208,6 +228,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
         assetNames: "forward",
         displayName: "Array Unique",
+        elementTypeFlow: passesArray(),
         keywords: ["array", "unique", "distinct", "dedupe", "collection"],
         pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
     }),
@@ -227,6 +248,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
         assetNames: "forward",
         displayName: "Array Sort By Key",
+        elementTypeFlow: { ...passesArray(), keyPin: "key" },
         keywords: ["array", "sort", "order", "key", "field", "collection"],
         pins: [
             arrayIn("array", "Array"),
@@ -239,6 +261,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
         assetNames: "forward",
         displayName: "Array Filter By Key",
+        elementTypeFlow: { ...passesArray(), keyPin: "key", keyValuePins: ["value"] },
         keywords: ["array", "filter", "where", "key", "field", "collection"],
         pins: [
             arrayIn("array", "Array"),
@@ -251,6 +274,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
         assetNames: "forward",
         displayName: "Array Find By Key",
+        elementTypeFlow: { input: "array", outputs: { item: "item" }, keyPin: "key", keyValuePins: ["value"] },
         keywords: ["array", "find", "search", "key", "field", "collection"],
         pins: [
             arrayIn("array", "Array"),
