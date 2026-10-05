@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -46,7 +46,13 @@ import {
     type StoryBlockSelection,
 } from "./storySelection";
 import { stopVoiceAudition } from "./voiceAudition";
-import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
+import {
+    STORY_DENSITY_METRICS,
+    StoryEditorTextStyleProvider,
+    storyEditorRootStyle,
+    storyGutterWidth,
+    useStoryEditorTextFontSize,
+} from "./storyEditorTextStyle";
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { useProjectDistrusted } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
@@ -101,6 +107,13 @@ import {
     STORY_PREVIEW_PANE_MIN_WIDTH,
     type StoryScenePreviewPaneMode,
 } from "./preview/storyScenePreviewSessionStore";
+import {
+    dragStoryPreviewDockWidth,
+    resolveStoryPreviewDockLayout,
+    storyScriptMinWidth,
+    STORY_PREVIEW_STACK_MAX_FRACTION,
+} from "./preview/storyPreviewDockLayout";
+import { useStoryPreviewDockStacked } from "./preview/useStoryPreviewDockStacked";
 import { getStoryPreviewHub, useStoryPreviewLayout } from "./preview/storyPreviewHub";
 import { createDefaultStoryPreviewFloatRect, readRectInArea } from "./preview/storyPreviewFloatGeometry";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -191,6 +204,9 @@ const ROW_VERTICAL_PADDING_PX = 8;
 
 /** "No drag in progress", as one shared value — a fresh `new Set()` would re-render every row. */
 const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
+
+/** The docked preview under the script: never more than its share of the body's height. */
+const STACKED_PREVIEW_STYLE: CSSProperties = { maxHeight: `${STORY_PREVIEW_STACK_MAX_FRACTION * 100}%` };
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
@@ -1557,6 +1573,31 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const previewWidthRef = useRef(previewWidth);
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
+    // The body also as state, for the one reader that has to start watching it when it appears:
+    // the tab draws a loading view first, and the preview layout can be known before the body is.
+    const [editorBody, setEditorBody] = useState<HTMLDivElement | null>(null);
+    const attachEditorBody = useCallback((element: HTMLDivElement | null) => {
+        editorBodyRef.current = element;
+        setEditorBody(element);
+    }, []);
+    const previewDocked = previewOpen && previewMode === "dock";
+    // The script keeps a readable width and the docked preview gives way to it: narrower than its
+    // stored width first, then under the script instead of beside it (see `storyPreviewDockLayout`).
+    const scriptFontSize = useStoryEditorTextFontSize(editor.density);
+    const scriptMinWidth = storyScriptMinWidth({
+        fontSize: scriptFontSize,
+        gutterWidth: storyGutterWidth(editor.visibleRows.length),
+    });
+    const scriptMinWidthRef = useRef(scriptMinWidth);
+    scriptMinWidthRef.current = scriptMinWidth;
+    const previewStacked = useStoryPreviewDockStacked(editorBody, previewDocked, scriptMinWidth);
+    const previewBesideScript = previewDocked && !previewStacked;
+    // Only beside the preview: alone, or with the preview under it, the script has the body's whole
+    // width, and a floor wider than a narrow editor group would push its words out of sight.
+    const scriptColumnStyle = useMemo<CSSProperties | undefined>(
+        () => (previewBesideScript ? { minWidth: scriptMinWidth } : undefined),
+        [previewBesideScript, scriptMinWidth],
+    );
 
     const script = useNarralangScript(editor.scene ?? null, editor.document ?? null, scriptOpen);
     /**
@@ -1619,14 +1660,45 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         previewHub.patchLayout({ open: true, mode });
     }, [previewHub, tabId]);
 
-    // The handle sits on the pane's left edge: dragging right shrinks the pane. Returns the
-    // unconsumed delta so ResizableHandle keeps its anchor aligned with the divider when clamped.
+    /**
+     * The width the pane is drawn at when a drag of its edge begins, and how far the drag may take
+     * it. Taken from the drawn width rather than the stored one: while the script is holding the
+     * pane narrower than the author left it, a drag starts from where the edge is on screen, and a
+     * drag toward the script that cannot move it writes nothing - the stored width stays the
+     * author's, to come back to when there is room.
+     */
+    const previewDragRef = useRef<{ width: number; maxWidth: number } | null>(null);
+    const handlePreviewDragStart = useCallback(() => {
+        const body = editorBodyRef.current;
+        const layout = body
+            ? resolveStoryPreviewDockLayout({
+                bodyWidth: body.getBoundingClientRect().width,
+                storedWidth: previewWidthRef.current,
+                scriptMinWidth: scriptMinWidthRef.current,
+            })
+            : null;
+        previewDragRef.current = layout?.kind === "side"
+            // Whole pixels, as the stored width is: a drag that cannot move the edge then lands on
+            // the width it started from and writes nothing.
+            ? { width: Math.floor(layout.previewWidth), maxWidth: layout.maxPreviewWidth }
+            : null;
+    }, []);
+    const handlePreviewDragEnd = useCallback(() => {
+        previewDragRef.current = null;
+    }, []);
+
+    // The handle sits on the pane's left edge: dragging right shrinks the pane, and dragging left
+    // stops where the script reaches its minimum. Returns the unconsumed delta so ResizableHandle
+    // keeps its anchor aligned with the divider when clamped.
     const handlePreviewResize = useCallback((delta: number): number => {
-        const width = previewWidthRef.current;
-        const containerWidth = editorBodyRef.current?.clientWidth ?? width * 2;
-        const maxWidth = Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, containerWidth * STORY_PREVIEW_PANE_MAX_FRACTION);
-        const nextWidth = Math.round(Math.min(maxWidth, Math.max(STORY_PREVIEW_PANE_MIN_WIDTH, width - delta)));
+        const drag = previewDragRef.current;
+        if (!drag) {
+            return -delta;
+        }
+        const width = drag.width;
+        const nextWidth = dragStoryPreviewDockWidth(width, delta, drag.maxWidth);
         if (nextWidth !== width) {
+            drag.width = nextWidth;
             previewWidthRef.current = nextWidth;
             previewHub?.patchLayout({ width: nextWidth });
         }
@@ -2363,11 +2435,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
 
-            <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
+            {/* A row while the preview sits beside the script, a column while it sits under it. Only
+                the direction changes between the two, so nothing in either column remounts - the
+                preview's game least of all. */}
+            <div ref={attachEditorBody} className={`relative flex min-h-0 flex-1 ${previewStacked ? "flex-col" : "flex-row"}`}>
             {/* Hidden, not unmounted — see `scriptOpen`. The layout classes go with it rather than
                 sitting under a `hidden` that overrides them, so the column has no size to contribute
                 while the script has the body. */}
-            <div className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}>
+            <div
+                className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}
+                style={scriptOpen ? undefined : scriptColumnStyle}
+            >
             {/* The prose surface. Sunken without a wallpaper; with one, it keeps a plate only if the
                 author turned on the editor background in the background dialog, at the opacity set
                 there. `.nl-editor-surface` is the one rule the reading surfaces share. */}
@@ -2645,29 +2723,50 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             {/* Mounted only while it is on: a Monaco instance and the print behind it are not things
                 a scene tab should be carrying around for an author who never asked for the script. */}
             {scriptOpen ? (
-                <NarralangScriptView
-                    text={script.text}
-                    rows={script.rows}
-                    ready={script.ready}
-                    editable={scriptEditable}
-                    readOnlyReason={scriptReadOnlyReason}
-                    commit={scriptCommit.commit}
-                    breakMerge={scriptCommit.breakMerge}
-                />
-            ) : null}
-            {previewOpen && previewMode === "dock" ? (
-                <>
-                    <ResizableHandle
-                        direction="horizontal"
-                        onResize={handlePreviewResize}
-                        className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={scriptColumnStyle}>
+                    <NarralangScriptView
+                        text={script.text}
+                        rows={script.rows}
+                        ready={script.ready}
+                        editable={scriptEditable}
+                        readOnlyReason={scriptReadOnlyReason}
+                        commit={scriptCommit.commit}
+                        breakMerge={scriptCommit.breakMerge}
                     />
-                    <div style={{ width: previewWidth }} className="min-h-0 shrink-0 border-l border-edge">
+                </div>
+            ) : null}
+            {previewDocked ? (
+                <>
+                    {previewStacked ? null : (
+                        <ResizableHandle
+                            key="seam"
+                            direction="horizontal"
+                            onResize={handlePreviewResize}
+                            onDragStart={handlePreviewDragStart}
+                            onDragEnd={handlePreviewDragEnd}
+                            className="w-1 shrink-0 border-r-2 border-transparent bg-fill-subtle"
+                        />
+                    )}
+                    {/* Beside the script: the stored width as a flex basis, so the browser narrows the
+                        pane as the body narrows, never below either column's minimum - the same
+                        rule `resolveStoryPreviewDockLayout` states. Under it: full width, as tall as
+                        its stage at that width, at most half the body. */}
+                    <div
+                        key="pane"
+                        style={previewStacked ? STACKED_PREVIEW_STYLE : {
+                            flex: `0 1 ${previewWidth}px`,
+                            minWidth: STORY_PREVIEW_PANE_MIN_WIDTH,
+                            maxWidth: `${STORY_PREVIEW_PANE_MAX_FRACTION * 100}%`,
+                        }}
+                        className={previewStacked ? "min-h-0 shrink-0 border-t border-edge" : "min-h-0 border-l border-edge"}
+                        data-story-preview-dock={previewStacked ? "stack" : "side"}
+                    >
                         <StoryScenePreviewPane
                             controller={preview}
                             onClose={togglePreview}
                             mode="dock"
                             onToggleFloat={() => setPreviewMode("float")}
+                            stageAspectRatio={previewStacked ? preview.designSize.width / preview.designSize.height : undefined}
                         />
                     </div>
                 </>

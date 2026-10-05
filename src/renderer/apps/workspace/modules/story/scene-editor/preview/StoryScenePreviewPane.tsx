@@ -41,9 +41,15 @@ export function StoryScenePreviewPane(props: {
      * that are not that scene's; the docked pane sits inside the scene's own editor and does not.
      */
     sceneName?: string | null;
+    /**
+     * Width over height of the stage, when the pane takes its height from its stage rather than the
+     * other way round: docked under the script, it is as tall as the stage at the pane's width, and
+     * the stage gives up height (letterboxing the game) only when the pane is held shorter than that.
+     */
+    stageAspectRatio?: number;
 }) {
     const { t } = useTranslation();
-    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName } = props;
+    const { controller, onClose, mode = "dock", onToggleFloat, onHeaderPointerDown, sceneName, stageAspectRatio } = props;
     const busy = controller.phase === "compiling" || controller.phase === "mounting" || controller.phase === "starting";
     /** Where the primary press on the stage went down, until it comes up. */
     const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -116,7 +122,8 @@ export function StoryScenePreviewPane(props: {
 
             {/* The stage inherits what a shipped game's does, never Studio's theme. */}
             <div
-                className={`relative min-h-0 flex-1 select-none overflow-hidden ${GAME_STAGE_BASE_CLASS_NAME}`}
+                className={`relative min-h-0 ${stageAspectRatio ? "flex-initial" : "flex-1"} select-none overflow-hidden ${GAME_STAGE_BASE_CLASS_NAME}`}
+                style={stageAspectRatio ? { aspectRatio: stageAspectRatio } : undefined}
                 data-story-preview-stage=""
                 onPointerDown={handleStagePointerDown}
                 onPointerUp={handleStagePointerUp}

@@ -137,11 +137,28 @@ export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: numb
  * table can be tested through the style it actually produces, rather than field by field.
  */
 export function storyEditorTextStyleFor(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
-    const metrics = STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
-    const scaled = metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
+    const metrics = storyDensityMetrics(density);
     // The leading travels with the size, always: it is what outranks the `text-sm` a row's line box
     // wears, and a box that truncates clips whatever its leading does not cover. See the table above.
-    return { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
+    return { fontSize: storyTextFontSize(fontSize, density), fontFamily, lineHeight: metrics.lineHeight };
+}
+
+function storyDensityMetrics(density: StoryEditorDensity | undefined) {
+    return STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
+}
+
+/** The size story text is set at: the editor font preference, scaled by the density. */
+function storyTextFontSize(fontSize: number, density: StoryEditorDensity | undefined): number {
+    const metrics = storyDensityMetrics(density);
+    return metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
+}
+
+/**
+ * The size story text is set at in this density, for a layout that has to know it from outside the
+ * text-style provider (the scene editor sizes its columns by it).
+ */
+export function useStoryEditorTextFontSize(density: StoryEditorDensity | undefined): number {
+    return storyTextFontSize(useGlobalSetting("editor.fontSize", clampFontSize), density);
 }
 
 const DEFAULT_STYLE = storyEditorTextStyleFor(EDITOR_FONT_SIZE_DEFAULT, editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
