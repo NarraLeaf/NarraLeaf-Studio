@@ -301,6 +301,7 @@ function widgetEventHead(input: {
     pins?: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     scope?: BlueprintNodeDef["scope"];
+    listRowTypes?: BlueprintNodeDef["listRowTypes"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
@@ -316,9 +317,13 @@ function widgetEventHead(input: {
         scope: input.scope ?? { widgetElementTypes: widgetTypesForHead(input.type) },
         pins: input.pins ?? [THEN_PIN],
         inspectorParams: input.inspectorParams,
+        ...(input.listRowTypes ? { listRowTypes: input.listRowTypes } : {}),
         execute: eventHeadExecute,
     };
 }
+
+/** The row an item head runs for is a row of its list; see `BlueprintNodeDef.listRowTypes`. */
+const ITEM_HEAD_ROW = { outputs: { item: "item" } } as const;
 
 function broadcastEventHead(input: {
     type: string;
@@ -667,30 +672,35 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Item Render",
         keywords: ["item", "render", "list", "repeater", "row"],
         pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+        listRowTypes: ITEM_HEAD_ROW,
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
         displayName: "Item Click",
         keywords: ["item", "click", "list", "select", "row"],
         pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+        listRowTypes: ITEM_HEAD_ROW,
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
         displayName: "Item Hover",
         keywords: ["item", "hover", "enter", "list", "row"],
         pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+        listRowTypes: ITEM_HEAD_ROW,
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
         displayName: "List Item Refresh",
         keywords: ["list", "item", "refresh", "props", "row", "context"],
         pins: [THEN_PIN, PIN_PROPS, PIN_ITEM, PIN_INDEX, PIN_COUNT, PIN_KEY],
+        listRowTypes: ITEM_HEAD_ROW,
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
         displayName: "Selection Changed",
         keywords: ["selection", "selected", "change", "list", "item"],
         pins: [THEN_PIN, PIN_INDEX, PIN_PREVIOUS_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+        listRowTypes: ITEM_HEAD_ROW,
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,

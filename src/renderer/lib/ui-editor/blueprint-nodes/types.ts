@@ -527,6 +527,23 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
         pins: readonly string[];
         types: Readonly<Record<string, string>>;
     };
+    /**
+     * Pins that carry the rows of the list this node acts on: one row (`item`) or all of them
+     * (`array`).
+     *
+     * Which list is the one wired into the node's `list` pin, or with none the list the graph belongs
+     * to - its own graph, or the item template it draws. A list that declares its rows' shape types
+     * these pins with it, so Item Click's `Item` on an ending list is an ending and its fields are on
+     * the menu. Inputs are compared with what is wired in, and a value of another shape is reported
+     * (`node.list_shape_mismatch`) - a Set List Content handed saves for a list of endings draws rows
+     * with nothing in them.
+     *
+     * Worked out in the editor like `elementTypeFlow`; the runtime never reads it.
+     */
+    listRowTypes?: {
+        outputs?: Readonly<Record<string, "item" | "array">>;
+        inputs?: Readonly<Record<string, "item" | "array">>;
+    };
     execute: BlueprintNodeExecuteFn;
 };
 

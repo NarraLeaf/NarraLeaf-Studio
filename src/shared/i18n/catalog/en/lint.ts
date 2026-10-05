@@ -995,6 +995,20 @@ export const lint = {
                 + "- Pick the field again from the node's Field list.\n"
                 + "- On an array node, pick the key from the Key list on the card.",
         },
+        blueprintListShapeMismatch: {
+            title: "List fields do not match",
+            description: "Rows of another shape given to a list",
+            message: "{node}: {struct} does not match the list's fields",
+            help:
+                "Set List Content, Append List Item or another list node is given rows whose fields differ from "
+                + "the ones the list declares - for example saves wired into a list whose Struct is Ending. Only "
+                + "nodes that will run are checked, and only where both shapes are known.\n"
+                + "\n"
+                + "The list draws each row from its own fields, so the fields the rows do not carry show empty.\n"
+                + "\n"
+                + "- Set the list's Struct, under Edit content, to the shape wired in.\n"
+                + "- Or wire in rows of the list's shape.",
+        },
         blueprintStartSceneForeign: {
             title: "Scene from another story",
             description: "A Start Game node whose scene is not in the story it names",

@@ -3403,11 +3403,20 @@ function resolveSelfOutput(
         const wired = graph.edges?.some(edge => edge.to.nodeId === nodeId && edge.to.port === BLUEPRINT_FIELD_READER_INPUT_PIN);
         if (wired) {
             const object = resolveDataPinValue(graph, nodeId, BLUEPRINT_FIELD_READER_INPUT_PIN, params, blueprintLocals, depth + 1, runtime);
-            // The engine's own shapes resolve here without a document. Their field ids are their
-            // keys (`builtinStructs.ts`), which is also what makes the fallback below exact for
-            // them: a shape this build does not know is read by the id the field was stored under.
-            const structId = selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT];
-            const struct = resolveUIStruct(null, typeof structId === "string" ? structId : null);
+            // The engine's own shapes resolve here without a document; a list's own shape comes from
+            // the document the surface runs, or from the row in scope when it is that row's shape.
+            // The engine's field ids are their keys (`builtinStructs.ts`), which is also what makes
+            // the fallback below exact for them: a shape nothing here knows is read by the id the
+            // field was stored under.
+            const structId = typeof selfNode.params?.[BLUEPRINT_NODE_PARAM_FIELD_STRUCT] === "string"
+                ? selfNode.params[BLUEPRINT_NODE_PARAM_FIELD_STRUCT]
+                : null;
+            const struct = structId
+                ? resolveUIStruct(null, structId)
+                    ?? (runtime?.listItemScope?.struct?.id === structId ? runtime.listItemScope.struct : null)
+                    ?? runtime?.hostAdapter?.blueprintRuntime?.resolveStruct?.(structId)
+                    ?? null
+                : null;
             const value = struct
                 ? readUIStructFieldValue(struct, fieldId, object)
                 : object && typeof object === "object" && !Array.isArray(object)

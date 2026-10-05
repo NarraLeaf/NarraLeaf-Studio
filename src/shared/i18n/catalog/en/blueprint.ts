@@ -200,6 +200,7 @@ export const blueprint = {
             fieldMissing: "\"{node}\": {struct} has no field \"{field}\".",
             fieldUnpicked: "Node \"{node}\": pick a field.",
             keyNotAField: "\"{node}\": {struct} has no field \"{key}\". No item matches.",
+            listShapeMismatch: "\"{node}\": {struct} does not match this list's fields. Fields that differ show empty.",
         },
         fn: {
             nameMissing: "Fn \"{node}\": set a function name.",

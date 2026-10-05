@@ -186,6 +186,7 @@ export const blueprint = {
             fieldMissing: "“{node}”：{struct}没有字段“{field}”",
             fieldUnpicked: "节点“{node}”：选择字段",
             keyNotAField: "“{node}”：{struct}没有字段“{key}”，不会匹配任何项",
+            listShapeMismatch: "“{node}”：连入的{struct}与该列表的字段不一致，不一致的字段显示为空",
         },
         fn: {
             nameMissing: "函数“{node}”：设置函数名称",

@@ -55,7 +55,7 @@ import {
     buildBlueprintStructTypeContext,
     type BlueprintNodeStructTypes,
 } from "./graphStructTypeInference";
-import { blueprintStructName } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
+import { blueprintStructName, formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { withoutInferredPinTypes } from "@/lib/ui-editor/blueprint-nodes/connectionPolicy";
 import {
     isValidBlueprintExecConnection,
@@ -491,6 +491,17 @@ function reportStructFieldDiagnostics(
             });
         }
         return;
+    }
+    if (typed.rowMismatch) {
+        out.push({
+            severity: "warning",
+            code: "node.list_shape_mismatch",
+            message: translate("blueprint.diagnostics.node.listShapeMismatch", {
+                node: title,
+                struct: formatBlueprintValueTypeLabel(typed.rowMismatch.givenType, translate),
+            }),
+            target,
+        });
     }
     const keyPin = node.def.elementTypeFlow?.keyPin;
     if (!keyPin || !typed.struct) {

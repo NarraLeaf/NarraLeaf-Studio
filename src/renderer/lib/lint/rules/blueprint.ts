@@ -872,24 +872,8 @@ function runRequiredInputUnwired(ctx: LintContext): LintFinding[] {
  * A warning: the game runs, and what is lost is the value the node was placed to read.
  */
 function runFieldMissing(ctx: LintContext): LintFinding[] {
-    registerCoreBlueprintNodes();
     const findings: LintFinding[] = [];
-    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
-        // A blueprint document written by hand can carry a graph with no owner; it has no row either.
-        const elementId = site.owner ? anchorElementId(site.owner) : null;
-        const typed = analyzeBlueprintStructTypes(
-            site.ir,
-            buildBlueprintStructTypeContext({
-                uiDocument: ctx.uiDocument,
-                widgetElement: elementId ? ctx.uiDocument?.elements[elementId] : null,
-                owner: site.owner,
-                isComponentDefinitionGraph: site.owner ? anchorComponentId(site.owner) !== null : false,
-            }),
-        );
-        if (typed.size === 0) {
-            continue;
-        }
-        const live = collectLiveBlueprintGraphNodeIds(site.ir);
+    for (const { site, typed, live } of listTypedBlueprintGraphSites(ctx)) {
         for (const [nodeId, info] of typed) {
             const node = site.ir.nodes?.[nodeId];
             if (!node || !live.has(nodeId) || !info.struct) {
@@ -907,6 +891,77 @@ function runFieldMissing(ctx: LintContext): LintFinding[] {
                 messageParamKeys: {
                     ...(titleKey ? { node: titleKey } : {}),
                     struct: blueprintStructNameKey(info.structId),
+                },
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
+/**
+ * Every graph with the types the editor works out for it, and the nodes in it that will run.
+ *
+ * The one pass the struct rules share, so what they report is judged against the pins the canvas
+ * draws (`graphStructTypeInference.ts`). Graphs with nothing typed in them are skipped.
+ */
+function listTypedBlueprintGraphSites(ctx: LintContext): {
+    site: ReturnType<typeof listBlueprintGraphSites>[number];
+    typed: Map<string, BlueprintNodeStructTypes>;
+    live: Set<string>;
+}[] {
+    registerCoreBlueprintNodes();
+    const out: ReturnType<typeof listTypedBlueprintGraphSites> = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        // A blueprint document written by hand can carry a graph with no owner; it has no row either.
+        const elementId = site.owner ? anchorElementId(site.owner) : null;
+        const typed = analyzeBlueprintStructTypes(
+            site.ir,
+            buildBlueprintStructTypeContext({
+                uiDocument: ctx.uiDocument,
+                widgetElement: elementId ? ctx.uiDocument?.elements[elementId] : null,
+                owner: site.owner,
+                isComponentDefinitionGraph: site.owner ? anchorComponentId(site.owner) !== null : false,
+            }),
+        );
+        if (typed.size > 0) {
+            out.push({ site, typed, live: collectLiveBlueprintGraphNodeIds(site.ir) });
+        }
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// blueprint/list-shape-mismatch
+// ---------------------------------------------------------------------------
+
+/**
+ * A list node handed rows of another shape than the list declares.
+ *
+ * The list draws every row from its own fields, so saves wired into an ending list draw rows whose
+ * names and pictures are empty - with nothing anywhere saying why. Judged the way the struct library
+ * judges two shapes (`structsAreCompatible`): by their fields, never by their ids, so two lists that
+ * agree feed each other without a finding.
+ *
+ * A warning: the game runs, and what is lost is what the rows were meant to show.
+ */
+function runListShapeMismatch(ctx: LintContext): LintFinding[] {
+    const findings: LintFinding[] = [];
+    for (const { site, typed, live } of listTypedBlueprintGraphSites(ctx)) {
+        for (const [nodeId, info] of typed) {
+            const node = site.ir.nodes?.[nodeId];
+            if (!node || !live.has(nodeId) || !info.rowMismatch) {
+                continue;
+            }
+            const titleKey = blueprintNodeTitleKey(blueprintNodeDisplayName(node.type));
+            findings.push({
+                ruleId: "blueprint/list-shape-mismatch",
+                messageKey: "lint.rule.blueprintListShapeMismatch.message" as TranslationKey,
+                messageParams: { node: blueprintNodeDisplayName(node.type), struct: info.rowMismatch.givenStructId },
+                messageParamKeys: {
+                    ...(titleKey ? { node: titleKey } : {}),
+                    struct: blueprintStructNameKey(info.rowMismatch.givenStructId),
                 },
                 location: blueprintLocation(site, node.id),
                 target: blueprintNodeJumpTarget(site, node.id),
@@ -1047,6 +1102,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "blueprintFieldMissing",
         run: ctx => runFieldMissing(ctx),
+    },
+    {
+        id: "blueprint/list-shape-mismatch",
+        category: "blueprint",
+        // A warning, beside a missing field: the list draws, and the fields that differ are empty.
+        defaultSeverity: "warning",
+        slug: "blueprintListShapeMismatch",
+        run: ctx => runListShapeMismatch(ctx),
     },
     {
         id: "blueprint/assembled-asset-name",

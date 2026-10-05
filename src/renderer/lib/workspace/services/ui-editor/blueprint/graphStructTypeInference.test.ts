@@ -32,6 +32,11 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_STRING_SPLIT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -497,5 +502,51 @@ describe("arrays of plain values, and looping over typed arrays", () => {
         );
         expect(pinType(ir, "each", "item", "output")).toBe("struct:nl.ending");
         expect(pinType(graph({ each: { type: BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH } }, []), "each", "item", "output")).toBe("json");
+    });
+});
+
+describe("the rows of a list", () => {
+    const SHAPE: UIStructDef = { id: "chapterRow", fields: [{ id: "c1", key: "title", type: "string" }] };
+    function listDocument(itemStructId: string): Pick<UIDocument, "elements" | "structs"> {
+        return {
+            elements: {
+                list: { id: "list", type: "nl.list", name: "list", parentId: null, childrenIds: [], layout: { x: 0, y: 0, width: 1, height: 1 }, props: { itemStructId } },
+                button: { id: "button", type: "nl.button", name: "button", parentId: null, childrenIds: [], layout: { x: 0, y: 0, width: 1, height: 1 } },
+            } as Record<string, UIElement>,
+            structs: { chapterRow: SHAPE },
+        };
+    }
+    function typed(ir: BlueprintGraphIr, document: Pick<UIDocument, "elements" | "structs">, widgetElementId: string) {
+        return analyzeBlueprintStructTypes(
+            ir,
+            buildBlueprintStructTypeContext({ uiDocument: document, widgetElement: document.elements[widgetElementId] }),
+        );
+    }
+
+    it("types an item head on the list's own graph by the list's shape", () => {
+        const ir = graph({ head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK } }, []);
+        expect(typed(ir, listDocument("nl.ending"), "list").get("head")?.pinTypes.item).toBe("struct:nl.ending");
+    });
+
+    it("types the row a list node hands out by the list wired into it, its own shape included", () => {
+        const ir = graph(
+            {
+                ref: { type: BLUEPRINT_NODE_TYPE_ELEMENT_REF, params: { surfaceId: "page", elementId: "list", elementType: "nl.list" } },
+                at: { type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT },
+            },
+            ["ref.element -> at.list"],
+        );
+        expect(typed(ir, listDocument("chapterRow"), "button").get("at")?.pinTypes.item).toBe("struct:chapterRow");
+    });
+
+    it("reports rows of another shape handed to a list, and not rows of its own", () => {
+        const fed = (source: string, port: string) =>
+            typed(
+                graph({ source: { type: source }, fill: { type: BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS } }, [`source.${port} -> fill.items`]),
+                listDocument("nl.ending"),
+                "list",
+            ).get("fill");
+        expect(fed(BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST, "entries")?.rowMismatch?.givenStructId).toBe("nl.saveEntry");
+        expect(fed(BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS, "endings")?.rowMismatch).toBeUndefined();
     });
 });

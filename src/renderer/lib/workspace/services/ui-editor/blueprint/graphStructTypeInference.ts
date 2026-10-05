@@ -14,6 +14,8 @@
  *  - **Nodes typed by their own select** (`paramPinTypes`): Get Property set to Position answers a
  *    Vector2D, On Preference Changed for the music volume a number.
  *  - **Get / Set Saved Var**, typed by the variable's declaration in the project's variable table.
+ *  - **The list nodes and item heads** (`listRowTypes`), whose rows are the rows of the list they act
+ *    on: Item Click on an ending list hands out an ending. Rows wired in are compared with that shape.
  *
  * The answers are stamped onto a copy of each node's params under
  * `BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES`, so every consumer that already reads pins through the
@@ -41,16 +43,20 @@ import {
 import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { resolveListRowContext } from "@shared/types/ui-editor/listItemContext";
+import { findOwningListItemTemplate, resolveListRowContext } from "@shared/types/ui-editor/listItemContext";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { resolveListItemContextAvailable } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import {
     findUIStructField,
+    structsAreCompatible,
     uiStructFieldValueType,
     uiStructIdFromValueType,
+    uiStructValueType,
     type UIStructDef,
     type UIStructField,
 } from "@shared/types/ui-editor/struct";
+import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
@@ -68,6 +74,11 @@ export type BlueprintStructTypeInferenceContext = {
     rowStruct?: UIStructDef | null;
     /** A saved variable's declared type as a pin type, by variable id; unknown ids answer nothing. */
     savedVariableType?: (variableId: string) => string | undefined;
+    /**
+     * The shape a list's rows have, by the list's element id - or, given null, of the list this graph
+     * belongs to. `undefined` when there is no such list to ask, `null` when it declares no shape.
+     */
+    listRowStructId?: (listElementId: string | null) => string | null | undefined;
 };
 
 /**
@@ -97,6 +108,8 @@ export type BlueprintNodeStructTypes = {
     field?: UIStructField | null;
     /** For an array node with a key pin: the key is wired rather than typed, so it is unknown here. */
     keyWired?: boolean;
+    /** For a list node: rows of another shape wired into one of its row inputs, and their type. */
+    rowMismatch?: { pin: string; givenStructId: string; givenType: string };
 };
 
 const EMPTY_INFO: BlueprintNodeStructTypes = Object.freeze({ pinTypes: {}, struct: null, structId: null });
@@ -120,8 +133,11 @@ export function isBlueprintStructTypedNodeType(type: string): boolean {
         return true;
     }
     const def = blueprintNodeRegistry.get(type);
-    return Boolean(def?.elementTypeFlow || def?.paramPinTypes);
+    return Boolean(def?.elementTypeFlow || def?.paramPinTypes || def?.listRowTypes);
 }
+
+/** The pin a list node is told which list to act on through; see `listNodes.ts`. */
+const LIST_TARGET_PIN = "list";
 
 function withPinTypeStamp(
     params: Record<string, unknown> | undefined,
@@ -267,6 +283,48 @@ export function analyzeBlueprintStructTypes(
         return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
     };
 
+    const analyzeListRowNode = (
+        node: BlueprintGraphNode,
+        spec: NonNullable<BlueprintNodeDef["listRowTypes"]>,
+    ): BlueprintNodeStructTypes => {
+        // The list a wire names, followed only through an element literal: anything else that hands
+        // out a list is answered at run time, and guessing here would type rows by the wrong list.
+        const listEdge = incoming.get(`${node.id}\0${LIST_TARGET_PIN}`);
+        let listElementId: string | null = null;
+        if (listEdge) {
+            const ref = readBlueprintElementRefParams(nodes[listEdge.from.nodeId]?.params);
+            if (!ref) {
+                return EMPTY_INFO;
+            }
+            listElementId = ref.elementId;
+        }
+        const structId = ctx.listRowStructId?.(listElementId);
+        if (!structId) {
+            return EMPTY_INFO;
+        }
+        const struct = resolveStruct(structId);
+        const rowType = uiStructValueType(structId);
+        const typeOf = (carries: "item" | "array") => (carries === "array" ? blueprintArrayValueType(rowType) : rowType);
+        const pinTypes: Record<string, string> = {};
+        for (const [pinId, carries] of Object.entries({ ...spec.outputs, ...spec.inputs })) {
+            pinTypes[pinId] = typeOf(carries);
+        }
+        let rowMismatch: BlueprintNodeStructTypes["rowMismatch"];
+        for (const [pinId, carries] of Object.entries(spec.inputs ?? {})) {
+            const given = wiredType(node.id, pinId);
+            const givenStructId = uiStructIdFromValueType(carries === "array" ? blueprintArrayElementType(given) : given);
+            if (!givenStructId || givenStructId === structId) {
+                continue;
+            }
+            const givenStruct = resolveStruct(givenStructId);
+            if (struct && givenStruct && !structsAreCompatible(givenStruct, struct)) {
+                rowMismatch = { pin: pinId, givenStructId, givenType: given as string };
+                break;
+            }
+        }
+        return { pinTypes, struct, structId, ...(rowMismatch ? { rowMismatch } : {}) };
+    };
+
     const analyze = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
         if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
             return analyzeFieldReader(node);
@@ -277,6 +335,9 @@ export function analyzeBlueprintStructTypes(
         const def = blueprintNodeRegistry.get(node.type);
         if (def?.elementTypeFlow) {
             return analyzeArrayNode(node);
+        }
+        if (def?.listRowTypes) {
+            return analyzeListRowNode(node, def.listRowTypes);
         }
         return def?.paramPinTypes ? analyzeParamTypedNode(node, def.paramPinTypes) : EMPTY_INFO;
     };
@@ -361,6 +422,24 @@ export function buildBlueprintStructTypeContext(input: {
     const savedTypes = new Map(
         (input.savedVariables ?? []).map(variable => [variable.id, blueprintValueTypeForVariable(variable.valueType)]),
     );
+    // The graph's own list: the list it is attached to, or the list whose item template it is in -
+    // the same answer the field pickers give.
+    const ownList = document && input.widgetElement
+        ? isListLikeWidgetType(input.widgetElement.type)
+            ? input.widgetElement
+            : (() => {
+                  const owning = findOwningListItemTemplate(document, input.widgetElement);
+                  return owning ? document.elements[owning.listElementId] ?? null : null;
+              })()
+        : null;
+    const listRowStructId = (listElementId: string | null): string | null | undefined => {
+        const list = listElementId ? document?.elements[listElementId] : ownList;
+        if (!list || !isListLikeWidgetType(list.type)) {
+            return undefined;
+        }
+        const structId = (list.props as Record<string, unknown> | undefined)?.itemStructId;
+        return typeof structId === "string" && structId.trim() ? structId.trim() : null;
+    };
     const resolveStruct = (structId: string) => resolveUIStruct(document, structId);
     const row = document && input.widgetElement ? resolveListRowContext(document, input.widgetElement) : null;
     return {
@@ -379,6 +458,7 @@ export function buildBlueprintStructTypeContext(input: {
             : document ? row !== null : true,
         rowStruct: row?.structId ? resolveStruct(row.structId) : null,
         savedVariableType: variableId => savedTypes.get(variableId),
+        listRowStructId,
     };
 }
 

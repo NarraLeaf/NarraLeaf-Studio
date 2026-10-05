@@ -186,6 +186,7 @@ export const blueprint = {
             fieldMissing: "「{node}」：{struct}にフィールド「{field}」がない",
             fieldUnpicked: "ノード「{node}」：フィールドを選ぶ",
             keyNotAField: "「{node}」：{struct}にフィールド「{key}」がない。一致する項目はない",
+            listShapeMismatch: "「{node}」：接続された{struct}がこのリストのフィールドと一致しない。一致しないフィールドは空で表示される",
         },
         fn: {
             nameMissing: "関数「{node}」：関数名を決める",
