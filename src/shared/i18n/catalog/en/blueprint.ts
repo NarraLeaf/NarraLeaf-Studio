@@ -819,6 +819,8 @@ export const blueprint = {
         height: "Height",
         held: "Held",
         device: "Device",
+        connected: "Connected",
+        axis: "Axis",
         hide: "Hide",
         holdFinalValue: "Hold final value",
         id: "Id",

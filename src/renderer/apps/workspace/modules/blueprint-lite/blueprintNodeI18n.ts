@@ -781,6 +781,8 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Is Fullscreen": "blueprint.port.isFullscreen",
     "Held": "blueprint.port.held",
     "Device": "blueprint.port.device",
+    "Connected": "blueprint.port.connected",
+    "Axis": "blueprint.port.axis",
     "Action": "blueprint.port.action",
     "Source": "blueprint.port.source",
     "Is Mounted": "blueprint.port.isMounted",

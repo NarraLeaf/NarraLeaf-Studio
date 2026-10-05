@@ -190,7 +190,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
     "blueprint.image.getImageAsset", "blueprint.image.getVisible",
-    "blueprint.input.getDevice", "blueprint.input.isActionHeld",
+    "blueprint.input.getDevice", "blueprint.input.getGamepadAxis", "blueprint.input.isActionHeld", "blueprint.input.isGamepadButtonHeld", "blueprint.input.isGamepadConnected",
     "blueprint.layer.isMounted",
     "blueprint.list.findItemByField", "blueprint.list.getEnabled", "blueprint.list.getItemAt",
     "blueprint.list.getItemCount", "blueprint.list.getItemField", "blueprint.list.getItemIndex",

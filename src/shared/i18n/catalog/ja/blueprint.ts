@@ -763,6 +763,8 @@ export const blueprint = {
         height: "高さ",
         held: "押されているか",
         device: "デバイス",
+        connected: "接続中",
+        axis: "軸",
         hide: "隠す",
         holdFinalValue: "最終値を保つ",
         id: "Id",

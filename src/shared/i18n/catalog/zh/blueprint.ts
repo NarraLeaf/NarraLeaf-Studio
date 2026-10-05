@@ -761,6 +761,8 @@ export const blueprint = {
         height: "高度",
         held: "按住中",
         device: "设备",
+        connected: "已连接",
+        axis: "轴向",
         hide: "隐藏",
         holdFinalValue: "保持最终值",
         id: "Id",
