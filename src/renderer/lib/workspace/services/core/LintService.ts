@@ -5,6 +5,10 @@ import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
+import { LiveLintScheduler } from "@/lib/lint/liveScheduler";
+import { subscribeActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { subscribeActiveProjectFonts } from "@shared/typography/projectFonts";
+import { subscribeActiveSaveSchema } from "@shared/saves/saveSchemaRegistry";
 import type {
     LintAlphaProbe,
     LintAssetEntry,
@@ -72,6 +76,17 @@ const VIDEO_PROBE_CONCURRENCY = 2;
 
 type LintServiceEvents = {
     reportChanged: LintReport | null;
+    stateChanged: LintServiceState;
+};
+
+/** What the sweeps are doing, for the surfaces that say whether the findings on show are current. */
+export type LintServiceState = {
+    /** A sweep somebody asked for (the command, the build gate) is running. */
+    requestedRunning: boolean;
+    /** The findings follow edits by themselves (the workspace window holds `startLive`). */
+    live: boolean;
+    /** The findings on show may be behind the project: a change is waiting to be checked, or being checked. */
+    pending: boolean;
 };
 
 /**
@@ -87,15 +102,34 @@ type LintServiceEvents = {
  */
 export class LintService extends Service<LintService> implements ILintService {
     private lastReport: LintReport | null = null;
-    private running = false;
     private disposeChannel: (() => void) | null = null;
     private readonly events = new EventEmitter<LintServiceEvents>();
     /**
      * Findings produced while *assembling* the context rather than by a rule - a story that will
      * not load. They belong in the report (an unreadable story is the most serious thing lint can
      * find), but no rule can report them: a rule only sees the stories that loaded.
+     *
+     * The last assembly's, kept for inspection; a sweep uses the ones its own assembly returned, so
+     * a live sweep and a requested one never read each other's.
      */
     private contextFindings: LintReportEntry[] = [];
+    /** The sweep somebody asked for, while it runs - a second request joins it. */
+    private requested: Promise<LintReport> | null = null;
+    /** The background sweep in progress, and what stops it when a requested one needs the floor. */
+    private liveSweep: { abort: AbortController; done: Promise<void> } | null = null;
+    private liveScheduler: LiveLintScheduler | null = null;
+    private liveUsers = 0;
+    private disposeLiveSources: (() => void) | null = null;
+    /**
+     * What the asset probes answered, by asset id and content hash.
+     *
+     * The background sweeps run after every pause in editing, and the probes are the only slow thing
+     * a rule asks for: a stat per asset and a decode per image. Their answers only change when the
+     * file does, and a changed file is a new hash, so a background sweep reuses them. A requested
+     * sweep starts from an empty cache - it is the one that has to notice a file removed from disk
+     * behind Studio's back.
+     */
+    private readonly probeCache: LintProbeCache = createLintProbeCache();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const consoleService = ctx.services.get<ConsoleService>(Services.Console);
@@ -112,14 +146,20 @@ export class LintService extends Service<LintService> implements ILintService {
     public override dispose(_ctx: WorkspaceContext): void {
         this.disposeChannel?.();
         this.disposeChannel = null;
+        this.stopLive();
+        this.liveUsers = 0;
+        this.liveSweep?.abort.abort();
+        this.liveSweep = null;
         this.lastReport = null;
         this.contextFindings = [];
-        this.running = false;
+        this.requested = null;
+        this.clearProbeCache();
         this.events.clear();
     }
 
+    /** Whether a sweep somebody asked for is running. Background sweeps are {@link getState}'s. */
     public isRunning(): boolean {
-        return this.running;
+        return this.requested !== null;
     }
 
     public getLastReport(): LintReport | null {
@@ -130,11 +170,184 @@ export class LintService extends Service<LintService> implements ILintService {
         return this.events.on("reportChanged", handler);
     }
 
+    public getState(): LintServiceState {
+        return {
+            requestedRunning: this.requested !== null,
+            live: this.liveScheduler !== null,
+            pending: this.requested !== null || (this.liveScheduler?.isPending() ?? false),
+        };
+    }
+
+    public onStateChanged(handler: (state: LintServiceState) => void): () => void {
+        return this.events.on("stateChanged", handler);
+    }
+
+    /**
+     * Keep the findings current while the project is edited: sweep now, and again after every pause
+     * in editing. Returns the release; the sweeps stop when the last holder releases.
+     *
+     * Held by the workspace window rather than started by the service itself, because the same
+     * service also serves the command-line `--lint` and `--build`, which open a project to sweep it
+     * once and must not leave a schedule running behind them.
+     */
+    public startLive(): () => void {
+        this.liveUsers += 1;
+        if (!this.liveScheduler) {
+            this.liveScheduler = new LiveLintScheduler({
+                sweep: () => this.sweepInBackground(),
+                onPhaseChanged: () => this.emitState(),
+            });
+            this.disposeLiveSources = this.subscribeToProjectChanges(() => this.liveScheduler?.markChanged());
+            this.liveScheduler.runSoon();
+            this.emitState();
+        }
+        let released = false;
+        return () => {
+            if (released) {
+                return;
+            }
+            released = true;
+            this.liveUsers = Math.max(0, this.liveUsers - 1);
+            if (this.liveUsers === 0) {
+                this.stopLive();
+                this.emitState();
+            }
+        };
+    }
+
+    private stopLive(): void {
+        this.disposeLiveSources?.();
+        this.disposeLiveSources = null;
+        this.liveScheduler?.dispose();
+        this.liveScheduler = null;
+    }
+
+    private emitState(): void {
+        this.events.emit("stateChanged", this.getState());
+    }
+
+    /**
+     * Every source of a change a rule could see. Anything a rule reads and nothing here announces
+     * would leave the panel showing findings about a project that is no longer there.
+     *
+     * Each subscription is attempted on its own: a service missing from a harness, or one that
+     * throws while the project is still opening, costs that one source rather than all of them.
+     */
+    private subscribeToProjectChanges(changed: () => void): () => void {
+        const services = this.getContext().services;
+        const disposers: (() => void)[] = [];
+        const listen = (subscribe: () => (() => void) | void) => {
+            try {
+                const dispose = subscribe();
+                if (typeof dispose === "function") {
+                    disposers.push(dispose);
+                }
+            } catch (error) {
+                console.warn("[LintService] a change source could not be watched", error);
+            }
+        };
+
+        listen(() => services.get<StoryService>(Services.Story).onDocumentChanged(changed));
+        listen(() => services.get<StoryService>(Services.Story).onLibraryChanged(changed));
+        listen(() => services.get<StoryService>(Services.Story).onAnimationsChanged(changed));
+        listen(() => services.get<UIDocumentService>(Services.UIDocument).onDocumentChanged(changed));
+        listen(() => services.get<UIGraphService>(Services.UIGraph).onGraphsChanged(changed));
+        listen(() => {
+            const events = services.get<AssetsService>(Services.Assets).getEvents();
+            const offUpdated = events.on("updated", changed);
+            const offDeleted = events.on("deleted", changed);
+            return () => {
+                offUpdated();
+                offDeleted();
+            };
+        });
+        listen(() => services.get<AssetSetService>(Services.AssetSets).onSetsChanged(changed));
+        listen(() => services.get<CharacterService>(Services.Character).subscribe(changed));
+        listen(() => services.get<LocalizationService>(Services.Localization).onConfigChanged(changed));
+        listen(() => services.get<LocalizationService>(Services.Localization).onDocumentChanged(changed));
+        listen(() => services.get<LocalizationService>(Services.Localization).onKeysChanged(changed));
+        listen(() => services.get<VoiceService>(Services.Voice).onConfigChanged(changed));
+        listen(() => services.get<VoiceService>(Services.Voice).onDocumentChanged(changed));
+        listen(() => services.get<VariableRegistryService>(Services.VariableRegistry).onRegistryChanged(changed));
+        listen(() => services.get<AppTagService>(Services.AppTags).onTagsChanged(changed));
+        listen(() => services.get<DlcService>(Services.Dlc).onDlcChanged(changed));
+        // The project file carries the check settings themselves: a rule turned off or retuned
+        // should change the panel without anybody re-running anything.
+        listen(() => services.get<ProjectService>(Services.Project).onConfigChanged(changed));
+        // Rebuilt a moment after the documents it indexes change; `assets/missing` and
+        // `assets/unused` read it, so a sweep that ran before it caught up has to run again.
+        listen(() => services.get<ReferenceService>(Services.Reference).onIndexChanged(changed));
+        // Read by rules from the module that holds them rather than from a service.
+        listen(() => subscribeActiveBrandPalette(changed));
+        listen(() => subscribeActiveProjectFonts(changed));
+        listen(() => subscribeActiveSaveSchema(changed));
+
+        return () => {
+            for (const dispose of disposers.splice(0)) {
+                try {
+                    dispose();
+                } catch {
+                    // Already gone with its service.
+                }
+            }
+        };
+    }
+
+    /**
+     * One background sweep: silent (no console lines, no progress bar - it runs after every pause in
+     * editing), and abandoned without a word when a requested sweep needs the floor.
+     */
+    private async sweepInBackground(): Promise<void> {
+        if (this.requested) {
+            return;
+        }
+        const abort = new AbortController();
+        let finish!: () => void;
+        const done = new Promise<void>(resolve => {
+            finish = resolve;
+        });
+        this.liveSweep = { abort, done };
+        try {
+            const { ctx, contextFindings } = await this.assembleContext();
+            if (abort.signal.aborted) {
+                return;
+            }
+            const report = await runLintRules(ctx, { signal: abort.signal });
+            if (abort.signal.aborted) {
+                return;
+            }
+            this.publish(mergeContextFindings(report, contextFindings));
+        } catch (error) {
+            console.warn("[LintService] background sweep failed", error);
+        } finally {
+            if (this.liveSweep?.abort === abort) {
+                this.liveSweep = null;
+            }
+            finish();
+        }
+    }
+
+    private publish(report: LintReport): void {
+        this.lastReport = report;
+        this.events.emit("reportChanged", report);
+    }
+
+    /** Forget every probe answer; the next sweep reads the disk again. */
+    private clearProbeCache(): void {
+        this.probeCache.exists.clear();
+        this.probeCache.image.clear();
+        this.probeCache.videoAlpha.clear();
+    }
+
     /**
      * Assemble the snapshot the rules read. One pass over every project document; see `LintContext`
      * for what each field means and why localization/voice are nullable.
      */
     public async buildContext(): Promise<LintContext> {
+        return (await this.assembleContext()).ctx;
+    }
+
+    private async assembleContext(): Promise<{ ctx: LintContext; contextFindings: LintReportEntry[] }> {
         const services = this.getContext().services;
         const projectService = services.get<ProjectService>(Services.Project);
         const storyService = services.get<StoryService>(Services.Story);
@@ -147,9 +360,9 @@ export class LintService extends Service<LintService> implements ILintService {
         const uiDocumentService = services.get<UIDocumentService>(Services.UIDocument);
         const uiGraphService = services.get<UIGraphService>(Services.UIGraph);
 
-        this.contextFindings = [];
+        const contextFindings: LintReportEntry[] = [];
 
-        const { stories, complete: storiesComplete } = await this.loadStories(storyService);
+        const { stories, complete: storiesComplete } = await this.loadStories(storyService, contextFindings);
         const assets = this.collectAssets(assetsService);
 
         await referenceService.ensureReady().catch(error => {
@@ -191,7 +404,7 @@ export class LintService extends Service<LintService> implements ILintService {
         const localizationKeys = await this.readLocalizationKeys(localizationService);
         const voice = await this.buildVoiceContext(voiceService);
 
-        return {
+        const ctx: LintContext = {
             config: projectService.getLintingConfiguration(),
             network: projectService.getNetworkConfiguration(),
             pluginNetworkDeclarations: await this.readPluginNetworkDeclarations(),
@@ -224,8 +437,10 @@ export class LintService extends Service<LintService> implements ILintService {
             localizationKeys,
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
-            io: this.createIo(assetsService, await this.mayProbeMedia()),
+            io: this.createIo(assetsService, await this.mayProbeMedia(), assets),
         };
+        this.contextFindings = contextFindings;
+        return { ctx, contextFindings };
     }
 
     /** The plugins' stores, or null - "not read" rather than "none" - when they cannot be had. */
@@ -239,13 +454,33 @@ export class LintService extends Service<LintService> implements ILintService {
     }
 
     /**
-     * Sweep the project. Progress goes to the `lint` console channel so a long run on a large
-     * project is visible without a modal, and the report is kept so a tab opened afterwards has
-     * something to show.
+     * Sweep the project because somebody asked - the command, the build gate, the command line.
+     * Progress goes to the `lint` console channel so a long run on a large project is visible
+     * without a modal, and the report replaces whatever the panel showed.
+     *
+     * It reads the disk afresh rather than trusting what the background sweeps learned about each
+     * file: this is the sweep a build stands on. A background sweep in progress is abandoned (its
+     * result would be older than this one's), and the background schedule waits until this is done.
+     * A second request while one runs joins it - the sweep reads the project as it is now, so two
+     * overlapping ones would produce the same report twice.
      */
-    public async run(options: LintRunOptions = {}): Promise<LintReport> {
+    public run(options: LintRunOptions = {}): Promise<LintReport> {
+        if (this.requested) {
+            return this.requested;
+        }
+        const started = this.runRequested(options).finally(() => {
+            this.requested = null;
+            this.liveScheduler?.resume();
+            this.emitState();
+        });
+        this.requested = started;
+        this.liveScheduler?.suspend();
+        this.emitState();
+        return started;
+    }
+
+    private async runRequested(options: LintRunOptions): Promise<LintReport> {
         const consoleService = this.getContext().services.get<ConsoleService>(Services.Console);
-        this.running = true;
         consoleService.setProgress(LINT_CONSOLE_CHANNEL, { value: 0, indeterminate: true, error: false });
         consoleService.append(LINT_CONSOLE_CHANNEL, {
             level: "info",
@@ -254,7 +489,16 @@ export class LintService extends Service<LintService> implements ILintService {
         });
 
         try {
-            const ctx = await this.buildContext();
+            const live = this.liveSweep;
+            if (live) {
+                live.abort.abort();
+                await live.done;
+            }
+            // Edits made before this point are what this sweep is about to read.
+            this.liveScheduler?.clearPending();
+            this.clearProbeCache();
+
+            const { ctx, contextFindings } = await this.assembleContext();
             const report = await runLintRules(ctx, {
                 ...options,
                 onProgress: progress => {
@@ -268,9 +512,8 @@ export class LintService extends Service<LintService> implements ILintService {
                 },
             });
 
-            const merged = this.mergeContextFindings(report);
-            this.lastReport = merged;
-            this.events.emit("reportChanged", merged);
+            const merged = mergeContextFindings(report, contextFindings);
+            this.publish(merged);
             consoleService.append(LINT_CONSOLE_CHANNEL, {
                 level: merged.counts.error > 0 ? "error" : merged.counts.warning > 0 ? "warning" : "success",
                 source: LINT_CONSOLE_SOURCE,
@@ -278,29 +521,8 @@ export class LintService extends Service<LintService> implements ILintService {
             });
             return merged;
         } finally {
-            this.running = false;
             consoleService.setProgress(LINT_CONSOLE_CHANNEL, null);
         }
-    }
-
-    /**
-     * Context findings ride at the front of the entry list rather than being re-sorted in: they are
-     * always errors, and "this story would not open" is the first thing a reader needs.
-     */
-    private mergeContextFindings(report: LintReport): LintReport {
-        if (this.contextFindings.length === 0) {
-            return report;
-        }
-        const entries = [...this.contextFindings, ...report.entries];
-        return {
-            ...report,
-            entries,
-            counts: {
-                error: report.counts.error + this.contextFindings.length,
-                warning: report.counts.warning,
-                info: report.counts.info,
-            },
-        };
     }
 
     /**
@@ -313,7 +535,10 @@ export class LintService extends Service<LintService> implements ILintService {
      * finding per reference into it, on top of the finding the failure already reports. See
      * `LintContext.storiesComplete`.
      */
-    private async loadStories(storyService: StoryService): Promise<{ stories: LintStoryEntry[]; complete: boolean }> {
+    private async loadStories(
+        storyService: StoryService,
+        contextFindings: LintReportEntry[],
+    ): Promise<{ stories: LintStoryEntry[]; complete: boolean }> {
         const stories: LintStoryEntry[] = [];
         let index: StoryLibraryIndex;
         try {
@@ -334,7 +559,7 @@ export class LintService extends Service<LintService> implements ILintService {
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
-                this.contextFindings.push(storyUnreadableFinding(entry, error));
+                contextFindings.push(storyUnreadableFinding(entry, error));
             }
         }
         return { stories, complete };
@@ -518,8 +743,24 @@ export class LintService extends Service<LintService> implements ILintService {
      * once before the sweep instead of being learned from a refusal per clip - see
      * {@link mayProbeMedia}.
      */
-    private createIo(assetsService: AssetsService, mayProbeMedia: boolean): LintIo {
+    private createIo(assetsService: AssetsService, mayProbeMedia: boolean, assets: readonly LintAssetEntry[]): LintIo {
         const probeQueue = createConcurrencyLimiter(IMAGE_PROBE_CONCURRENCY);
+        const cache = this.probeCache;
+        // The content hash names the bytes, so an answer filed under it stays true until the file is
+        // replaced - which gives the asset a new hash and the probe a new key.
+        const hashById = new Map(assets.map(asset => [asset.id, asset.hash ?? ""]));
+        const remember = <T>(store: Map<string, Promise<T>>, assetId: string, probe: () => Promise<T>): Promise<T> => {
+            const key = `${assetId}@${hashById.get(assetId) ?? ""}`;
+            const known = store.get(key);
+            if (known) {
+                return known;
+            }
+            const pending = probe();
+            store.set(key, pending);
+            // A probe that threw has no answer worth keeping.
+            pending.catch(() => store.delete(key));
+            return pending;
+        };
         const shardPath = (assetId: string): string =>
             this.getContext().project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
         const readBytes = async (assetId: string): Promise<Uint8Array | null> => {
@@ -543,10 +784,10 @@ export class LintService extends Service<LintService> implements ILintService {
          * file - the same conflation `readBytes` already made by answering `null` for both, and the
          * finding ("cannot be read from disk") is true either way.
          */
-        const exists = async (assetId: string): Promise<boolean> => {
+        const exists = (assetId: string): Promise<boolean> => remember(cache.exists, assetId, async () => {
             const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
             return (await fs.stat(shardPath(assetId))).ok;
-        };
+        });
 
         const videoProbeQueue = createConcurrencyLimiter(VIDEO_PROBE_CONCURRENCY);
 
@@ -578,7 +819,7 @@ export class LintService extends Service<LintService> implements ILintService {
              * pre-check does not cover this path, and without one this would send a spawn per clip
              * to a main process that refuses each one on the console. See {@link mayProbeMedia}.
              */
-            probeVideoAlpha: (assetId: string) => videoProbeQueue(async (): Promise<LintAlphaProbe> => {
+            probeVideoAlpha: (assetId: string) => remember(cache.videoAlpha, assetId, () => videoProbeQueue(async (): Promise<LintAlphaProbe> => {
                 if (!mayProbeMedia) {
                     // Not a verdict, and read as one nowhere: the rule treats every `ok: false`
                     // the same way it treats a host with no ffprobe, which is to conclude nothing
@@ -607,7 +848,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     // must not take the other forty-two rules' findings down with it.
                     return { ok: false, reason: error instanceof Error ? error.message : "probe threw" };
                 }
-            }),
+            })),
             probeFontCoverage: (assetId: string) => probeQueue(async (): Promise<FontCoverageResult> => {
                 const asset = assetsService.getAssets()[AssetType.Font]?.[assetId] as
                     | Asset<AssetType.Font>
@@ -635,7 +876,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     ? fontService.readCoverage(asset)
                     : { ok: false as const, reason: "malformed" as const };
             }),
-            probeImage: (assetId: string) => probeQueue(async (): Promise<LintImageProbe> => {
+            probeImage: (assetId: string) => remember(cache.image, assetId, () => probeQueue(async (): Promise<LintImageProbe> => {
                 const asset = assetsService.getAssets()[AssetType.Image]?.[assetId] as
                     | Asset<AssetType.Image>
                     | undefined;
@@ -659,9 +900,39 @@ export class LintService extends Service<LintService> implements ILintService {
                     width: result.data.metadata.width,
                     height: result.data.metadata.height,
                 };
-            }),
+            })),
         };
     }
+}
+
+/** The probe answers kept between background sweeps; see `LintService.probeCache`. */
+type LintProbeCache = {
+    exists: Map<string, Promise<boolean>>;
+    image: Map<string, Promise<LintImageProbe>>;
+    videoAlpha: Map<string, Promise<LintAlphaProbe>>;
+};
+
+function createLintProbeCache(): LintProbeCache {
+    return { exists: new Map(), image: new Map(), videoAlpha: new Map() };
+}
+
+/**
+ * Context findings ride at the front of the entry list rather than being re-sorted in: they are
+ * always errors, and "this story would not open" is the first thing a reader needs.
+ */
+function mergeContextFindings(report: LintReport, contextFindings: readonly LintReportEntry[]): LintReport {
+    if (contextFindings.length === 0) {
+        return report;
+    }
+    return {
+        ...report,
+        entries: [...contextFindings, ...report.entries],
+        counts: {
+            error: report.counts.error + contextFindings.length,
+            warning: report.counts.warning,
+            info: report.counts.info,
+        },
+    };
 }
 
 /** Run at most `limit` tasks at once; queued callers await their turn. */

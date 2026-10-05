@@ -19,6 +19,7 @@ export const placeholders = {
         voice: "配音",
         assets: "资产",
         console: "控制台",
+        problems: "问题",
         storyMotion: "故事动效",
         dashboard: "仪表盘",
         audioPreview: "音频预览",

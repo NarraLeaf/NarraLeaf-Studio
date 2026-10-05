@@ -57,6 +57,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
     const entries: LintReportEntry[] = [];
     const rulesRun: LintRuleId[] = [];
     const skipped: LintRuleId[] = [];
+    const durations: Partial<Record<LintRuleId, number>> = {};
 
     // Resolved up front so `skipped` is complete even if the sweep is cancelled halfway: a rule the
     // project turned off is skipped whether or not we ever reached it.
@@ -87,8 +88,12 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
 
         rulesRun.push(rule.id);
         let findings: LintFinding[];
+        const ruleStartedAt = now();
         try {
-            findings = await rule.run(ctx, resolveRuleOptions(rule));
+            // The project's own values for the rule's options, from Project ▸ Linting. Missing this
+            // argument once meant every sweep ran on the declared defaults while the settings page
+            // showed - and stored - whatever the author had chosen.
+            findings = await rule.run(ctx, resolveRuleOptions(rule, ctx.config.options?.[rule.id]));
         } catch (error) {
             console.error(`[lint] rule ${rule.id} failed`, error);
             findings = [
@@ -104,6 +109,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
             for (const finding of findings) {
                 entries.push({ ...finding, severity: "error" });
             }
+            durations[rule.id] = now() - ruleStartedAt;
             done += 1;
             options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
             continue;
@@ -112,6 +118,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         for (const finding of findings) {
             entries.push({ ...annotateStoryLocation(finding, locate), severity });
         }
+        durations[rule.id] = now() - ruleStartedAt;
         done += 1;
         options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
     }
@@ -125,7 +132,13 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         counts: countBySeverity(entries),
         rulesRun,
         skipped,
+        durations,
     };
+}
+
+/** Milliseconds, as finely as the realm offers - a rule over a small project is well under one. */
+function now(): number {
+    return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 /** `config.severities[id]` when the project set one, the rule's own default otherwise. */

@@ -521,6 +521,23 @@ export const lint = {
         // 読み手はその 2 つを見比べるため。
         lineAria: "{line} 行目",
         findPlaceholder: "問題を検索",
+        // 一覧に出す範囲。検査そのものは常にプロジェクト全体を対象にし、ここでは出す範囲だけを絞る。
+        scopeProject: "プロジェクト全体",
+        scopeOpenEditors: "開いているエディタ",
+        scopeActiveEditor: "現在のエディタ",
+        scopeAria: "問題の範囲",
+        severityAria: "レベル",
+        groupAria: "グループ",
+        emptyOpenEditors: "開いているエディタに問題はない",
+        emptyActiveEditor: "現在のエディタに問題はない",
+        emptyFiltered: "選んだレベルの問題はない",
+        explain: "ルールの説明",
+        settings: "検査の設定",
+        rerunHint: "プロジェクト全体を検査し直し、ディスク上のアセットファイルも読み直す",
+        jumpFailed: "この場所はもう開けない",
+    },
+    statusBar: {
+        counts: "問題：{errors}、{warnings}、{infos}",
     },
     command: {
         runProject: "プロジェクトを検査",
@@ -548,6 +565,7 @@ export const lint = {
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
         blockedHint: "「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変更できる",
         skipped: "プロジェクトの検査を省略した",
+        viewProblems: "問題を表示",
     },
     settings: {
         runOnBuild: "ビルド前に検査",

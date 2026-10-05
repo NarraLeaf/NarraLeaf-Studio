@@ -834,6 +834,7 @@ export const workspace = {
                 runStatus: "Run status",
                 projectTrust: "Project trust",
         studioTasks: "Background work",
+                problems: "Problems",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
                 shortcuts: "Shortcuts and mouse actions",

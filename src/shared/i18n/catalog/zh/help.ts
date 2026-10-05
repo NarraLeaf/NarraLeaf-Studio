@@ -17,6 +17,7 @@ export const help = {
         quality: "检查",
         version: "版本",
         ship: "发布",
+        checks: "检查规则",
     },
     ui: {
         title: "帮助",

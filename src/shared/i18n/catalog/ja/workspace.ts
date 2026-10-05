@@ -751,6 +751,7 @@ export const workspace = {
                 runStatus: "実行状態",
                 projectTrust: "プロジェクトの信頼",
         studioTasks: "バックグラウンド処理",
+                problems: "問題",
                 unsavedChanges: "未保存の変更",
                 wordCount: "ストーリーの統計",
                 shortcuts: "ショートカットとマウス操作",

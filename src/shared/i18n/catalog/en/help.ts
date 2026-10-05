@@ -19,6 +19,7 @@ export const help = {
         quality: "Checks",
         version: "Versions",
         ship: "Shipping",
+        checks: "Check rules",
     },
     /** Chrome shared by the popover and the browser. */
     ui: {

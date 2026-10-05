@@ -300,6 +300,11 @@ export type LintReport = {
     rulesRun: LintRuleId[];
     /** Rules configured `off`, plus anything left unrun when the sweep was cancelled. */
     skipped: LintRuleId[];
+    /**
+     * How long each rule that ran took, in milliseconds. What says which rule a slow sweep is slow
+     * in; absent on a report put together by hand.
+     */
+    durations?: Partial<Record<LintRuleId, number>>;
 };
 
 /**

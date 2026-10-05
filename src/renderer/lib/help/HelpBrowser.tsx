@@ -8,6 +8,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { HelpContent } from "./HelpContent";
 import {
     filterHelpTopics,
+    ALL_HELP_TOPICS,
     getHelpTopic,
     HELP_TOPICS,
     helpSectionKey,
@@ -91,7 +92,7 @@ export function HelpBrowser({
         row?.scrollIntoView?.({ block: "nearest" });
     }, [pendingReveal]);
 
-    const matches = useMemo(() => filterHelpTopics(HELP_TOPICS, query, t), [query, t]);
+    const matches = useMemo(() => filterHelpTopics(ALL_HELP_TOPICS, query, t), [query, t]);
     const matchedIds = useMemo(() => new Set(matches.map(topic => topic.id)), [matches]);
 
     // Sections keep their order and their headings while filtering; a section with no match drops

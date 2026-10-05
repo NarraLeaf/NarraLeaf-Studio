@@ -517,6 +517,23 @@ export const lint = {
         // 读者是拿这一列去对那一列。
         lineAria: "第 {line} 行",
         findPlaceholder: "在问题中查找",
+        // 列表显示哪些问题。检查本身总是覆盖整个项目，这里只缩小列出的范围。
+        scopeProject: "整个项目",
+        scopeOpenEditors: "打开的编辑器",
+        scopeActiveEditor: "当前编辑器",
+        scopeAria: "问题范围",
+        severityAria: "级别",
+        groupAria: "分组方式",
+        emptyOpenEditors: "打开的编辑器中没有问题",
+        emptyActiveEditor: "当前编辑器中没有问题",
+        emptyFiltered: "所选级别下没有问题",
+        explain: "规则说明",
+        settings: "检查设置",
+        rerunHint: "重新检查整个项目，并重新读取磁盘上的资产文件",
+        jumpFailed: "该位置已无法打开",
+    },
+    statusBar: {
+        counts: "问题：{errors}，{warnings}，{infos}",
     },
     command: {
         runProject: "检查项目",
@@ -544,6 +561,7 @@ export const lint = {
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
         blockedHint: "可在「项目 ▸ 项目 ▸ 构建前检查」中调整",
         skipped: "已跳过项目检查",
+        viewProblems: "查看问题",
     },
     settings: {
         runOnBuild: "构建前检查",

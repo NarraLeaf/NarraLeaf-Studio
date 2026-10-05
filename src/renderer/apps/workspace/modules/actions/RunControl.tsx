@@ -14,6 +14,7 @@ import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { BUILD_CONSOLE_CHANNEL, BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
+import { PROBLEMS_PANEL_ID } from "../lint/lintIds";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
@@ -440,18 +441,30 @@ export function RunControl() {
                     "error",
                     {
                         sticky: true,
-                        actions: [{
-                            label: translate("build.dialog.viewConsole"),
-                            primary: true,
-                            onClick: () => {
-                                uiService.panels.show(CONSOLE_PANEL_ID);
-                                // Showing the panel restores whichever channel was last active, so
-                                // without this the author can land on a tab the build never wrote to.
-                                context.services
-                                    .get<ConsoleService>(Services.Console)
-                                    .requestFocus(BUILD_CONSOLE_CHANNEL);
+                        actions: [
+                            // A build the project checks refused failed on findings, and the
+                            // findings are in the Problems panel - each one opening where it is and
+                            // explaining itself - rather than in the console's lines of text.
+                            ...(run.refusedByChecks
+                                ? [{
+                                    label: translate("lint.build.viewProblems"),
+                                    primary: true,
+                                    onClick: () => uiService.panels.show(PROBLEMS_PANEL_ID),
+                                }]
+                                : []),
+                            {
+                                label: translate("build.dialog.viewConsole"),
+                                primary: !run.refusedByChecks,
+                                onClick: () => {
+                                    uiService.panels.show(CONSOLE_PANEL_ID);
+                                    // Showing the panel restores whichever channel was last active, so
+                                    // without this the author can land on a tab the build never wrote to.
+                                    context.services
+                                        .get<ConsoleService>(Services.Console)
+                                        .requestFocus(BUILD_CONSOLE_CHANNEL);
+                                },
                             },
-                        }],
+                        ],
                     },
                 );
             }

@@ -572,6 +572,27 @@ export const lint = {
         // matching one against the other.
         lineAria: "Line {line}",
         findPlaceholder: "Find in problems",
+        // What the list shows. The check itself always covers the whole project; these only narrow
+        // what is listed, to the findings about what the open tabs show.
+        scopeProject: "Whole project",
+        scopeOpenEditors: "Open editors",
+        scopeActiveEditor: "Current editor",
+        scopeAria: "Show problems from",
+        severityAria: "Severity",
+        groupAria: "Group",
+        emptyOpenEditors: "No problems in the open editors",
+        emptyActiveEditor: "No problems in the current editor",
+        emptyFiltered: "No problems at the selected severity",
+        // The `?` on a finding: opens the topic about the rule that produced it.
+        explain: "About this rule",
+        settings: "Check settings",
+        rerunHint: "Check the whole project again, re-reading the asset files on disk",
+        // A finding whose place has gone since the check ran (deleted, or no longer that thing).
+        jumpFailed: "This location can no longer be opened",
+    },
+    // The status bar cell's hover and spoken label. The cell itself shows the two numbers.
+    statusBar: {
+        counts: "Problems: {errors}, {warnings}, {infos}",
     },
     command: {
         runProject: "Check project",
@@ -613,6 +634,8 @@ export const lint = {
         // would leave them looking for it.
         blockedHint: "Change this in Project ▸ Project ▸ Check before building",
         skipped: "Project check skipped",
+        // The failure notice's button when the checks are what stopped the build.
+        viewProblems: "View problems",
     },
     settings: {
         runOnBuild: "Check before building",

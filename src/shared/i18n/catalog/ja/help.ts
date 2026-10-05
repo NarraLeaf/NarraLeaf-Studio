@@ -21,6 +21,7 @@ export const help = {
         quality: "検査",
         version: "バージョン",
         ship: "配布",
+        checks: "検査ルール",
     },
     /** ポップオーバーとブラウザで共通の枠。 */
     ui: {
