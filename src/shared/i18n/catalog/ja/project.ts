@@ -29,7 +29,7 @@ export const project = {
         },
         settings: {
             title: "設定",
-            description: "セキュリティ、署名、圧縮、読み込み、モバイル",
+            description: "セキュリティ、署名、圧縮、読み込み、黒帯、モバイル",
         },
     },
     // ページの中で部分どうしを分ける見出し。見出しは名詞で、文にはしない。何をするかは
@@ -63,6 +63,7 @@ export const project = {
         videoCompression: "映像の圧縮",
         loading: "読み込み",
         crash: "クラッシュ",
+        letterbox: "黒帯",
         mobile: "モバイル",
     },
     compressionMode: {
@@ -497,6 +498,10 @@ export const project = {
             portrait: "縦向き",
             auto: "端末に合わせる",
         },
+        letterboxColorTitle: "黒帯の色",
+        letterboxColorDescription: "画面の縦横比がデザインと異なるとき、ステージの周りに表示される色",
+        letterboxImageTitle: "黒帯の画像",
+        letterboxImageDescription: "黒帯の色の上に重ねて表示する。中央はステージに隠れる",
         stageFitTitle: "画面への合わせ方",
         /**
          * 何をするかではなく、どこに効くかを書く。何をするかは見出しと 2 つの選択肢が既に言っており、

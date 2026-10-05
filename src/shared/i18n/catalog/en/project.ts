@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, signing, compression, loading, and mobile",
+            description: "Security, signing, compression, loading, letterbox, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -64,6 +64,7 @@ export const project = {
         videoCompression: "Video compression",
         loading: "Loading",
         crash: "Crashes",
+        letterbox: "Letterbox",
         mobile: "Mobile",
     },
     /** The two ways a track's settings can be stated. */
@@ -546,6 +547,10 @@ export const project = {
             portrait: "Portrait",
             auto: "Follow device",
         },
+        letterboxColorTitle: "Letterbox color",
+        letterboxColorDescription: "Shown around the stage on screens of another aspect ratio.",
+        letterboxImageTitle: "Letterbox image",
+        letterboxImageDescription: "Drawn over the letterbox color. The stage covers its middle.",
         stageFitTitle: "Screen fit",
         /**
          * Where it applies, not what it does — the title and the two option labels already say

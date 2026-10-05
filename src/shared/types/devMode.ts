@@ -2,6 +2,7 @@ import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDiagnostic, BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { WindowConfiguration } from "./appWindow";
+import type { LetterboxConfiguration } from "./letterbox";
 import type { DialogueConfiguration } from "./dialogue";
 import type { PreloadConfiguration } from "./preload";
 import type { ProjectFontEntry } from "./typography";
@@ -458,6 +459,17 @@ export type DevModeBundle = {
      * Absent on bundles that predate the section, which every consumer reads as the defaults.
      */
     window?: WindowConfiguration;
+    /**
+     * What the game shows outside its stage, baked from `.nlproj` `app.letterbox`.
+     *
+     * Carried by the bundle rather than beside it for two reasons. Dev Mode and the packaged runtime
+     * draw the stage frame from the same code, so they read it from the same channel. And the
+     * picture's id has to be in the bytes that ship: a package carries the assets its bundle names
+     * (`planShippedAssets`), and a picture named only in `.nlproj` would be left out of every build.
+     *
+     * Absent on bundles that predate the setting, which every consumer reads as black bars.
+     */
+    letterbox?: LetterboxConfiguration;
     /**
      * The frame rate this project's screen effects are baked at, from `.nlproj` `app.vfx`.
      *

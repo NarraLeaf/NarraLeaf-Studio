@@ -6,6 +6,7 @@ import {
     type CSSProperties,
     type ReactNode,
 } from "react";
+import { GAME_STAGE_GROUND_COLOR } from "./gameStageBase";
 
 export type StageViewportSize = { width: number; height: number };
 
@@ -110,6 +111,16 @@ export type StageViewportFrameProps = {
     fit?: StageViewportFit;
     /** Which part survives the crop. Ignored under `contain`, where nothing is cropped. */
     cropAnchor?: StageCropAnchor;
+    /**
+     * What fills the area around the stage - the letterbox. Laid over the whole frame and under the
+     * stage, so it shows only where the stage does not cover it: the bars, under `contain`.
+     */
+    backdrop?: ReactNode;
+    /**
+     * A colour the stage paints over its own black ground, under everything on it. Translucent is
+     * fine: whatever it lets through is the ground, never the backdrop.
+     */
+    stageColor?: string;
     outerClassName?: string;
     outerStyle?: CSSProperties;
     boxClassName?: string;
@@ -128,6 +139,8 @@ export function StageViewportFrame(props: StageViewportFrameProps): ReactNode {
         onRenderScaleChange,
         fit = "contain",
         cropAnchor = DEFAULT_STAGE_CROP_ANCHOR,
+        backdrop,
+        stageColor,
         outerClassName,
         outerStyle,
         boxClassName,
@@ -195,14 +208,21 @@ export function StageViewportFrame(props: StageViewportFrameProps): ReactNode {
                 ...outerStyle,
             }}
         >
+            {backdrop}
             <div
                 className={boxClassName}
                 style={{
+                    // Positioned and after the backdrop in document order, which is what paints it
+                    // above an absolutely positioned backdrop without either needing a z-index.
                     position: "relative",
                     flex: "none",
                     width: backingWidth,
                     height: backingHeight,
                     overflow: "hidden",
+                    backgroundColor: GAME_STAGE_GROUND_COLOR,
+                    // A one-colour gradient is a solid layer over `backgroundColor`, so a translucent
+                    // stage colour composites onto the ground rather than replacing it.
+                    ...(stageColor ? { backgroundImage: `linear-gradient(${stageColor}, ${stageColor})` } : {}),
                     ...boxStyle,
                 }}
             >

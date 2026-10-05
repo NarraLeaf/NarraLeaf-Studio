@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { letterboxAssetIds } from "@shared/types/letterbox";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import {
     publishedDevModeAssetIds,
@@ -97,6 +98,7 @@ export function useDevModeInterfaceWarmup(input: {
                     source: {
                         uidoc: bundle.ui.uidoc,
                         fontAssetIds: (bundle.fonts ?? []).map(entry => entry.assetId),
+                        letterboxAssetIds: letterboxAssetIds(bundle.letterbox),
                         // What the library has, standing in for a pack's manifest. An id the window
                         // could not resolve is one no widget will draw from this map either, and
                         // waiting on it would only be waiting for its failure.

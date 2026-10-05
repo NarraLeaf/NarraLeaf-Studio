@@ -191,6 +191,7 @@ export const properties = {
             character: "キャラクター",
             voice: "ボイス",
             design: "デザイン",
+            projectSettings: "設定",
             plugin: "プラグイン",
         },
     },

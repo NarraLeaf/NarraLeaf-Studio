@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、签名、压缩、载入与移动端",
+            description: "安全、签名、压缩、载入、黑边与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -61,6 +61,7 @@ export const project = {
         videoCompression: "视频压缩",
         loading: "载入",
         crash: "崩溃",
+        letterbox: "黑边",
         mobile: "移动端",
     },
     compressionMode: {
@@ -484,6 +485,10 @@ export const project = {
             portrait: "竖屏",
             auto: "跟随设备",
         },
+        letterboxColorTitle: "黑边颜色",
+        letterboxColorDescription: "屏幕比例与设计比例不同时，显示在舞台周围的颜色",
+        letterboxImageTitle: "黑边图片",
+        letterboxImageDescription: "叠加在黑边颜色之上，中间部分被舞台遮挡",
         stageFitTitle: "屏幕适配",
         stageFitDescription: "对移动端构建与开发模式生效；桌面与 Web 始终留黑边",
         stageFit: {

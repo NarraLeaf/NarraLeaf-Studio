@@ -191,6 +191,7 @@ export const properties = {
             character: "角色",
             voice: "配音",
             design: "设计",
+            projectSettings: "设置",
             plugin: "插件",
         },
     },
