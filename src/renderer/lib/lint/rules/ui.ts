@@ -57,6 +57,7 @@ import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSi
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
+import { listQuitRows } from "./story";
 
 /**
  * `ui` - pages and widgets that do not do what the canvas suggests they do.
@@ -503,13 +504,22 @@ function collectFrameSurfaceTargets(document: UIDocument): Set<string> {
  */
 function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: ReadonlySet<string>): Set<string> {
     const opened = new Set<string>();
-    for (const element of Object.values(document.elements ?? {})) {
+    const read = (element: UIElement): void => {
         const link = getUIComponentLink(element);
         for (const value of Object.values(link?.params ?? {})) {
-            const trimmed = value.trim();
+            const trimmed = typeof value === "string" ? value.trim() : "";
             if (surfaceIds.has(trimmed)) {
                 opened.add(trimmed);
             }
+        }
+    };
+    for (const element of Object.values(document.elements ?? {})) {
+        read(element);
+    }
+    // A placement nested in another component's definition carries its params the same way.
+    for (const component of document.components ?? []) {
+        for (const element of Object.values(component.elements ?? {})) {
+            read(element);
         }
     }
     return opened;
@@ -525,15 +535,21 @@ function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: R
  * them would spend its first run warning about the title screen - which is how the reader learns to
  * skip this rule's findings.
  *
+ * Two ways in are not in the interface at all: a story's `/quit` row ends the playthrough on the
+ * page it names, and a component placed once per destination names the page in its own params. Both
+ * are read, and a page either of them names is reached.
+ *
  * Stage surfaces are not candidates at all rather than being excluded one by one: they are mounted
  * by their `mount` slot, so "who navigates here" is not a question about them.
  *
  * Silent when either document could not be read: `null` is a failed read, and answering it as "no
  * graphs in this project" would report every page but the entry one off a single unrelated failure.
+ * The same holds for a story library that was not read whole - a page only a quit row in the missing
+ * story lands on would be reported.
  */
 function runPageUnreachable(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
-    if (!document || !ctx.blueprintDocument) {
+    if (!document || !ctx.blueprintDocument || !ctx.storiesComplete) {
         return [];
     }
     const pages = (document.surfaces ?? []).filter(surface => surface.kind === "appSurface");
@@ -541,6 +557,14 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
     const entered = collectGraphSurfaceTargets(ctx, surfaceIds);
     for (const embedded of collectFrameSurfaceTargets(document)) {
         entered.add(embedded);
+    }
+    for (const named of collectComponentParamSurfaceTargets(document, surfaceIds)) {
+        entered.add(named);
+    }
+    for (const quit of listQuitRows(ctx)) {
+        if (quit.surfaceId) {
+            entered.add(quit.surfaceId);
+        }
     }
     const entrySurfaceId = resolveEntrySurfaceId(document);
     return pages
@@ -656,7 +680,9 @@ function isClickableCandidate(element: UIElement): boolean {
  */
 function runEmptyBehavior(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
-    if (!document) {
+    // The wiring lives in the blueprints. Unread is not "no graphs": answering it as that would report
+    // every button in the project off one failed read - the trap the file header names.
+    if (!document || !ctx.blueprintDocument) {
         return [];
     }
     const elementClickTargets = collectElementClickTargets(ctx);

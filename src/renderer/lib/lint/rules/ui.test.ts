@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument } from "@shared/types/story";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
@@ -263,6 +264,73 @@ describe("ui/page-unreachable", () => {
         ]);
     });
 
+    it("says nothing about a page a story's /quit row ends the playthrough on", async () => {
+        // The quit page is opened by the story, not by any graph or widget, and it is the page every
+        // ending lands on - reporting it was a warning on the one page a finished game always shows.
+        const quitStory = {
+            id: "s1",
+            name: "Main",
+            document: {
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: "s1",
+                name: "Main",
+                chapters: [],
+                scenes: {
+                    sc1: {
+                        id: "sc1",
+                        name: "Ending",
+                        runtimeName: "Ending",
+                        rootBlockIds: ["q1"],
+                        blocks: {
+                            q1: { id: "q1", kind: "control", parentId: null, childrenIds: [], payload: { control: "quit", surfaceId: "settings" } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument,
+        };
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                stories: [quitStory],
+            })),
+        ).toEqual([]);
+        // And stays quiet while the stories were not all read: the quit row may be in the missing one.
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                storiesComplete: false,
+            })),
+        ).toEqual([]);
+    });
+
+    it("says nothing about a page a component placement names in its params", async () => {
+        // One nav entry placed once per destination: the Go Page inside the definition names nothing,
+        // and the page is named by the placement instead.
+        const document = uiDocument({
+            surfaces: [
+                { id: MAIN_APP_SURFACE_ID, name: "Main Page", rootElementId: "root-main" },
+                { id: "settings", name: "Settings", rootElementId: "root-settings" },
+            ],
+            elements: [
+                element({ id: "root-main", type: "nl.root", childrenIds: ["nav"] }),
+                element({
+                    id: "nav",
+                    type: "nl.container",
+                    extra: { componentLink: { componentId: "nav-entry", linked: true, params: { page: "settings" } } },
+                } as Partial<UIElement> & { id: string; type: string }),
+                element({ id: "root-settings", type: "nl.root" }),
+            ],
+            components: [{ id: "nav-entry", name: "Nav entry", rootElementId: "nav-root", elements: {} }] as unknown as UIDocument["components"],
+        });
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({ uiDocument: document, blueprintDocument: NO_GRAPHS })),
+        ).toEqual([]);
+    });
+
     it("says nothing about a page a Page widget embeds", async () => {
         const document = uiDocument({
             surfaces: [
@@ -357,6 +425,14 @@ describe("ui/empty-behavior", () => {
             // The click selects the button the row names, not just the page it is on.
             target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start" },
         });
+    });
+
+    it("says nothing at all when the blueprints could not be read", async () => {
+        // A null document is a failed read, not a project with no graphs: answered as the second, it
+        // reported every button in the project as doing nothing.
+        expect(
+            await run("ui/empty-behavior", createTestLintContext({ uiDocument: onePage(button()), blueprintDocument: null })),
+        ).toEqual([]);
     });
 
     it("says nothing about a button whose own blueprint starts on a click", async () => {

@@ -169,7 +169,8 @@ export const lint = {
             description: "A /quit row that names no page, or one the project no longer has",
             // Two sentences, both states: what the row does now, and what the player is left with.
             message: "This row names no page, so the playthrough ends with nothing on screen",
-            deleted: "This project has no page \"{page}\", so the playthrough ends with nothing on screen",
+            // Names no page: the row holds the page's id, which is not a name an author can read.
+            deleted: "The page this row names is no longer in the project, so the playthrough ends with nothing on screen",
         },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",
@@ -375,6 +376,8 @@ export const lint = {
             title: "Undeclared variable",
             description: "A variable used without a declaration",
             message: "{variable} is used but never declared",
+            // A variable no declaration is left for has no name to print; its id is not one.
+            messageUnnamed: "This row uses a variable that is not declared anywhere",
         },
         variablesUnused: {
             title: "Unused variable",
@@ -385,16 +388,19 @@ export const lint = {
             title: "Variable name collision",
             description: "One name declared in two places",
             message: "{variable} is declared twice as a persistent variable",
+            messageSaved: "{variable} is declared twice as a saved variable",
         },
         variablesConditionNeverHolds: {
             title: "Condition no path can satisfy",
             description: "A condition whose variable can never reach the value it tests for",
             message: "{variable} is never more than {bound} here, so this condition cannot hold",
+            messageUnnamed: "A variable with no declaration is never more than {bound} here, so this condition cannot hold",
         },
         variablesReadNeverWritten: {
             title: "Condition nothing can change",
             description: "A variable a condition tests, that nothing in the project ever assigns",
             message: "{variable} is tested by {conditions} but nothing ever sets it",
+            messageUnnamed: "A variable with no declaration is tested by {conditions} and nothing ever sets it",
             conditionCount: {
                 one: "{count} condition",
                 other: "{count} conditions",

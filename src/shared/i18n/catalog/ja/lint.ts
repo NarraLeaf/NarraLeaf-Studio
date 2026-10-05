@@ -164,7 +164,7 @@ export const lint = {
             title: "ページのない終了行",
             description: "ページを指定していない、またはプロジェクトに無いページを指す /quit 行",
             message: "この行はページを指定していないため、プレイ終了後に画面には何も残らない",
-            deleted: "このプロジェクトに「{page}」というページはないため、プレイ終了後に画面には何も残らない",
+            deleted: "この行が指すページはもうプロジェクトにないため、プレイ終了後に画面には何も残らない",
         },
         storyEndingNameDuplicate: {
             title: "同じ名前の 2 つのエンディング",
@@ -355,6 +355,7 @@ export const lint = {
             title: "宣言のない変数",
             description: "宣言されないまま使われている変数",
             message: "{variable} は使われているが宣言されていない",
+            messageUnnamed: "この行が使う変数はどこにも宣言されていない",
         },
         variablesUnused: {
             title: "使われていない変数",
@@ -365,16 +366,19 @@ export const lint = {
             title: "変数名の衝突",
             description: "同じ名前が 2 か所で宣言されている",
             message: "{variable} が永続変数として 2 回宣言されている",
+            messageSaved: "{variable} がセーブ変数として 2 回宣言されている",
         },
         variablesConditionNeverHolds: {
             title: "成立し得ない条件",
             description: "どの経路をたどっても変数がその値に到達しません",
             message: "ここでの {variable} の範囲は {bound} なので、この条件は成立しません",
+            messageUnnamed: "ここでの宣言のない変数の範囲は {bound} なので、この条件は成立しません",
         },
         variablesReadNeverWritten: {
             title: "変化しない条件",
             description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
             message: "{variable} を参照する条件が {conditions}ありますが、代入する箇所がありません",
+            messageUnnamed: "宣言のない変数を参照する条件が {conditions}ありますが、代入する箇所がありません",
             conditionCount: {
                 other: "{count} 件",
             },
