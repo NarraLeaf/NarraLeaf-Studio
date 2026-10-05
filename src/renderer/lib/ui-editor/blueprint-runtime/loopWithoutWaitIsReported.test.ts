@@ -103,7 +103,7 @@ describe("a loop stopped for never waiting", () => {
         }
     });
 
-    it("becomes one issue in the Dev Mode list, saying it was the global blueprint", async () => {
+    it("becomes one issue in the Dev Mode list, naming App logic", async () => {
         const events = await runStoppedLoop();
 
         const english = issuesIn("en", events);
@@ -111,11 +111,11 @@ describe("a loop stopped for never waiting", () => {
         expect(english[0]).toMatchObject({
             level: "error",
             origin: "interface",
-            message: "\"On Game Ready\" in the global blueprint stopped at \"Delay\" after 20 steps without a wait.",
+            message: "\"On Game Ready\" in App logic stopped at \"Delay\" after 20 steps without a wait.",
         });
 
         const chinese = issuesIn("zh", events);
         expect(chinese).toHaveLength(1);
-        expect(chinese[0]?.message).toBe("全局蓝图的“游戏就绪时”连续执行 20 步未等待，已在“延迟”处中止");
+        expect(chinese[0]?.message).toBe("应用逻辑的“游戏就绪时”连续执行 20 步未等待，已在“延迟”处中止");
     });
 });
