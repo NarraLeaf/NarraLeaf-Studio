@@ -94,7 +94,10 @@ export function ResizableHandle({
         if (e.key !== decrease && e.key !== increase) {
             return;
         }
+        // The key is the seam's: a workspace shortcut on the same arrow (the UI editor's nudge, which
+        // goes by the focus area rather than by where the caret is) must not also take it.
         e.preventDefault();
+        e.stopPropagation();
         onDragStart?.();
         onResize(e.key === increase ? keyboardStep : -keyboardStep);
         onDragEnd?.();
