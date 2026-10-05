@@ -16,6 +16,7 @@ import { probeDurationUs, type ProbeReport } from "@shared/utils/mediaSupport";
 import { probeMediaReport, type ProbeRunner } from "../media/mediaProbe";
 import { compressionArgs, startMediaEncode, type MediaTranscodeOptions } from "../media/mediaTranscode";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
+import { createKeyedTurns, forEachInLanes, resolveBuildLanes } from "./buildLanes";
 
 /**
  * Re-encode the project's sound and video once, before anything is compiled, and
@@ -105,7 +106,20 @@ export type AssetMediaCompressionInput = {
     probeRun?: ProbeRunner;
     /** Injected in tests; defaults to a real spawn of the resolved ffmpeg. */
     encodeOptions?: MediaTranscodeOptions;
+    /** Injected in tests; how many files are worked on at once. Read from the machine otherwise. */
+    lanes?: number;
 };
+
+/**
+ * The most files worked on at once, however many cores the machine has.
+ *
+ * Each lane is an FFmpeg process at a time, and most of what a lane runs is sound: the AAC encoder
+ * is single-threaded and finishes a voice line in about a tenth of a second, so a fully voiced game
+ * spends its compression pass starting processes one after another unless several run together.
+ * Video does not take a lane's worth of cores but all of them - see {@link compressProjectMedia} -
+ * so it is not what this number is for.
+ */
+const MEDIA_LANE_CEILING = 8;
 
 /**
  * Bumped when a change here would make a cached result wrong rather than merely
@@ -172,13 +186,30 @@ export async function compressProjectMedia(
     // What the switches decide is whether anything is probed or encoded.
     const compressing = assetTrackEnabled(input.config, "audio") || assetTrackEnabled(input.config, "video");
 
-    let binary: string | null = null;
+    const lanes = Math.max(1, Math.floor(input.lanes ?? resolveBuildLanes("NLS_BUILD_MEDIA_LANES", MEDIA_LANE_CEILING)));
+    // The lookup rather than its answer, so lanes reaching their first encode together share one
+    // search - and one warning when there is nothing to find.
+    let binary: Promise<string | null> | null = null;
     // Latched, so a host with no FFmpeg looks for it once and says so once,
     // rather than repeating itself for every file in the library. Two of them,
     // because the two binaries are staged and can go missing independently.
     let encoderUnavailable = false;
     let probeUnavailable = false;
     let failureWarnings = 0;
+    // Recorded by id and read back in library order at the end, so which lane happened to finish
+    // first never decides the order a compile is handed its files in.
+    const chosen = new Map<string, CompressedAssetMedia>();
+    // Two library entries with the same bytes are one cache entry; see createKeyedTurns.
+    const turn = createKeyedTurns();
+    // Video encodes queue behind one another while sound runs beside them. libvpx already spreads
+    // one encode across the machine's cores with its own row threads, so two at once would split the
+    // same cores between them and hold two encoders' memory for no gain in wall clock.
+    let videoTurn: Promise<void> = Promise.resolve();
+    const oneVideoAtATime = <T>(task: () => Promise<T>): Promise<T> => {
+        const run = videoTurn.then(task);
+        videoTurn = run.then(() => undefined, () => undefined);
+        return run;
+    };
 
     /**
      * For a file no encode will touch: take out what it says about who made it,
@@ -206,43 +237,45 @@ export async function compressProjectMedia(
         }
         const digest = crypto.createHash("sha256").update(bytes).digest("hex");
         const key = `${digest}-s-v${CACHE_VERSION}`;
-        const cached = await readCached(input.cacheDir, key, STRIPPED_EXTENSION);
-        if (cached === "rejected") {
-            return;
-        }
-        if (cached) {
-            result.media[id] = { path: cached.path };
+        await turn(key, async () => {
+            const cached = await readCached(input.cacheDir, key, STRIPPED_EXTENSION);
+            if (cached === "rejected") {
+                return;
+            }
+            if (cached) {
+                chosen.set(id, { path: cached.path });
+                result.stripped += 1;
+                result.metadataBytes += bytes.length - cached.size;
+                return;
+            }
+            const cleaned = stripMediaMetadata(bytes);
+            if (cleaned.removed.length === 0) {
+                // Recorded rather than simply returned. The cheap check is allowed to
+                // say yes when the answer is no, and without a note of that this file
+                // is read in full on every build to reach the same answer.
+                await writeRejected(input.cacheDir, key);
+                return;
+            }
+            const kept = await writeCached(input.cacheDir, key, STRIPPED_EXTENSION, cleaned.bytes);
+            if (!kept) {
+                // A cache that cannot be written costs this file its strip and
+                // nothing else; the original ships, as it did before.
+                return;
+            }
+            chosen.set(id, { path: kept });
             result.stripped += 1;
-            result.metadataBytes += bytes.length - cached.size;
-            return;
-        }
-        const cleaned = stripMediaMetadata(bytes);
-        if (cleaned.removed.length === 0) {
-            // Recorded rather than simply returned. The cheap check is allowed to
-            // say yes when the answer is no, and without a note of that this file
-            // is read in full on every build to reach the same answer.
-            await writeRejected(input.cacheDir, key);
-            return;
-        }
-        const kept = await writeCached(input.cacheDir, key, STRIPPED_EXTENSION, cleaned.bytes);
-        if (!kept) {
-            // A cache that cannot be written costs this file its strip and
-            // nothing else; the original ships, as it did before.
-            return;
-        }
-        result.media[id] = { path: kept };
-        result.stripped += 1;
-        result.metadataBytes += cleaned.bytesRemoved;
+            result.metadataBytes += cleaned.bytesRemoved;
+        });
     };
 
     /**
      * One file, from its size to what a compile should copy.
      *
-     * Sequential, and this is why the walk below awaits it one file at a time.
-     * An encode already saturates the cores it was given - libvpx runs its own
-     * row threads and the AAC encoder is I/O bound against a file being read and
-     * a file being written - so running several would trade a build's memory and
-     * disk bandwidth for no wall clock.
+     * Several run at once, one per lane. A sound file is hashed, probed and
+     * encoded on one core - the AAC encoder has no threads of its own - so the
+     * lanes are what put the rest of the machine to work on a voice library. A
+     * video encode takes its turn behind any other, because libvpx already uses
+     * every core it is given.
      */
     const consider = async (
         id: string,
@@ -278,136 +311,147 @@ export async function compressProjectMedia(
             return;
         }
 
-        const report = await describe(sourcePath, digest);
-        if (report === null) {
-            // No verdict, so nothing to re-encode - but the metadata pass reads
-            // the bytes itself and does not care what ffprobe thinks, so the file
-            // still gets that half rather than shipping exactly as it arrived.
-            await stripOnly(id, sourcePath, byteLength);
-            return;
-        }
-        const plan = planAssetMediaCompression(
-            { manifestKey: id, assetType, byteLength, report },
-            input.config,
-        );
-        if (plan.action === "skip") {
-            // Everything the plan refuses - a track whose switch is off, a video
-            // carrying alpha, a file too small to be worth a process - ships as
-            // the author saved it, tags and all, unless this takes them out. It
-            // is the path most of a project goes down, so it is the one that
-            // matters most.
-            await stripOnly(id, sourcePath, byteLength);
-            return;
-        }
+        // Everything from here reads or writes cache entries named after these bytes, so a second
+        // library entry with the same bytes waits for this one and then finds its answer cached.
+        await turn(digest, async () => {
+            const report = await describe(sourcePath, digest);
+            if (report === null) {
+                // No verdict, so nothing to re-encode - but the metadata pass reads
+                // the bytes itself and does not care what ffprobe thinks, so the file
+                // still gets that half rather than shipping exactly as it arrived.
+                await stripOnly(id, sourcePath, byteLength);
+                return;
+            }
+            const plan = planAssetMediaCompression(
+                { manifestKey: id, assetType, byteLength, report },
+                input.config,
+            );
+            if (plan.action === "skip") {
+                // Everything the plan refuses - a track whose switch is off, a video
+                // carrying alpha, a file too small to be worth a process - ships as
+                // the author saved it, tags and all, unless this takes them out. It
+                // is the path most of a project goes down, so it is the one that
+                // matters most.
+                await stripOnly(id, sourcePath, byteLength);
+                return;
+            }
 
-        const key = `${digest}-${modeOf(plan)}-v${CACHE_VERSION}`;
-        const extension = extensionFor(plan.action);
-        const cached = await readCached(input.cacheDir, key, extension);
-        if (cached === "rejected") {
-            result.keptOriginal += 1;
-            return;
-        }
-        if (cached) {
-            result.media[id] = shipped(cached.path, plan.action);
-            result.converted += 1;
-            result.reused += 1;
-            result.beforeBytes += byteLength;
-            result.afterBytes += cached.size;
-            return;
-        }
+            const key = `${digest}-${modeOf(plan)}-v${CACHE_VERSION}`;
+            const extension = extensionFor(plan.action);
+            const cached = await readCached(input.cacheDir, key, extension);
+            if (cached === "rejected") {
+                result.keptOriginal += 1;
+                return;
+            }
+            if (cached) {
+                chosen.set(id, shipped(cached.path, plan.action));
+                result.converted += 1;
+                result.reused += 1;
+                result.beforeBytes += byteLength;
+                result.afterBytes += cached.size;
+                return;
+            }
 
-        if (encoderUnavailable || probeUnavailable) {
-            return;
-        }
-        if (binary === null) {
+            if (encoderUnavailable || probeUnavailable) {
+                return;
+            }
             // Resolved on the first file that actually needs encoding, so a build
             // whose media is all cached never looks for a binary, and a host
             // without one still builds as long as it has nothing to do.
-            const tool = await resolveEncoder(input);
+            binary ??= resolveEncoder(input);
+            const tool = await binary;
             if (!tool) {
                 encoderUnavailable = true;
                 return;
             }
-            binary = tool;
-        }
-        if (plan.action === "video") {
-            // Video only. One line per voice file would bury a build log under ten
-            // thousand of them, while one video can hold a build for minutes and
-            // an author watching a still progress bar deserves to know why.
-            input.log("info", `compressing "${name}"`);
-        }
 
-        const target = cachePath(input.cacheDir, key, extension);
-        try {
-            await fs.mkdir(path.dirname(target), { recursive: true });
-        } catch {
-            // A cache that cannot be written costs this file its compression and
-            // nothing else; the original ships, as it did before.
-            result.keptOriginal += 1;
-            return;
-        }
+            const target = cachePath(input.cacheDir, key, extension);
+            try {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+            } catch {
+                // A cache that cannot be written costs this file its compression and
+                // nothing else; the original ships, as it did before.
+                result.keptOriginal += 1;
+                return;
+            }
 
-        const handle = startMediaEncode(binary, {
-            sourcePath,
-            targetPath: target,
-            buildArgs: outputPath => compressionArgs(plan, sourcePath, outputPath),
-            durationUs: probeDurationUs(report),
-        }, input.encodeOptions ?? {});
-        // A build cancelled mid-encode stops the encoder rather than waiting it
-        // out: a 4K clip is minutes of work nobody is going to use.
-        const poll = input.cancelled
-            ? setInterval(() => {
+            const encode = async (): Promise<Awaited<ReturnType<typeof startMediaEncode>["result"]> | null> => {
                 if (input.cancelled?.()) {
-                    handle.cancel();
+                    return null;
                 }
-            }, 250)
-            : null;
-        let encoded;
-        try {
-            encoded = await handle.result;
-        } finally {
-            if (poll) {
-                clearInterval(poll);
+                if (plan.action === "video") {
+                    // Video only. One line per voice file would bury a build log under ten
+                    // thousand of them, while one video can hold a build for minutes and
+                    // an author watching a still progress bar deserves to know why.
+                    input.log("info", `compressing "${name}"`);
+                }
+                const handle = startMediaEncode(tool, {
+                    sourcePath,
+                    targetPath: target,
+                    buildArgs: outputPath => compressionArgs(plan, sourcePath, outputPath),
+                    durationUs: probeDurationUs(report),
+                }, input.encodeOptions ?? {});
+                // A build cancelled mid-encode stops the encoder rather than waiting it
+                // out: a 4K clip is minutes of work nobody is going to use.
+                const poll = input.cancelled
+                    ? setInterval(() => {
+                        if (input.cancelled?.()) {
+                            handle.cancel();
+                        }
+                    }, 250)
+                    : null;
+                try {
+                    return await handle.result;
+                } finally {
+                    if (poll) {
+                        clearInterval(poll);
+                    }
+                }
+            };
+            const encoded = plan.action === "video" ? await oneVideoAtATime(encode) : await encode();
+
+            if (encoded === null) {
+                return;
             }
-        }
 
-        if (encoded.status === "cancelled") {
-            return;
-        }
-        if (encoded.status === "error") {
-            result.keptOriginal += 1;
-            // Recorded as a rejection so a file the encoder cannot read is not
-            // retried on every build, and warned about at most a few times: one
-            // broken import can be a whole directory of them.
-            await writeRejected(input.cacheDir, key);
-            if (failureWarnings < MAX_FAILURE_WARNINGS) {
-                failureWarnings += 1;
-                input.log("warning", `"${name}" could not be compressed and ships unchanged: ${encoded.detail}`);
+            if (encoded.status === "cancelled") {
+                return;
             }
-            return;
-        }
+            if (encoded.status === "error") {
+                result.keptOriginal += 1;
+                // Recorded as a rejection so a file the encoder cannot read is not
+                // retried on every build, and warned about at most a few times: one
+                // broken import can be a whole directory of them.
+                await writeRejected(input.cacheDir, key);
+                if (failureWarnings < MAX_FAILURE_WARNINGS) {
+                    failureWarnings += 1;
+                    input.log("warning", `"${name}" could not be compressed and ships unchanged: ${encoded.detail}`);
+                }
+                return;
+            }
 
-        let encodedBytes: number;
-        try {
-            encodedBytes = (await fs.stat(target)).size;
-        } catch {
-            result.keptOriginal += 1;
-            return;
-        }
-        if (!assetMediaWorthKeeping(byteLength, encodedBytes, plan.lossySource)) {
-            // Thrown away and remembered as thrown away. Real projects contain
-            // tracks that come out larger, and without a record of that every one
-            // of them is re-encoded on every build to reach the same answer.
-            await fs.rm(target, { force: true }).catch(() => undefined);
-            await writeRejected(input.cacheDir, key);
-            result.keptOriginal += 1;
-            return;
-        }
+            let encodedBytes: number;
+            try {
+                encodedBytes = (await fs.stat(target)).size;
+            } catch {
+                result.keptOriginal += 1;
+                return;
+            }
+            if (!assetMediaWorthKeeping(byteLength, encodedBytes, plan.lossySource)) {
+                // Thrown away and remembered as thrown away. Real projects contain
+                // tracks that come out larger, and without a record of that every one
+                // of them is re-encoded on every build to reach the same answer.
+                await fs.rm(target, { force: true }).catch(() => undefined);
+                await writeRejected(input.cacheDir, key);
+                result.keptOriginal += 1;
+                return;
+            }
 
-        result.media[id] = shipped(target, plan.action);
-        result.converted += 1;
-        result.beforeBytes += byteLength;
-        result.afterBytes += encodedBytes;
+            chosen.set(id, shipped(target, plan.action));
+            result.converted += 1;
+            result.beforeBytes += byteLength;
+            result.afterBytes += encodedBytes;
+        });
     };
 
     /**
@@ -475,21 +519,26 @@ export async function compressProjectMedia(
         input.onProgress?.(0, total);
     }
 
-    for (const { type, records } of listings) {
-        for (const [assetKey, record] of records) {
-            if (input.cancelled?.()) {
-                break;
-            }
-            const id = typeof record?.id === "string" && record.id.trim() ? record.id.trim() : assetKey;
-            const sourcePath = assetSourcePath(input.projectPath, id);
-            if (sourcePath) {
-                await consider(id, sourcePath, assetName(record, id), type);
-            }
-            considered += 1;
-            input.onProgress?.(considered, total);
+    // Audio first and video after it, as one list: the order files are started in, and the order
+    // the compile is handed them in.
+    const work = listings.flatMap(({ type, records }) => records.map(([assetKey, record]) => {
+        const id = typeof record?.id === "string" && record.id.trim() ? record.id.trim() : assetKey;
+        return { id, type, name: assetName(record, id), path: assetSourcePath(input.projectPath, id) };
+    }));
+    await forEachInLanes(work, lanes, async item => {
+        if (item.path) {
+            await consider(item.id, item.path, item.name, item.type);
+        }
+        considered += 1;
+        input.onProgress?.(considered, total);
+    }, () => input.cancelled?.() === true);
+
+    for (const item of work) {
+        const media = chosen.get(item.id);
+        if (media) {
+            result.media[item.id] = media;
         }
     }
-
     await pruneCache(input.cacheDir);
     return result;
 }

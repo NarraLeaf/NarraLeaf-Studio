@@ -291,11 +291,11 @@ export const blueprint = {
         listLabel: "图层模板",
         blank: {
             title: "空白图层",
-            description: "空画布，或运行自己的脚本",
+            description: "空白画布，或运行自定义脚本",
         },
         library: {
             title: "更多模板",
-            description: "按分类浏览适用于这个蓝图的全部模板",
+            description: "按分类浏览适用于该蓝图的全部模板",
         },
     },
     /** 模板库：适用于当前蓝图的全部模板，按分类列出。 */
@@ -306,7 +306,7 @@ export const blueprint = {
         categoriesLabel: "分类",
         search: "搜索模板",
         emptyFiltered: "没有匹配的模板",
-        empty: "没有适用于这个蓝图的模板",
+        empty: "没有适用于该蓝图的模板",
         add: "添加",
         back: "返回",
         openDetail: "查看详情",

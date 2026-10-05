@@ -112,7 +112,12 @@ export function builderConfiguration(
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
         // and mobile outputs, and the fast setting only pays off on a build nobody ships.
+        // A zip gets 7-Zip's own highest level rather than electron-builder's reading of
+        // "maximum" - see withArchiveCompressionLevel.
         compression: "maximum",
+        // What "maximum" chooses for a disk image, said explicitly: the compression level
+        // set by withArchiveCompressionLevel would otherwise switch a dmg from bzip2 to zlib.
+        ...(target.platform === "macos" ? { dmg: { format: "UDBZ" as const } } : {}),
         ...(config.electronMirror
             ? { electronDownload: { mirror: config.electronMirror } }
             : {}),
@@ -351,6 +356,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
     };
     await withBinariesMirrorEnv(config.electronBuilderBinariesMirror, () =>
         withNotarizationEnv(notarizationForTargets(config.targets), () =>
+        withArchiveCompressionLevel(() =>
         withSigntoolPath(signtoolPathForTargets(config.targets), async () => {
             for (const target of config.targets) {
                 log("info", `packaging ${target.platform} (${target.formats.join(", ")})`);
@@ -372,8 +378,40 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                 }
                 artifacts.push(...await runBuilder(config, target));
             }
-        })));
+        }))));
     return artifacts;
+}
+
+/**
+ * The level electron-builder's 7-Zip runs at, and the only way to set it.
+ *
+ * Left to `compression: "maximum"`, electron-builder adds `-mfb=258 -mpass=15` to every zip: fifteen
+ * optimising passes over each file, one thread per file. A game's zip is dominated by two files - the
+ * Electron executable, around 200 MB, and with asset protection on the sealed store, which is
+ * encrypted and so cannot shrink at all - and 7-Zip's Deflate does not split one file across threads.
+ * Measured on a real 500 MB project, those two passes held the zip for six and a half minutes on one
+ * core, to make the executable 7 KB smaller than 7-Zip's own highest level does in a third of the
+ * time, and to make the store not one byte smaller than it already was.
+ *
+ * Level 9 is that highest level. It changes nothing else electron-builder writes: the installer's
+ * payload and the other archive formats are at 9 already, and a dmg keeps the format "maximum"
+ * gives it because {@link builderConfiguration} names that format rather than leaving it to be
+ * inferred from this variable.
+ */
+export const ARCHIVE_COMPRESSION_LEVEL = "9";
+
+export async function withArchiveCompressionLevel<T>(body: () => Promise<T>): Promise<T> {
+    const previous = process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL;
+    process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL = ARCHIVE_COMPRESSION_LEVEL;
+    try {
+        return await body();
+    } finally {
+        if (previous === undefined) {
+            delete process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL;
+        } else {
+            process.env.ELECTRON_BUILDER_COMPRESSION_LEVEL = previous;
+        }
+    }
 }
 
 /**

@@ -80,7 +80,7 @@ export const widgets = {
         defaultValueHint: "下列蓝图写入前，游戏中显示该文字",
     },
     localization: {
-        direct: "直接写",
+        direct: "直接输入",
         translationKey: "翻译键",
         none: "无",
         createKey: "新建键…",
