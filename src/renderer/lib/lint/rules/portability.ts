@@ -9,10 +9,14 @@ import { blockTarget, eachScene, liveBlocks, storyLocation } from "./story";
  * platform. Every rule here is about a machine the author is not sitting at, and about a failure
  * they therefore cannot reproduce by looking.
  *
- * The first three are asset-only and read the *file name*, which is the part of an asset that
- * survives the export: the compiler writes `<name>` into the bundle, so a name Windows will not
- * accept is a build that fails on someone else's machine, and two names differing only by case are
- * one file overwriting the other on macOS.
+ * `portability/media-format` reads an asset's file name for its container: a format one of the
+ * selected platforms cannot play is a game that runs silent or blank there.
+ *
+ * Deliberately not here: checks on an asset's *name* as a file name - characters Windows refuses,
+ * reserved names like `CON`, two names that differ only by letter case. Assets are written to every
+ * build, preview and package under their id, never under their name, so none of those can break a
+ * build or lose a file; the Assets panel's Export… is the one place a name becomes a file name, and it
+ * replaces the characters it cannot write and numbers a second file of the same name.
  *
  * `portability/vfx-alpha` is the odd one and is worth knowing about before adding a fourth: it is
  * keyed on a **story row** rather than on an asset, because the same clip is correct or ruinous
@@ -30,8 +34,6 @@ import { blockTarget, eachScene, liveBlocks, storyLocation } from "./story";
  * segment - so `ext` is appended only when it is not already there. Records that predate that rule
  * (or a remote asset whose URL had no filename) are the case the append covers.
  *
- * Deliberately **not** trimmed: surrounding whitespace is one of the things `portability/asset-name`
- * is looking for, and a helper that quietly removed it would make that check unreachable.
  */
 export function assetFileName(asset: LintAssetEntry): string {
     const name = asset.name;
@@ -51,45 +53,6 @@ function assetExtension(asset: LintAssetEntry): string {
     const name = asset.name.trim();
     const dot = name.lastIndexOf(".");
     return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-}
-
-/** Windows forbids these outright; POSIX filesystems accept them, which is how they get authored. */
-const UNPORTABLE_CHARACTERS = /[<>:"|?*]/;
-
-/**
- * Reserved DOS device names. Still reserved in Win32 today, still with or without an extension:
- * `CON.png` is as unopenable as `CON`, and the failure is at *create* time - the export writes
- * nothing and the game ships without the file.
- */
-const RESERVED_DEVICE_NAMES: ReadonlySet<string> = new Set([
-    "con",
-    "prn",
-    "aux",
-    "nul",
-    ...Array.from({ length: 9 }, (_, index) => `com${index + 1}`),
-    ...Array.from({ length: 9 }, (_, index) => `lpt${index + 1}`),
-]);
-
-/** Every reason a name is unportable, in one place so the rule body stays a filter. */
-export function isUnportableAssetName(fileName: string): boolean {
-    if (!fileName) {
-        return false;
-    }
-    for (const character of fileName) {
-        const code = character.codePointAt(0) ?? 0;
-        if (code <= 0x1f) {
-            return true;
-        }
-    }
-    if (UNPORTABLE_CHARACTERS.test(fileName)) {
-        return true;
-    }
-    // Windows silently strips both, so the file that arrives is not the file that was named - and
-    // the reference to it, which was not stripped, no longer resolves.
-    if (/^\s|\s$/.test(fileName) || fileName.endsWith(".")) {
-        return true;
-    }
-    return RESERVED_DEVICE_NAMES.has(fileName.split(".")[0].toLowerCase());
 }
 
 /**
@@ -194,77 +157,6 @@ function portabilityFinding(
 }
 
 export const PORTABILITY_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "portability/asset-name",
-        category: "portability",
-        defaultSeverity: "warning",
-        slug: "portabilityAssetName",
-        /** See {@link isUnportableAssetName} for the whole list and why each entry is on it. */
-        run(ctx) {
-            const findings: LintFinding[] = [];
-            for (const asset of ctx.assets) {
-                const fileName = assetFileName(asset);
-                if (isUnportableAssetName(fileName)) {
-                    findings.push(
-                        portabilityFinding("portability/asset-name", "lint.rule.portabilityAssetName.message", asset, {
-                            asset: fileName,
-                        }),
-                    );
-                }
-            }
-            return findings;
-        },
-    },
-    {
-        id: "portability/case-collision",
-        category: "portability",
-        defaultSeverity: "error",
-        slug: "portabilityCaseCollision",
-        /**
-         * Names that are one name on Windows and macOS.
-         *
-         * An error rather than a warning because it is silent and lossy: the export writes both and
-         * the second overwrites the first, so the game ships with one of the two files under both
-         * authors' expectations. Findings are emitted for every member past the first in library
-         * order, each naming that first member - so a group of three reads as two problems against
-         * one incumbent, not as three mutual accusations.
-         */
-        run(ctx) {
-            const groups = new Map<string, LintAssetEntry[]>();
-            for (const asset of ctx.assets) {
-                const fileName = assetFileName(asset);
-                if (!fileName.trim()) {
-                    continue;
-                }
-                const key = fileName.toLowerCase();
-                const group = groups.get(key);
-                if (group) {
-                    group.push(asset);
-                } else {
-                    groups.set(key, [asset]);
-                }
-            }
-
-            const findings: LintFinding[] = [];
-            for (const group of groups.values()) {
-                if (group.length < 2) {
-                    continue;
-                }
-                const [first, ...rest] = group;
-                for (const asset of rest) {
-                    findings.push(
-                        portabilityFinding(
-                            "portability/case-collision",
-                            "lint.rule.portabilityCaseCollision.message",
-                            asset,
-                            { asset: assetFileName(asset), other: assetFileName(first) },
-                        ),
-                    );
-                }
-            }
-            return findings;
-        },
-    },
     {
         id: "portability/media-format",
         category: "portability",

@@ -134,39 +134,6 @@ export const lint = {
                 + "- A set placed under the wrong kind of set: right-click it and choose Dissolve Set. Its "
                 + "files stay in the library.",
         },
-        portabilityAssetName: {
-            title: "Unsafe file name",
-            description: "Characters or names some filesystems reject",
-            message: "{asset} has a file name some systems do not accept as written",
-            help:
-                "The asset's file name, its name with the extension, contains a character Windows refuses in "
-                + "file names (< > : \" | ? * or an invisible control character), begins or ends with a space, "
-                + "ends with a full stop, or is a name Windows reserves, such as CON, NUL, COM1 or LPT1, with "
-                + "or without an extension. Chinese, Japanese and other non-Latin names are not reported.\n"
-                + "\n"
-                + "The game and its builds do not depend on this name. It is used when the asset is exported "
-                + "with Export…, which writes it under an altered name; on Windows a reserved name cannot be "
-                + "exported.\n"
-                + "\n"
-                + "- Rename the asset: right-click it in the Assets panel and choose Rename.\n"
-                + "- To keep the name, set this rule to Off under Project ▸ Project ▸ Project check.",
-        },
-        portabilityCaseCollision: {
-            title: "Case collision",
-            description: "Names that differ only by letter case",
-            message: "{asset} differs from {other} only in letter case",
-            help:
-                "Two assets whose file names, the names with their extensions, are the same apart from letter "
-                + "case, such as Title.png and title.png. The first of them in the library is left alone, and "
-                + "each later one is reported with the first one's name.\n"
-                + "\n"
-                + "Builds keep both files, and each place in the game uses the one it chose. Exporting both "
-                + "into one folder on Windows or macOS gives the second a numbered name.\n"
-                + "\n"
-                + "- Rename one of them: right-click it in the Assets panel and choose Rename.\n"
-                + "- When both names are intended, set this rule to Off under Project ▸ Project ▸ Project "
-                + "check.",
-        },
         portabilityMediaFormat: {
             title: "Unplayable format",
             description: "A codec some selected build targets cannot play",

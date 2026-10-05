@@ -104,8 +104,6 @@ export type LintRuleId =
     | "assets/unreadable"
     | "assets/oversized"
     | "assets/group-incomplete"
-    | "portability/asset-name"
-    | "portability/case-collision"
     | "portability/media-format"
     | "portability/vfx-alpha"
     | "network/fetch-disallowed"
