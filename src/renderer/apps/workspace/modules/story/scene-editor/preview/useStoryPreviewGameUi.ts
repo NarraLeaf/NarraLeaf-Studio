@@ -17,6 +17,7 @@ import {
     type BlueprintCharacterInfo,
 } from "@shared/types/blueprint/characterInfo";
 import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
+import type { UIStageSlotId } from "@shared/types/ui-editor/document";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { usePluginElementRenderers } from "@/lib/ui-editor/widget-modules/pluginElementRenderers";
@@ -52,6 +53,11 @@ import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/var
 import type { TranslationKey } from "@shared/i18n";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
+/**
+ * The one Game UI slot a press reaches in the preview. A press anywhere else on the stage steps the
+ * story editor to the next line, so the rest of the game's own controls stay out of its way.
+ */
+const PREVIEW_PRESSABLE_SLOTS: ReadonlySet<UIStageSlotId> = new Set<UIStageSlotId>(["choice"]);
 
 export type StoryPreviewIssue = {
     level: "warning" | "error";
@@ -63,6 +69,12 @@ export type StoryPreviewGame = {
     onStageNode?: ReactNode;
     /** Wire session-scoped LiveGame bridges (nametag → blueprint global state). Returns a disposer. */
     wireLiveGame: (liveGame: LiveGame) => () => void;
+    /**
+     * One press of the game's own advance on the line on screen, the same one a `Next` node makes:
+     * a line still revealing shows the rest of it (up to its next pause), a line already shown is
+     * settled.
+     */
+    advance: () => Promise<void>;
 };
 
 export type StoryPreviewGameUiHost = {
@@ -387,6 +399,7 @@ export function useStoryPreviewGameUi(input: {
             startStory: notAvailable("Start Story"),
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
+            pressableSlots: PREVIEW_PRESSABLE_SLOTS,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -451,7 +464,10 @@ export function useStoryPreviewGameUi(input: {
             };
         };
 
-        return { game, onStageNode: slots.onStageNode, wireLiveGame };
+        const advance = async (): Promise<void> => {
+            await liveGameCallbacks.onNext();
+        };
+        return { game, onStageNode: slots.onStageNode, wireLiveGame, advance };
     }, [bundle, characterTable, core, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
 
     return {

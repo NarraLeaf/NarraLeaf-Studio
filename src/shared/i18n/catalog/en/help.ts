@@ -174,7 +174,10 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
-                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.",
+                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
+                + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
             title: "Commands",

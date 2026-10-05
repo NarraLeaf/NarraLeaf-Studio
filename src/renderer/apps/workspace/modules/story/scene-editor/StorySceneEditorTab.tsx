@@ -1648,6 +1648,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         return consoleService.registerChannel(STORY_CONSOLE_CHANNEL);
     }, [editor.context]);
 
+    // A click on the preview steps the cursor the way the Dev Mode play head moves it above: a plain
+    // row-select with no mouse event behind it, which is a step - the row is brought into view, the
+    // filter is left alone, and keyboard focus stays where the author's keys reach the rows.
+    const stepPreviewTo = useCallback((blockId: StoryBlockId) => {
+        editorRef.current.selectRow(blockId);
+    }, []);
+    const isRowShown = useCallback((blockId: StoryBlockId) => rowIndexOfRef.current(blockId) >= 0, []);
     const preview = useStoryScenePreviewController({
         context: editor.context,
         document: editor.document,
@@ -1656,6 +1663,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         activeBlockId: editor.activeBlockId,
         active,
         open: previewOpen,
+        onStepTo: stepPreviewTo,
+        isRowShown,
     });
 
     // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
