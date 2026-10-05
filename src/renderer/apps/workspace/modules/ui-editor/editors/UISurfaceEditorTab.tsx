@@ -29,9 +29,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { UIEditorHistoryService, uiEditorHistoryScope } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -44,6 +43,7 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    useGridSpacing,
     usePreviewAspectId,
     usePreviewSafeAreaId,
     usePreviewReferenceSlotIds,
@@ -65,6 +65,7 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceGridOverlay } from "@/apps/workspace/modules/ui-editor/editors/SurfaceGridOverlay";
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
@@ -167,6 +168,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const gridSpacing = useGridSpacing(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     const referenceSlotIds = usePreviewReferenceSlotIds(stateService);
@@ -622,14 +624,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      * project stack whatever the author had open.
      *
      * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
-     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     * surface being shown, and by then focus is on the panel rather than on the canvas. A component
+     * tab claims its definition's stack, which is the one its edits land in (`uiEditorHistoryScope`).
      */
     useEffect(() => {
         if (!historyService || !surfaceId || !active || !context) {
             return undefined;
         }
         const history = context.services.get<HistoryService>(Services.History);
-        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        const scopeId = uiEditorHistoryScope(surfaceId);
         history.setActiveScope(scopeId);
         return () => {
             if (history.getActiveScopeId() === scopeId) {
@@ -822,7 +825,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
+                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} gridSpacing={gridSpacing} />
                         </SurfaceEditorToolbarButtonGroup>
                         <SurfaceAlignTrigger
                             surfaceId={surface.id}
@@ -930,6 +933,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
+                        {/* Shown while it acts: smart snap on with Grid among its targets. Outside the
+                            transformed node so the lines stay one device pixel wide at any zoom. */}
+                        {smartSnapEnabled && smartSnapDetail.snapGrid ? (
+                            <SurfaceGridOverlay designSize={surface.designSize} spacing={gridSpacing} viewport={viewport} />
+                        ) : null}
                         {/* Outside the transformed node on purpose - these are text. */}
                         {isComponentEdit ? null : (
                             <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col items-end gap-1">

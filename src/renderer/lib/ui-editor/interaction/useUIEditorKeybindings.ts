@@ -30,6 +30,7 @@ import {
     UI_EDITOR_NUDGE_STEP,
     uiEditorNudge,
 } from "@/lib/ui-editor/commands/uiEditorNudge";
+import { uiEditorSnapSelectionToGrid } from "@/lib/ui-editor/commands/uiEditorGridSnap";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import { openFloatingLayerCount } from "@/lib/components/layout/floatingLayer";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -322,22 +323,40 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         undoOverride,
     ]);
 
-    // The arrow keys move the selection: one design pixel a press, ten with Shift. A set of their own
-    // because they are live under a narrower condition than the rest (see `areArrowKeysFreeForCanvas`).
+    // The keys that move the selection without a modifier: the arrows, one design pixel a press and
+    // ten with Shift, and R, which puts each selected element's top-left on the nearest grid point. A
+    // set of their own because they are live under a narrower condition than the rest (see
+    // `areArrowKeysFreeForCanvas`): a bare letter or arrow belongs to a field or an open menu first.
     const nudgeKeybindings = useMemo<KeybindingDefinition[]>(() => {
         if (!surfaceId) {
             return [];
         }
-        const nudge = (dx: number, dy: number) => () => {
+        const canMoveSelection = (): boolean => {
             if (readOnlyActive || !documentService || !stateService) {
-                return;
+                return false;
             }
             // An image being cropped, or text being edited in place, on this canvas has the keys; the
             // element's frame stays where it is until that ends.
-            if (stateService.getInteractionOverride()?.surfaceId === surfaceId) {
+            return stateService.getInteractionOverride()?.surfaceId !== surfaceId;
+        };
+        const nudge = (dx: number, dy: number) => () => {
+            if (!canMoveSelection() || !documentService || !stateService) {
                 return;
             }
             uiEditorNudge(documentService, surfaceId, getUiSelection(stateService, surfaceId), dx, dy);
+        };
+        // The project's spacing whether or not grid snapping is switched on: the key is how a layout
+        // made without the grid is brought onto it.
+        const snapToGrid = () => {
+            if (!canMoveSelection() || !documentService || !stateService) {
+                return;
+            }
+            uiEditorSnapSelectionToGrid(
+                documentService,
+                surfaceId,
+                getUiSelection(stateService, surfaceId),
+                stateService.getGridSpacing(),
+            );
         };
         const step = UI_EDITOR_NUDGE_STEP;
         const large = UI_EDITOR_NUDGE_LARGE_STEP;
@@ -351,6 +370,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             { id: "nudge-right-large", key: "shift+arrowright", handler: nudge(large, 0) },
             { id: "nudge-up-large", key: "shift+arrowup", handler: nudge(0, -large) },
             { id: "nudge-down-large", key: "shift+arrowdown", handler: nudge(0, large) },
+            { id: "snap-to-grid", key: "r", handler: snapToGrid },
         ];
     }, [surfaceId, documentService, stateService, readOnlyActive]);
 

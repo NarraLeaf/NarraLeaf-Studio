@@ -207,6 +207,8 @@ export const uiEditor = {
         canvasLayout: "キャンバスの基準線（端と中心）",
         elementBorders: "要素の枠（端と端）",
         elementLayout: "要素の配置（中心どうし）",
+        grid: "グリッド",
+        gridSize: "グリッドの間隔",
     },
     contextMenu: {
         pasteIntoContainer: "コンテナの中に貼り付け",

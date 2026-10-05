@@ -3,6 +3,7 @@ import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceG
 import { getSurfaceAxisAlignedBoundsForLayout } from "./surfaceRect";
 import type { ActiveSnapGuides, AxisAlignedRect, SnapGuideLine } from "./types";
 import { surfaceThresholdFromViewportPx } from "./snapMath";
+import { snapResizeEdgeToGrid } from "./gridSnap";
 
 function bestSnap1D(
     metrics: { position: number }[],
@@ -35,6 +36,11 @@ const EPS = 1e-6;
 type ResizeSnapOptions = {
     preserveAspectRatio?: boolean;
     aspectRatio?: number;
+    /**
+     * Grid spacing in design pixels while grid snapping is on, otherwise absent or `null`. A dragged
+     * edge no guide caught goes to the nearest grid line (`gridSnap.ts`).
+     */
+    gridSpacing?: number | null;
 };
 
 type AxisSnapCandidate = {
@@ -165,6 +171,42 @@ function buildAspectPreservingCandidates(
     return candidates;
 }
 
+/**
+ * The aspect-locked counterpart of the grid snap: each dragged edge's nearest grid line, as the box
+ * it would make with the ratio kept. Only one edge can land on the grid when the ratio is locked, so
+ * the caller takes the nearer of the two.
+ */
+function buildAspectPreservingGridCandidates(
+    surf: AxisAlignedRect,
+    direction: readonly [number, number],
+    spacing: number,
+    aspectRatio: number,
+): { rect: AxisAlignedRect; distance: number }[] {
+    const candidates: { rect: AxisAlignedRect; distance: number }[] = [];
+    const [dirX, dirY] = direction;
+    if (dirX !== 0) {
+        const anchored = dirX === 1 ? surf.x : surf.x + surf.width;
+        const moving = dirX === 1 ? surf.x + surf.width : surf.x;
+        const snapped = snapResizeEdgeToGrid(moving, anchored, spacing, MIN_DIM);
+        const width = Math.abs(snapped - anchored);
+        const height = width / aspectRatio;
+        if (width >= MIN_DIM && height >= MIN_DIM) {
+            candidates.push({ rect: rectFromAnchoredSize(surf, direction, width, height), distance: Math.abs(snapped - moving) });
+        }
+    }
+    if (dirY !== 0) {
+        const anchored = dirY === 1 ? surf.y : surf.y + surf.height;
+        const moving = dirY === 1 ? surf.y + surf.height : surf.y;
+        const snapped = snapResizeEdgeToGrid(moving, anchored, spacing, MIN_DIM);
+        const height = Math.abs(snapped - anchored);
+        const width = height * aspectRatio;
+        if (width >= MIN_DIM && height >= MIN_DIM) {
+            candidates.push({ rect: rectFromAnchoredSize(surf, direction, width, height), distance: Math.abs(snapped - moving) });
+        }
+    }
+    return candidates;
+}
+
 function chooseBestAspectPreservingCandidate(candidates: AxisSnapCandidate[]): AxisSnapCandidate | null {
     if (candidates.length === 0) {
         return null;
@@ -221,6 +263,7 @@ export function snapResizeLayoutInSurface(
 
     const [dirX, dirY] = direction;
     const aspectRatio = options?.preserveAspectRatio ? getAspectRatio(tentative, options) : null;
+    const gridSpacing = options?.gridSpacing != null && options.gridSpacing > 0 ? options.gridSpacing : null;
 
     if (aspectRatio != null) {
         const best = chooseBestAspectPreservingCandidate(
@@ -232,6 +275,16 @@ export function snapResizeLayoutInSurface(
                 activeGuides.vertical = [{ value: best.line.value, kind: best.line.kind }];
             } else {
                 activeGuides.horizontal = [{ value: best.line.value, kind: best.line.kind }];
+            }
+        } else if (gridSpacing != null) {
+            const gridCandidates = buildAspectPreservingGridCandidates(surf, direction, gridSpacing, aspectRatio);
+            const nearest = gridCandidates.reduce<{ rect: AxisAlignedRect; distance: number } | null>(
+                (bestSoFar, candidate) =>
+                    bestSoFar == null || candidate.distance + EPS < bestSoFar.distance ? candidate : bestSoFar,
+                null,
+            );
+            if (nearest != null) {
+                surf = nearest.rect;
             }
         }
         surf = enforceAspectMinSize(surf, direction, aspectRatio);
@@ -248,11 +301,17 @@ export function snapResizeLayoutInSurface(
         };
     }
 
+    // Per dragged edge, a guide within reach wins (and is drawn); otherwise, with grid snapping on,
+    // the edge goes to the nearest grid line - the same order the move snap uses.
     if (dirX === -1) {
         const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold);
         if (snap.line != null) {
             surf = { ...surf, x: surf.x + snap.delta, width: surf.width - snap.delta };
             activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
+        } else if (gridSpacing != null) {
+            const right = surf.x + surf.width;
+            const left = snapResizeEdgeToGrid(surf.x, right, gridSpacing, MIN_DIM);
+            surf = { ...surf, x: left, width: right - left };
         }
     } else if (dirX === 1) {
         const right = surf.x + surf.width;
@@ -260,6 +319,8 @@ export function snapResizeLayoutInSurface(
         if (snap.line != null) {
             surf = { ...surf, width: surf.width + snap.delta };
             activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
+        } else if (gridSpacing != null) {
+            surf = { ...surf, width: snapResizeEdgeToGrid(right, surf.x, gridSpacing, MIN_DIM) - surf.x };
         }
     }
 
@@ -272,6 +333,10 @@ export function snapResizeLayoutInSurface(
         if (snap.line != null) {
             surf = { ...surf, y: surf.y + snap.delta, height: surf.height - snap.delta };
             activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
+        } else if (gridSpacing != null) {
+            const bottom = surf.y + surf.height;
+            const top = snapResizeEdgeToGrid(surf.y, bottom, gridSpacing, MIN_DIM);
+            surf = { ...surf, y: top, height: bottom - top };
         }
     } else if (dirY === 1) {
         const bottom = surf.y + surf.height;
@@ -279,6 +344,8 @@ export function snapResizeLayoutInSurface(
         if (snap.line != null) {
             surf = { ...surf, height: surf.height + snap.delta };
             activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
+        } else if (gridSpacing != null) {
+            surf = { ...surf, height: snapResizeEdgeToGrid(bottom, surf.y, gridSpacing, MIN_DIM) - surf.y };
         }
     }
 

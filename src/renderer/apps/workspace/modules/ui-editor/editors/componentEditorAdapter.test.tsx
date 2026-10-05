@@ -135,6 +135,11 @@ describe("the component editor's canvas", () => {
             updateComponentElementLayout: (_componentId: string, elementId: string, patch: Record<string, unknown>) => {
                 writes.push({ elementId, patch });
             },
+            updateComponentElementLayouts: (_componentId: string, patches: Record<string, Record<string, unknown>>) => {
+                for (const [elementId, patch] of Object.entries(patches)) {
+                    writes.push({ elementId, patch });
+                }
+            },
         } as unknown as UIDocumentService;
         return { service, writes };
     }

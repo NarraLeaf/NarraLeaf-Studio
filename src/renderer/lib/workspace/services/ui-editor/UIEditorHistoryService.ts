@@ -1,13 +1,22 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import type { TranslationKey } from "@shared/i18n";
-import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
-import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { ownerKeyBelongsToComponent, ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
+import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import {
+    buildUIComponentEditorSurfaceId,
+    readUIComponentEditorSurfaceComponentId,
+} from "@shared/types/ui-editor/componentInstanceKey";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
-import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS } from "../history/historyModel";
-import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf, uiSurfaceHistoryScope } from "../history/historyScopes";
+import { DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS, type HistoryScopeId } from "../history/historyModel";
+import {
+    HistoryScopeKind,
+    historyScopeSubject,
+    uiComponentHistoryScope,
+    uiSurfaceHistoryScope,
+} from "../history/historyScopes";
 import { Service } from "../Service";
 import { IUIEditorHistoryService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -25,10 +34,53 @@ export type UIEditorUIDocumentSurfaceSnapshot = Pick<UIDocument, "schemaVersion"
     elements: Record<string, UIElement>;
 };
 
+/**
+ * One component definition as it stood: the whole record - its elements, params, size - or null when
+ * the document held no definition by that id.
+ *
+ * The record and nothing else, because nothing else is part of a definition. Every placement of it
+ * on a page holds only the component's id and its own param values, and draws the definition from
+ * the document's library each time, so putting the record back is what puts every placement back.
+ */
+export type UIEditorComponentDocumentSnapshot = {
+    componentId: string;
+    component: UIComponentDefinition | null;
+};
+
 export type UIEditorHistorySnapshot = {
-    document: UIEditorUIDocumentSurfaceSnapshot;
+    document: UIEditorUIDocumentSurfaceSnapshot | UIEditorComponentDocumentSnapshot;
     blueprint: UIEditorBlueprintSurfaceSnapshot;
 };
+
+/**
+ * The stack an editor's surface id undoes in.
+ *
+ * A page is its own scope. A component editor runs on a pseudo surface, `component-editor:<id>`,
+ * that is in no page's document; its edits are edits to the definition, and land in the
+ * definition's own scope (`ui-component:<id>`), one per component and so one per component tab.
+ * Everything that speaks to this service in surface ids - the canvas keybindings, the drag commit's
+ * transaction, the tab claiming the active scope - goes through here, so a component tab needs
+ * nothing of its own to be undoable.
+ */
+export function uiEditorHistoryScope(surfaceId: string): HistoryScopeId {
+    const componentId = readUIComponentEditorSurfaceComponentId(surfaceId);
+    return componentId ? uiComponentHistoryScope(componentId) : uiSurfaceHistoryScope(surfaceId);
+}
+
+/** The editor surface id a scope of this service belongs to, or null for any other scope. */
+function surfaceIdOfScope(scopeId: HistoryScopeId): string | null {
+    const componentId = historyScopeSubject(scopeId, HistoryScopeKind.UIComponent);
+    if (componentId) {
+        return buildUIComponentEditorSurfaceId(componentId);
+    }
+    return historyScopeSubject(scopeId, HistoryScopeKind.UISurface);
+}
+
+function isComponentDocumentSnapshot(
+    document: UIEditorHistorySnapshot["document"],
+): document is UIEditorComponentDocumentSnapshot {
+    return "componentId" in document;
+}
 
 export type UIEditorHistoryRecordOptions = {
     surfaceId: string;
@@ -50,19 +102,41 @@ function cloneBlueprint<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function isSurfaceBlueprintOwnerKey(surfaceId: string, ownerKey: string): boolean {
-    return ownerKeyBelongsToSurface(ownerKey, surfaceId);
+/** Which owner slots a snapshot slices out of the blueprint document. */
+type OwnerKeyFilter = (ownerKey: string) => boolean;
+
+function surfaceOwnerKeys(surfaceId: string): OwnerKeyFilter {
+    return ownerKey => ownerKeyBelongsToSurface(ownerKey, surfaceId);
+}
+
+function componentOwnerKeys(componentId: string): OwnerKeyFilter {
+    return ownerKey => ownerKeyBelongsToComponent(ownerKey, componentId);
 }
 
 export function captureBlueprintSurfaceSnapshot(
     blueprintDocument: BlueprintDocument,
     surfaceId: string,
 ): UIEditorBlueprintSurfaceSnapshot {
+    return captureBlueprintOwnerSnapshot(blueprintDocument, surfaceOwnerKeys(surfaceId));
+}
+
+/** The private blueprints of one component definition's widgets. */
+export function captureBlueprintComponentSnapshot(
+    blueprintDocument: BlueprintDocument,
+    componentId: string,
+): UIEditorBlueprintSurfaceSnapshot {
+    return captureBlueprintOwnerSnapshot(blueprintDocument, componentOwnerKeys(componentId));
+}
+
+function captureBlueprintOwnerSnapshot(
+    blueprintDocument: BlueprintDocument,
+    belongs: OwnerKeyFilter,
+): UIEditorBlueprintSurfaceSnapshot {
     const ownerRecords: Record<string, BlueprintPrivateOwnerRecord> = {};
     const blueprints: Record<string, Blueprint> = {};
 
     for (const [ownerKey, ownerRecord] of Object.entries(blueprintDocument.ownerRecords)) {
-        if (!isSurfaceBlueprintOwnerKey(surfaceId, ownerKey)) {
+        if (!belongs(ownerKey)) {
             continue;
         }
         ownerRecords[ownerKey] = cloneBlueprint(ownerRecord);
@@ -80,11 +154,27 @@ export function applyBlueprintSurfaceSnapshot(
     surfaceId: string,
     target: UIEditorBlueprintSurfaceSnapshot,
 ): void {
+    applyBlueprintOwnerSnapshot(document, surfaceOwnerKeys(surfaceId), target);
+}
+
+export function applyBlueprintComponentSnapshot(
+    document: BlueprintDocument,
+    componentId: string,
+    target: UIEditorBlueprintSurfaceSnapshot,
+): void {
+    applyBlueprintOwnerSnapshot(document, componentOwnerKeys(componentId), target);
+}
+
+function applyBlueprintOwnerSnapshot(
+    document: BlueprintDocument,
+    belongs: OwnerKeyFilter,
+    target: UIEditorBlueprintSurfaceSnapshot,
+): void {
     const targetOwnerKeys = new Set(Object.keys(target.ownerRecords));
     const targetBlueprintIds = new Set(Object.keys(target.blueprints));
 
     for (const [ownerKey, ownerRecord] of Object.entries(document.ownerRecords)) {
-        if (!isSurfaceBlueprintOwnerKey(surfaceId, ownerKey) || targetOwnerKeys.has(ownerKey)) {
+        if (!belongs(ownerKey) || targetOwnerKeys.has(ownerKey)) {
             continue;
         }
         if (!targetBlueprintIds.has(ownerRecord.blueprintId)) {
@@ -112,9 +202,57 @@ export function applyBlueprintSurfaceSnapshot(
     }
 }
 
+/**
+ * A snapshot's document half as compared for "did anything change".
+ *
+ * A definition's `updatedAt` is left out: every write to a definition stamps it, so a write that
+ * changes nothing else - a field committed with the value it already had - would otherwise be an
+ * undo step that visibly does nothing, and the author would press Ctrl+Z twice to get anywhere.
+ */
+function comparableDocument(document: UIEditorHistorySnapshot["document"]): string {
+    if (!isComponentDocumentSnapshot(document) || !document.component) {
+        return JSON.stringify(document);
+    }
+    const { updatedAt: _updatedAt, ...rest } = document.component;
+    return JSON.stringify({ ...document, component: rest });
+}
+
 function areSnapshotsEqual(a: UIEditorHistorySnapshot, b: UIEditorHistorySnapshot): boolean {
-    return JSON.stringify(a.document) === JSON.stringify(b.document) &&
+    return comparableDocument(a.document) === comparableDocument(b.document) &&
         JSON.stringify(a.blueprint) === JSON.stringify(b.blueprint);
+}
+
+export function captureUIDocumentComponentSnapshot(
+    document: UIDocument,
+    componentId: string,
+): UIEditorComponentDocumentSnapshot {
+    const component = (document.components ?? []).find(item => item.id === componentId);
+    return { componentId, component: component ? cloneBlueprint(component) : null };
+}
+
+/**
+ * `current` with one definition put back as the snapshot holds it, everything else untouched.
+ *
+ * In its own place in the library, so the component panel does not reorder under the author. A
+ * definition the snapshot holds and the document no longer does is appended, which is what undoing
+ * in the scope of a definition deleted since would do - the same as a page's scope.
+ */
+export function applyUIDocumentComponentSnapshot(
+    currentDocument: UIDocument,
+    target: UIEditorComponentDocumentSnapshot,
+): UIDocument {
+    const next = cloneUIHistoryDocument(currentDocument);
+    const components = [...(next.components ?? [])];
+    const index = components.findIndex(component => component.id === target.componentId);
+    if (target.component && index >= 0) {
+        components[index] = cloneBlueprint(target.component);
+    } else if (target.component) {
+        components.push(cloneBlueprint(target.component));
+    } else if (index >= 0) {
+        components.splice(index, 1);
+    }
+    next.components = components;
+    return next;
 }
 
 export function captureUIDocumentSurfaceSnapshot(
@@ -184,22 +322,24 @@ export function applyUIDocumentSurfaceSnapshot(
 }
 
 /**
- * Surface-level undo for the UI editor.
+ * Undo for the UI editor: one stack per page, and one per component definition.
  *
  * What is left here after the stacks moved to {@link HistoryService} is the part that is actually
- * about UI surfaces: which slice of the two documents belongs to a surface, and how to put that
- * slice back without disturbing the others. The stack itself - depth, merging, redo invalidation,
- * "is a restore in progress" - is shared with every other editor now, so a change to how undo
- * behaves is one change rather than five.
+ * about the interface: which slice of the two documents belongs to a page or to a definition, and
+ * how to put that slice back without disturbing the others. The stack itself - depth, merging, redo
+ * invalidation, "is a restore in progress" - is shared with every other editor now, so a change to
+ * how undo behaves is one change rather than five.
  *
- * The public shape is unchanged on purpose; callers speak in surface ids and should not have to
- * learn scope ids to ask whether Ctrl+Z will do something.
+ * The public shape speaks in editor surface ids on purpose: callers should not have to learn scope
+ * ids to ask whether Ctrl+Z will do something. A component editor's pseudo surface id
+ * (`component-editor:<id>`) is one of them, and names the definition's slice and scope - see
+ * {@link uiEditorHistoryScope}.
  */
 export class UIEditorHistoryService
     extends Service<UIEditorHistoryService>
     implements IUIEditorHistoryService
 {
-    /** Surfaces this service has registered a scope for, so it can re-limit and clear them. */
+    /** Editor surfaces this service has registered a scope for, so it can re-limit and clear them. */
     private readonly registered = new Map<string, () => void>();
     private readonly events = new EventEmitter<UIEditorHistoryEvents>();
     private limit = DEFAULT_HISTORY_LIMIT;
@@ -210,10 +350,7 @@ export class UIEditorHistoryService
         // One bridge from the shared "some stack changed" event to this service's surface-shaped
         // one, so the editor's existing subscribers keep working.
         this.unsubscribe = this.history().on("changed", ({ scopeId }) => {
-            if (!isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)) {
-                return;
-            }
-            const [surfaceId] = historyScopeParts(scopeId);
+            const surfaceId = surfaceIdOfScope(scopeId);
             if (surfaceId) {
                 this.events.emit("historyChanged", { surfaceId });
             }
@@ -231,13 +368,20 @@ export class UIEditorHistoryService
         }
         this.limit = next;
         for (const surfaceId of this.registered.keys()) {
-            this.history().setScopeLimit(uiSurfaceHistoryScope(surfaceId), next);
+            this.history().setScopeLimit(uiEditorHistoryScope(surfaceId), next);
         }
     }
 
     public captureSnapshot(surfaceId: string): UIEditorHistorySnapshot {
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
+        const componentId = readUIComponentEditorSurfaceComponentId(surfaceId);
+        if (componentId) {
+            return {
+                document: captureUIDocumentComponentSnapshot(uidoc.getDocument(), componentId),
+                blueprint: captureBlueprintComponentSnapshot(graph.getDocument().blueprintDocument, componentId),
+            };
+        }
         return {
             document: captureUIDocumentSurfaceSnapshot(uidoc.getDocument(), surfaceId),
             blueprint: captureBlueprintSurfaceSnapshot(graph.getDocument().blueprintDocument, surfaceId),
@@ -246,7 +390,7 @@ export class UIEditorHistoryService
 
     public record(options: UIEditorHistoryRecordOptions): void {
         this.ensureScope(options.surfaceId);
-        this.history().pushSnapshot<UIEditorHistorySnapshot>(uiSurfaceHistoryScope(options.surfaceId), {
+        this.history().pushSnapshot<UIEditorHistorySnapshot>(uiEditorHistoryScope(options.surfaceId), {
             label: { key: "workspace.history.entry.surfaceEdit" as TranslationKey },
             before: options.before,
             after: options.after,
@@ -257,29 +401,29 @@ export class UIEditorHistoryService
     }
 
     public canUndo(surfaceId: string): boolean {
-        return this.history().canUndo(uiSurfaceHistoryScope(surfaceId));
+        return this.history().canUndo(uiEditorHistoryScope(surfaceId));
     }
 
     public canRedo(surfaceId: string): boolean {
-        return this.history().canRedo(uiSurfaceHistoryScope(surfaceId));
+        return this.history().canRedo(uiEditorHistoryScope(surfaceId));
     }
 
     public undo(surfaceId: string): boolean {
         this.ensureScope(surfaceId);
-        return this.history().undo(uiSurfaceHistoryScope(surfaceId));
+        return this.history().undo(uiEditorHistoryScope(surfaceId));
     }
 
     public redo(surfaceId: string): boolean {
         this.ensureScope(surfaceId);
-        return this.history().redo(uiSurfaceHistoryScope(surfaceId));
+        return this.history().redo(uiEditorHistoryScope(surfaceId));
     }
 
     public clear(surfaceId?: string): void {
         if (surfaceId) {
-            this.history().clearScope(uiSurfaceHistoryScope(surfaceId));
+            this.history().clearScope(uiEditorHistoryScope(surfaceId));
             return;
         }
-        this.history().clearMatching(scopeId => isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface));
+        this.history().clearMatching(scopeId => surfaceIdOfScope(scopeId) !== null);
         for (const dispose of this.registered.values()) {
             dispose();
         }
@@ -311,15 +455,15 @@ export class UIEditorHistoryService
      * Publish this surface's readers once.
      *
      * Registered for the life of the workspace rather than the life of the editor tab: the two
-     * documents a surface snapshot slices are service-owned and readable whether or not anything is
-     * showing them, so there is no window in which an entry recorded here cannot be applied.
+     * documents a snapshot slices are service-owned and readable whether or not anything is showing
+     * them, so there is no window in which an entry recorded here cannot be applied.
      */
     private ensureScope(surfaceId: string): void {
         if (this.registered.has(surfaceId)) {
             return;
         }
         const dispose = this.history().registerScope<UIEditorHistorySnapshot>({
-            id: uiSurfaceHistoryScope(surfaceId),
+            id: uiEditorHistoryScope(surfaceId),
             label: { key: "workspace.history.scope.uiSurface" as TranslationKey },
             capture: () => this.captureSnapshot(surfaceId),
             apply: snapshot => this.restore(surfaceId, snapshot),
@@ -332,15 +476,30 @@ export class UIEditorHistoryService
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         const lifecycle = this.getContext().services.get<UIBlueprintLifecycleCoordinator>(Services.UIBlueprintLifecycle);
+        const target = snapshot.document;
 
-        uidoc.restoreDocumentFromHistory(
-            applyUIDocumentSurfaceSnapshot(uidoc.getDocument(), snapshot.document, surfaceId),
-            { skipAfterMutateHook: true },
-        );
-        graph.applyGraphMutation(document => {
-            applyBlueprintSurfaceSnapshot(document.blueprintDocument, surfaceId, snapshot.blueprint);
-            assertValidBlueprintDocument(document.blueprintDocument);
-        });
+        // The document first and the blueprints after, then one reconciliation: the reconciler
+        // collects every private blueprint whose widget is gone, so it must not run between the
+        // two - after a deleted widget's restore it would see the widget and its logic both back.
+        if (isComponentDocumentSnapshot(target)) {
+            uidoc.restoreDocumentFromHistory(
+                applyUIDocumentComponentSnapshot(uidoc.getDocument(), target),
+                { skipAfterMutateHook: true },
+            );
+            graph.applyGraphMutation(document => {
+                applyBlueprintComponentSnapshot(document.blueprintDocument, target.componentId, snapshot.blueprint);
+                assertValidBlueprintDocument(document.blueprintDocument);
+            });
+        } else {
+            uidoc.restoreDocumentFromHistory(
+                applyUIDocumentSurfaceSnapshot(uidoc.getDocument(), target, surfaceId),
+                { skipAfterMutateHook: true },
+            );
+            graph.applyGraphMutation(document => {
+                applyBlueprintSurfaceSnapshot(document.blueprintDocument, surfaceId, snapshot.blueprint);
+                assertValidBlueprintDocument(document.blueprintDocument);
+            });
+        }
         lifecycle.syncFromUidoc();
     }
 }

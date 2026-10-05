@@ -446,7 +446,17 @@ interface IUIDocumentService extends IService {
     renameComponent(componentId: string, name: string): void;
     deleteComponents(componentIds: string[]): void;
     duplicateComponent(componentId: string): UIComponentDefinition | null;
-    updateComponentElementLayout(componentId: string, elementId: string, layoutPatch: Partial<UILayout>): void;
+    updateComponentElementLayout(
+        componentId: string,
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+        options?: { skipHistory?: boolean },
+    ): void;
+    updateComponentElementLayouts(
+        componentId: string,
+        layoutPatches: Record<string, Partial<UILayout>>,
+        options?: { mergeKey?: string },
+    ): void;
     updateComponentElementProps(componentId: string, elementId: string, propsPatch: Record<string, unknown>): void;
     updateComponentElementExtra(componentId: string, elementId: string, extraPatch: Record<string, unknown>): void;
     renameComponentElement(componentId: string, elementId: string, name: string): void;
@@ -1010,6 +1020,8 @@ interface UIEditorStateEvents {
     smartSnapEnabledChanged: boolean;
     /** Per-category snap targets when smart snap is enabled (persisted). */
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
+    /** The canvas grid spacing in design pixels (persisted per project). */
+    gridSpacingChanged: number;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
     /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
@@ -1086,6 +1098,13 @@ interface IUIEditorStateService extends IService {
     /** Which guide categories participate when smart snap is on (persisted). */
     getSmartSnapDetailSettings(): SmartSnapDetailSettings;
     patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /**
+     * The canvas grid's spacing in design pixels, square cells, origin at the screen's top-left. An
+     * editor preference kept per project in `.nlstudio`, never in the UI document; used by grid
+     * snapping while it is on and by the snap-to-grid key whether or not it is.
+     */
+    getGridSpacing(): number;
+    setGridSpacing(spacing: number): void;
     /**
      * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
      * settings, never in the UIDocument, so toggling it cannot dirty the project.
@@ -1260,8 +1279,13 @@ interface IHistoryService extends IService {
 interface IUIEditorHistoryService extends IService {
     getLimit(): number;
     setLimit(limit: number): void;
+    /**
+     * One page's slice of the two interface documents - or, for a component editor's
+     * `component-editor:<id>` surface, one definition's. Opaque outside the service: it is only
+     * ever handed back to {@link record}.
+     */
     captureSnapshot(surfaceId: string): {
-        document: UIDocument;
+        document: unknown;
         blueprint: unknown;
     };
     record(options: {

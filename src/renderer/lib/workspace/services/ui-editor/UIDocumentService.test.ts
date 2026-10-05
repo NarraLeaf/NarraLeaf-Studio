@@ -730,6 +730,42 @@ describe("UIDocumentService surface creation", () => {
         ]);
     });
 
+    it("records a component definition's edits in the definition's own stack, folding what a page folds", () => {
+        // A definition's edits used to be written with no history at all, so Ctrl+Z in a component
+        // tab did nothing. They are recorded under the component editor's surface id, which the
+        // interface editor's history maps to the definition's scope; the merge keys are the page's.
+        const { service, historyCalls } = createHarness({ withHistory: true });
+        const component = service.createEmptyComponent("Slot");
+        const rootId = component.rootElementId;
+        const editorSurfaceId = buildUIComponentEditorSurfaceId(component.id);
+        historyCalls.length = 0;
+
+        service.updateComponentElementLayout(component.id, rootId, { width: 300 });
+        service.updateComponentElementLayout(component.id, rootId, { height: 90 }, { skipHistory: true });
+        service.updateComponentElementLayouts(component.id, { [rootId]: { width: 310 } }, { mergeKey: "nudge:slot" });
+        service.updateComponentElementProps(component.id, rootId, { clipContent: true });
+        service.updateComponentElementExtra(component.id, rootId, { appearance: {} });
+        service.updateComponentElementAnimation(component.id, rootId, null);
+        service.updateComponentElementAnimation(component.id, rootId, null, { mergeKey: "element:root:animation:enter" });
+        service.renameComponentElement(component.id, rootId, "Frame");
+        service.setComponentElementValueBinding(component.id, rootId, "text", { kind: "componentParam", paramId: "slot" });
+        service.setComponentParams(component.id, [{ id: "slot", name: "Slot", type: "string", defaultValue: "" }]);
+        service.renameComponent(component.id, "Load slot");
+
+        expect(historyCalls).toEqual([
+            { surfaceId: editorSurfaceId, mergeKey: `layout:${rootId}:width` },
+            { surfaceId: editorSurfaceId, mergeKey: "nudge:slot" },
+            { surfaceId: editorSurfaceId, mergeKey: `props:${rootId}:clipContent` },
+            { surfaceId: editorSurfaceId, mergeKey: `extra:${rootId}:appearance` },
+            { surfaceId: editorSurfaceId, mergeKey: `animation:${rootId}` },
+            { surfaceId: editorSurfaceId, mergeKey: "element:root:animation:enter" },
+            { surfaceId: editorSurfaceId, mergeKey: undefined },
+            { surfaceId: editorSurfaceId, mergeKey: undefined },
+            { surfaceId: editorSurfaceId, mergeKey: undefined },
+            { surfaceId: editorSurfaceId, mergeKey: `component:${component.id}:name` },
+        ]);
+    });
+
     it("duplicates Pages with independent elements and private blueprints", () => {
         const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
         const source = service.createSurface({
