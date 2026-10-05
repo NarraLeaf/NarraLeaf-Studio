@@ -181,7 +181,7 @@ export const help = {
                 + "表达式无法解析时不能提交\n"
                 + "\n"
                 + "- 单独的名称表示作用域内的变量；在名称前加 scene.、saved. 或 persistent. 指定作用域\n"
-                + "- visited 判断某个场景或标签是否到达过\n"
+                + "- visited 判断某个场景是否到达过，picked 判断某个选项是否被选过\n"
                 + "- 条件必须是结果为真或假的判断",
         },
         storyScript: {

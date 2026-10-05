@@ -223,7 +223,7 @@ export const help = {
                 + "\n"
                 + "- A bare name is a variable in scope. Prefix it with scene., saved. or persistent. to choose "
                 + "the scope.\n"
-                + "- visited reports whether a scene or a label has been reached.\n"
+                + "- visited reports whether a scene has been reached, and picked whether a choice option has been chosen.\n"
                 + "- A condition must be a test that evaluates to true or false.",
         },
         storyScript: {
