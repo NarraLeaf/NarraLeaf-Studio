@@ -71,13 +71,14 @@ export const widgets = {
         bindingNoEffect: "このバインドは{slot}スロットでは効かない",
         removeBinding: "解除",
         hintBlueprintValue: "エディタでのみ表示。ゲームではブループリント値の結果を表示する",
-        hintWritten: "エディタでのみ表示。ゲームでは下のブループリントが書き込む文字を表示する",
         hintComponentParam: "コンポーネントの編集中のみ表示。置いたものでは、それぞれがパラメータに設定した値を表示する",
     },
     textWriters: {
         title: "ゲーム中に書き込むブループリント",
         entry: "{blueprint} › {node}",
         count: "×{count}",
+        defaultValue: "既定値",
+        defaultValueHint: "下のブループリントが書き込むまで、ゲームではこの文字を表示する",
     },
     localization: {
         direct: "直接入力",

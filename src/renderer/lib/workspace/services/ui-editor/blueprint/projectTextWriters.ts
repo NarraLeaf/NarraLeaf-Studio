@@ -13,8 +13,8 @@ import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphS
  * The project's writers of interface words (`@shared/types/ui-editor/textWriters`), read from the live
  * blueprint document.
  *
- * Every text and button inspector, the translation table and the project statistics ask for the same
- * index between two blueprint edits, so it is built once per graph revision. The document is edited in
+ * Every text and button inspector asks for the same index between two blueprint edits, so it is built
+ * once per graph revision. The document is edited in
  * place, so its identity alone cannot tell an edited document from the one indexed - the revision the
  * graph service counts is the other half of the key.
  */

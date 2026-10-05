@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { UIComponentDefinition, UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { EMPTY_UI_TEXT_WRITER_INDEX, type UITextWriter } from "@shared/types/ui-editor/textWriters";
 import { extractUITextEntries, type UITextExtractionInput } from "./uiTextSource";
 
 /**
  * Interface words are found where the canvas shows them: a widget's own words, the source words of a
  * key a widget names, and what a component placement gives a text parameter - each opening the page or
- * the component with that widget selected. Sample text is found too, and says it is sample text.
+ * the component with that widget selected. Sample text is found too, and says it is sample text. The
+ * words a blueprint writes over are not sample text - they are the widget's default value, which a
+ * player reads until the first write - and are found as any other words are.
  */
 
 const layout = { x: 0, y: 0, width: 10, height: 10 };
@@ -48,6 +49,7 @@ const document = {
             props: { text: "Narra" },
             valueBindings: { text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" } },
         }),
+        // The slot's graph writes the place name over these words; the game shows them until it does.
         written: element("written", "nl.text", { name: "Place", props: { text: "Corridor" } }),
         sentence: element("sentence", "nl.dialog.sentence", { name: "Line", props: { text: "The current line" } }),
         blank: element("blank", "nl.text", { name: "Blank", props: { text: "   " } }),
@@ -64,19 +66,8 @@ const document = {
     components: [nav],
 } as unknown as UIDocument;
 
-const writer: UITextWriter = {
-    blueprintId: "bp-w",
-    graphKind: "event",
-    graphId: "g",
-    nodeId: "n",
-    nodeType: "blueprint.text.set",
-    effect: "replace",
-    textProp: "text",
-} as UITextWriter;
-
 const input: UITextExtractionInput = {
     keys: { "menu.start": "Start Game" },
-    writers: new Map([["written", [writer]]]),
     labels: { sample: "Sample text", widgetName: el => (el.type === "nl.button" ? "Button" : "Widget") },
 };
 
@@ -106,14 +97,13 @@ describe("extractUITextEntries", () => {
 
     it("lists sample text with a note saying so", () => {
         expect(byId("uitext:bound.text")?.detail).toBe("Title › Name tag · Sample text");
-        expect(byId("uitext:written.text")?.detail).toBe("Title › Place · Sample text");
         expect(byId("uitext:sentence.text")?.detail).toBe("Title › Line · Sample text");
         expect(byId("uitext:title.text")?.detail).not.toContain("Sample text");
     });
 
-    it("decides sample text by who writes over the words", () => {
-        const entries = extractUITextEntries(document, { ...input, writers: EMPTY_UI_TEXT_WRITER_INDEX });
-        expect(entries.find(entry => entry.id === "uitext:written.text")?.detail).toBe("Title › Place");
+    it("lists the words a blueprint writes over as words a player reads, beside a bound widget's sample", () => {
+        expect(byId("uitext:written.text")).toMatchObject({ text: "Corridor", detail: "Title › Place" });
+        expect(byId("uitext:bound.text")).toMatchObject({ text: "Narra", detail: "Title › Name tag · Sample text" });
     });
 
     it("skips words with nothing to find", () => {

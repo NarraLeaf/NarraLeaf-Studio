@@ -46,7 +46,6 @@ import {
     uiComponentTextValueUnitBinding,
     uiTextComponentParamOf,
 } from "@shared/types/ui-editor/componentTextParams";
-import { indexUITextWriters, type UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -353,14 +352,15 @@ export type InterfaceTextUnitSite = {
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
  *
  * A widget's own unit is not read where its words are sample text (`textSample.ts`) - a value binding
- * or a blueprint decides what the game shows there, and the translation table has no row for them -
- * so `writers` (`indexUITextWriters`) are required.
+ * decides what the game shows there, and the translation table has no row for them. Words a blueprint
+ * writes over are read through it like any others: they are the widget's default value, which the
+ * game shows, translated, until the first write.
  *
  * What an instance does carry is the words it gives its component's text parameters, which a widget
  * inside the definition shows: each is read through the key it names or through the placement's own
  * unit (the definition's, for a default it falls back to), and listed under the placement.
  */
-export function listInterfaceTextUnitSites(document: UIDocument, writers: UITextWriterIndex): InterfaceTextUnitSite[] {
+export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
         for (const { value } of listUIPlacementTextValues(document, element)) {
@@ -374,7 +374,7 @@ export function listInterfaceTextUnitSites(document: UIDocument, writers: UIText
         }
         for (const site of playerWordsSitesOf(element)) {
             const binding = uiTextUnitBindingOf(element, site);
-            if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site, writers.get(element.id))) {
+            if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site)) {
                 continue;
             }
             if (binding) {
@@ -1123,7 +1123,7 @@ function runLocalizationKeyMissing(ctx: LintContext): LintFinding[] {
         return [];
     }
     const findings: LintFinding[] = [];
-    for (const site of listInterfaceTextUnitSites(document, indexUITextWriters(ctx.blueprintDocument))) {
+    for (const site of listInterfaceTextUnitSites(document)) {
         if (site.binding.kind !== "key" || keys.has(site.binding.keyName)) {
             continue;
         }

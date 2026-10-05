@@ -70,13 +70,14 @@ export const widgets = {
         bindingNoEffect: "此绑定在{slot}栏中不生效",
         removeBinding: "移除",
         hintBlueprintValue: "仅在编辑器中显示，游戏中显示蓝图值的结果",
-        hintWritten: "仅在编辑器中显示，游戏中显示下列蓝图写入的文字",
         hintComponentParam: "仅在编辑组件时显示，各放置处显示为该参数设置的值",
     },
     textWriters: {
         title: "游戏中由以下蓝图写入",
         entry: "{blueprint} › {node}",
         count: "×{count}",
+        defaultValue: "默认值",
+        defaultValueHint: "下列蓝图写入前，游戏中显示该文字",
     },
     localization: {
         direct: "直接写",
