@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import os from "os";
 import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { resolveImageCompression, type AssetCompressionConfiguration } from "@shared/types/assetCompression";
@@ -12,6 +13,7 @@ import { stripImageMetadata } from "@shared/utils/assetImageMetadata";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import type { WebImageCodec, WebImageSourceType } from "./webImageCodec";
+import { createKeyedTurns, forEachInLanes, MemoryBudget, resolveBuildLanes } from "./buildLanes";
 
 /**
  * Re-encode the project's images once, before anything is compiled, and hand the
@@ -82,8 +84,11 @@ export type AssetImageOptimizationInput = {
      * Opened on the first image that actually needs encoding, so a build whose
      * images are all in the cache never starts a codec window at all - and a
      * host that cannot open one still builds, as long as it has nothing to do.
+     *
+     * Asked for at most once per pass, with the number of images this pass will
+     * hand it at once, so it can open that many pages to encode them in.
      */
-    openCodec: () => Promise<WebImageCodec>;
+    openCodec: (pages: number) => Promise<WebImageCodec>;
     log: AssetImageOptimizationLog;
     cancelled?: () => boolean;
     /**
@@ -95,7 +100,46 @@ export type AssetImageOptimizationInput = {
      * avatars - which is what makes a count here a measurement rather than an extrapolation.
      */
     onProgress?: (done: number, total: number) => void;
+    /** Injected in tests; how many images are worked on at once. Read from the machine otherwise. */
+    lanes?: number;
+    /** Injected in tests; the bytes encodes in flight may hold. See {@link imageEncodeMemoryBudget}. */
+    memoryBudget?: number;
 };
+
+/**
+ * The most images encoded at once, however many cores the machine has.
+ *
+ * Each lane is a Chromium renderer of its own - tens of megabytes before it holds a single picture -
+ * and the main process feeds every one of them its source and reads the result back. Measured on a
+ * library with 4K sprites in it, 8 lanes did the pass in a fifth of the serial time; 12 and 16 saved
+ * at most another second while holding over half a gigabyte more.
+ */
+const IMAGE_LANE_CEILING = 8;
+
+const GIB = 1024 * 1024 * 1024;
+
+/**
+ * What encodes in flight may hold between them, in bytes: a quarter of the memory the machine has
+ * free when the pass starts, but at least one gigabyte and at most three.
+ *
+ * Each image holds its decoded bitmap plus, for a lossless one, two full RGBA
+ * buffers for the comparison - about 24 bytes per pixel at the peak, which for
+ * a 4K sprite is a couple of hundred megabytes - and its source several times
+ * over on the way into the page. The budget is what keeps a library of 4K
+ * artwork to a handful at once on a machine with little to spare, where the same
+ * lanes would run through 1080p sprites a dozen at a time. Read from what is free
+ * rather than what is installed, because the build shares the machine with
+ * whatever the author has open. An image larger than the whole budget is encoded
+ * on its own, as every image used to be.
+ */
+export function imageEncodeMemoryBudget(freeBytes: number = os.freemem()): number {
+    return Math.min(3 * GIB, Math.max(GIB, Math.floor(freeBytes / 4)));
+}
+
+/** The bytes one encode is expected to hold at its peak. See {@link imageEncodeMemoryBudget}. */
+function encodeFootprint(sourceBytes: number, width: number, height: number): number {
+    return width * height * 24 + sourceBytes * 8;
+}
 
 /**
  * Bumped when a change here would make a cached result wrong rather than merely
@@ -149,9 +193,17 @@ export async function optimizeProjectImages(
         stripped: 0,
         metadataBytes: 0,
     };
-    // A holder rather than a plain local: it is assigned inside the closure below,
-    // which the compiler cannot follow, and a bare `let` would still read as null here.
-    const codec: { open: WebImageCodec | null } = { open: null };
+    const lanes = Math.max(1, Math.floor(input.lanes ?? resolveBuildLanes("NLS_BUILD_IMAGE_LANES", IMAGE_LANE_CEILING)));
+    // The promise rather than the codec, so that lanes reaching their first encode together share
+    // one opening instead of each starting a codec of its own. A holder rather than a plain local:
+    // it is assigned inside the closures below, which the compiler cannot follow.
+    const codec: { opening: Promise<WebImageCodec> | null } = { opening: null };
+    const memory = new MemoryBudget(input.memoryBudget ?? imageEncodeMemoryBudget());
+    // Recorded by id and read back in library order at the end, so which lane happened to finish
+    // first never decides the order a compile is handed its images in.
+    const chosen = new Map<string, OptimizedAssetImage>();
+    // Two library entries with the same bytes are one cache entry; see createKeyedTurns.
+    const turn = createKeyedTurns();
     let verificationWarnings = 0;
 
     /**
@@ -167,43 +219,43 @@ export async function optimizeProjectImages(
      */
     const stripOnly = async (id: string, bytes: Buffer): Promise<void> => {
         const key = cacheKey(bytes, "strip", "");
-        const cached = await readCached(input.cacheDir, key, "strip");
-        if (cached === "rejected") {
-            return;
-        }
-        if (cached) {
-            result.images[id] = strippedImage(cached.path);
+        await turn(key, async () => {
+            const cached = await readCached(input.cacheDir, key, "strip");
+            if (cached === "rejected") {
+                return;
+            }
+            if (cached) {
+                chosen.set(id, strippedImage(cached.path));
+                result.stripped += 1;
+                result.metadataBytes += bytes.length - cached.size;
+                return;
+            }
+            const cleaned = stripImageMetadata(bytes);
+            if (cleaned.removed.length === 0) {
+                // Recorded rather than simply returned: most of an author's library
+                // carries nothing, and without a note of that every build reads and
+                // walks every one of those images again to reach the same answer.
+                await writeRejected(input.cacheDir, key);
+                return;
+            }
+            const kept = await writeCached(input.cacheDir, key, "strip", cleaned.bytes);
+            if (!kept) {
+                // A cache that cannot be written costs this image its strip and
+                // nothing else; the original ships, as it did before.
+                return;
+            }
+            chosen.set(id, strippedImage(kept));
             result.stripped += 1;
-            result.metadataBytes += bytes.length - cached.size;
-            return;
-        }
-        const cleaned = stripImageMetadata(bytes);
-        if (cleaned.removed.length === 0) {
-            // Recorded rather than simply returned: most of an author's library
-            // carries nothing, and without a note of that every build reads and
-            // walks every one of those images again to reach the same answer.
-            await writeRejected(input.cacheDir, key);
-            return;
-        }
-        const kept = await writeCached(input.cacheDir, key, "strip", cleaned.bytes);
-        if (!kept) {
-            // A cache that cannot be written costs this image its strip and
-            // nothing else; the original ships, as it did before.
-            return;
-        }
-        result.images[id] = strippedImage(kept);
-        result.stripped += 1;
-        result.metadataBytes += cleaned.bytesRemoved;
+            result.metadataBytes += cleaned.bytesRemoved;
+        });
     };
     /**
      * One image, from reading its bytes to recording what a compile should copy.
      *
-     * Sequential on purpose, and this is why the walks below await it one file at
-     * a time. Each image holds its decoded bitmap plus two full RGBA buffers for
-     * the comparison - roughly 24 bytes per pixel at the peak, which for a 4K
-     * sprite is already a couple of hundred megabytes. Running several at once
-     * would multiply that against a saving measured in seconds, on a step that is
-     * already the smaller half of a production build.
+     * Several run at once, one per lane. What they share is the result tallies,
+     * which are only ever added to, and the codec, which gives each encode a page
+     * of its own. The encode itself waits for room in the memory budget first,
+     * because that is the step whose footprint grows with the picture.
      */
     const consider = async (id: string, sourcePath: string, name: string): Promise<void> => {
         let bytes: Buffer;
@@ -227,66 +279,80 @@ export async function optimizeProjectImages(
         }
 
         const key = cacheKey(bytes, plan.action, plan.action === "lossy" ? lossyMode(plan) : "");
-        const cached = await readCached(input.cacheDir, key, plan.action);
-        if (cached === "rejected") {
-            result.keptOriginal += 1;
-            return;
-        }
-        if (cached) {
-            result.images[id] = transcodedImage(cached.path);
-            result.converted += 1;
-            result.reused += 1;
-            result.beforeBytes += bytes.length;
-            result.afterBytes += cached.size;
-            return;
-        }
-
-        codec.open ??= await input.openCodec();
-        const encoded = await codec.open.encode({
-            bytes,
-            sourceType,
-            lossless: plan.action === "lossless",
-            ...(plan.action === "lossy" ? { quality: plan.quality } : {}),
-            ...(plan.action === "lossy" && plan.resizeTo ? { resizeTo: plan.resizeTo } : {}),
-        });
-        if (!encoded) {
-            await writeRejected(input.cacheDir, key);
-            result.keptOriginal += 1;
-            return;
-        }
-        // The guarantee, enforced rather than assumed: a lossless conversion
-        // that does not decode back to the source pixels is thrown away. If this
-        // ever starts firing the engine's behaviour has changed underneath us,
-        // and the right outcome is a bigger build, not an altered one.
-        if (plan.action === "lossless" && !encoded.verifiedLossless) {
-            await writeRejected(input.cacheDir, key);
-            result.keptOriginal += 1;
-            if (verificationWarnings < MAX_VERIFICATION_WARNINGS) {
-                verificationWarnings += 1;
-                input.log("warning", `"${name}" did not survive a lossless round trip; it ships unchanged`);
+        // Everything from here reads or writes the cache entry under this key, so a second library
+        // entry with the same bytes waits for this one and then finds its answer cached.
+        await turn(key, async () => {
+            const cached = await readCached(input.cacheDir, key, plan.action);
+            if (cached === "rejected") {
+                result.keptOriginal += 1;
+                return;
             }
-            return;
-        }
-        // Belt and braces: an encoder that decoded the source to a bitmap has no
-        // metadata left to carry, so this is expected to find nothing. It runs
-        // anyway because "nothing ships metadata" should not rest on an
-        // assumption about a dependency we do not control, and finding nothing
-        // costs one pass over bytes that were just produced.
-        const cleaned = stripImageMetadata(encoded.bytes);
-        if (!assetImageWorthKeeping(bytes.length, cleaned.bytes.length)) {
-            await writeRejected(input.cacheDir, key);
-            result.keptOriginal += 1;
-            return;
-        }
-        const kept = await writeCached(input.cacheDir, key, plan.action, cleaned.bytes);
-        if (!kept) {
-            result.keptOriginal += 1;
-            return;
-        }
-        result.images[id] = transcodedImage(kept);
-        result.converted += 1;
-        result.beforeBytes += bytes.length;
-        result.afterBytes += cleaned.bytes.length;
+            if (cached) {
+                chosen.set(id, transcodedImage(cached.path));
+                result.converted += 1;
+                result.reused += 1;
+                result.beforeBytes += bytes.length;
+                result.afterBytes += cached.size;
+                return;
+            }
+
+            codec.opening ??= input.openCodec(lanes);
+            const open = await codec.opening;
+            const dimensions = readImageDimensions(bytes);
+            const release = await memory.reserve(
+                encodeFootprint(bytes.length, dimensions?.width ?? 0, dimensions?.height ?? 0),
+            );
+            let encoded: Awaited<ReturnType<WebImageCodec["encode"]>>;
+            try {
+                encoded = await open.encode({
+                    bytes,
+                    sourceType,
+                    lossless: plan.action === "lossless",
+                    ...(plan.action === "lossy" ? { quality: plan.quality } : {}),
+                    ...(plan.action === "lossy" && plan.resizeTo ? { resizeTo: plan.resizeTo } : {}),
+                });
+            } finally {
+                release();
+            }
+            if (!encoded) {
+                await writeRejected(input.cacheDir, key);
+                result.keptOriginal += 1;
+                return;
+            }
+            // The guarantee, enforced rather than assumed: a lossless conversion
+            // that does not decode back to the source pixels is thrown away. If this
+            // ever starts firing the engine's behaviour has changed underneath us,
+            // and the right outcome is a bigger build, not an altered one.
+            if (plan.action === "lossless" && !encoded.verifiedLossless) {
+                await writeRejected(input.cacheDir, key);
+                result.keptOriginal += 1;
+                if (verificationWarnings < MAX_VERIFICATION_WARNINGS) {
+                    verificationWarnings += 1;
+                    input.log("warning", `"${name}" did not survive a lossless round trip; it ships unchanged`);
+                }
+                return;
+            }
+            // Belt and braces: an encoder that decoded the source to a bitmap has no
+            // metadata left to carry, so this is expected to find nothing. It runs
+            // anyway because "nothing ships metadata" should not rest on an
+            // assumption about a dependency we do not control, and finding nothing
+            // costs one pass over bytes that were just produced.
+            const cleaned = stripImageMetadata(encoded.bytes);
+            if (!assetImageWorthKeeping(bytes.length, cleaned.bytes.length)) {
+                await writeRejected(input.cacheDir, key);
+                result.keptOriginal += 1;
+                return;
+            }
+            const kept = await writeCached(input.cacheDir, key, plan.action, cleaned.bytes);
+            if (!kept) {
+                result.keptOriginal += 1;
+                return;
+            }
+            chosen.set(id, transcodedImage(kept));
+            result.converted += 1;
+            result.beforeBytes += bytes.length;
+            result.afterBytes += cleaned.bytes.length;
+        });
     };
 
     const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
@@ -316,27 +382,38 @@ export async function optimizeProjectImages(
         input.onProgress?.(0, total);
     }
 
-    for (const [assetKey, record] of listed) {
-        if (input.cancelled?.()) {
-            break;
+    // The library first and the avatars after it, as one list: the order images are started in,
+    // and the order the compile is handed them in.
+    const work: Array<{ id: string; path: string | null; name: string }> = [
+        ...listed.map(([assetKey, record]) => {
+            const id = typeof record?.id === "string" && record.id.trim() ? record.id.trim() : assetKey;
+            return { id, path: assetSourcePath(input.projectPath, id), name: assetName(record, id) };
+        }),
+        ...avatars,
+    ];
+
+    try {
+        await forEachInLanes(work, lanes, async item => {
+            if (item.path) {
+                await consider(item.id, item.path, item.name);
+            }
+            advance();
+        }, () => input.cancelled?.() === true);
+    } finally {
+        // Closed on the way out of a failed pass as well as a finished one: a codec window left
+        // open is a hidden renderer process that outlives the build.
+        const opening = codec.opening;
+        if (opening) {
+            await opening.then(open => open.close(), () => undefined).catch(() => undefined);
         }
-        const id = typeof record?.id === "string" && record.id.trim() ? record.id.trim() : assetKey;
-        const sourcePath = assetSourcePath(input.projectPath, id);
-        if (sourcePath) {
-            await consider(id, sourcePath, assetName(record, id));
-        }
-        advance();
     }
 
-    for (const avatar of avatars) {
-        if (input.cancelled?.()) {
-            break;
+    for (const item of work) {
+        const image = chosen.get(item.id);
+        if (image) {
+            result.images[item.id] = image;
         }
-        await consider(avatar.id, avatar.path, avatar.name);
-        advance();
     }
-
-    await codec.open?.close().catch(() => undefined);
     await pruneCache(input.cacheDir);
     return result;
 }

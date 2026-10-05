@@ -3778,7 +3778,8 @@ export class GameBuildManager {
     }
 
     /**
-     * Images, through a hidden Chromium window.
+     * Images, through hidden Chromium windows - as many as the machine has cores
+     * to encode in; see `optimizeProjectImages`.
      *
      * Never fatal. This is an improvement on a build that already works, so a
      * codec window that will not open - a headless host, a broken GPU sandbox -
@@ -3794,7 +3795,7 @@ export class GameBuildManager {
                 projectPath,
                 cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
-                openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
+                openCodec: pages => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"), { pages }),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
                 onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),

@@ -27,6 +27,7 @@ import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/G
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
+import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
@@ -1047,6 +1048,7 @@ function GameRuntimeSession() {
         [pack?.viewport, pack?.mode],
     );
 
+    const letterbox = pack?.bundle.letterbox;
     const renderFrame = useCallback(
         (ctx: GameAppFrameContext) => (
             <StageViewportFrame
@@ -1054,16 +1056,17 @@ function GameRuntimeSession() {
                 onRenderScaleChange={setRenderScale}
                 fit={stageViewport.fit}
                 cropAnchor={stageViewport.cropAnchor}
+                backdrop={<StageLetterbox config={letterbox} />}
                 outerClassName={GAME_STAGE_BASE_CLASS_NAME}
                 // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
                 // would collapse to content height and shrink the stage (breaking downsampling).
                 outerStyle={{ width: "100vw", height: "100vh" }}
-                boxStyle={{ backgroundColor: getSurfaceBackgroundColor(ctx.activeSurface) }}
+                stageColor={getSurfaceBackgroundColor(ctx.activeSurface)}
             >
                 {ctx.children}
             </StageViewportFrame>
         ),
-        [stageViewport],
+        [stageViewport, letterbox],
     );
 
     /**

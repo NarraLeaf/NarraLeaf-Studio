@@ -12,6 +12,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
+import { StageLetterbox } from "@/lib/ui-editor/runtime/app/StageLetterbox";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
@@ -2038,6 +2039,9 @@ export function DevModeContent(props: DevModeContentProps) {
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
                         fit={stageViewport.fit}
                         cropAnchor={stageViewport.cropAnchor}
+                        // From the bundle, as the shipped game reads it, so a reload after the author
+                        // changes the setting repaints the bars here too.
+                        backdrop={<StageLetterbox config={bundle?.letterbox} />}
                         // The ground the shipped game's stage sits on, so what the stage inherits here
                         // is what it inherits in a player's window, not this window's theme.
                         outerClassName={GAME_STAGE_BASE_CLASS_NAME}
@@ -2053,7 +2057,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 </div>
             </div>
         );
-    }, [entry, handleAspectUpdate, safeAreaId, stageViewport]);
+    }, [bundle?.letterbox, entry, handleAspectUpdate, safeAreaId, stageViewport]);
 
     const renderPlaceholder = useCallback(() => (
         <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">

@@ -201,6 +201,8 @@ export const properties = {
             voice: "Voice",
             /** Project -> Design: the fonts the whole project defaults to. */
             design: "Design",
+            /** Project -> Settings: the letterbox picture. */
+            projectSettings: "Settings",
             /** A plugin's own data that ships with the game, such as the Gallery catalogue. */
             plugin: "Plugin",
         },

@@ -45,6 +45,8 @@ import {
     normalizeVoiceConfiguration,
     normalizeWindowConfiguration,
     type WindowConfiguration,
+    normalizeLetterboxConfiguration,
+    type LetterboxConfiguration,
     readAssetCompressionConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
@@ -801,6 +803,30 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 window,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Merge a partial patch into what the game shows outside its stage.
+     *
+     * Written by the project Settings page and baked into the bundle, where both the shipped game and
+     * Dev Mode read it to paint the bars around the stage.
+     */
+    public async updateLetterboxConfiguration(patch: Partial<LetterboxConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const letterbox = normalizeLetterboxConfiguration({
+                ...normalizeLetterboxConfiguration(config.app?.letterbox),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                letterbox,
             };
             return {
                 ...config,

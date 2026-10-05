@@ -246,6 +246,32 @@ describe("ProjectService manifest writes", () => {
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
+describe("ProjectService letterbox configuration", () => {
+    const PICTURE = "6f0e8f7c-1d2b-4c3a-9e8f-7a6b5c4d3e2f";
+
+    it("keeps the picture when only the colour changes, and drops it when cleared", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        const picked = service.updateLetterboxConfiguration({ image: { assetId: PICTURE, fillMode: "tile" } });
+        await disk.release();
+        await picked;
+        const recoloured = service.updateLetterboxConfiguration({ color: "#203040" });
+        await disk.release();
+        await recoloured;
+        expect(disk.onDisk().app?.letterbox).toEqual({
+            color: "#203040",
+            image: { assetId: PICTURE, fillMode: "tile" },
+        });
+
+        const cleared = service.updateLetterboxConfiguration({ image: null });
+        await disk.release();
+        await cleared;
+        expect(disk.onDisk().app?.letterbox).toEqual({ color: "#203040", image: null });
+    });
+});
+
 describe("ProjectService when the project file cannot be written", () => {
     it("hands the refusal back as the sentence an author reads, with what the disk said", async () => {
         const service = new ProjectService();

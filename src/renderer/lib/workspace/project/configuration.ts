@@ -29,6 +29,7 @@ import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { WindowConfiguration } from "@shared/types/appWindow";
+import type { LetterboxConfiguration } from "@shared/types/letterbox";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
@@ -62,6 +63,13 @@ export {
 export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
 export type { WindowConfiguration } from "@shared/types/appWindow";
+export {
+    DEFAULT_LETTERBOX_CONFIGURATION,
+    DEFAULT_LETTERBOX_FILL_MODE,
+    LETTERBOX_FILL_MODES,
+    normalizeLetterboxConfiguration,
+} from "@shared/types/letterbox";
+export type { LetterboxConfiguration, LetterboxFillMode, LetterboxImage } from "@shared/types/letterbox";
 export {
     ASSET_COMPRESSION_MODES,
     ASSET_COMPRESSION_TRACKS,
@@ -456,6 +464,8 @@ export type ProjectAppConfiguration = {
     mobile?: MobileConfiguration;
     /** What the shipped game's window does; absent until configured (see the defaults). */
     window?: WindowConfiguration;
+    /** What the game shows outside its stage; absent until configured (see the defaults). */
+    letterbox?: LetterboxConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
     /**
