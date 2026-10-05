@@ -272,6 +272,17 @@ export const uiEditor = {
         },
     },
     /**
+     * Other Game UI drawn faintly on a Game UI canvas, where and in the order the game draws it.
+     * View state, like the screen preview frames.
+     */
+    reference: {
+        label: "Game UI reference",
+        heading: "Other game UI",
+        none: "This project has no other game UI.",
+        /** Readout when a shown surface is not the size of the one being edited. */
+        sizeDiffers: "Different size: {name} {width}×{height}",
+    },
+    /**
      * A paste of elements, or of a whole interface, copied in another project.
      *
      * Counts only: what came across, and what still needs the author. Each unresolved reference is

@@ -252,6 +252,12 @@ export const uiEditor = {
             left: "左",
         },
     },
+    reference: {
+        label: "游戏 UI 参考",
+        heading: "其他游戏 UI",
+        none: "本项目没有其他游戏 UI",
+        sizeDiffers: "尺寸不同：{name} {width}×{height}",
+    },
     crossProject: {
         pasted: {
             one: "已粘贴 {count} 个元素",

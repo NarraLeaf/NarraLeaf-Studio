@@ -258,6 +258,12 @@ export const uiEditor = {
             left: "左",
         },
     },
+    reference: {
+        label: "ゲーム UI の参照",
+        heading: "ほかのゲーム UI",
+        none: "このプロジェクトにはほかのゲーム UI がない",
+        sizeDiffers: "サイズが異なる：{name} {width}×{height}",
+    },
     crossProject: {
         pasted: {
             one: "{count} 個の要素を貼り付けた",

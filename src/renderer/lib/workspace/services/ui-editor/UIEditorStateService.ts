@@ -1,4 +1,4 @@
-import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
@@ -21,6 +21,10 @@ import {
     isSafeAreaPresetId,
     isSurfacePreviewAspectPresetId,
 } from "../../../ui-editor/preview/surfacePreviewFrames";
+import {
+    normalizeGameUiReferenceSlotIds,
+    withGameUiReferenceSlot,
+} from "../../../ui-editor/preview/gameUiReferenceLayers";
 
 const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
 
@@ -35,6 +39,13 @@ const PREVIEW_ASPECT_KEY = "uiEditor.preview.aspect";
 
 /** Persisted: safe-area preview frame device preset id for the surface canvas (null = off). Pure view state. */
 const PREVIEW_SAFE_AREA_KEY = "uiEditor.preview.safeArea";
+
+/**
+ * Persisted: the Game UI slots a Game UI canvas draws as a faint reference, as a list of slot ids
+ * (empty = none, the default). Kept by slot rather than by surface, so the choice follows the author
+ * from project to project the way the other two frames do. Pure view state.
+ */
+const PREVIEW_REFERENCE_SLOTS_KEY = "uiEditor.preview.referenceSlots";
 
 /** Editing-area cache: compact border "sides" row expanded (per element). */
 const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appearanceBorderSidesExpandedByElementId";
@@ -87,6 +98,8 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private previewAspectId: string | null = null;
     /** Pure view state: safe-area preview frame device preset id, `null` = off. Never touches the UIDocument. */
     private previewSafeAreaId: string | null = null;
+    /** Pure view state: Game UI slots drawn as a reference on a Game UI canvas. Never touches the UIDocument. */
+    private previewReferenceSlotIds: readonly UIStageSlotId[] = [];
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
@@ -156,6 +169,10 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
             typeof safeAreaStored === "string" && isSafeAreaPresetId(safeAreaStored)
                 ? safeAreaStored
                 : null;
+
+        this.previewReferenceSlotIds = normalizeGameUiReferenceSlotIds(
+            this.settingsService.getSync<unknown>(PREVIEW_REFERENCE_SLOTS_KEY),
+        );
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -479,6 +496,29 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         void this.settingsService.set(PREVIEW_SAFE_AREA_KEY, safeAreaId).catch(err => {
             console.warn("[UIEditorStateService] failed to persist preview safe area", err);
+        });
+    }
+
+    public getPreviewReferenceSlotIds(): readonly UIStageSlotId[] {
+        return this.previewReferenceSlotIds;
+    }
+
+    /** Pure view state — see `setPreviewAspectId`. */
+    public setPreviewReferenceSlotEnabled(slotId: UIStageSlotId, enabled: boolean): void {
+        const next = withGameUiReferenceSlot(this.previewReferenceSlotIds, slotId, enabled);
+        if (
+            next.length === this.previewReferenceSlotIds.length
+            && next.every((entry, index) => entry === this.previewReferenceSlotIds[index])
+        ) {
+            return;
+        }
+        this.previewReferenceSlotIds = next;
+        this.events.emit("previewReferenceSlotsChanged", next);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(PREVIEW_REFERENCE_SLOTS_KEY, next).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist preview reference slots", err);
         });
     }
 

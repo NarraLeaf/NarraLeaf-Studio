@@ -620,7 +620,9 @@ export const help = {
                 + "\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
-                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.",
+                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
+                + "- On a game UI surface, Game UI reference in the canvas toolbar shows the other game UI faintly, "
+                + "in the place and stacking order the game draws it. The reference cannot be selected or edited.",
         },
         uiComponents: {
             title: "Reusable parts",

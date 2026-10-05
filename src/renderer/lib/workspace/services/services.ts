@@ -71,6 +71,7 @@ import type {
     UISurfaceDesignSize,
     UISurfaceSettings,
     UIStageSurfaceMount,
+    UIStageSlotId,
     UILayout,
     UIElement,
     UIComponentDefinition,
@@ -1015,6 +1016,8 @@ interface UIEditorStateEvents {
     previewAspectChanged: string | null;
     /** Safe-area preview frame device preset id, `null` = off (pure view state, global settings). */
     previewSafeAreaChanged: string | null;
+    /** Game UI slots drawn as a reference around a Game UI surface (pure view state, global settings). */
+    previewReferenceSlotsChanged: readonly UIStageSlotId[];
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -1092,6 +1095,12 @@ interface IUIEditorStateService extends IService {
     /** Safe-area preview frame device preset id (`null` = off). Pure view state, see above. */
     getPreviewSafeAreaId(): string | null;
     setPreviewSafeAreaId(safeAreaId: string | null): void;
+    /**
+     * The Game UI slots whose surfaces a Game UI canvas draws as a faint reference, none by default.
+     * Pure view state, see above.
+     */
+    getPreviewReferenceSlotIds(): readonly UIStageSlotId[];
+    setPreviewReferenceSlotEnabled(slotId: UIStageSlotId, enabled: boolean): void;
     /** Active snap guides for the current interaction (null clears overlay). */
     getSnapGuides(): ActiveSnapGuides | null;
     setSnapGuides(guides: ActiveSnapGuides | null): void;
