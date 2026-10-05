@@ -412,7 +412,7 @@ interface IUIDocumentService extends IService {
     restoreDocumentFromHistory(document: UIDocument, options?: { skipAfterMutateHook?: boolean }): void;
     runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void;
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
-    updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
+    updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>, options?: { mergeKey?: string }): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
     ensureElementBlueprintValueBinding(
         elementId: string,
