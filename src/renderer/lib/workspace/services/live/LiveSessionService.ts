@@ -799,6 +799,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 forgetInterfaceEditors: () => {
                     ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
                         isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)
+                        || isHistoryScopeOf(scopeId, HistoryScopeKind.UIComponent)
                         || isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint));
                 },
             },

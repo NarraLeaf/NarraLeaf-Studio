@@ -174,7 +174,13 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
-                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.",
+                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
+                + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
+                + "of the scene editor used last.\n"
+                + "- Edits to the Game UI appear in the live preview as they are made.\n"
+                + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
             title: "Commands",
@@ -620,7 +626,14 @@ export const help = {
                 + "\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
-                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.",
+                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
+                + "- On a game UI surface, Game UI reference in the canvas toolbar shows the other game UI faintly, "
+                + "in the place and stacking order the game draws it. The reference cannot be selected or edited.\n"
+                + "- With Grid on in the snap settings, a moved element's top-left corner and a resized edge land on "
+                + "the grid, which starts at the surface's top-left corner. The grid size is set in the same menu "
+                + "and kept per project.\n"
+                + "- Snap to grid moves each selected element's top-left corner to the nearest grid point, with grid "
+                + "snapping on or off.",
         },
         uiComponents: {
             title: "Reusable parts",

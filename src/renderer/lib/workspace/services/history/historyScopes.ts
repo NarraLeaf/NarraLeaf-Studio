@@ -19,6 +19,13 @@ export const HistoryScopeKind = {
     AudioLoop: "audio-loop",
     /** One UI editor surface, with the private blueprints that belong to it. */
     UISurface: "ui-surface",
+    /**
+     * One component definition, as its component editor tab edits it, with the private blueprints
+     * of its widgets. A stack of its own rather than a surface's: a definition is drawn on every
+     * page that places it, so an edit to it belongs to no page's history, and undoing a page must
+     * never reach into it.
+     */
+    UIComponent: "ui-component",
     /** One blueprint graph. */
     Blueprint: "blueprint",
     /**
@@ -52,6 +59,10 @@ export function uiSurfaceHistoryScope(surfaceId: string): HistoryScopeId {
     return scope(HistoryScopeKind.UISurface, surfaceId);
 }
 
+export function uiComponentHistoryScope(componentId: string): HistoryScopeId {
+    return scope(HistoryScopeKind.UIComponent, componentId);
+}
+
 export function blueprintHistoryScope(blueprintId: string): HistoryScopeId {
     return scope(HistoryScopeKind.Blueprint, blueprintId);
 }
@@ -68,4 +79,14 @@ export function isHistoryScopeOf(scopeId: HistoryScopeId, kind: HistoryScopeKind
 /** The id parts after the kind, in the order they were passed to the constructor. */
 export function historyScopeParts(scopeId: HistoryScopeId): string[] {
     return scopeId.split(":").slice(1);
+}
+
+/**
+ * Everything after `<kind>:`, as one string.
+ *
+ * For the kinds built from a single id, where {@link historyScopeParts} would cut an id that itself
+ * contains the separator - the built-in main page is `narraleaf-studio:main-surface`.
+ */
+export function historyScopeSubject(scopeId: HistoryScopeId, kind: HistoryScopeKind): string | null {
+    return scopeId.startsWith(`${kind}:`) ? scopeId.slice(kind.length + 1) : null;
 }

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
-import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIComponentDefinition, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
+import { buildUIComponentEditorSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { HistoryService } from "../history/HistoryService";
+import { uiComponentHistoryScope, uiSurfaceHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
 import {
+    applyUIDocumentComponentSnapshot,
     applyUIDocumentSurfaceSnapshot,
+    captureUIDocumentComponentSnapshot,
     captureUIDocumentSurfaceSnapshot,
     UIEditorHistoryService,
+    uiEditorHistoryScope,
 } from "./UIEditorHistoryService";
 
 function root(id: string, childId: string): UIElement {
@@ -298,5 +303,128 @@ describe("UIEditorHistoryService", () => {
             blueprintId: "bp-value-a",
             valueType: "string",
         });
+    });
+});
+
+/**
+ * A component editor runs on a pseudo surface, `component-editor:<id>`, that no page document holds.
+ * The same surface-id-speaking service answers for it with the definition's slice and stack.
+ */
+describe("UIEditorHistoryService for a component definition", () => {
+    function withComponents(document: UIDocument, ...components: UIComponentDefinition[]): UIDocument {
+        return { ...document, components };
+    }
+
+    function definition(id: string, text: string, updatedAt = "2026-01-01T00:00:00.000Z"): UIComponentDefinition {
+        return {
+            id,
+            name: id,
+            rootElementId: `${id}-root`,
+            updatedAt,
+            elements: {
+                [`${id}-root`]: { ...rect(`${id}-root`, "", 0), parentId: null, childrenIds: [`${id}-text`] },
+                [`${id}-text`]: { ...rect(`${id}-text`, `${id}-root`, 0), type: "nl.text", props: { text } },
+            },
+        };
+    }
+
+    const SLOT_SURFACE = buildUIComponentEditorSurfaceId("slot");
+
+    it("captures the one definition and nothing of the pages or the other definitions", () => {
+        const document = withComponents(documentWithPositions(1, 2), definition("slot", "01"), definition("badge", "New"));
+
+        const snapshot = captureUIDocumentComponentSnapshot(document, "slot");
+
+        expect(snapshot).toEqual({ componentId: "slot", component: definition("slot", "01") });
+    });
+
+    it("puts a definition back in its own place in the library and touches nothing else", () => {
+        const current = withComponents(documentWithPositions(5, 6), definition("slot", "99"), definition("badge", "Hot"));
+
+        const next = applyUIDocumentComponentSnapshot(current, { componentId: "slot", component: definition("slot", "01") });
+
+        expect(next.components?.map(component => component.id)).toEqual(["slot", "badge"]);
+        expect(next.components?.[0]?.elements["slot-text"]?.props?.text).toBe("01");
+        expect(next.components?.[1]?.elements["badge-text"]?.props?.text).toBe("Hot");
+        expect(next.elements.a.layout.x).toBe(5);
+    });
+
+    it("undoes and redoes in the definition's scope, apart from the pages'", () => {
+        const { history, historyService, uidoc } = createHarness(withComponents(documentWithPositions(0, 0), definition("slot", "01")));
+
+        const before = history.captureSnapshot(SLOT_SURFACE);
+        uidoc.document = withComponents(documentWithPositions(0, 0), definition("slot", "02"));
+        history.record({ surfaceId: SLOT_SURFACE, before, after: history.captureSnapshot(SLOT_SURFACE) });
+        const pageBefore = history.captureSnapshot("surface-a");
+        uidoc.document = { ...uidoc.document, elements: documentWithPositions(9, 0).elements };
+        history.record({ surfaceId: "surface-a", before: pageBefore, after: history.captureSnapshot("surface-a") });
+
+        expect(historyService.describe().map(stack => [stack.scopeId, stack.undo])).toEqual([
+            [uiComponentHistoryScope("slot"), 1],
+            [uiSurfaceHistoryScope("surface-a"), 1],
+        ]);
+        expect(history.undo(SLOT_SURFACE)).toBe(true);
+        expect(uidoc.document.components?.[0]?.elements["slot-text"]?.props?.text).toBe("01");
+        expect(uidoc.document.elements.a.layout.x).toBe(9);
+        expect(history.redo(SLOT_SURFACE)).toBe(true);
+        expect(uidoc.document.components?.[0]?.elements["slot-text"]?.props?.text).toBe("02");
+    });
+
+    it("puts a component widget's private blueprint back with the definition", () => {
+        const { history, uidoc, graphDocument } = createHarness(withComponents(documentWithPositions(0, 0), definition("slot", "01")));
+        const ownerKey = "componentWidgetMain:slot:slot-text";
+        graphDocument.blueprintDocument = {
+            ...emptyBlueprintDocument(),
+            blueprints: {
+                "bp-text": { ...widgetBlueprint("unused", "slot-text", "bp-text"), owner: { kind: "componentWidgetMain", componentId: "slot", elementId: "slot-text" } },
+                "bp-page": widgetBlueprint("surface-a", "a", "bp-page"),
+            },
+            ownerRecords: {
+                [ownerKey]: { blueprintId: "bp-text" },
+                "widgetMain:surface-a:a": { blueprintId: "bp-page" },
+            },
+        };
+        const before = history.captureSnapshot(SLOT_SURFACE);
+        expect(Object.keys(before.blueprint.ownerRecords)).toEqual([ownerKey]);
+
+        delete graphDocument.blueprintDocument.ownerRecords[ownerKey];
+        delete graphDocument.blueprintDocument.blueprints["bp-text"];
+        uidoc.document = withComponents(documentWithPositions(0, 0), definition("slot", "02"));
+        history.record({ surfaceId: SLOT_SURFACE, before, after: history.captureSnapshot(SLOT_SURFACE) });
+
+        expect(history.undo(SLOT_SURFACE)).toBe(true);
+        expect(graphDocument.blueprintDocument.ownerRecords[ownerKey]?.blueprintId).toBe("bp-text");
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:a"]?.blueprintId).toBe("bp-page");
+    });
+
+    it("does not make a step of a write that only moved the definition's time stamp", () => {
+        const { history, historyService, uidoc } = createHarness(withComponents(documentWithPositions(0, 0), definition("slot", "01")));
+
+        const before = history.captureSnapshot(SLOT_SURFACE);
+        uidoc.document = withComponents(documentWithPositions(0, 0), definition("slot", "01", "2026-02-02T00:00:00.000Z"));
+        history.record({ surfaceId: SLOT_SURFACE, before, after: history.captureSnapshot(SLOT_SURFACE) });
+
+        expect(historyService.canUndo(uiComponentHistoryScope("slot"))).toBe(false);
+    });
+
+    it("tells its listeners which editor surface a stack belongs to, whole", () => {
+        const { history, uidoc } = createHarness(withComponents(documentWithPositions(0, 0), definition("slot", "01")));
+        const heard: string[] = [];
+        // The bridge from the workspace's stacks to this event is made in `init`.
+        (history as any).init(undefined);
+        history.on("historyChanged", ({ surfaceId }) => heard.push(surfaceId));
+
+        const before = history.captureSnapshot(SLOT_SURFACE);
+        uidoc.document = withComponents(documentWithPositions(0, 0), definition("slot", "02"));
+        history.record({ surfaceId: SLOT_SURFACE, before, after: history.captureSnapshot(SLOT_SURFACE) });
+        // A page whose id carries the separator, as the built-in main page's does.
+        history.record({ surfaceId: "narraleaf-studio:main-surface", before, after: history.captureSnapshot(SLOT_SURFACE) });
+
+        expect(heard).toEqual([SLOT_SURFACE, "narraleaf-studio:main-surface"]);
+    });
+
+    it("names the stack a component tab claims", () => {
+        expect(uiEditorHistoryScope(SLOT_SURFACE)).toBe(uiComponentHistoryScope("slot"));
+        expect(uiEditorHistoryScope("surface-a")).toBe(uiSurfaceHistoryScope("surface-a"));
     });
 });

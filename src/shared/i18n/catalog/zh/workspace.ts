@@ -538,6 +538,7 @@ export const workspace = {
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
         resizeSplit: "调整分屏比例",
+        resizeSections: "调整分区高度",
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",
@@ -1306,6 +1307,7 @@ export const workspace = {
                     nudgeRightLarge: "右移 10 像素",
                     nudgeUpLarge: "上移 10 像素",
                     nudgeDownLarge: "下移 10 像素",
+                    snapToGrid: "吸附到网格",
                 },
                 blueprint: {
                     undo: "撤销",

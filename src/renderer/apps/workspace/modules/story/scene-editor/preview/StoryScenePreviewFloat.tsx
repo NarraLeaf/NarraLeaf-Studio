@@ -1,131 +1,70 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { StoryScenePreviewPane } from "./StoryScenePreviewPane";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
+import type { StoryScenePreviewFloatRect } from "./storyScenePreviewSessionStore";
 import {
-    STORY_PREVIEW_FLOAT_MIN_HEIGHT,
-    STORY_PREVIEW_FLOAT_MIN_WIDTH,
-    type StoryScenePreviewFloatRect,
-} from "./storyScenePreviewSessionStore";
+    clampStoryPreviewFloatRect,
+    moveStoryPreviewFloatRect,
+    resizeStoryPreviewFloatRect,
+    type StoryPreviewFloatBounds,
+    type StoryPreviewFloatCorner,
+} from "./storyPreviewFloatGeometry";
 
-type Corner = "nw" | "ne" | "sw" | "se";
-type Bounds = { width: number; height: number };
-type Interaction = { kind: "move" } | { kind: "resize"; corner: Corner };
-
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+type Interaction = { kind: "move" } | { kind: "resize"; corner: StoryPreviewFloatCorner };
 
 /**
- * The editor body's usable size, floored — never rounded.
- *
- * `clientWidth`/`clientHeight` round a fractional box, so a 470.4px-wide body reports 470 but a
- * 470.6px one reports 471. A window parked flush against that phantom pixel overflows the body by
- * a subpixel, and since the editor group hosts every tab in an `overflow-auto` scroller, that
- * subpixel is enough to pop a scrollbar — which shrinks the body, which re-clamps the window, which
- * removes the scrollbar, which grows the body again. Flooring the measurement keeps the flush case
- * strictly inside the real box, so that loop has nothing to start from.
- */
-function readBounds(el: HTMLElement | null): Bounds | null {
-    if (!el) {
-        return null;
-    }
-    const rect = el.getBoundingClientRect();
-    const width = Math.min(el.clientWidth, Math.floor(rect.width));
-    const height = Math.min(el.clientHeight, Math.floor(rect.height));
-    if (width < 1 || height < 1) {
-        return null;
-    }
-    return { width, height };
-}
-
-/** Fit a rect inside the container while respecting the minimum window size. */
-function clampRect(rect: StoryScenePreviewFloatRect, bounds: Bounds): StoryScenePreviewFloatRect {
-    const width = clamp(rect.width, STORY_PREVIEW_FLOAT_MIN_WIDTH, Math.max(STORY_PREVIEW_FLOAT_MIN_WIDTH, bounds.width));
-    const height = clamp(rect.height, STORY_PREVIEW_FLOAT_MIN_HEIGHT, Math.max(STORY_PREVIEW_FLOAT_MIN_HEIGHT, bounds.height));
-    return {
-        width,
-        height,
-        x: clamp(rect.x, 0, Math.max(0, bounds.width - width)),
-        y: clamp(rect.y, 0, Math.max(0, bounds.height - height)),
-    };
-}
-
-/** Resize by dragging a corner: the two adjacent edges follow the pointer, the opposite corner stays put. */
-function resizeRect(start: StoryScenePreviewFloatRect, corner: Corner, dx: number, dy: number, bounds: Bounds): StoryScenePreviewFloatRect {
-    const right = start.x + start.width;
-    const bottom = start.y + start.height;
-    let { x, y, width, height } = start;
-
-    if (corner === "nw" || corner === "sw") {
-        const newX = clamp(start.x + dx, 0, right - STORY_PREVIEW_FLOAT_MIN_WIDTH);
-        x = newX;
-        width = right - newX;
-    } else {
-        const newRight = clamp(right + dx, start.x + STORY_PREVIEW_FLOAT_MIN_WIDTH, bounds.width);
-        width = newRight - start.x;
-    }
-
-    if (corner === "nw" || corner === "ne") {
-        const newY = clamp(start.y + dy, 0, bottom - STORY_PREVIEW_FLOAT_MIN_HEIGHT);
-        y = newY;
-        height = bottom - newY;
-    } else {
-        const newBottom = clamp(bottom + dy, start.y + STORY_PREVIEW_FLOAT_MIN_HEIGHT, bounds.height);
-        height = newBottom - start.y;
-    }
-
-    return { x, y, width, height };
-}
-
-/**
- * The live-preview pane popped out as a picture-in-picture window, floating over the editor body.
+ * The live-preview pane popped out as a picture-in-picture window, floating over the workspace.
  *
  * Drag the header or any edge to move it; drag a corner to resize. Two geometries are tracked: the
- * persisted "desired" rect (only ever changed by an explicit drag/resize) and the rendered rect
- * (the desired rect clamped to the container's *current* size). Keeping them separate means a
- * transient small layout — e.g. while the editor is restoring on reload — clamps only what's drawn
- * and can never corrupt the saved placement; the window re-expands once the body regains its size.
+ * "desired" rect (the stored placement, changed only by an explicit drag or resize) and the rendered
+ * rect (the desired rect clamped to the area's *current* size). Keeping them separate means a
+ * transient small layout - the window shrunk for a moment, the workspace still restoring - clamps
+ * only what is drawn and never corrupts the saved placement; the window grows back once the room
+ * returns.
  *
- * Geometry lives locally so dragging re-renders only this small shell (never the whole editor), and
- * the embedded NLR game instance is preserved across moves/resizes. Settled geometry flows back to
- * the parent for persistence on pointer-up.
+ * Geometry lives locally so dragging re-renders only this small shell, and the embedded NLR game is
+ * kept across moves and resizes. The settled rect goes back to the host for persistence on
+ * pointer-up.
  */
 export function StoryScenePreviewFloat(props: {
     controller: StoryScenePreviewController;
-    containerRef: { readonly current: HTMLElement | null };
-    initialRect: StoryScenePreviewFloatRect;
+    /** The area the window floats over, or null while it is not laid out. */
+    bounds: StoryPreviewFloatBounds | null;
+    rect: StoryScenePreviewFloatRect;
+    /** The scene on the stage, named in the header: the window outlives the tab it shows. */
+    sceneName: string | null;
     onClose: () => void;
-    onToggleDock: () => void;
+    onDock: () => void;
     onCommit: (rect: StoryScenePreviewFloatRect) => void;
 }) {
-    const { controller, containerRef, initialRect, onClose, onToggleDock, onCommit } = props;
+    const { controller, bounds, rect, sceneName, onClose, onDock, onCommit } = props;
 
-    const [desired, setDesired] = useState<StoryScenePreviewFloatRect>(initialRect);
-    const [bounds, setBounds] = useState<Bounds | null>(() => readBounds(containerRef.current));
+    const [desired, setDesired] = useState<StoryScenePreviewFloatRect>(rect);
     const teardownRef = useRef<(() => void) | null>(null);
-
-    const rendered = bounds ? clampRect(desired, bounds) : desired;
-    const renderedRef = useRef(rendered);
-    renderedRef.current = rendered;
-
-    // Track the editor body's size so the window stays visible when it (or the app window) resizes.
-    // This only feeds the render-time clamp — it never writes back to `desired`.
+    // A stored rect that changes under the window (carried over from an older build, written by the
+    // host) replaces the local one, unless the author is in the middle of moving it. Compared by
+    // value: the host hands over a fresh object whenever it re-renders.
+    const { x, y, width, height } = rect;
     useEffect(() => {
-        const el = containerRef.current;
-        if (!el || typeof ResizeObserver === "undefined") {
-            return;
+        if (!teardownRef.current) {
+            setDesired(current => (
+                current.x === x && current.y === y && current.width === width && current.height === height
+                    ? current
+                    : { x, y, width, height }
+            ));
         }
-        const observer = new ResizeObserver(() => {
-            const next = readBounds(el);
-            setBounds(prev => {
-                if (!next) {
-                    return prev;
-                }
-                return prev && prev.width === next.width && prev.height === next.height ? prev : next;
-            });
-        });
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, [containerRef]);
+    }, [x, y, width, height]);
+
+    const rendered = bounds ? clampStoryPreviewFloatRect(desired, bounds) : desired;
+    // What a drag starts from and is bounded by: the committed rect and area, read by the pointer
+    // handlers between renders.
+    const renderedRef = useRef(rendered);
+    const boundsRef = useRef(bounds);
+    useLayoutEffect(() => {
+        renderedRef.current = rendered;
+        boundsRef.current = bounds;
+    });
 
     // Drop any in-flight document listeners if the window unmounts mid-drag.
     useEffect(() => () => teardownRef.current?.(), []);
@@ -142,21 +81,15 @@ export function StoryScenePreviewFloat(props: {
         const startRect = renderedRef.current;
 
         const handleMove = (moveEvent: PointerEvent) => {
-            const liveBounds = readBounds(containerRef.current);
+            const liveBounds = boundsRef.current;
             if (!liveBounds) {
                 return;
             }
             const dx = moveEvent.clientX - startX;
             const dy = moveEvent.clientY - startY;
-            if (interaction.kind === "move") {
-                setDesired({
-                    ...startRect,
-                    x: clamp(startRect.x + dx, 0, Math.max(0, liveBounds.width - startRect.width)),
-                    y: clamp(startRect.y + dy, 0, Math.max(0, liveBounds.height - startRect.height)),
-                });
-            } else {
-                setDesired(resizeRect(startRect, interaction.corner, dx, dy, liveBounds));
-            }
+            setDesired(interaction.kind === "move"
+                ? moveStoryPreviewFloatRect(startRect, dx, dy, liveBounds)
+                : resizeStoryPreviewFloatRect(startRect, interaction.corner, dx, dy, liveBounds));
         };
 
         const teardown = () => {
@@ -174,11 +107,11 @@ export function StoryScenePreviewFloat(props: {
         document.addEventListener("pointermove", handleMove);
         document.addEventListener("pointerup", handleUp);
         document.addEventListener("pointercancel", handleUp);
-    }, [containerRef, onCommit]);
+    }, [onCommit]);
 
     const startMove = useCallback((event: ReactPointerEvent) => beginInteraction(event, { kind: "move" }), [beginInteraction]);
     const startResize = useCallback(
-        (corner: Corner) => (event: ReactPointerEvent) => beginInteraction(event, { kind: "resize", corner }),
+        (corner: StoryPreviewFloatCorner) => (event: ReactPointerEvent) => beginInteraction(event, { kind: "resize", corner }),
         [beginInteraction],
     );
 
@@ -188,24 +121,17 @@ export function StoryScenePreviewFloat(props: {
     const cornerClass = "absolute h-3 w-3";
 
     return (
-        // Containment layer. The window is an overlay and must never contribute *scrollable*
-        // overflow: the editor group puts every tab inside an `overflow-auto` host, so a window
-        // hanging even one pixel past the editor body raises a scrollbar there, and a scrollbar
-        // resizes the body under the clamp above — the window and the workspace then shake against
-        // each other, and once Chrome's ResizeObserver loop guard starts dropping notifications the
-        // window is left stranded outside the body for good. Clipping here breaks that at the
-        // source; `pointer-events-none` keeps the layer itself out of the way of the editor
-        // underneath, and the window turns them back on for itself.
-        <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
         <div
             className="pointer-events-auto absolute flex flex-col overflow-hidden rounded-lg border border-edge bg-surface-overlay shadow-2xl"
             style={{ left: rendered.x, top: rendered.y, width: rendered.width, height: rendered.height }}
+            data-story-preview-float=""
         >
             <StoryScenePreviewPane
                 controller={controller}
                 onClose={onClose}
                 mode="float"
-                onToggleFloat={onToggleDock}
+                sceneName={sceneName}
+                onToggleFloat={onDock}
                 onHeaderPointerDown={startMove}
             />
 
@@ -222,7 +148,6 @@ export function StoryScenePreviewFloat(props: {
             <div className={`${cornerClass} right-0 bottom-0 cursor-nwse-resize`} style={{ touchAction: "none" }} onPointerDown={startResize("se")}>
                 <div className="pointer-events-none absolute bottom-1 right-1 h-2 w-2 rounded-sm border-b-2 border-r-2 border-fg-subtle/60" />
             </div>
-        </div>
         </div>
     );
 }

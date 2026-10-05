@@ -17,6 +17,7 @@ import {
     type BlueprintCharacterInfo,
 } from "@shared/types/blueprint/characterInfo";
 import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
+import type { UIStageSlotId } from "@shared/types/ui-editor/document";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { usePluginElementRenderers } from "@/lib/ui-editor/widget-modules/pluginElementRenderers";
@@ -50,8 +51,14 @@ import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaServ
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 import type { TranslationKey } from "@shared/i18n";
+import { useGameUiEditBursts } from "./useGameUiEditBursts";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
+/**
+ * The one Game UI slot a press reaches in the preview. A press anywhere else on the stage steps the
+ * story editor to the next line, so the rest of the game's own controls stay out of its way.
+ */
+const PREVIEW_PRESSABLE_SLOTS: ReadonlySet<UIStageSlotId> = new Set<UIStageSlotId>(["choice"]);
 
 export type StoryPreviewIssue = {
     level: "warning" | "error";
@@ -63,11 +70,23 @@ export type StoryPreviewGame = {
     onStageNode?: ReactNode;
     /** Wire session-scoped LiveGame bridges (nametag → blueprint global state). Returns a disposer. */
     wireLiveGame: (liveGame: LiveGame) => () => void;
+    /**
+     * One press of the game's own advance on the line on screen, the same one a `Next` node makes:
+     * a line still revealing shows the rest of it (up to its next pause), a line already shown is
+     * settled.
+     */
+    advance: () => Promise<void>;
 };
 
 export type StoryPreviewGameUiHost = {
     /** False until the blueprint runtime core has mounted for the synthesized bundle. */
     ready: boolean;
+    /**
+     * The Game UI the preview draws, as an identity: it changes each time the Game UI has been
+     * rebuilt from newer documents and is ready to be drawn, and a preview showing the old one
+     * should rebuild. Null until the first one is ready.
+     */
+    gameUi: object | null;
     designSize: { width: number; height: number };
     characters: ReturnType<typeof mapCharacterStoreEntriesToSummaries>;
     blueprintDocument: DevModeBundle["ui"]["localBlueprints"] | undefined;
@@ -89,8 +108,9 @@ export type StoryPreviewGameUiHost = {
  * services, a blueprint runtime core (IPC-free), and per-session Game UI slot host options with
  * real LiveGame callbacks and explicit no-op stubs for navigation/saves/quit.
  *
- * The bundle snapshots the uidoc/blueprints when `enabled` flips on - Game UI edits made while the
- * preview is open apply the next time the preview reopens.
+ * The bundle is built from the uidoc and blueprints when `enabled` flips on, and built again after
+ * every edit to either while it stays on (see `GAME_UI_REFRESH_DEBOUNCE_MS`), so an author editing the
+ * dialogue box sees it change on the preview's stage.
  */
 export function useStoryPreviewGameUi(input: {
     context: WorkspaceContext | null;
@@ -174,7 +194,11 @@ export function useStoryPreviewGameUi(input: {
     const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
     resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
 
-    // Snapshot the uidoc/blueprints into a synthetic bundle when the preview opens.
+    const gameUiEdits = useGameUiEditBursts(context, enabled);
+
+    // Build the uidoc/blueprints into a synthetic bundle when the preview opens, and again after each
+    // settled burst of Game UI edits. A new revision is what makes the runtime core below start over
+    // on the new documents.
     const bundle = useMemo((): DevModeBundle | null => {
         if (!context || !enabled) {
             return null;
@@ -187,7 +211,7 @@ export function useStoryPreviewGameUi(input: {
         const registry = context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry();
         return {
             bundleId: PREVIEW_BUNDLE_ID,
-            revision: 1,
+            revision: 1 + gameUiEdits,
             timestamp: new Date().toISOString(),
             ui: {
                 uidoc: uiDocumentService.getDocument(),
@@ -198,7 +222,7 @@ export function useStoryPreviewGameUi(input: {
                 saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),
             },
         };
-    }, [context, enabled]);
+    }, [context, enabled, gameUiEdits]);
 
     const handleDebugEvent = useCallback((event: BlueprintDebugEvent) => {
         if (event.type === "execution.error") {
@@ -387,6 +411,7 @@ export function useStoryPreviewGameUi(input: {
             startStory: notAvailable("Start Story"),
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
+            pressableSlots: PREVIEW_PRESSABLE_SLOTS,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -451,11 +476,18 @@ export function useStoryPreviewGameUi(input: {
             };
         };
 
-        return { game, onStageNode: slots.onStageNode, wireLiveGame };
+        const advance = async (): Promise<void> => {
+            await liveGameCallbacks.onNext();
+        };
+        return { game, onStageNode: slots.onStageNode, wireLiveGame, advance };
     }, [bundle, characterTable, core, designSize.height, designSize.width, rendererRegistry, widgetRuntimeStore]);
 
     return {
         ready: Boolean(bundle && core),
+        // A new core is published only once the author's scripts for the newest bundle have loaded,
+        // so a new core - not a new bundle - is the moment the preview can be rebuilt on the edited
+        // documents.
+        gameUi: core,
         designSize,
         characters,
         blueprintDocument,

@@ -1010,7 +1010,7 @@ export const story = {
         openPreview: "実況プレビューを開く",
         closePreview: "実況プレビューを閉じる",
         title: "実況プレビュー",
-        dock: "サイドバーに収める",
+        dock: "シーンエディタに収める",
         pip: "ピクチャインピクチャ",
         selectRow: "舞台の状態を見るには、ストーリーの行を選ぶ",
         failed: "プレビューに失敗",

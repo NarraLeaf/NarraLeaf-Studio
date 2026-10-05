@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "@/lib/ui-editor/snapping/types";
+import { DEFAULT_UI_EDITOR_GRID_SPACING } from "@/lib/ui-editor/snapping/gridSnap";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 
 export type ViewportTransform = {
@@ -75,6 +76,22 @@ export function useSmartSnapDetailSettings(stateService: EditorStateService | nu
     return detail;
 }
 
+/** The project's canvas grid spacing in design pixels. Editor state - never dirties the project. */
+export function useGridSpacing(stateService: EditorStateService | null | undefined) {
+    const [spacing, setSpacing] = useState(() => stateService?.getGridSpacing() ?? DEFAULT_UI_EDITOR_GRID_SPACING);
+
+    useEffect(() => {
+        if (!stateService) {
+            setSpacing(DEFAULT_UI_EDITOR_GRID_SPACING);
+            return undefined;
+        }
+        setSpacing(stateService.getGridSpacing());
+        return stateService.on("gridSpacingChanged", setSpacing);
+    }, [stateService]);
+
+    return spacing;
+}
+
 /** Screen-ratio preview frame preset id (`null` = off). Pure view state — never dirties the project. */
 export function usePreviewAspectId(stateService: EditorStateService | null | undefined) {
     const [aspectId, setAspectId] = useState<string | null>(
@@ -109,6 +126,26 @@ export function usePreviewSafeAreaId(stateService: EditorStateService | null | u
     }, [stateService]);
 
     return safeAreaId;
+}
+
+const NO_REFERENCE_SLOTS: readonly UIStageSlotId[] = [];
+
+/** Game UI slots drawn as a reference on a Game UI canvas. Pure view state — never dirties the project. */
+export function usePreviewReferenceSlotIds(stateService: EditorStateService | null | undefined) {
+    const [slotIds, setSlotIds] = useState<readonly UIStageSlotId[]>(
+        () => stateService?.getPreviewReferenceSlotIds() ?? NO_REFERENCE_SLOTS,
+    );
+
+    useEffect(() => {
+        if (!stateService) {
+            setSlotIds(NO_REFERENCE_SLOTS);
+            return undefined;
+        }
+        setSlotIds(stateService.getPreviewReferenceSlotIds());
+        return stateService.on("previewReferenceSlotsChanged", setSlotIds);
+    }, [stateService]);
+
+    return slotIds;
 }
 
 export function useSurfaceDocument(

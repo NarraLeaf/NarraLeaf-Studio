@@ -587,10 +587,11 @@ export type LiveHistoryPort = {
      */
     forgetStoryScenes(storyId: StoryId): void;
     /**
-     * Throw away every Surface and blueprint stack.
+     * Throw away every Surface, component definition and blueprint stack.
      *
      * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
-     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * them is a whole-Surface, whole-definition or whole-blueprint snapshot of a document only this
+     * author ever had.
      * One applied - during a session or after it - would put the screen back the way it was before
      * anybody else joined, deleting everything they have added since, with nothing on either machine
      * reporting it.

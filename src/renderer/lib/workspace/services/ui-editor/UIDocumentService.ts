@@ -1973,6 +1973,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
     }
 
+    /**
+     * Where an edit to a component definition is recorded: the definition's own undo stack, named by
+     * the component editor's surface id (`UIEditorHistoryService` maps that to the definition's
+     * scope). One stack per definition, so undoing in one component tab never touches another
+     * definition or any page - and an instance on a page draws the definition from the library each
+     * time, so putting the definition back puts every placement back with it.
+     */
+    private componentHistory(componentId: string, mergeKey?: string): UIDocumentMutationHistoryOptions {
+        return { surfaceId: buildUIComponentEditorSurfaceId(componentId), mergeKey };
+    }
+
     private getElementSurfaceId(elementId: string): string | null {
         const document = this.getDocument();
         let currentId: string | null = elementId;
@@ -3591,6 +3602,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return component;
     }
 
+    /** Recorded in the definition's own undo stack, as a page's name is in the page's. */
     public renameComponent(componentId: string, name: string): void {
         const nextName = name.trim();
         if (!nextName) {
@@ -3603,7 +3615,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             component.name = nextName;
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, `component:${componentId}:name`) });
     }
 
     /**
@@ -3612,7 +3624,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Instances keep values for ids that survive: a param is identified by `id`, so renaming one in
      * the inspector does not unset it anywhere. Values for ids that were removed are left on their
      * instances rather than swept - re-adding a param by the same id is how an author undoes a
-     * deletion, and sweeping would make that a data loss with no warning.
+     * deletion, and sweeping would make that a data loss with no warning. That is also why undoing
+     * this - one step in the definition's own stack - needs nothing from the instances: their values
+     * were never touched, so the restored declaration finds them where it left them.
      */
     public setComponentParams(componentId: string, params: UIComponentParam[]): void {
         this.mutateDocument(document => {
@@ -3636,7 +3650,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     return true;
                 });
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     /**
@@ -3813,30 +3827,77 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return component;
     }
 
+    /**
+     * One element of a definition's layout, as `updateElementLayout` is one of a page's: an undo step
+     * of its own, folded into the previous one when that wrote the same fields of the same element
+     * within the merge window - so typing a number into the inspector is one step, not one a key.
+     * `skipHistory` is for the write a gesture makes on its way to the one it records.
+     */
     public updateComponentElementLayout(
         componentId: string,
         elementId: string,
         layoutPatch: Partial<UILayout>,
+        options: { skipHistory?: boolean } = {},
     ): void {
+        const patchKeys = Object.keys(layoutPatch).sort();
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
-            const element = component?.elements[elementId];
-            if (!component || !element) {
+            if (component) {
+                this.writeComponentElementLayout(component, elementId, layoutPatch);
+            }
+        }, {
+            history: options.skipHistory
+                ? false
+                : this.componentHistory(componentId, `layout:${elementId}:${patchKeys.join(",")}`),
+        });
+    }
+
+    /**
+     * Several elements of one definition as one change: one `documentChanged` and one undo step, as
+     * `updateElementLayouts` is on a page - a drag of three elements is undone by one Ctrl+Z.
+     * `mergeKey` folds the step into the previous one when that carried the same key and was
+     * recorded within the merge window, which is how a run of arrow-key nudges stays one undo.
+     */
+    public updateComponentElementLayouts(
+        componentId: string,
+        layoutPatches: Record<string, Partial<UILayout>>,
+        options: { mergeKey?: string } = {},
+    ): void {
+        if (Object.keys(layoutPatches).length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
                 return;
             }
-            element.layout = roundUILayoutGeometryFields({
-                ...element.layout,
-                ...layoutPatch,
-            });
-            component.updatedAt = new Date().toISOString();
-            if (component.rootElementId === elementId) {
-                component.previewMeta = {
-                    ...(component.previewMeta ?? {}),
-                    width: Math.max(1, Math.abs(element.layout.width)),
-                    height: Math.max(1, Math.abs(element.layout.height)),
-                };
+            for (const [elementId, layoutPatch] of Object.entries(layoutPatches)) {
+                this.writeComponentElementLayout(component, elementId, layoutPatch);
             }
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, options.mergeKey) });
+    }
+
+    private writeComponentElementLayout(
+        component: UIComponentDefinition,
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+    ): void {
+        const element = component.elements[elementId];
+        if (!element) {
+            return;
+        }
+        element.layout = roundUILayoutGeometryFields({
+            ...element.layout,
+            ...layoutPatch,
+        });
+        component.updatedAt = new Date().toISOString();
+        if (component.rootElementId === elementId) {
+            component.previewMeta = {
+                ...(component.previewMeta ?? {}),
+                width: Math.max(1, Math.abs(element.layout.width)),
+                height: Math.max(1, Math.abs(element.layout.height)),
+            };
+        }
     }
 
     /**
@@ -3866,7 +3927,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             }
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     /**
@@ -3899,13 +3960,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...propsPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, {
+            history: this.componentHistory(componentId, `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`),
+        });
     }
 
     public updateComponentElementAnimation(
         componentId: string,
         elementId: string,
         animation: UIPageAnimationSettings | null,
+        options: { mergeKey?: string } = {},
     ): void {
         this.mutateDocument(document => {
             const component = (document.components ?? []).find(item => item.id === componentId);
@@ -3915,7 +3979,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             applyElementAnimation(element, animation);
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId, options.mergeKey ?? `animation:${elementId}`) });
     }
 
     public updateComponentElementExtra(
@@ -3934,7 +3998,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...extraPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, {
+            history: this.componentHistory(componentId, `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`),
+        });
     }
 
     public renameComponentElement(componentId: string, elementId: string, name: string): void {
@@ -3950,7 +4016,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             element.name = trimmed;
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void {
@@ -3968,7 +4034,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             parent.childrenIds = ordered;
             normalizeFlowChildLayouts({ ...document, elements: component.elements }, ordered);
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public deleteComponentElements(componentId: string, elementIds: string[]): void {
@@ -4006,7 +4072,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 delete component.elements[id];
             }
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
     }
 
     public moveComponentElements(
@@ -4064,7 +4130,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             applyPlannedMove(liveVirtualDocument, planned.plan);
             normalizeFlowChildLayouts(liveVirtualDocument, elementIds);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return { ok: true };
     }
 
@@ -4093,7 +4159,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
             }
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return lifted;
     }
 
@@ -4121,7 +4187,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             applyGroupElements(componentAsDocument(doc, liveComponent, surfaceId), plan, group);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return group.id;
     }
 
@@ -4204,7 +4270,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ]);
             component.updatedAt = new Date().toISOString();
             created = cloneJson(elementWithChildren);
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         return created;
     }
 
@@ -4286,7 +4352,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 : [...withoutMoved, ...newRootIds];
             normalizeFlowChildLayouts({ ...doc, elements: liveComponent.elements }, newRootIds);
             liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
+        }, { history: this.componentHistory(componentId) });
         this.adoptArrivingTranslations(
             textArrival.converted
                 .filter(site => elementIdMap[site.elementId])

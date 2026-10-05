@@ -46,10 +46,16 @@ export type SmartSnapDetailSettings = {
     snapElementBorder: boolean;
     /** Snap to canvas (surface) edges and center lines. */
     snapCanvasLayout: boolean;
+    /**
+     * Snap a moved selection's top-left corner, and a resized edge, to the project's grid
+     * (`gridSnap.ts`). Off by default: unlike the guides it moves things that are not near anything.
+     */
+    snapGrid: boolean;
 };
 
 export const DEFAULT_SMART_SNAP_DETAIL_SETTINGS: SmartSnapDetailSettings = {
     snapElementLayout: true,
     snapElementBorder: true,
     snapCanvasLayout: true,
+    snapGrid: false,
 };

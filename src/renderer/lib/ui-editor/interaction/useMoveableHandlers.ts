@@ -30,7 +30,7 @@ import {
 } from "./utils";
 import { createGestureDeadzone, type GestureDeadzone } from "./gestureDeadzone";
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
-import { isUIElementFlowLayoutChild, type UILayout } from "@shared/types/ui-editor/document";
+import { isUIElementFlowLayoutChild, type UIDocument, type UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import {
@@ -45,8 +45,9 @@ import {
     DEFAULT_SNAP_THRESHOLD_PX,
     unionAxisAlignedRects,
 } from "@/lib/ui-editor/snapping";
-import { getSurfaceAxisAlignedBoundsForLayout } from "@/lib/ui-editor/snapping/surfaceRect";
+import { getSurfaceAxisAlignedBoundsForLayout, getSurfaceTopLeftForLayout } from "@/lib/ui-editor/snapping/surfaceRect";
 import { snapResizeLayoutInSurface } from "@/lib/ui-editor/snapping/resizeSnap";
+import { resolveGridTranslate } from "@/lib/ui-editor/snapping/gridSnap";
 import type { ActiveSnapGuides, SnapGuideLine, SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 
 type ResizeCacheEntry = {
@@ -128,7 +129,52 @@ export type SmartSnapContext = {
     getExcludedElementIds: () => ReadonlySet<string>;
     /** Per-category snap lines when smart snap is enabled. */
     getDetailSettings: () => SmartSnapDetailSettings;
+    /** The project's grid spacing while grid snapping is on, otherwise `null` (`gridSnap.ts`). */
+    getGridSpacing: () => number | null;
 };
+
+/**
+ * The surface-space top-left of a moving selection: the union of its elements' layout boxes at the
+ * tentative translation, rotation ignored - the corner the grid snap puts on a grid point, and the
+ * same box the align commands and the snap-to-grid key read (`getElementSurfaceAlignRect`).
+ */
+export function movingSelectionTopLeft(
+    document: UIDocument,
+    moving: readonly { elementId: string; layout: UILayout; tx: number; ty: number }[],
+): { x: number; y: number } | null {
+    let x = Infinity;
+    let y = Infinity;
+    for (const entry of moving) {
+        const topLeft = getSurfaceTopLeftForLayout(document, entry.elementId, {
+            ...entry.layout,
+            x: entry.layout.x + entry.tx,
+            y: entry.layout.y + entry.ty,
+        });
+        x = Math.min(x, topLeft.x);
+        y = Math.min(y, topLeft.y);
+    }
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+/**
+ * The guide snap's translation for one move event, with the grid filling in any axis no guide
+ * caught (`resolveGridTranslate`). Without grid snapping it is the guide snap unchanged.
+ */
+export function resolveMoveSnapTranslate(
+    guides: { dx: number; dy: number; activeGuides: ActiveSnapGuides },
+    gridSpacing: number | null,
+    topLeft: { x: number; y: number } | null,
+): { dx: number; dy: number } {
+    if (gridSpacing == null || topLeft == null) {
+        return { dx: guides.dx, dy: guides.dy };
+    }
+    return resolveGridTranslate({
+        topLeft,
+        spacing: gridSpacing,
+        guideDx: guides.activeGuides.vertical.length > 0 ? guides.dx : null,
+        guideDy: guides.activeGuides.horizontal.length > 0 ? guides.dy : null,
+    });
+}
 
 type MoveableHandlersConfig = {
     documentService: UIDocumentService;
@@ -559,8 +605,23 @@ export function useMoveableHandlers({
                         thresholdSurface: th,
                         surfaceId: smartSnap.surfaceId,
                     });
-                    translateX += snapped.dx;
-                    translateY += snapped.dy;
+                    const gridSpacing = smartSnap.getGridSpacing();
+                    const { dx, dy } = resolveMoveSnapTranslate(
+                        snapped,
+                        gridSpacing,
+                        gridSpacing == null
+                            ? null
+                            : movingSelectionTopLeft(
+                                  doc,
+                                  selectedTargets.flatMap(target => {
+                                      const elementId = target.dataset.uiElementId;
+                                      const layout = elementId ? layoutCache.current.get(elementId) : undefined;
+                                      return elementId && layout ? [{ elementId, layout, tx: translateX, ty: translateY }] : [];
+                                  }),
+                              ),
+                    );
+                    translateX += dx;
+                    translateY += dy;
                     smartSnap.setGuides(
                         snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
                             ? snapped.activeGuides
@@ -660,8 +721,20 @@ export function useMoveableHandlers({
                         thresholdSurface: th,
                         surfaceId: smartSnap.surfaceId,
                     });
-                    dx = snapped.dx;
-                    dy = snapped.dy;
+                    const gridSpacing = smartSnap.getGridSpacing();
+                    ({ dx, dy } = resolveMoveSnapTranslate(
+                        snapped,
+                        gridSpacing,
+                        gridSpacing == null
+                            ? null
+                            : movingSelectionTopLeft(
+                                  doc,
+                                  perEvent.flatMap(row => {
+                                      const layout = layoutCache.current.get(row.elementId);
+                                      return layout ? [{ elementId: row.elementId, layout, tx: row.tx, ty: row.ty }] : [];
+                                  }),
+                              ),
+                    ));
                     smartSnap.setGuides(
                         snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
                             ? snapped.activeGuides
@@ -813,6 +886,7 @@ export function useMoveableHandlers({
                             Math.abs(initialLayout.width) > 0 && Math.abs(initialLayout.height) > 0
                                 ? Math.abs(initialLayout.width) / Math.abs(initialLayout.height)
                                 : undefined,
+                        gridSpacing: smartSnap.getGridSpacing(),
                     },
                 );
                 const nx = snapped.layout.x;

@@ -1,4 +1,4 @@
-import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
@@ -17,10 +17,17 @@ import {
 import type { UITool } from "../../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
+import { DEFAULT_UI_EDITOR_GRID_SPACING, normalizeUiEditorGridSpacing } from "../../../ui-editor/snapping/gridSnap";
+import type { PanelStateService } from "../core/PanelStateService";
+import { readUiEditorGridSpacing, writeUiEditorGridSpacing } from "./uiEditorGridPreference";
 import {
     isSafeAreaPresetId,
     isSurfacePreviewAspectPresetId,
 } from "../../../ui-editor/preview/surfacePreviewFrames";
+import {
+    normalizeGameUiReferenceSlotIds,
+    withGameUiReferenceSlot,
+} from "../../../ui-editor/preview/gameUiReferenceLayers";
 
 const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
 
@@ -35,6 +42,13 @@ const PREVIEW_ASPECT_KEY = "uiEditor.preview.aspect";
 
 /** Persisted: safe-area preview frame device preset id for the surface canvas (null = off). Pure view state. */
 const PREVIEW_SAFE_AREA_KEY = "uiEditor.preview.safeArea";
+
+/**
+ * Persisted: the Game UI slots a Game UI canvas draws as a faint reference, as a list of slot ids
+ * (empty = none, the default). Kept by slot rather than by surface, so the choice follows the author
+ * from project to project the way the other two frames do. Pure view state.
+ */
+const PREVIEW_REFERENCE_SLOTS_KEY = "uiEditor.preview.referenceSlots";
 
 /** Editing-area cache: compact border "sides" row expanded (per element). */
 const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appearanceBorderSidesExpandedByElementId";
@@ -82,17 +96,27 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private smartSnapEnabled = true;
     private smartSnapDetail: SmartSnapDetailSettings = { ...DEFAULT_SMART_SNAP_DETAIL_SETTINGS };
     private snapGuides: ActiveSnapGuides | null = null;
+    /** Per-project editor preference, kept in the project's panel state store (`uiEditorGridPreference.ts`). */
+    private gridSpacing = DEFAULT_UI_EDITOR_GRID_SPACING;
+    private panelStateService: PanelStateService | null = null;
 
     /** Pure view state: screen-ratio preview frame preset id, `null` = off. Never touches the UIDocument. */
     private previewAspectId: string | null = null;
     /** Pure view state: safe-area preview frame device preset id, `null` = off. Never touches the UIDocument. */
     private previewSafeAreaId: string | null = null;
+    /** Pure view state: Game UI slots drawn as a reference on a Game UI canvas. Never touches the UIDocument. */
+    private previewReferenceSlotIds: readonly UIStageSlotId[] = [];
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
         const uidocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
         const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        await depend([uiService, uidocumentService, globalSettings]);
+        // The project's own editor state, for the grid spacing. Every workspace registers it; a
+        // context without one keeps the spacing for the session only.
+        const panelState = ctx.services.get<PanelStateService>(Services.PanelState) ?? null;
+        await depend([uiService, uidocumentService, globalSettings, ...(panelState ? [panelState] : [])]);
+        this.panelStateService = panelState;
+        this.gridSpacing = readUiEditorGridSpacing(panelState);
 
         this.uiStore = uiService.getStore();
         this.documentService = uidocumentService;
@@ -156,6 +180,10 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
             typeof safeAreaStored === "string" && isSafeAreaPresetId(safeAreaStored)
                 ? safeAreaStored
                 : null;
+
+        this.previewReferenceSlotIds = normalizeGameUiReferenceSlotIds(
+            this.settingsService.getSync<unknown>(PREVIEW_REFERENCE_SLOTS_KEY),
+        );
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -440,6 +468,24 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         });
     }
 
+    public getGridSpacing(): number {
+        return this.gridSpacing;
+    }
+
+    /**
+     * Sets this project's grid spacing. A value that is not a whole number of design pixels in range
+     * is ignored. Editor state only: the UI document, its history and its dirty flag are untouched.
+     */
+    public setGridSpacing(spacing: number): void {
+        const next = normalizeUiEditorGridSpacing(spacing);
+        if (next == null || next === this.gridSpacing) {
+            return;
+        }
+        this.gridSpacing = next;
+        this.events.emit("gridSpacingChanged", next);
+        writeUiEditorGridSpacing(this.panelStateService, next);
+    }
+
     public getPreviewAspectId(): string | null {
         return this.previewAspectId;
     }
@@ -479,6 +525,29 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         void this.settingsService.set(PREVIEW_SAFE_AREA_KEY, safeAreaId).catch(err => {
             console.warn("[UIEditorStateService] failed to persist preview safe area", err);
+        });
+    }
+
+    public getPreviewReferenceSlotIds(): readonly UIStageSlotId[] {
+        return this.previewReferenceSlotIds;
+    }
+
+    /** Pure view state — see `setPreviewAspectId`. */
+    public setPreviewReferenceSlotEnabled(slotId: UIStageSlotId, enabled: boolean): void {
+        const next = withGameUiReferenceSlot(this.previewReferenceSlotIds, slotId, enabled);
+        if (
+            next.length === this.previewReferenceSlotIds.length
+            && next.every((entry, index) => entry === this.previewReferenceSlotIds[index])
+        ) {
+            return;
+        }
+        this.previewReferenceSlotIds = next;
+        this.events.emit("previewReferenceSlotsChanged", next);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(PREVIEW_REFERENCE_SLOTS_KEY, next).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist preview reference slots", err);
         });
     }
 
@@ -679,6 +748,7 @@ function normalizeSmartSnapDetailSettings(raw: unknown): SmartSnapDetailSettings
         snapElementLayout: typeof o.snapElementLayout === "boolean" ? o.snapElementLayout : d.snapElementLayout,
         snapElementBorder: typeof o.snapElementBorder === "boolean" ? o.snapElementBorder : d.snapElementBorder,
         snapCanvasLayout: typeof o.snapCanvasLayout === "boolean" ? o.snapCanvasLayout : d.snapCanvasLayout,
+        snapGrid: typeof o.snapGrid === "boolean" ? o.snapGrid : d.snapGrid,
     };
 }
 
@@ -686,6 +756,7 @@ function areSmartSnapDetailSettingsEqual(a: SmartSnapDetailSettings, b: SmartSna
     return (
         a.snapElementLayout === b.snapElementLayout &&
         a.snapElementBorder === b.snapElementBorder &&
-        a.snapCanvasLayout === b.snapCanvasLayout
+        a.snapCanvasLayout === b.snapCanvasLayout &&
+        a.snapGrid === b.snapGrid
     );
 }

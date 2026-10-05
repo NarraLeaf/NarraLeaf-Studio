@@ -34,6 +34,7 @@ export const uiEditor = {
         nvl: "全画面のノベルモードの履歴",
     },
     panel: {
+        interfaces: "インターフェース",
         interfaceType: "インターフェースの種類",
         createPage: "ページを作成",
         createGameUi: "ゲーム UI を作成",
@@ -206,6 +207,8 @@ export const uiEditor = {
         canvasLayout: "キャンバスの基準線（端と中心）",
         elementBorders: "要素の枠（端と端）",
         elementLayout: "要素の配置（中心どうし）",
+        grid: "グリッド",
+        gridSize: "グリッドの間隔",
     },
     contextMenu: {
         pasteIntoContainer: "コンテナの中に貼り付け",
@@ -257,6 +260,12 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    reference: {
+        label: "ゲーム UI の参照",
+        heading: "ほかのゲーム UI",
+        none: "このプロジェクトにはほかのゲーム UI がない",
+        sizeDiffers: "サイズが異なる：{name} {width}×{height}",
     },
     crossProject: {
         pasted: {

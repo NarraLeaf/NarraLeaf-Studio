@@ -29,9 +29,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { UIEditorHistoryService, uiEditorHistoryScope } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -44,8 +43,10 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    useGridSpacing,
     usePreviewAspectId,
     usePreviewSafeAreaId,
+    usePreviewReferenceSlotIds,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceViewportZoom } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceViewportZoom";
 import { editorSidebarCssWidth, useEditorSidebarWidth } from "@/apps/workspace/components/ui/EditorSidebar";
@@ -64,9 +65,22 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceGridOverlay } from "@/apps/workspace/modules/ui-editor/editors/SurfaceGridOverlay";
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
+import { SurfaceReferenceLayersTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceReferenceLayersMenu";
+import {
+    SurfaceReferenceLayer,
+    SurfaceReferenceLayersReadout,
+} from "@/apps/workspace/modules/ui-editor/editors/SurfaceReferenceLayer";
+import {
+    listGameUiReferenceCandidates,
+    planGameUiReferenceLayers,
+    type GameUiReferenceCandidate,
+    type GameUiReferenceLayer,
+    type GameUiReferencePlan,
+} from "@/lib/ui-editor/preview/gameUiReferenceLayers";
 import { SurfaceOffPageVeil } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOffPageVeil";
 import { getEditorSurfaceStyle } from "@/apps/workspace/modules/ui-editor/editors/editorSurfaceStyle";
 import {
@@ -104,6 +118,8 @@ import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInter
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
+const NO_REFERENCE_CANDIDATES: readonly GameUiReferenceCandidate[] = [];
+const NO_REFERENCE_PLAN: GameUiReferencePlan = { below: [], above: [] };
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
@@ -152,8 +168,10 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const gridSpacing = useGridSpacing(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
+    const referenceSlotIds = usePreviewReferenceSlotIds(stateService);
     // What the shells lock to, which is what decides which edge a device inset lands on.
     const mobileOrientation = readProjectMobileOrientation(context);
     // Whether the build letterboxes or crops; both frames read differently under `cover`.
@@ -168,6 +186,26 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      */
     const brandRevision = useBrandPaletteRevision();
     const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
+    /**
+     * The other Game UI the game draws together with this surface, offered on the canvas as a faint
+     * reference. Only a Game UI surface has any: a page is not composed with the stage slots, and a
+     * component is drawn wherever it is placed.
+     */
+    const showsGameUiReferences = !isComponentEdit && surface?.kind === "stageSurface";
+    const referenceCandidates = useMemo(
+        () =>
+            showsGameUiReferences && surface && baseDocumentService
+                ? listGameUiReferenceCandidates(baseDocumentService.getDocument(), surface)
+                : NO_REFERENCE_CANDIDATES,
+        [baseDocumentService, documentVersion, showsGameUiReferences, surface],
+    );
+    const referencePlan = useMemo(
+        () =>
+            showsGameUiReferences && surface && baseDocumentService
+                ? planGameUiReferenceLayers(baseDocumentService.getDocument(), surface, referenceSlotIds)
+                : NO_REFERENCE_PLAN,
+        [baseDocumentService, documentVersion, referenceSlotIds, showsGameUiReferences, surface],
+    );
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
     const [bindingSession, setBindingSession] = useState(readElementBindingSession());
@@ -586,14 +624,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      * project stack whatever the author had open.
      *
      * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
-     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     * surface being shown, and by then focus is on the panel rather than on the canvas. A component
+     * tab claims its definition's stack, which is the one its edits land in (`uiEditorHistoryScope`).
      */
     useEffect(() => {
         if (!historyService || !surfaceId || !active || !context) {
             return undefined;
         }
         const history = context.services.get<HistoryService>(Services.History);
-        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        const scopeId = uiEditorHistoryScope(surfaceId);
         history.setActiveScope(scopeId);
         return () => {
             if (history.getActiveScopeId() === scopeId) {
@@ -696,6 +735,21 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         );
     }
 
+    const referenceLayers: readonly GameUiReferenceLayer[] = [...referencePlan.below, ...referencePlan.above];
+    const renderReferenceLayers = (layers: readonly GameUiReferenceLayer[]) =>
+        runtimeBridge && baseDocumentService
+            ? layers.map(layer => (
+                  <SurfaceReferenceLayer
+                      key={`${layer.slotId}:${layer.surfaceId}`}
+                      runtimeBridge={runtimeBridge}
+                      slotId={layer.slotId}
+                      surfaceId={layer.surfaceId}
+                      contentRevision={baseDocumentService.getSurfaceContentRevision(layer.surfaceId)}
+                      brandRevision={brandRevision}
+                  />
+              ))
+            : null;
+
     const transformStyle = {
         transform: `translate(${viewport.offsetX}px, ${viewport.offsetY}px) scale(${viewport.scale})`,
         transformOrigin: "top left" as const,
@@ -771,7 +825,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
+                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} gridSpacing={gridSpacing} />
                         </SurfaceEditorToolbarButtonGroup>
                         <SurfaceAlignTrigger
                             surfaceId={surface.id}
@@ -790,6 +844,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 safeAreaId={previewSafeAreaId}
                             />
                         )}
+                        {showsGameUiReferences ? (
+                            <SurfaceReferenceLayersTrigger
+                                stateService={stateService}
+                                candidates={referenceCandidates}
+                                enabledSlotIds={referenceSlotIds}
+                            />
+                        ) : null}
                         <div className="mx-1 h-6 w-px bg-fill" />
                         <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
@@ -848,7 +909,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             </div>
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
+                            {/* Other Game UI, in the order the game stacks it: what it draws under this
+                                surface goes first, what it draws over it after. */}
+                            {renderReferenceLayers(referencePlan.below)}
                             {surfaceContent}
+                            {renderReferenceLayers(referencePlan.above)}
                             {surfaceContent ? <SurfaceOffPageVeil designSize={surface.designSize} /> : null}
                             {/* Design-space reference frames, under the diagnostics and interaction layers. */}
                             {isComponentEdit ? null : (
@@ -868,15 +933,23 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
-                        {/* Outside the transformed node on purpose - this one is text. */}
+                        {/* Shown while it acts: smart snap on with Grid among its targets. Outside the
+                            transformed node so the lines stay one device pixel wide at any zoom. */}
+                        {smartSnapEnabled && smartSnapDetail.snapGrid ? (
+                            <SurfaceGridOverlay designSize={surface.designSize} spacing={gridSpacing} viewport={viewport} />
+                        ) : null}
+                        {/* Outside the transformed node on purpose - these are text. */}
                         {isComponentEdit ? null : (
-                            <SurfacePreviewFramesReadout
-                                designSize={surface.designSize}
-                                aspectId={previewAspectId}
-                                safeAreaId={previewSafeAreaId}
-                                mobileOrientation={mobileOrientation}
-                                stageFit={stageFit}
-                            />
+                            <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col items-end gap-1">
+                                <SurfaceReferenceLayersReadout layers={referenceLayers} />
+                                <SurfacePreviewFramesReadout
+                                    designSize={surface.designSize}
+                                    aspectId={previewAspectId}
+                                    safeAreaId={previewSafeAreaId}
+                                    mobileOrientation={mobileOrientation}
+                                    stageFit={stageFit}
+                                />
+                            </div>
                         )}
                     </div>
 

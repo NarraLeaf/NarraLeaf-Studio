@@ -964,7 +964,7 @@ export const story = {
         openPreview: "打开实时预览",
         closePreview: "关闭实时预览",
         title: "实时预览",
-        dock: "停靠到侧边栏",
+        dock: "停靠到场景编辑器",
         pip: "画中画",
         selectRow: "选择故事行以预览舞台状态",
         failed: "预览失败",

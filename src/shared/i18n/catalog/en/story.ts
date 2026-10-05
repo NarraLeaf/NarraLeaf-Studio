@@ -1125,7 +1125,7 @@ export const story = {
         openPreview: "Open live preview",
         closePreview: "Close live preview",
         title: "Live Preview",
-        dock: "Dock to sidebar",
+        dock: "Dock in the scene editor",
         pip: "Picture-in-picture",
         selectRow: "Select a story row to preview its stage state.",
         failed: "Preview failed",
