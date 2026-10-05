@@ -130,7 +130,7 @@ function useBundleVariableRegistry(bundle: DevModeBundle): {
 
 type StoryRuntimeDebugPanelProps = {
     storyRuntime: GameAppStoryRuntimeBridge;
-    /** App-level persistent store (the "Persis" scope), shared with UI blueprints. */
+    /** App-level persistent store (the persistent scope), shared with UI blueprints. */
     scopeBridge: ScopeStoreBridge;
     bundle: DevModeBundle;
     /** The project this window is running, for the one affordance that leaves it: open a row in Studio. */
@@ -138,13 +138,6 @@ type StoryRuntimeDebugPanelProps = {
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
-};
-
-const SCOPE_LABEL: Record<StoryRuntimeVariableScope, string> = {
-    // Editor command-token vocabulary (/local, /var, /persis).
-    scene: "Local",
-    saved: "Var",
-    persistent: "Persis",
 };
 
 /** Coalesce the play-head stream to at most one re-read per frame. */
@@ -616,7 +609,8 @@ function VariablesTab(props: {
                 }
                 return (
                     <div key={scope}>
-                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{SCOPE_LABEL[scope]}</h3>
+                        {/* The scope's name as a declaration row and the scene flow's variable picker give it. */}
+                        <h3 className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle">{t(`story.badge.declare.${scope}`)}</h3>
                         <ul className="space-y-1">
                             {scopeRows.map(row => (
                                 <li key={`${scope}:${row.variable.id}`} className="flex items-center gap-2">

@@ -44,6 +44,7 @@ import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/sto
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
+import { isFactoryStoryBlueprintName, ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -2291,7 +2292,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
-            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
+            {/* A story blueprint nobody has named yet carries an English placeholder; its kind
+                is what the Blueprint Overview and the function lists call it too. */}
+            <span className="truncate font-mono text-2xs text-fg-muted">
+                {isFactoryStoryBlueprintName(bp.name) ? t(ownerLabelKey(bp.owner.kind)) : bp.name}
+            </span>
         </div>
     );
 
