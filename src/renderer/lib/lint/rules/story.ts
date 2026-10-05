@@ -491,10 +491,13 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     if (target === null || declared.has(target)) {
                         continue;
                     }
+                    // A row the menu has just inserted names no label yet. "Jumps to , which this scene
+                    // never declares" read as a sentence with a word missing; it gets its own.
+                    const blank = target.trim() === "";
                     findings.push({
                         ruleId: "story/goto-missing",
-                        messageKey: "lint.rule.storyGotoMissing.message",
-                        messageParams: { label: target },
+                        messageKey: blank ? "lint.rule.storyGotoMissing.messageEmpty" : "lint.rule.storyGotoMissing.message",
+                        ...(blank ? {} : { messageParams: { label: target } }),
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
 import { zh } from "@shared/i18n/catalog/zh";
+import { ja } from "@shared/i18n/catalog/ja";
 import { LINT_CATEGORY_ORDER, LINT_RULELESS_IDS, deriveLintRuleSlug, type LintRuleId } from "../types";
 import { LINT_RULES, LINT_RULES_BY_CATEGORY, getLintRule } from "./index";
 
@@ -98,6 +99,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
 
 const EN_KEYS = flattenCatalog(en);
 const ZH_KEYS = flattenCatalog(zh);
+const JA_KEYS = flattenCatalog(ja);
 
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
@@ -128,11 +130,14 @@ describe("lint rule registry", () => {
         }
     });
 
-    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS]] as const) {
-        it(`translates every rule's title, description and message in ${locale}`, () => {
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
+        it(`translates every rule's title, description, message and help in ${locale}`, () => {
             const missing: string[] = [];
             for (const rule of LINT_RULES) {
-                for (const leaf of ["title", "description", "message"]) {
+                // `help` is the rule's topic - what it found, what that does to the game, and how
+                // to fix it - which every finding's `?` opens. A rule without one is a finding with
+                // nothing behind its question mark.
+                for (const leaf of ["title", "description", "message", "help"]) {
                     const key = `lint.rule.${rule.slug}.${leaf}`;
                     if (!keys.get(key)) {
                         missing.push(key);
@@ -171,7 +176,7 @@ describe("lint rule registry", () => {
         }
     });
 
-    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS]] as const) {
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
         it(`names every id no rule owns in ${locale}`, () => {
             for (const id of LINT_RULELESS_IDS) {
                 const slug = deriveLintRuleSlug(id);
@@ -180,6 +185,7 @@ describe("lint rule registry", () => {
                 // which names which end of the schema ladder the document fell off.
                 expect(keys.get(`lint.rule.${slug}.title`), `lint.rule.${slug}.title`).toBeTruthy();
                 expect(keys.get(`lint.rule.${slug}.description`), `lint.rule.${slug}.description`).toBeTruthy();
+                expect(keys.get(`lint.rule.${slug}.help`), `lint.rule.${slug}.help`).toBeTruthy();
             }
         });
     }
