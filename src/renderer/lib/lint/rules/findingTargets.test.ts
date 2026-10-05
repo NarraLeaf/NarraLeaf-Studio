@@ -46,7 +46,7 @@ import {
     type ReferenceIndexGap,
 } from "../../workspace/services/references/referenceModel";
 import { createBlueprintFnRef } from "../../workspace/services/ui-editor/blueprint/fnCatalog";
-import { ownerRefToIndexKey, widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
+import { ownerRefToIndexKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { resolveRuleOptions } from "../engine";
 import type { LintAssetEntry, LintContext, LintStoryEntry } from "../context";
@@ -244,7 +244,7 @@ function blueprints(owners: Record<string, Record<string, BlueprintGraphIr>>): B
 }
 
 const NO_GRAPHS = blueprints({});
-const PAGE_OWNER = `surfaceMain:${MAIN_APP_SURFACE_ID}`;
+const PAGE_OWNER = surfaceMainOwnerKey(MAIN_APP_SURFACE_ID);
 
 function bootGraph(...nodes: { id: string; type: string; params?: Record<string, unknown> }[]): BlueprintGraphIr {
     return {
