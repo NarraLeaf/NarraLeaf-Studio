@@ -35,6 +35,7 @@ import {
     Eraser,
     Flag,
     FlaskConical,
+    Grid3x3,
     Group,
     History,
     IndentDecrease,
@@ -282,6 +283,8 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("ui-editor.nudge-right-large", "shift+arrowright", "workspace.shell.keybindings.catalog.uiEditor.nudgeRightLarge", CATEGORY.uiEditor, ChevronsRight),
     entry("ui-editor.nudge-up-large", "shift+arrowup", "workspace.shell.keybindings.catalog.uiEditor.nudgeUpLarge", CATEGORY.uiEditor, ChevronsUp),
     entry("ui-editor.nudge-down-large", "shift+arrowdown", "workspace.shell.keybindings.catalog.uiEditor.nudgeDownLarge", CATEGORY.uiEditor, ChevronsDown),
+    // Each selected element's top-left corner onto the nearest point of the project's grid.
+    entry("ui-editor.snap-to-grid", "r", "workspace.shell.keybindings.catalog.uiEditor.snapToGrid", CATEGORY.uiEditor, Grid3x3),
 
     // --- Blueprint editor ----------------------------------------------------
     entry("blueprint.undo", "mod+z", "workspace.shell.keybindings.catalog.blueprint.undo", CATEGORY.blueprint, Undo2),

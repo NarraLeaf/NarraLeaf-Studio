@@ -3,6 +3,7 @@ import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { UIStageSlotId, UISurface } from "@shared/types/ui-editor/document";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "@/lib/ui-editor/snapping/types";
+import { DEFAULT_UI_EDITOR_GRID_SPACING } from "@/lib/ui-editor/snapping/gridSnap";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 
 export type ViewportTransform = {
@@ -73,6 +74,22 @@ export function useSmartSnapDetailSettings(stateService: EditorStateService | nu
     }, [stateService]);
 
     return detail;
+}
+
+/** The project's canvas grid spacing in design pixels. Editor state - never dirties the project. */
+export function useGridSpacing(stateService: EditorStateService | null | undefined) {
+    const [spacing, setSpacing] = useState(() => stateService?.getGridSpacing() ?? DEFAULT_UI_EDITOR_GRID_SPACING);
+
+    useEffect(() => {
+        if (!stateService) {
+            setSpacing(DEFAULT_UI_EDITOR_GRID_SPACING);
+            return undefined;
+        }
+        setSpacing(stateService.getGridSpacing());
+        return stateService.on("gridSpacingChanged", setSpacing);
+    }, [stateService]);
+
+    return spacing;
 }
 
 /** Screen-ratio preview frame preset id (`null` = off). Pure view state — never dirties the project. */

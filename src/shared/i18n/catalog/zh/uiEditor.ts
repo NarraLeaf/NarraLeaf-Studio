@@ -205,6 +205,8 @@ export const uiEditor = {
         canvasLayout: "画布布局（边缘与中心）",
         elementBorders: "元素边框（边到边）",
         elementLayout: "元素布局（中心）",
+        grid: "网格",
+        gridSize: "网格间距",
     },
     contextMenu: {
         pasteIntoContainer: "粘贴到容器内",

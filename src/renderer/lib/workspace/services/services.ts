@@ -1020,6 +1020,8 @@ interface UIEditorStateEvents {
     smartSnapEnabledChanged: boolean;
     /** Per-category snap targets when smart snap is enabled (persisted). */
     smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
+    /** The canvas grid spacing in design pixels (persisted per project). */
+    gridSpacingChanged: number;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
     /** Screen-ratio preview frame preset id, `null` = off (pure view state, global settings). */
@@ -1096,6 +1098,13 @@ interface IUIEditorStateService extends IService {
     /** Which guide categories participate when smart snap is on (persisted). */
     getSmartSnapDetailSettings(): SmartSnapDetailSettings;
     patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /**
+     * The canvas grid's spacing in design pixels, square cells, origin at the screen's top-left. An
+     * editor preference kept per project in `.nlstudio`, never in the UI document; used by grid
+     * snapping while it is on and by the snap-to-grid key whether or not it is.
+     */
+    getGridSpacing(): number;
+    setGridSpacing(spacing: number): void;
     /**
      * Screen-ratio preview frame preset id (`null` = off). Pure view state: persisted in global
      * settings, never in the UIDocument, so toggling it cannot dirty the project.
