@@ -122,13 +122,14 @@ describe("snapResizeEdgeToGrid", () => {
 });
 
 describe("resolveGridDisplayStep", () => {
-    it("draws every line while cells are at least eight screen pixels", () => {
+    it("draws every line while cells are at least ten screen pixels", () => {
         expect(resolveGridDisplayStep(20, 1)).toBe(1);
-        expect(resolveGridDisplayStep(20, 0.4)).toBe(1);
+        expect(resolveGridDisplayStep(20, 0.5)).toBe(1);
     });
 
     it("thins out to every 2nd, 5th, 10th... line as cells shrink", () => {
-        expect(resolveGridDisplayStep(20, 0.2)).toBe(2);
+        expect(resolveGridDisplayStep(20, 0.4)).toBe(2);
+        expect(resolveGridDisplayStep(20, 0.2)).toBe(5);
         expect(resolveGridDisplayStep(20, 0.1)).toBe(5);
         expect(resolveGridDisplayStep(1, 1)).toBe(10);
         expect(resolveGridDisplayStep(1, 0.1)).toBe(100);
@@ -168,9 +169,9 @@ describe("computeGridScreenLines", () => {
             designSize: { width: 1920, height: 1080 },
             overlaySize: { width: 2000, height: 2000 },
         });
-        expect(lines?.step).toBe(2);
-        expect(lines?.xs.length).toBe(1920 / 40 + 1);
-        expect(lines?.xs[1]).toBeCloseTo(8);
+        expect(lines?.step).toBe(5);
+        expect(lines?.xs.length).toBe(20);
+        expect(lines?.xs[1]).toBeCloseTo(20);
     });
 
     it("draws nothing when the page is out of view", () => {

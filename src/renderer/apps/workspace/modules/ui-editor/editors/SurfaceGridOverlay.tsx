@@ -109,7 +109,7 @@ export const SurfaceGridOverlay = memo(function SurfaceGridOverlay({ designSize,
         <div ref={hostRef} className="pointer-events-none absolute inset-0 overflow-hidden" data-surface-grid-overlay="">
             {frame && path ? (
                 <svg
-                    className="absolute left-0 top-0 text-fg-muted/40"
+                    className="absolute left-0 top-0 text-fg-muted/30"
                     width={frame.width}
                     height={frame.height}
                     viewBox={`0 0 ${frame.width} ${frame.height}`}

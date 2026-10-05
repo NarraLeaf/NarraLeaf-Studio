@@ -19,7 +19,7 @@ export const MAX_UI_EDITOR_GRID_SPACING = 1000;
  * The smallest distance, in screen pixels, the canvas lets two drawn grid lines come to each other.
  * Below it the drawing thins out (see {@link resolveGridDisplayStep}); snapping never does.
  */
-export const UI_EDITOR_GRID_MIN_SCREEN_CELL_PX = 8;
+export const UI_EDITOR_GRID_MIN_SCREEN_CELL_PX = 10;
 
 /** A stored or typed spacing, as a whole number of design pixels in range; `null` when it is not one. */
 export function normalizeUiEditorGridSpacing(raw: unknown): number | null {
