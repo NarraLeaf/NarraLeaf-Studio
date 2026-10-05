@@ -11,6 +11,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
+import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
@@ -2037,6 +2038,9 @@ export function DevModeContent(props: DevModeContentProps) {
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}
                         fit={stageViewport.fit}
                         cropAnchor={stageViewport.cropAnchor}
+                        // The ground the shipped game's stage sits on, so what the stage inherits here
+                        // is what it inherits in a player's window, not this window's theme.
+                        outerClassName={GAME_STAGE_BASE_CLASS_NAME}
                     >
                         {ctx.children}
                         {/* Inside the box, so it covers the stage and not the letterbox bars. */}

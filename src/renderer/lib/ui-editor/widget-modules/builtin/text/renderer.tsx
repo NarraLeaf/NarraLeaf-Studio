@@ -17,7 +17,6 @@ import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
 import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
@@ -45,6 +44,7 @@ import {
 import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
 import { TextRunsBody, useTextRunWords } from "@/lib/ui-editor/widget-modules/shared/text/TextRuns";
 import { useAutoFitFontSize } from "@/lib/ui-editor/widget-modules/shared/text/useAutoFitFontSize";
+import { resolveTextPaintColor } from "@/lib/ui-editor/widget-modules/shared/text/textPaintColor";
 import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
@@ -245,9 +245,9 @@ export function TextRenderer({
     };
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveTextAppearanceTransitions(flatProps.appearance ?? undefined, resolveCtx);
-    // The text colour can be a brand link, so it is read before it is painted: passing the
-    // stored string in as `hex` would leave `normalizeHex` to reject it and paint white.
-    const color = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
+    // The text colour can be a brand link, so it is read before it is painted - through the same
+    // function the live dialogue and NVL lines use, so the canvas and the game cannot disagree.
+    const color = resolveTextPaintColor(p.color);
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
     // Localized display text. At design time the source language's: the element's own words, or
     // its key's when it is read from one - the canvas shows what the game shows.

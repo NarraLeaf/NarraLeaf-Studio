@@ -1054,7 +1054,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
-    public updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void {
+    /**
+     * Write several elements' layouts as one change: one `documentChanged` and one undo step.
+     *
+     * `mergeKey` folds this step into the previous one when that carried the same key and was
+     * recorded within the merge window - how a run of arrow-key nudges stays a single undo.
+     */
+    public updateElementLayouts(
+        layoutPatches: Record<string, Partial<UILayout>>,
+        options: { mergeKey?: string } = {},
+    ): void {
         const elementIds = Object.keys(layoutPatches);
         if (elementIds.length === 0) {
             return;
@@ -1079,7 +1088,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 normalizeFlowChildLayout(document, element);
             });
         }, {
-            history: surfaceId ? { surfaceId } : false,
+            history: surfaceId ? { surfaceId, mergeKey: options.mergeKey } : false,
         });
     }
 

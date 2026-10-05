@@ -1,6 +1,7 @@
 import { Loader2, MonitorPlay, PanelRight, PictureInPicture2, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { NlrStageLayer } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import { useTranslation } from "@/lib/i18n";
 import type { StoryScenePreviewController } from "./useStoryScenePreviewController";
 import type { StoryScenePreviewPaneMode } from "./storyScenePreviewSessionStore";
@@ -103,8 +104,9 @@ export function StoryScenePreviewPane(props: {
                 </button>
             </div>
 
+            {/* The stage inherits what a shipped game's does, never Studio's theme. */}
             <div
-                className="relative min-h-0 flex-1 select-none overflow-hidden bg-black"
+                className={`relative min-h-0 flex-1 select-none overflow-hidden ${GAME_STAGE_BASE_CLASS_NAME}`}
                 data-story-preview-stage=""
                 onPointerDown={handleStagePointerDown}
                 onPointerUp={handleStagePointerUp}
