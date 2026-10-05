@@ -12,7 +12,6 @@ import {
     type UITextSite,
 } from "@shared/types/ui-editor/textSource";
 import { registerContributedWidgetSource, type ContributedWidgetDeclaration } from "@shared/types/ui-editor/contributedWidgets";
-import { EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
 import { settleIncomingUITextSources } from "@shared/types/ui-editor/textSourceMigration";
 import { listInterfaceTextUnitSites, listSurfaceTextSites } from "@/lib/lint/rules/ui";
@@ -168,7 +167,6 @@ const words = (site: UITextSite) => (site.role === "words" ? site.textProp : und
 
 const SEARCH_INPUT: UITextExtractionInput = {
     keys: {},
-    writers: EMPTY_UI_TEXT_WRITER_INDEX,
     labels: { sample: "Sample text", widgetName: element => element.type },
 };
 const sorted = (values: Iterable<string>) => [...new Set(values)].sort();
@@ -195,7 +193,7 @@ describe("interface text sites", () => {
     });
 
     it("lint reads each site's key from the table's key prop (listInterfaceTextUnitSites)", () => {
-        const found = listInterfaceTextUnitSites(KEYED, EMPTY_UI_TEXT_WRITER_INDEX).map(site => {
+        const found = listInterfaceTextUnitSites(KEYED).map(site => {
             if (site.binding.kind !== "key") {
                 return `${site.element.type}.(not a key)`;
             }
@@ -205,7 +203,7 @@ describe("interface text sites", () => {
     });
 
     it("lint reads an element's own words through its own unit on exactly the sites a player reads", () => {
-        const found = listInterfaceTextUnitSites(PLAIN, EMPTY_UI_TEXT_WRITER_INDEX).map(site =>
+        const found = listInterfaceTextUnitSites(PLAIN).map(site =>
             site.binding.kind === "implicit"
                 ? `${site.element.type}.${site.binding.unitId.split(".").pop()}`
                 : `${site.element.type}.(not a unit)`,
@@ -214,7 +212,7 @@ describe("interface text sites", () => {
     });
 
     it("the localization panel lists an element's own words on exactly the sites a player reads", () => {
-        const found = extractUiTranslationRows(PLAIN, EMPTY_UI_TEXT_WRITER_INDEX).map(row => `${typeOf(PLAIN, row.elementId)}.${row.prop}`);
+        const found = extractUiTranslationRows(PLAIN).map(row => `${typeOf(PLAIN, row.elementId)}.${row.prop}`);
         expect(sorted(found)).toEqual(expectedSites(words));
     });
 

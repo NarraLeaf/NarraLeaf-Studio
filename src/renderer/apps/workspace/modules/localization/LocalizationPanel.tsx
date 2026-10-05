@@ -12,7 +12,6 @@ import { Check, Ellipsis, Plus } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
-import { readProjectTextWriters } from "@/lib/workspace/services/ui-editor/blueprint/projectTextWriters";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { translationDocumentFreezeScope } from "./localizationLiveSession";
 
@@ -242,9 +241,8 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                 }
             }
             const uiDocument = uiDocumentService?.getDocument();
-            if (uiDocument && uiDocumentService) {
-                const writers = readProjectTextWriters(uiDocumentService.getContext().services);
-                for (const row of extractUiTranslationRows(uiDocument, writers, { locale: i18nStore.getLocale() })) {
+            if (uiDocument) {
+                for (const row of extractUiTranslationRows(uiDocument, { locale: i18nStore.getLocale() })) {
                     collected.push({
                         unitId: row.unitId,
                         sourceText: row.sourceText,

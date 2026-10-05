@@ -67,6 +67,8 @@ import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/e
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
+import { SurfaceOffPageVeil } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOffPageVeil";
+import { getEditorSurfaceStyle } from "@/apps/workspace/modules/ui-editor/editors/editorSurfaceStyle";
 import {
     readProjectMobileOrientation,
     readProjectStageFit,
@@ -95,42 +97,14 @@ import {
     subscribeElementBindingSession,
 } from "@/apps/workspace/modules/blueprint-lite/elementBindingSession";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
-import type { UISurface } from "@shared/types/ui-editor/document";
-import {
-    EDITOR_SURFACE_LOW_OPACITY_OUTLINE,
-    getEditorSurfaceAreaBackgroundColor,
-    shouldShowEditorSurfaceLowOpacityOutline,
-} from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
-import { CANVAS_SCALE_PROPERTY, ZOOMED_TRANSPARENCY_BACKDROP } from "@/styles/transparencyBackdrop";
+import { CANVAS_SCALE_PROPERTY } from "@/styles/transparencyBackdrop";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
-
-function getEditorSurfaceStyle(surface: UISurface | null | undefined, isComponentEdit: boolean): CSSProperties | undefined {
-    if (!surface) {
-        return undefined;
-    }
-    if (isComponentEdit) {
-        // A component is drawn at its own size and paints no background (the adapter makes its
-        // surface transparent), so what the frame shows between its widgets is what a placement lets
-        // through: the page it is put on. The squares say so, and mark where the component ends.
-        return ZOOMED_TRANSPARENCY_BACKDROP;
-    }
-    const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
-    const style: CSSProperties = {};
-    if (backgroundColor) {
-        style.backgroundColor = backgroundColor;
-    }
-    if (shouldShowEditorSurfaceLowOpacityOutline(surface)) {
-        style.outline = EDITOR_SURFACE_LOW_OPACITY_OUTLINE;
-        style.outlineOffset = "0px";
-    }
-    return Object.keys(style).length > 0 ? style : undefined;
-}
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
     if ("tabs" in layout) {
@@ -875,6 +849,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         ) : null}
                         <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                             {surfaceContent}
+                            {surfaceContent ? <SurfaceOffPageVeil designSize={surface.designSize} /> : null}
                             {/* Design-space reference frames, under the diagnostics and interaction layers. */}
                             {isComponentEdit ? null : (
                                 <SurfacePreviewFramesOverlay

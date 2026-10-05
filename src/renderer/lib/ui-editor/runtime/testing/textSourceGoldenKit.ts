@@ -36,11 +36,15 @@ import {
     migrateUITextSourcesV13,
     type UITextMigrationChange,
 } from "@shared/types/ui-editor/textSourceMigration";
-import { indexUITextWriters, EMPTY_UI_TEXT_WRITER_INDEX } from "@shared/types/ui-editor/textWriters";
 
 /** A project as its files hold it. */
 export type GoldenProject = {
     document: UIDocument;
+    /**
+     * The graphs, so a case can state who writes an element's words. Neither resolution reads them:
+     * words a blueprint writes over are the element's default value, shown and translated as the
+     * element's own until the first write, which is not part of either.
+     */
     blueprints: BlueprintDocument | null;
     /** Key name to source words. */
     keys: Record<string, string>;
@@ -144,8 +148,7 @@ function playedLocale(project: GoldenProject, view: GoldenView): string {
 
 /** What a v12 document showed, under the runtime that read it. */
 export function resolveBeforeV13(project: GoldenProject): GoldenResolution {
-    const writers = project.blueprints ? indexUITextWriters(project.blueprints) : EMPTY_UI_TEXT_WRITER_INDEX;
-    const strip = withoutUITextSamples(project.document, writers);
+    const strip = withoutUITextSamples(project.document);
     // Before v13 the strip also took the switch off sample words; it does not any more, so it is
     // taken off here for the elements the strip touched.
     const packaged = strip.document;
@@ -222,8 +225,7 @@ export function migrateGoldenProject(project: GoldenProject): {
 
 /** What a v13 document shows, under the runtime that reads it. */
 export function resolveAfterV13(project: GoldenProject): GoldenResolution {
-    const writers = project.blueprints ? indexUITextWriters(project.blueprints) : EMPTY_UI_TEXT_WRITER_INDEX;
-    const strip = withoutUITextSamples(project.document, writers);
+    const strip = withoutUITextSamples(project.document);
     const tables = tablesOf(project.translations, project.sourceLocale);
     const bundle = withoutUITextSampleUnits(bundleOf(project, tables), strip.unitIds) ?? keysOnlyLocalization(project.keys);
     const out: GoldenResolution = new Map();

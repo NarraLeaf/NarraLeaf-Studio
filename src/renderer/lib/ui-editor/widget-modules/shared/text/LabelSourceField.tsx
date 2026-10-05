@@ -7,7 +7,6 @@ import {
     type UITextSite,
     type UITextSource,
 } from "@shared/types/ui-editor/textSource";
-import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldControlClass";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
@@ -31,6 +30,7 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 import { LABEL_TEXT_AREA_CLASS, TextRunMarksEditor } from "./TextRunMarks";
+import { labelWordsBoxOf } from "./labelWordsBox";
 import { TextWritersList, useElementTextWriters } from "./TextWritersList";
 import { TextSourceSegments } from "./WordsSourceField";
 
@@ -78,11 +78,13 @@ function liveElementOf(data: UIInspectorData): UIElement {
  * (`ComponentParamBindingRow`), each placement giving its own - the component's counterpart of a list
  * row's field, picked the same way above the choice.
  *
- * Where a Blueprint Value or a component parameter answers the words, or a blueprint writes over them
- * while the game runs, the element's own words are sample text (`textSample.ts`): edited here, drawn on the canvas, and stated
- * to be shown in the editor only - a package carries none of them, and nothing translates them. The
- * blueprints that write the words are listed under the field, each opening at its node
- * (`TextWritersList`), whatever the words' source.
+ * Where a Blueprint Value or a component parameter answers the words, the element's own words are
+ * sample text (`textSample.ts`): edited here, drawn on the canvas, and stated to be shown in the editor
+ * only - a package carries none of them, and nothing translates them. Where a blueprint writes over
+ * the element's own words while the game runs, the box is the ordinary one, labelled as the default
+ * value the game shows until the first write. The blueprints that write the words are listed under the
+ * field, each opening at its node (`TextWritersList`), whatever the words' source. Which box is shown
+ * is `labelWordsBoxOf`.
  *
  * Read-only aware (`selfReadOnly`): on a frozen project the source row and the boxes are inert, while
  * the key list still opens to be read and a bound blueprint still opens to be looked at.
@@ -151,7 +153,6 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         const live = blueprintState.live;
         const source = uiTextSourceOf(live, site);
         const writers = useElementTextWriters(live.id);
-        const sampleCause = uiTextSampleCauseOf(live, site, writers);
         const writersList = <TextWritersList writers={writers} />;
 
         // "Translation key" picked before a key is: nothing is written until one is chosen, so the
@@ -159,6 +160,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         const [pickingKey, setPickingKey] = useState(false);
         useEffect(() => setPickingKey(false), [live.id]);
         const shown: UITextSource | null = source === "key" ? "key" : pickingKey && source !== null ? "key" : source;
+        const box = labelWordsBoxOf(live, site, writers, shown);
 
         // A list row's field answers the words through the same binding slot as a Blueprint Value, so
         // only a site that offers one offers the field too.
@@ -221,8 +223,8 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
         const key = keyOf(live);
         const keyText = source === "key" ? keys?.[key] ?? ownWords(live) : "";
 
-        // The element's own words, in the box the site edits them in: as the words a player reads, or
-        // as sample text where something else decides them.
+        // The element's own words, in the box the site edits them in: as the words a player reads, as
+        // the default value a blueprint writes over, or as sample text where a binding decides them.
         const ownWordsEditor = config.singleLine ? (
             <DraftTextInput
                 className={`w-full ${FIELD_INPUT_CLASS}`}
@@ -261,22 +263,22 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                 readOnly={readOnly}
             />
         );
-        const sampleBlock = (hint: TranslationKey) => (
+        const labelledWords = (label: TranslationKey, hint: TranslationKey) => (
             <div className="space-y-1">
-                <FieldLabel as="div">{t("widgets.sampleText.label")}</FieldLabel>
+                <FieldLabel as="div">{t(label)}</FieldLabel>
                 {ownWordsEditor}
                 <p className="text-xs text-fg-subtle">{t(hint)}</p>
             </div>
         );
 
-        if (shown === null && sampleCause === "componentParam") {
+        if (shown === null && box.kind === "sample" && box.cause === "componentParam") {
             // Each placement draws the value it gives the parameter. The element's own words are what
             // this editor draws, where there is no placement, so they are edited as sample text.
             return (
                 <div className="space-y-2">
                     {paramRow}
                     {fieldRow}
-                    {sampleBlock("widgets.sampleText.hintComponentParam")}
+                    {labelledWords("widgets.sampleText.label", "widgets.sampleText.hintComponentParam")}
                     {writersList}
                 </div>
             );
@@ -305,8 +307,10 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     disabled={readOnly}
                     blueprint={config.blueprint ? { unavailable: blueprintState.createUnavailable } : undefined}
                 />
-                {shown === "literal" && sampleCause === "written" ? sampleBlock("widgets.sampleText.hintWritten") : null}
-                {shown === "literal" && sampleCause !== "written" ? ownWordsEditor : null}
+                {shown === "literal" && box.kind === "words" ? ownWordsEditor : null}
+                {shown === "literal" && box.kind === "default"
+                    ? labelledWords("widgets.textWriters.defaultValue", "widgets.textWriters.defaultValueHint")
+                    : null}
                 {shown === "key" ? (
                     <>
                         <KeyPicker {...props} readOnly={props.readOnly} />
@@ -332,7 +336,7 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                 {shown === "blueprint" && config.blueprint ? (
                     <>
                         <BlueprintValueBoundCard state={blueprintState} valueLabel={config.blueprint.valueLabel} />
-                        {sampleBlock("widgets.sampleText.hintBlueprintValue")}
+                        {labelledWords("widgets.sampleText.label", "widgets.sampleText.hintBlueprintValue")}
                     </>
                 ) : null}
                 {writersList}

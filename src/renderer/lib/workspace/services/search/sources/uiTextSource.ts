@@ -3,21 +3,18 @@ import { getUIComponentLink, type UIComponentDefinition, type UIDocument, type U
 import { listUIPlacementTextValues } from "@shared/types/ui-editor/componentTextParams";
 import { readUITextSite, resolveUITextWords, uiTextSiteLabel, uiTextSiteOf, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
-import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import { i18nStore, translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { Services } from "../../services";
-import { readProjectTextWriters } from "../../ui-editor/blueprint/projectTextWriters";
 import { LocalizationService } from "../../localization/LocalizationService";
 import { UIDocumentService } from "../../ui-editor/UIDocumentService";
-import { UIGraphService } from "../../ui-editor/UIGraphService";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchJumpTarget } from "../searchJumpTarget";
 import type { SearchSource } from "../searchSource";
 
 /** What a result row calls the things the document cannot name for itself. */
 export interface UITextEntryLabels {
-    /** Said after the place of words no player reads: a binding or a blueprint decides what shows there. */
+    /** Said after the place of words no player reads: a binding decides what shows there. */
     sample: string;
     /** What a widget the author never named is called. */
     widgetName: (element: UIElement) => string;
@@ -26,8 +23,6 @@ export interface UITextEntryLabels {
 export interface UITextExtractionInput {
     /** The project's translation keys, name → source words. Null before they have loaded. */
     keys: Readonly<Record<string, string>> | null;
-    /** Who writes over whose words while the game runs (`indexUITextWriters`), which decides sample text. */
-    writers: UITextWriterIndex;
     labels: UITextEntryLabels;
 }
 
@@ -42,10 +37,11 @@ export interface UITextExtractionInput {
  * parameter some widget inside the definition shows (`listUIPlacementTextValues`). A placement carries
  * none of its definition's words, so its own copy is not read, as nowhere else reads it.
  *
- * Sample text - the dialogue and NVL lines' stand-ins, and words a binding or a blueprint decides in
- * the game (`uiTextSampleCauseOf`) - is listed too, because it is on the canvas and the author typed
- * it, but its context line says it is sample text: a search for what a player reads must not answer
- * with words no player sees without saying so.
+ * Sample text - the dialogue and NVL lines' stand-ins, and words a binding decides in the game
+ * (`uiTextSampleCauseOf`) - is listed too, because it is on the canvas and the author typed it, but
+ * its context line says it is sample text: a search for what a player reads must not answer with words
+ * no player sees without saying so. Words a blueprint writes over are not sample text: they are the
+ * widget's default value, which a player reads until the first write, and are listed as such.
  *
  * Pages first, in the order the document lists them and each depth first, then the component
  * definitions. Words without a single non-space character have nothing to find and are skipped.
@@ -88,7 +84,7 @@ export function extractUITextEntries(document: UIDocument, input: UITextExtracti
             if (!words.trim()) {
                 continue;
             }
-            const sample = site.role === "sample" || uiTextSampleCauseOf(element, site, input.writers.get(element.id)) !== null;
+            const sample = site.role === "sample" || uiTextSampleCauseOf(element, site) !== null;
             // A plugin widget with several words names which of them matched.
             const widget = sites.length > 1
                 ? `${nameOf(element)} › ${uiTextSiteLabel(site, i18nStore.getLocale())}`
@@ -155,17 +151,16 @@ function walkComponent(component: UIComponentDefinition, visit: (element: UIElem
  * The interface's words, in one slice.
  *
  * One slice because the pages and the components live in one document whose change event fires for
- * the whole of it. Three other inputs make a slice stale: the translation keys (a keyed widget's row
- * is the key's words), the blueprints (whether words are sample text depends on who writes over them)
- * and the interface language (the sample-text note and unnamed widgets' names are translated into the
- * rows).
+ * the whole of it. Two other inputs make a slice stale: the translation keys (a keyed widget's row is
+ * the key's words) and the interface language (the sample-text note and unnamed widgets' names are
+ * translated into the rows).
  *
  * No `dedupKey`: two widgets that say the same thing on the same page are two places to go.
  */
 export const uiTextSource: SearchSource = {
     id: "uiText",
     groups: ["uiText"],
-    dependsOn: [Services.UIDocument, Services.Localization, Services.UIGraph, Services.LocalBlueprint],
+    dependsOn: [Services.UIDocument, Services.Localization],
     extract: async ctx => {
         let document: UIDocument;
         try {
@@ -183,7 +178,6 @@ export const uiTextSource: SearchSource = {
         }
         return extractUITextEntries(document, {
             keys,
-            writers: readProjectTextWriters(ctx.services),
             labels: {
                 sample: translate("widgets.sampleText.label" as TranslationKey),
                 widgetName: element => widgetModuleRegistry.get(element.type)?.displayName || element.type,
@@ -193,12 +187,10 @@ export const uiTextSource: SearchSource = {
     watch: (ctx, signal) => {
         const edits = ctx.services.get<UIDocumentService>(Services.UIDocument).onDocumentChanged(() => signal.invalidate());
         const keys = ctx.services.get<LocalizationService>(Services.Localization).onKeysChanged(() => signal.invalidate());
-        const graphs = ctx.services.get<UIGraphService>(Services.UIGraph).onGraphsChanged(() => signal.invalidate());
         const locale = i18nStore.subscribe(() => signal.invalidate());
         return () => {
             edits();
             keys();
-            graphs();
             locale();
         };
     },
