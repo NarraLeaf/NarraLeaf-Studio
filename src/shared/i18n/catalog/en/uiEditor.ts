@@ -39,6 +39,10 @@ export const uiEditor = {
         nvl: "Full-screen novel-mode dialog history.",
     },
     panel: {
+        // The rail's first section: every page and Game UI in the project. Named for what it holds,
+        // beside "Component Library" and "Input Actions" below it.
+        interfaces: "Interfaces",
+        // Not shown: what a screen reader calls the Pages / Game UI switch at the top of that section.
         interfaceType: "Interface Type",
         createPage: "Create Page",
         createGameUi: "Create Game UI",
