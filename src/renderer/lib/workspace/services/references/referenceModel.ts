@@ -248,6 +248,9 @@ export function isLibraryAssetId(value: unknown): value is string {
  * is: there is one of these per project and nobody named it. The rung's place in the stack goes in
  * `field`, because the order is what an author would need to recognise the row.
  */
+/** Project ▸ Design, scrolled to the font stack: where the stack is edited. */
+const PROJECT_FONT_STACK_TARGET: SearchJumpTarget = { kind: "projectPage", page: "design", part: "fonts" };
+
 export function extractProjectFontReferences(
     fonts: readonly { assetId: string }[],
     label: string,
@@ -263,6 +266,7 @@ export function extractProjectFontReferences(
             kind: "design",
             label,
             field: `fonts[${index + 1}]`,
+            target: PROJECT_FONT_STACK_TARGET,
         });
     });
     return references;
@@ -598,6 +602,8 @@ export function extractStoryAnimationAssetReferences(animation: StoryAnimationAs
             label: animation.name,
             detail: animation.targetKind,
             field: `animation.${field}`,
+            // The motion's own editor, where both previews are picked.
+            target: { kind: "storyMotion", animationId: animation.id },
         });
     };
 
@@ -684,6 +690,9 @@ export function extractBlueprintAssetReferences(
                 reason: "blueprintProgramNotWalked",
                 slice: "blueprint",
                 location: blueprint.name,
+                // A script layer's blueprint opens like any other; one no owner claims is reached
+                // from no editor at all, and says only its name.
+                ...(ownerKey ? { target: { kind: "blueprint" as const, blueprintId: blueprint.id, ownerKey } } : {}),
             });
             continue;
         }
@@ -823,7 +832,8 @@ export function assetNameGapToIndexGap(gap: AssetNameGap): ReferenceIndexGap {
 
 /**
  * Where a gap sends the author: the node that takes the name, or for a bound property the value
- * blueprint it reads - and failing that, the page the widget is on.
+ * blueprint it reads - and failing that, the widget itself, selected on its page or in its component
+ * definition.
  */
 export function assetNameGapTarget(gap: AssetNameGap): SearchJumpTarget | undefined {
     const sink = gap.sink;
@@ -848,7 +858,10 @@ export function assetNameGapTarget(gap: AssetNameGap): SearchJumpTarget | undefi
                 : {}),
         };
     }
-    return sink.surfaceId ? { kind: "uiSurface", surfaceId: sink.surfaceId } : undefined;
+    if (sink.surfaceId) {
+        return { kind: "uiSurface", surfaceId: sink.surfaceId, elementId: sink.elementId };
+    }
+    return sink.componentId ? { kind: "uiComponent", componentId: sink.componentId, elementId: sink.elementId } : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +892,8 @@ function extractElementAssetReferences(
     ownerLabel: string | undefined,
     resolveAssetToken: AssetUrlTokenResolver | undefined,
     gaps: ReferenceIndexGap[],
+    /** Where the widget is edited - its page or component definition, with it selected. */
+    target?: SearchJumpTarget,
 ): AssetReference[] {
     const references: AssetReference[] = [];
     const props = readRecord(element.props);
@@ -899,6 +914,7 @@ function extractElementAssetReferences(
             detail: detail ?? ownerLabel,
             field,
             ...(dormant ? { dormant: true } : {}),
+            ...(target ? { target } : {}),
         });
     };
 
@@ -929,6 +945,8 @@ function extractElementAssetReferences(
             slice: "ui",
             location: `${label}.${field}`,
             affects: ["image"],
+            // The widget, selected, which is where the URL is replaced with a picked picture.
+            ...(target ? { target } : {}),
         });
     };
 
@@ -1066,6 +1084,52 @@ export function listUIElementAssetIds(element: UIElement): string[] {
 }
 
 /**
+ * Which page each element of the stage pool is on, walked down from every page's root and from a
+ * stage page's slot roots - the elements a page draws. First claim wins, which also stops a ring.
+ */
+function indexElementSurfaces(document: UIDocument): Map<string, string> {
+    const owner = new Map<string, string>();
+    for (const surface of document.surfaces ?? []) {
+        const roots = [
+            surface.rootElementId,
+            ...(surface.kind === "stageSurface" ? Object.values(surface.slots ?? {}).map(slot => slot.rootElementId) : []),
+        ];
+        const stack = roots.filter((id): id is string => typeof id === "string" && id.length > 0);
+        while (stack.length > 0) {
+            const id = stack.pop()!;
+            if (owner.has(id)) {
+                continue;
+            }
+            owner.set(id, surface.id);
+            for (const child of document.elements[id]?.childrenIds ?? []) {
+                stack.push(child);
+            }
+        }
+    }
+    return owner;
+}
+
+/**
+ * The page an element no root reaches still names through its `parentId` chain, when it names one.
+ * Bounded by the pool's size, so a ring of parents ends.
+ */
+function surfaceByParent(
+    document: UIDocument,
+    element: UIElement,
+    owners: ReadonlyMap<string, string>,
+): string | undefined {
+    let current: UIElement | undefined = element;
+    for (let step = 0, limit = Object.keys(document.elements).length; current?.parentId && step < limit; step += 1) {
+        const owner = owners.get(current.parentId);
+        if (owner) {
+            return owner;
+        }
+        current = document.elements[current.parentId];
+    }
+    return undefined;
+}
+
+/**
  * UI slice: both element pools. `document.elements` is the stage; `document.components[].elements`
  * is a disjoint pool — a component's elements are not mirrored into the stage pool, so scanning
  * only the stage misses every asset used inside a reusable component.
@@ -1097,12 +1161,25 @@ export function extractUIDocumentAssetReferences(
         });
     }
 
+    const surfaceOfElement = indexElementSurfaces(document);
     for (const element of Object.values(document.elements)) {
-        references.push(...extractElementAssetReferences(element, undefined, options.resolveAssetToken, gaps));
+        // An element no page reaches is drawn nowhere and no editor shows it, so it has no address;
+        // its references are still references, and still listed.
+        const surfaceId = surfaceOfElement.get(element.id) ?? surfaceByParent(document, element, surfaceOfElement);
+        const target: SearchJumpTarget | undefined = surfaceId
+            ? { kind: "uiSurface", surfaceId, elementId: element.id }
+            : undefined;
+        references.push(...extractElementAssetReferences(element, undefined, options.resolveAssetToken, gaps, target));
     }
     for (const component of document.components ?? []) {
         for (const element of Object.values(component.elements)) {
-            references.push(...extractElementAssetReferences(element, component.name, options.resolveAssetToken, gaps));
+            references.push(...extractElementAssetReferences(
+                element,
+                component.name,
+                options.resolveAssetToken,
+                gaps,
+                { kind: "uiComponent", componentId: component.id, elementId: element.id },
+            ));
         }
     }
 
@@ -1127,6 +1204,9 @@ export function extractVoiceAssetReferences(document: VoiceDocument): AssetRefer
             label: textId,
             detail: document.locale,
             field: "voice.assetId",
+            // The line's row in that language's voice table, which is where a take is linked. The
+            // document does not know which story the line is in; the table looks it up.
+            target: { kind: "voiceLine", locale: document.locale, unitId: textId },
         });
     }
     return references;
@@ -1157,6 +1237,8 @@ export function extractCharacterAssetReferences(
     const references: AssetReference[] = [];
 
     for (const character of characters) {
+        // The character's own editor, which is where every one of these pictures is chosen.
+        const target: SearchJumpTarget = { kind: "character", characterId: character.id };
         if (isLibraryAssetId(character.thumbnailAssetId)) {
             references.push({
                 id: `char:${character.id}:thumbnail`,
@@ -1164,6 +1246,7 @@ export function extractCharacterAssetReferences(
                 kind: "character",
                 label: character.name,
                 field: "profile.thumbnail",
+                target,
             });
         }
         for (const entry of character.appearanceAssets) {
@@ -1177,6 +1260,7 @@ export function extractCharacterAssetReferences(
                 label: character.name,
                 detail: entry.detail,
                 field: "appearance",
+                target,
             });
         }
     }

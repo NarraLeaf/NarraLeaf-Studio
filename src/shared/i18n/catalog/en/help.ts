@@ -19,6 +19,7 @@ export const help = {
         quality: "Checks",
         version: "Versions",
         ship: "Shipping",
+        checks: "Check rules",
     },
     /** Chrome shared by the popover and the browser. */
     ui: {
@@ -222,7 +223,7 @@ export const help = {
                 + "\n"
                 + "- A bare name is a variable in scope. Prefix it with scene., saved. or persistent. to choose "
                 + "the scope.\n"
-                + "- visited reports whether a scene or a label has been reached.\n"
+                + "- visited reports whether a scene has been reached, and picked whether a choice option has been chosen.\n"
                 + "- A condition must be a test that evaluates to true or false.",
         },
         storyScript: {
@@ -747,11 +748,12 @@ export const help = {
         lint: {
             title: "Project checks",
             body:
-                "Checks read the whole project and report what will not run: references to assets that no longer "
-                + "exist, jumps to labels that were never declared, rows the compiler will not accept, media "
-                + "formats the chosen platform cannot play.\n"
+                "Checks read the whole project and report what will not run: references to assets that no longer exist, jumps to labels that were never declared, rows the compiler will not accept, media formats the chosen platform cannot play.\n"
                 + "\n"
-                + "- Every finding states where it came from, and selecting it opens that place.\n"
+                + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
+                + "\n"
+                + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },
         tests: {

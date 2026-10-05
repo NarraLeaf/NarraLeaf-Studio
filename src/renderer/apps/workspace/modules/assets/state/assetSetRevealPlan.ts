@@ -73,6 +73,46 @@ export function planAssetSetReveal(input: {
     };
 }
 
+/** A set and the files it answers with, as far as {@link planAssetReveal} needs to know. */
+export interface AssetSetHolding {
+    set: { id: string };
+    contents: { cells: readonly { assetIds: readonly string[]; childSetIds?: readonly string[] }[] };
+}
+
+/**
+ * Everything that has to be open before one file's row is on screen.
+ *
+ * A file a set answers with is listed inside that set and nowhere else (see `memberAssetIds`), so its
+ * row is reached the way the set's is - and then one step further, into the set itself, which is why
+ * the set holding it ends `ancestorSetIds` here rather than being left out as a set's own reveal
+ * leaves it. Any other file is reached through the folders it is filed in.
+ *
+ * The section comes from the file's own type, which never fails to name one; null only for a file a
+ * set claims that the plan cannot place, which cannot be drawn either.
+ */
+export function planAssetReveal(input: {
+    asset: { id: string; groupId?: string };
+    category: AssetCategory;
+    holders: readonly AssetSetHolding[];
+    placements: readonly AssetSetPlacement[];
+    groups: readonly AssetGroup[];
+}): AssetSetRevealPlan | null {
+    // The innermost set: a value a sub-set answers is drawn as that sub-set, so the file's own row is
+    // under the set whose value it answers directly.
+    const holder = input.holders.find(entry =>
+        entry.contents.cells.some(cell => cell.assetIds.includes(input.asset.id) && !cell.childSetIds?.length),
+    ) ?? input.holders.find(entry => entry.contents.cells.some(cell => cell.assetIds.includes(input.asset.id)));
+    if (holder) {
+        const plan = planAssetSetReveal({ setId: holder.set.id, placements: input.placements, groups: input.groups });
+        return plan ? { ...plan, ancestorSetIds: [...plan.ancestorSetIds, holder.set.id] } : null;
+    }
+    return {
+        category: input.category,
+        groupPathIds: groupChain(input.groups, input.asset.groupId),
+        ancestorSetIds: [],
+    };
+}
+
 /** A folder and every folder it is inside, outermost first. */
 function groupChain(groups: readonly AssetGroup[], groupId: string | undefined): string[] {
     const byId = new Map(groups.map(group => [group.id, group]));

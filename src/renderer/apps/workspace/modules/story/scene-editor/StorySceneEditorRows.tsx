@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from "react-dom";
 import { useDismissWhenHidden, useFloatingLayer } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
 import { useSortable } from "@dnd-kit/sortable";
 import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene, StorySceneId } from "@shared/types/story";
@@ -104,7 +104,9 @@ import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommand
 import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
 import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
-import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
+import { diagnoseRow } from "./storyRowDiagnostics";
+import { RowProblemMark } from "./RowProblemMark";
+import { useRowProblems } from "../../lint/rowProblems";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
@@ -347,6 +349,8 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
      * about that row actually changes.
      */
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
+    /** What the project checks found on this row; the same array until that changes. */
+    const rowProblems = useRowProblems(block.id);
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
     /**
@@ -649,7 +653,14 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                         while reading it. The mark itself is absent until a take exists. */}
                     {containerInfo?.role === "option" ? (
                         <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            <RowProblemMark findings={rowProblems} legacyCode={null} />
                             <StoryVoiceIndicator block={block} />
+                        </div>
+                    ) : containerInfo && rowProblems.length > 0 ? (
+                        // A choice or a condition header: no voice to hear, but the checks can still
+                        // have something to say about it (a choice with no options, a cut point).
+                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            <RowProblemMark findings={rowProblems} legacyCode={null} />
                         </div>
                     ) : null}
                     {containerInfo ? null : (
@@ -660,7 +671,7 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                             {block.kind === "control" && block.payload.control === "cut"
                                 ? <RowCutPointMark appTagId={block.payload.appTagId} commandContext={props.commandContext} />
                                 : null}
-                            {diagnostic ? <RowDiagnosticMark code={diagnostic.code} /> : null}
+                            <RowProblemMark findings={rowProblems} legacyCode={diagnostic?.code ?? null} />
                             <StoryVoiceIndicator block={block} />
                         </div>
                     )}
@@ -747,27 +758,6 @@ function RowCutPointMark({ appTagId, commandContext }: { appTagId: string; comma
                 : t("story.rows.cutPointInactiveTitle")}
         >
             {named ? t("story.rows.cutPoint") : t("story.rows.cutPointInactive")}
-        </span>
-    );
-}
-
-/**
- * The lint mark: a small warning glyph beside the voice indicator, with the reason on hover.
- *
- * Always visible rather than hover-revealed — the whole point is to be noticed while reading, and a
- * warning you have to go looking for is not one.
- */
-function RowDiagnosticMark({ code }: { code: StoryRowDiagnosticCode }) {
-    const { t } = useTranslation();
-    const label = t(`story.diagnostics.${code}` as TranslationKey);
-    return (
-        <span
-            className="grid h-5 w-5 shrink-0 place-items-center text-warning"
-            data-tip={label}
-            aria-label={label}
-            role="img"
-        >
-            <TriangleAlert className="h-3.5 w-3.5" />
         </span>
     );
 }

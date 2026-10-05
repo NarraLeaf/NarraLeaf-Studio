@@ -379,9 +379,10 @@ describe("localization/missing on interface text", () => {
             ["lint.rule.localizationMissing.messageInterface", { locale: "ja", text: "Save" }],
         ]);
         expect(findings[0].location).toMatchObject({ kind: "surface", elementId: TITLE_ID, elementName: "Game title" });
-        expect(findings[0].target).toEqual({ kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID });
-        // The key's translation is written in the key's row, so that is where the finding leads.
-        expect(findings[1].target).toEqual({ kind: "localizationKey", keyName: "nav.save" });
+        // Filed under the widget, opened where the translation is typed: the language's table, at
+        // the row of the unit - the widget's own, or the named key's.
+        expect(findings[0].target).toEqual({ kind: "translation", locale: "ja", unitId: TITLE_UNIT });
+        expect(findings[1].target).toEqual({ kind: "translation", locale: "ja", unitId: "key:nav.save" });
     });
 
     it("is quiet once both rows are translated", async () => {

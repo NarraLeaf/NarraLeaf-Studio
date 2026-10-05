@@ -4,7 +4,7 @@ import { BRAND_LINK_MAX_DEPTH, getActiveBrandPalette, type BrandPalette } from "
 import type { TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext } from "../context";
-import type { LintFinding, LintRule } from "../types";
+import type { LintFinding, LintLocation, LintRule } from "../types";
 
 /**
  * `brand` - colour links that cannot paint.
@@ -123,6 +123,52 @@ function messageKeyFor(reason: BrandLinkFailureReason): TranslationKey {
     }
 }
 
+/**
+ * Where a link is, as the report files it and as a click opens it: the widget on its page, or in its
+ * component definition, selected - or the page itself for a page's own setting. A site the document
+ * places nowhere (an element no page draws) has neither, and is filed under the project.
+ */
+function brandLinkSite(
+    ctx: LintContext,
+    reference: BrandLinkReference,
+): { location: LintLocation; target?: SearchJumpTarget } {
+    const { surfaceId, componentId, elementId } = reference.location;
+    const document = ctx.uiDocument;
+    if (surfaceId) {
+        const surface = document?.surfaces.find(candidate => candidate.id === surfaceId);
+        if (surface) {
+            const elementName = elementId ? document?.elements[elementId]?.name?.trim() : undefined;
+            return {
+                location: {
+                    kind: "surface",
+                    surfaceId,
+                    surfaceName: surface.name,
+                    ...(elementId ? { elementId } : {}),
+                    ...(elementName ? { elementName } : {}),
+                },
+                target: { kind: "uiSurface", surfaceId, ...(elementId ? { elementId } : {}) },
+            };
+        }
+    }
+    if (componentId) {
+        const component = document?.components?.find(candidate => candidate.id === componentId);
+        if (component) {
+            const elementName = elementId ? component.elements[elementId]?.name?.trim() : undefined;
+            return {
+                location: {
+                    kind: "component",
+                    componentId,
+                    componentName: component.name.trim(),
+                    ...(elementId ? { elementId } : {}),
+                    ...(elementName ? { elementName } : {}),
+                },
+                target: { kind: "uiComponent", componentId, ...(elementId ? { elementId } : {}) },
+            };
+        }
+    }
+    return { location: { kind: "project" } };
+}
+
 function runBrokenLink(ctx: LintContext): LintFinding[] {
     // Only the UI document. `LintContext.characters` carries a summary (id, name, asset ids) rather
     // than the profile, so a character's accent colour is not reachable from here - the scanner
@@ -130,24 +176,20 @@ function runBrokenLink(ctx: LintContext): LintFinding[] {
     const references = collectBrandLinkReferences({ uidoc: ctx.uiDocument });
 
     return collectBrokenBrandLinks(references, getActiveBrandPalette()).map(({ reference, reason }) => {
-        const target: SearchJumpTarget | undefined = reference.location.surfaceId
-            ? { kind: "uiSurface", surfaceId: reference.location.surfaceId }
-            : undefined;
+        const site = brandLinkSite(ctx, reference);
 
         return {
             ruleId: "brand/broken-link" as const,
             messageKey: messageKeyFor(reason),
             messageParams: {
-                // The message names its own subject, as `assets/unused` does: this finding is filed
-                // under the project (there is no finer `LintLocation` for a widget prop), so the
-                // locator column would print nothing, and `where` is the only thing that tells forty
-                // findings of one rule apart.
+                // The message names its own subject, as `assets/unused` does: the locator column
+                // names the page and the widget, and `where` adds the property, which is the only
+                // thing that tells two links on one widget apart.
                 where: reference.where,
                 color: reference.id,
                 ...(reason.kind === "chain" ? { missing: reason.missingId } : {}),
             },
-            location: { kind: "project" as const },
-            ...(target ? { target } : {}),
+            ...site,
         };
     });
 }

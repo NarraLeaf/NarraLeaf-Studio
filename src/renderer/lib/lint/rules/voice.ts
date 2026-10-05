@@ -7,7 +7,6 @@ import {
     legacyVoiceAssetId,
     listLiveTextSegments,
     segmentSourceText,
-    storyBlockTarget,
     storyLocation,
     SPOKEN_TEXT_SEGMENT_KINDS,
     type LintTextSegmentKind,
@@ -114,9 +113,11 @@ function runStale(ctx: LintContext): LintFinding[] {
  * would be a false report that costs an author an audio file.
  *
  * **One finding per locale, carrying a count** - for the reason spelled out on `localization/orphan`:
- * an orphan's row is what is missing, so it has no location beyond the project and no jump target,
- * and one finding per unit rendered as N identical unactionable rows. A locale with no orphans emits
- * nothing.
+ * an orphan's row is what is missing, so it has no location beyond the project, and one finding per
+ * unit rendered as N identical unactionable rows. A locale with no orphans emits nothing.
+ *
+ * Opening one lands on that language's voice table, as near as there is: the table lists the script's
+ * lines, so a take whose line is gone has no row in it, and the table can neither show nor unlink one.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
     const voice = ctx.voice;
@@ -140,6 +141,7 @@ function runOrphan(ctx: LintContext): LintFinding[] {
             messageParams: { count, locale },
             messageParamCounts: { recordings: { key: "lint.rule.voiceOrphan.recordingCount", count } },
             location: { kind: "project" },
+            target: { kind: "voiceLine", locale },
         });
     }
     return findings;
@@ -155,8 +157,10 @@ function finding(
         ruleId,
         messageKey,
         messageParams: { locale },
+        // Filed under the line; opened in the language's voice table, at the line's row, which is
+        // where a take is linked to it.
         location: storyLocation(ref),
-        target: storyBlockTarget(ref),
+        target: { kind: "voiceLine", locale, unitId: ref.textId, storyId: ref.story.id },
     };
 }
 

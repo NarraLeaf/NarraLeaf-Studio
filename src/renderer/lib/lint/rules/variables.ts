@@ -441,8 +441,10 @@ function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlo
  *
  * The ref itself carries no name, so this reads the declaration the author probably meant: a row
  * with that block id anywhere in the story (a scene variable addressed from the wrong scene, or a
- * row whose scope was changed), then the registry. Falling back to the raw id is the honest last
- * resort - it is what the row is actually pointing at.
+ * row whose scope was changed), then the registry. When neither has it the variable has no name
+ * left anywhere, and the rules that read this say so with a message that names none: the raw id is
+ * what the row points at, but a scene variable's id is the declaring row's UUID, and the interface
+ * never prints one.
  */
 function buildVariableNameIndex(ctx: LintContext, entry: LintStoryEntry): Map<string, string> {
     const names = new Map<string, string>();
@@ -505,12 +507,13 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                             continue;
                         }
                         reported.add(key);
+                        const name = use.name ?? names.get(use.ref.variableId);
                         findings.push({
                             ruleId: "variables/undeclared",
-                            messageKey: "lint.rule.variablesUndeclared.message",
-                            messageParams: {
-                                variable: use.name ?? names.get(use.ref.variableId) ?? use.ref.variableId,
-                            },
+                            messageKey: name
+                                ? "lint.rule.variablesUndeclared.message"
+                                : "lint.rule.variablesUndeclared.messageUnnamed",
+                            ...(name ? { messageParams: { variable: name } } : {}),
                             location: storyLocation(entry, scene, use.blockId),
                             target: blockTarget(entry, scene, use.blockId),
                         });
@@ -618,10 +621,10 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 }
             }
 
-            // Registry entries are the one declaration site with no row to jump to, so they are
-            // reported against the project rather than a story. Each is checked against ITS OWN
-            // scope's use set: a saved entry read by a `/set` is used, and reading it off the
-            // persistent tally would report every saved variable in the project as dead.
+            // Registry entries are declared in the Variables panel rather than by any row, so they
+            // are filed under the project and open on their row in that panel. Each is checked
+            // against ITS OWN scope's use set: a saved entry read by a `/set` is used, and reading
+            // it off the persistent tally would report every saved variable in the project as dead.
             for (const registryEntry of ctx.variableRegistry) {
                 if (usedAtProjectScope(registryEntry.scope, registryEntry.id, registryEntry.storageKey)) {
                     continue;
@@ -631,6 +634,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                     messageKey: "lint.rule.variablesUnused.message",
                     messageParams: { variable: registryEntry.name },
                     location: { kind: "project" },
+                    target: { kind: "storyVariable", scope: registryEntry.scope, variableId: registryEntry.id },
                 });
             }
 
@@ -653,12 +657,21 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
             for (const { scope, collisions } of byScope) {
                 for (const collision of collisions) {
                     const site = findDeclarationSite(ctx, scope, collision.storageKeys);
+                    // With no row to name - the stories that declare it were not read - the other
+                    // half of the clash is the place to go: the registry entry, in the Variables panel.
+                    const registryEntry = site ? undefined : findRegistryEntry(ctx, scope, collision);
                     findings.push({
                         ruleId: "variables/name-collision",
-                        messageKey: "lint.rule.variablesNameCollision.message",
+                        messageKey: scope === "saved"
+                            ? "lint.rule.variablesNameCollision.messageSaved"
+                            : "lint.rule.variablesNameCollision.message",
                         messageParams: { variable: collision.name },
                         location: site ? storyLocation(site.entry, site.scene, site.block.id) : { kind: "project" },
-                        ...(site ? { target: blockTarget(site.entry, site.scene, site.block.id) } : {}),
+                        ...(site
+                            ? { target: blockTarget(site.entry, site.scene, site.block.id) }
+                            : registryEntry
+                                ? { target: { kind: "storyVariable" as const, scope, variableId: registryEntry.id } }
+                                : {}),
                     });
                 }
             }
@@ -827,7 +840,8 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 entry: LintStoryEntry;
                 scene: StoryScene;
                 blockId: StoryBlockId;
-                name: string;
+                /** Null when no declaration is left to name it by. */
+                name: string | null;
                 count: number;
             };
             const dead = new Map<string, DeadGuard>();
@@ -853,7 +867,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                                 entry,
                                 scene,
                                 blockId: guard.blockId,
-                                name: names.get(ref.variableId) ?? ref.variableId,
+                                name: names.get(ref.variableId) ?? null,
                                 count: 1,
                             });
                         }
@@ -861,10 +875,12 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 }
             }
 
-            return Array.from(dead.values(), site => ({
+            return Array.from(dead.values(), (site): LintFinding => ({
                 ruleId: "variables/read-never-written" as const,
-                messageKey: "lint.rule.variablesReadNeverWritten.message" as const,
-                messageParams: { variable: site.name, count: site.count },
+                messageKey: site.name
+                    ? "lint.rule.variablesReadNeverWritten.message" as const
+                    : "lint.rule.variablesReadNeverWritten.messageUnnamed" as const,
+                messageParams: site.name ? { variable: site.name, count: site.count } : { count: site.count },
                 messageParamCounts: {
                     conditions: { key: "lint.rule.variablesReadNeverWritten.conditionCount" as const, count: site.count },
                 },
@@ -956,6 +972,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                         }
                         // Which variable the report names, and the bound that settled it - recorded on
                         // the way through, so the message quotes the number rather than the ref key.
+                        // The name is null when no declaration is left to name it by.
                         let culpritName: string | null = null;
                         let culpritBound: string | null = null;
                         const truth = guardTruth(condition.expression.ast, key => {
@@ -971,22 +988,26 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                             const bound = before
                                 ? applyVariableEffects(arrival, before, key)
                                 : widenRangeAcrossScene(arrival, entry.document, scene.id, key, blueprintWrites);
-                            if (bound.kind === "known" && culpritName === null) {
+                            if (bound.kind === "known" && culpritBound === null) {
                                 const ref = guardVariableRefs(condition).find(
                                     candidate => storyVariableRefKey(candidate) === key,
                                 );
-                                culpritName = (ref && names.get(ref.variableId)) ?? key;
+                                culpritName = (ref && names.get(ref.variableId)) ?? null;
                                 culpritBound = `${bound.min}..${bound.max}`;
                             }
                             return bound;
                         });
-                        if (truth !== "false" || culpritName === null || culpritBound === null) {
+                        if (truth !== "false" || culpritBound === null) {
                             continue;
                         }
                         findings.push({
                             ruleId: "variables/condition-never-holds",
-                            messageKey: "lint.rule.variablesConditionNeverHolds.message",
-                            messageParams: { variable: culpritName, bound: culpritBound },
+                            messageKey: culpritName
+                                ? "lint.rule.variablesConditionNeverHolds.message"
+                                : "lint.rule.variablesConditionNeverHolds.messageUnnamed",
+                            messageParams: culpritName
+                                ? { variable: culpritName, bound: culpritBound }
+                                : { bound: culpritBound },
                             location: storyLocation(entry, scene, guard.blockId),
                             target: blockTarget(entry, scene, guard.blockId),
                         });
@@ -997,6 +1018,17 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
         },
     },
 ];
+
+/** The registry half of a name clash: the project-level entry of that scope carrying the name. */
+function findRegistryEntry(
+    ctx: LintContext,
+    scope: "saved" | "persistent",
+    collision: { name: string; storageKeys: readonly string[] },
+): { id: string } | undefined {
+    const wanted = new Set(collision.storageKeys);
+    return ctx.variableRegistry.find(entry => entry.scope === scope && wanted.has(entry.storageKey))
+        ?? ctx.variableRegistry.find(entry => entry.scope === scope && entry.name === collision.name);
+}
 
 /**
  * The story declaration row behind one of a collision's storage keys, so the finding has somewhere to

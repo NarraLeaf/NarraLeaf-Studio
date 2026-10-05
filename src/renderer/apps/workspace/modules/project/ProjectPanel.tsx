@@ -18,10 +18,17 @@ import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
 import { ProjectProjectPage } from "./pages/ProjectProjectPage";
 import type { HelpTopicId } from "@/lib/help";
 import type { ProjectSectionProps } from "./sections/types";
+import { ProjectPartRevealContext } from "./components/SettingsGroup";
+import { REVEAL_MARK_MS } from "@/apps/workspace/components/ui/useTableRowReveal";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
 export type ProjectPanelPayload = {
     section?: ProjectSectionId;
+    /**
+     * A part of that sub-page to scroll into view and mark: the `part` id of one of its
+     * `SettingsGroup`s (`fonts` is the Design page's font stack).
+     */
+    part?: string;
 };
 
 /**
@@ -45,9 +52,15 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
     // keep-alive, so a user who opens `assets`, backs out to the overview, then
     // asks for `assets` again would see an unchanged section value and no
     // re-open. updatePayload hands us a fresh object each request, which does.
+    const [revealedPart, setRevealedPart] = useState<{ part: string; token: number; scrolled: boolean } | null>(null);
+    const revealToken = useRef(0);
     useEffect(() => {
         if (payload?.section) {
             setActiveSection(payload.section);
+            if (payload.part) {
+                revealToken.current += 1;
+                setRevealedPart({ part: payload.part, token: revealToken.current, scrolled: false });
+            }
         }
     }, [payload]);
 
@@ -81,6 +94,31 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
 
     const closeSection = useCallback(() => setActiveSection(null), []);
     const rootRef = useRef<HTMLDivElement | null>(null);
+
+    // The part a deep link named, brought on screen once the sub-page holding it has drawn it - the
+    // page reads the manifest first, so it can be a render or two behind the request.
+    useEffect(() => {
+        if (!revealedPart || revealedPart.scrolled) {
+            return;
+        }
+        const element = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-project-part]") ?? [])
+            .find(candidate => candidate.dataset.projectPart === revealedPart.part);
+        if (!element) {
+            return;
+        }
+        element.scrollIntoView({ block: "start" });
+        setRevealedPart({ ...revealedPart, scrolled: true });
+    });
+    const revealedPartToken = revealedPart?.token ?? null;
+    useEffect(() => {
+        if (revealedPartToken === null) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setRevealedPart(current => (current?.token === revealedPartToken ? null : current));
+        }, REVEAL_MARK_MS);
+        return () => window.clearTimeout(timer);
+    }, [revealedPartToken]);
 
     // Escape returns to the overview when a sub-page is open - unless the key was meant for
     // something else (see `escapeLeavesSubPage`).
@@ -135,6 +173,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                         exit={{ x: "100%" }}
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
+                        <ProjectPartRevealContext.Provider value={revealedPart?.part ?? null}>
                         <ProjectSubPage
                             title={activeItem.title}
                             description={activeItem.description}
@@ -156,6 +195,7 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                             {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
                             {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
                         </ProjectSubPage>
+                        </ProjectPartRevealContext.Provider>
                     </motion.div>
                 ) : null}
             </AnimatePresence>

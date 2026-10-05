@@ -3,13 +3,17 @@ import type { EditorTabDefinition } from "../../registry/types";
 import { LocalizationEditorTab } from "./LocalizationEditorTab";
 import { getLocalizationEditorTabId, type LocalizationEditorTabPayload } from "./localizationEditorTabId";
 
-export function createLocalizationEditorTab(locale: string, title: string): EditorTabDefinition<LocalizationEditorTabPayload> {
+export function createLocalizationEditorTab(
+    locale: string,
+    title: string,
+    reveal?: LocalizationEditorTabPayload["reveal"],
+): EditorTabDefinition<LocalizationEditorTabPayload> {
     return {
         id: getLocalizationEditorTabId(locale),
         title,
         icon: <Languages className="h-4 w-4" />,
         component: LocalizationEditorTab,
-        payload: { locale },
+        payload: reveal ? { locale, reveal } : { locale },
         closable: true,
         modified: false,
     };

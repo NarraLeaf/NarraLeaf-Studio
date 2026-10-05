@@ -27,6 +27,9 @@ export function storyUnreadableFinding(story: { id: string; name: string }, erro
         ruleId: "story/unreadable",
         ...describeStoryLoadFailure(story.name, error),
         location: { kind: "story", storyId: story.id, storyName: story.name },
+        // The story cannot be opened, so not its scenes: its own row in the Story panel, which is
+        // where it is renamed, deleted or brought back from a version that opens.
+        target: { kind: "storyEntry", storyId: story.id, storyName: story.name },
         severity: "error",
     };
 }

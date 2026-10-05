@@ -95,14 +95,17 @@ export function BrowserGrid({ items, tileSize, measures, insideSet, onEnterGroup
         virtualizer.measure();
     }, [columns, tileSize, virtualizer]);
 
-    // A jump landing on a set: its row may not be mounted, and the tile marks itself once it is.
+    // A jump landing on a set or a file: its row may not be mounted, and the tile marks itself once it is.
     const revealNonce = assetSetReveal?.nonce ?? null;
     const revealSetId = assetSetReveal?.setId ?? null;
+    const revealAssetId = assetSetReveal?.assetId ?? null;
     useEffect(() => {
-        if (revealNonce === null || !revealSetId) {
+        if (revealNonce === null || (!revealSetId && !revealAssetId)) {
             return;
         }
-        const index = items.findIndex(item => item.kind === "set" && item.entry.set.id === revealSetId);
+        const index = revealSetId
+            ? items.findIndex(item => item.kind === "set" && item.entry.set.id === revealSetId)
+            : items.findIndex(item => item.kind === "asset" && item.asset.id === revealAssetId);
         if (index >= 0) {
             virtualizer.scrollToIndex(Math.floor(index / columns), { align: "center" });
         }
@@ -315,7 +318,7 @@ function FileTile({ item, measures, gestures }: {
     gestures: Gestures;
 }) {
     const { t } = useTranslation();
-    const { selectedItems, clipboard, draggedItem, mediaSupport, handleConvertMedia, assetTransfers } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, mediaSupport, handleConvertMedia, assetTransfers, assetSetReveal } = useAssetsPanelContext();
 
     if (item.kind === "hole") {
         return (
@@ -371,6 +374,8 @@ function FileTile({ item, measures, gestures }: {
             dataAttributes={{ "data-asset-browser-item": item.key }}
             draggable={!!dragStart}
             selected={selectedItems.has("asset:" + asset.id)}
+            // The tile a jump just landed on; the grid has already scrolled its row into view.
+            marked={assetSetReveal?.assetId === asset.id}
             dimmed={isCut || isDragging}
             overlay={arriving !== undefined ? <AssetTransferSweep share={arriving} /> : undefined}
             square={(

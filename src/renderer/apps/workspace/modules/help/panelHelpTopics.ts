@@ -28,6 +28,8 @@ export const PANEL_HELP_TOPICS: Readonly<Record<string, HelpTopicId>> = {
     "narraleaf-studio:search": "search",
     "narraleaf-studio:plugins": "plugins",
     "narraleaf-studio:recovery": "recovery",
+    // A finding row answers with its own rule's topic; the rest of the panel with this one.
+    "narraleaf-studio:problems": "lint",
 };
 
 export function panelHelpTopic(panelId: string): HelpTopicId | undefined {

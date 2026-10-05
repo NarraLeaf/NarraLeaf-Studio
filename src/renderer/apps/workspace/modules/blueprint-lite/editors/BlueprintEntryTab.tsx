@@ -98,6 +98,8 @@ import {
 import { SUPPORTED_LOCALES, type Locale } from "@shared/i18n/locales";
 import { collectBlueprintLayerTemplateFacts } from "../templates/blueprintLayerTemplateFacts";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
+import { useBlueprintProblems } from "../../lint/rowProblems";
+import type { LintReportEntry } from "@/lib/lint";
 import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
     BlueprintFlowCanvas,
@@ -1612,6 +1614,31 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [editor, selectEventGraph, selectFunctionGraph],
     );
 
+    /** The project checks' findings in this blueprint, listed under the editor's own. */
+    const blueprintProblems = useBlueprintProblems(payload.blueprintId);
+    const onProblemPick = useCallback(
+        (entry: LintReportEntry) => {
+            const location = entry.location;
+            if (location.kind !== "blueprint" || !location.graphId) {
+                return;
+            }
+            // The finding's jump target says which kind of graph the node lives in; the location only
+            // names the graph.
+            const inFunction = entry.target?.kind === "blueprint" && entry.target.focusFunctionId === location.graphId;
+            if (inFunction) {
+                selectFunctionGraph(location.graphId);
+            } else {
+                selectEventGraph(location.graphId);
+            }
+            if (location.nodeId) {
+                const nodeId = location.nodeId;
+                editor.setSelectedNodeIds([nodeId]);
+                setNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
+            }
+        },
+        [editor, selectEventGraph, selectFunctionGraph],
+    );
+
     const graphKey = editor.graphView ? `${editor.graphView.kind}:${editor.graphView.graphId}` : "none";
     const flowViewportPanelId = useMemo(() => getBlueprintFlowViewportPanelId(tabId), [tabId]);
     const initialFlowViewport = useMemo(() => {
@@ -2377,7 +2404,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     </div>
                 }
                 canvas={canvas}
-                diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+                diagnostics={(
+                    <BlueprintDiagnosticsPanel
+                        diagnostics={diagnostics}
+                        onPick={onDiagnosticPick}
+                        problems={blueprintProblems}
+                        onPickProblem={onProblemPick}
+                    />
+                )}
             />
             <BlueprintTemplateLibrary
                 isOpen={templateLibraryOpen}

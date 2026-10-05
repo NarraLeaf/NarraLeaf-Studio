@@ -533,7 +533,7 @@ export const story = {
         insertPause: "停止を差し込む（クリックを待つ）",
         insertValue: "行の中に値を差し込む",
         insertValueHint: "行の中に値を差し込む（変数またはブループリント）",
-        insertExpression: "式による変更を差し込む",
+        insertExpression: "表情の変更を差し込む",
         ruby: "ルビ",
         rubyHint: "ルビ（振りたい語を選んでから）",
         type: "文字",
@@ -543,7 +543,7 @@ export const story = {
         pauseSeconds: "停止 {seconds} 秒",
         insertedValue: "差し込んだ値：{name}",
         valueFallback: "値",
-        expressionEvent: "式による変更",
+        expressionEvent: "表情の変更",
         soundEvent: "効果音",
     },
     inlineEvent: {
@@ -954,6 +954,7 @@ export const story = {
         cutPointTitle: "{name} のビルドはこの行で終わる。他のどのビルドにもこの行は入らない",
         cutPointInactive: "バリアントなし",
         cutPointInactiveTitle: "この行が終わらせていたバリアントは削除されたので、何も終わらせていない",
+        problem: "{message}（{rule}）",
         tempSpeaker: "名前だけ",
         createCharacter: "キャラクター「{name}」を作成",
         // 上の行が灰色のときと、貼り付けウィザードの「新しいキャラクター」に出る。どちらも同じ申し出。

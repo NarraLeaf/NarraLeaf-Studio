@@ -53,6 +53,7 @@ export function createTestLintContext(
         buildPlatforms: [],
         io: {
             exists: async () => false,
+            byteSize: async () => null,
             readBytes: async () => null,
             probeImage: async () => ({ ok: false, reason: "test context has no io" }),
             probeFontCoverage: async () => ({ ok: false, reason: "malformed" as const }),

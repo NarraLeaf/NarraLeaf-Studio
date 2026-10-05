@@ -106,6 +106,11 @@ export type FinishedGameBuildRun = {
     appTagId?: string;
     /** True when the author stopped the run, which the pipeline reports as a failure. */
     cancelled: boolean;
+    /**
+     * True when the project checks refused the build. The findings that refused it are the Problems
+     * panel's, which is where the failure notice sends the author instead of to the console.
+     */
+    refusedByChecks?: true;
     state: GameBuildStateSnapshot;
 };
 
@@ -233,6 +238,8 @@ export class BuildService extends Service<BuildService> {
      */
     private gateAbort: AbortController | null = null;
     private lastFinishedRun: FinishedGameBuildRun | null = null;
+    /** Set by the lint gate just before it ends a run, and consumed when that run is recorded. */
+    private refusedByChecks = false;
     private finishedRunCount = 0;
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -1564,6 +1571,7 @@ export class BuildService extends Service<BuildService> {
         // `startedAt` and `platforms` carried through for the same reason the gate above carries
         // them: the dashboard archives a refused run as a finished build, and without them its
         // duration is measured from the epoch and it cannot say what it was building.
+        this.refusedByChecks = true;
         this.updateState({
             status: "error",
             progress: null,
@@ -1607,7 +1615,7 @@ export class BuildService extends Service<BuildService> {
         const suppressed = report.entries.length - LINT_CONSOLE_FINDING_LIMIT;
         if (suppressed > 0) {
             // Deliberately a count and not a sentence: the rest of the list is one click away in
-            // the report tab, and this line only has to say that the console stopped short.
+            // the Problems panel, and this line only has to say that the console stopped short.
             consoleService.log(BUILD_CONSOLE_CHANNEL, "info", `+${suppressed} more`, {
                 source: BUILD_CONSOLE_SOURCE,
             });
@@ -1684,9 +1692,11 @@ export class BuildService extends Service<BuildService> {
                 kind: pending.kind,
                 ...(pending.appTagId ? { appTagId: pending.appTagId } : {}),
                 cancelled: this.cancelRequested,
+                ...(this.refusedByChecks && next.status === "error" ? { refusedByChecks: true as const } : {}),
                 state: next,
             };
             this.pendingRun = null;
+            this.refusedByChecks = false;
         }
         this.state = next;
         const phaseChanged = previous.status !== next.status;

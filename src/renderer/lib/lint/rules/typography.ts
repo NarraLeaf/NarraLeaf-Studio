@@ -140,6 +140,8 @@ function collectTextSites(ctx: LintContext): TextSite[] {
                     characterId: character.id,
                     characterName: character.name,
                 },
+                // The name is written in the character's own editor.
+                target: { kind: "character", characterId: character.id },
             });
         }
     }
@@ -200,7 +202,7 @@ function collectTextSites(ctx: LintContext): TextSite[] {
                 unitId: site.unitId,
                 source: site.text,
                 location: surfaceLocation(site.surface, site.element),
-                target: surfaceTarget(site.surface),
+                target: surfaceTarget(site.surface, site.element),
                 faces: site.faces,
             });
         }
@@ -283,12 +285,19 @@ export function findLanguagesWithoutFonts(
         .filter(locale => resolveProjectFontStackForLocale(entries, locale).length === 0);
 }
 
+/**
+ * Where the project's fonts are listed, and each one's languages chosen: the place both of the
+ * project-wide findings below are answered.
+ */
+const FONT_STACK_TARGET: SearchJumpTarget = { kind: "projectPage", page: "design", part: "fonts" };
+
 function runLocaleNoFont(ctx: LintContext, entries: readonly ProjectFontEntry[]): LintFinding[] {
     return findLanguagesWithoutFonts(ctx, entries).map(locale => ({
         ruleId: "typography/locale-no-font" as const,
         messageKey: "lint.rule.typographyLocaleNoFont.message" as TranslationKey,
         messageParams: { language: languageName(locale) },
         location: { kind: "project" as const },
+        target: FONT_STACK_TARGET,
     }));
 }
 
@@ -433,6 +442,18 @@ function fontName(ctx: LintContext, assetId: string): string {
     return ctx.assets.find(asset => asset.id === assetId)?.name ?? assetId;
 }
 
+/**
+ * A font as a place: its row in the library, which is where a file that cannot be used is replaced or
+ * removed. Filed under the asset rather than the project, so the locator column names it.
+ */
+function fontSite(ctx: LintContext, assetId: string): Pick<LintFinding, "location" | "target"> {
+    const type = ctx.assets.find(asset => asset.id === assetId)?.type ?? "font";
+    return {
+        location: { kind: "asset", assetId, assetName: fontName(ctx, assetId) },
+        target: { kind: "asset", assetId, assetType: type },
+    };
+}
+
 /** The font's extension, lower case and without its dot. Empty for a rung with no asset. */
 function fontFormat(ctx: LintContext, assetId: string): string {
     const ext = ctx.assets.find(asset => asset.id === assetId)?.ext ?? "";
@@ -496,7 +517,7 @@ async function runGlyphCoverage(
                 // the way out differs: a collection is split, an SVG font is redrawn.
                 format: fontFormat(ctx, assetId),
             },
-            location: { kind: "project" as const },
+            ...fontSite(ctx, assetId),
         });
     }
 
@@ -509,7 +530,7 @@ async function runGlyphCoverage(
                 ruleId: "typography/glyph-coverage" as const,
                 messageKey: "lint.rule.typographyGlyphCoverage.messageUnreadable" as TranslationKey,
                 messageParams: { font: fontName(ctx, assetId) },
-                location: { kind: "project" as const },
+                ...fontSite(ctx, assetId),
             });
         }
         return findings;
@@ -565,6 +586,9 @@ async function runGlyphCoverage(
                     },
                 },
                 location: { kind: "project" as const },
+                // So many characters missing says the font is not for this language: the answer is
+                // in the font list, not at any one of the places the characters turn up.
+                target: FONT_STACK_TARGET,
             });
         }
     }

@@ -100,8 +100,28 @@ describe("collectBrandLinkReferences", () => {
 
         expect(badge?.id).toBe("primary");
         expect(badge?.where).toBe(["Badge", "nl.container", "style.backgroundColor"].join(BRAND_REFERENCE_SEPARATOR));
-        // Not a surface, so nothing that would open a surface editor at it.
+        // Not a surface, so nothing that would open a surface editor at it - the definition's own
+        // editor instead, which is where the widget is drawn.
         expect(badge?.location.surfaceId).toBeUndefined();
+        expect(badge?.location.componentId).toBe("c1");
+    });
+
+    it("files an element no root lists under the page its parent chain leads to", () => {
+        // `childrenIds` lost the entry, `parentId` kept it: the page the author put it on is still
+        // where it is edited from.
+        const uidoc = sampleUiDocument() as { elements: Record<string, unknown> };
+        uidoc.elements.stray = {
+            id: "stray",
+            type: "nl.text",
+            name: "Stray",
+            parentId: "start",
+            childrenIds: [],
+            style: { color: "nlbrand:text.muted" },
+        };
+        const stray = collectBrandLinkReferences({ uidoc }).find(ref => ref.location.elementId === "stray");
+
+        expect(stray?.location.surfaceId).toBe("s1");
+        expect(stray?.where).toBe(["Main Menu", "Stray", "style.color"].join(BRAND_REFERENCE_SEPARATOR));
     });
 
     it("says nothing about strings that are not links", () => {

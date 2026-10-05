@@ -723,6 +723,7 @@ export const workspace = {
                 runStatus: "运行状态",
                 projectTrust: "项目信任",
         studioTasks: "后台工作",
+                problems: "问题",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
                 shortcuts: "快捷键与鼠标操作",

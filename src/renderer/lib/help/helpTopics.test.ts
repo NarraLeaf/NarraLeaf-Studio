@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
 import { zh } from "@shared/i18n/catalog/zh";
+import { ja } from "@shared/i18n/catalog/ja";
+import { LINT_RULELESS_IDS, deriveLintRuleSlug } from "../lint/types";
+import { LINT_RULES } from "../lint/rules";
 import { KEYBINDING_CATALOG } from "../workspace/services/ui/keybindingCatalog";
 import { FIXED_INPUT_CATALOG } from "../workspace/services/ui/fixedInputCatalog";
 import { parseHelpBody } from "./helpBody";
 import {
+    ALL_HELP_TOPICS,
     HELP_SECTIONS,
     HELP_TOPIC_IDS,
     HELP_TOPICS,
@@ -13,6 +17,8 @@ import {
     helpSectionKey,
     helpTitleKey,
     helpTopicsBySection,
+    LINT_RULE_HELP_TOPICS,
+    lintRuleHelpTopicId,
 } from "./helpTopics";
 
 /**
@@ -26,6 +32,7 @@ import {
 
 const enKeys = flattenCatalog(en);
 const zhKeys = flattenCatalog(zh);
+const jaKeys = flattenCatalog(ja);
 const catalogIds = new Set([
     ...KEYBINDING_CATALOG.map(entry => entry.id),
     ...FIXED_INPUT_CATALOG.map(entry => entry.id),
@@ -46,7 +53,26 @@ describe("help topic registry", () => {
 
     it("lists every topic in the grouped view", () => {
         const grouped = helpTopicsBySection().flatMap(group => group.topics.map(topic => topic.id));
-        expect(grouped.sort()).toEqual([...HELP_TOPIC_IDS].sort());
+        expect(grouped.sort()).toEqual(ALL_HELP_TOPICS.map(topic => topic.id).sort());
+    });
+
+    /**
+     * One topic per check rule, and one for each finding no rule owns: every row of the Problems
+     * panel has a `?`, and a rule with no topic would be a finding with nothing behind it. The topics
+     * are found through the catalogue, so this is what notices a rule added without its `help`.
+     */
+    it("has a topic for every check rule and every rule-less finding", () => {
+        const topicIds = new Set(LINT_RULE_HELP_TOPICS.map(topic => topic.id));
+        const expected = [...LINT_RULES.map(rule => rule.id), ...LINT_RULELESS_IDS].map(id =>
+            lintRuleHelpTopicId(deriveLintRuleSlug(id)),
+        );
+        for (const id of expected) {
+            expect(topicIds, `no topic for ${id}`).toContain(id);
+        }
+        expect(topicIds.size).toBe(expected.length);
+        for (const topic of LINT_RULE_HELP_TOPICS) {
+            expect(topic.section).toBe("checks");
+        }
     });
 
     it("points `related` at registered topics, never at itself", () => {
@@ -76,6 +102,22 @@ describe("help topic registry", () => {
 });
 
 describe("help topic content", () => {
+    for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys], ["ja", jaKeys]] as const) {
+        it(`gives every ${locale} check rule a title and a topic that parses`, () => {
+            for (const topic of LINT_RULE_HELP_TOPICS) {
+                const body = keys.get(helpBodyKey(topic.id));
+                expect(keys.get(helpTitleKey(topic.id)), `${locale}: ${helpTitleKey(topic.id)}`).toBeTruthy();
+                expect(body, `${locale}: ${helpBodyKey(topic.id)}`).toBeTruthy();
+                expect(parseHelpBody(body!).length, `${locale}: ${helpBodyKey(topic.id)} parses to nothing`)
+                    .toBeGreaterThan(0);
+                // A topic is a body of paragraphs and bullets, and the copy rules hold for it as for
+                // any other (docs/help-system.md §3). `!=` is a comparison an author types, not
+                // an exclamation.
+                expect(body!.replace(/!=/g, ""), `${locale}: ${helpBodyKey(topic.id)}`).not.toMatch(/[—–]|——|[!！]/);
+            }
+        });
+    }
+
     for (const [locale, keys] of [["en", enKeys], ["zh", zhKeys]] as const) {
         it(`gives every ${locale} topic a title and a body that parses`, () => {
             for (const topic of HELP_TOPICS) {

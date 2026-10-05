@@ -1947,7 +1947,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         try {
             const frame = await decodeFirstVideoFrame(video, url);
             const canvas = this.createCanvas();
-            const context = canvas.getContext("2d");
+            const context = this.getThumbnailContext(canvas);
             if (!context) {
                 throw new RendererError("Failed to acquire canvas context for thumbnail rendering");
             }
@@ -1980,7 +1980,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const blob = new Blob([bufferSource]);
         const bitmap = await createImageBitmap(blob);
         const canvas = this.createCanvas();
-        const context = canvas.getContext("2d");
+        const context = this.getThumbnailContext(canvas);
         if (!context) {
             bitmap.close();
             throw new RendererError("Failed to acquire canvas context for thumbnail rendering");
@@ -1999,6 +1999,24 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         bitmap.close();
 
         return this.canvasToUint8Array(canvas);
+    }
+
+    /**
+     * The 2D context of a thumbnail canvas, asked of whichever of the two kinds it is.
+     *
+     * Not `canvas.getContext("2d")` on the union: TypeScript resolves that call through both kinds'
+     * overloads, and which one it settles on depends on the order it checks the program's files in.
+     * Adding an unrelated module to the runtime project once turned the answer into the generic
+     * `RenderingContext`, which has no `drawImage`, and failed the type check of a file nobody had
+     * touched. Asking each kind separately is the same call at runtime and one answer at compile time.
+     */
+    private getThumbnailContext(
+        canvas: HTMLCanvasElement | OffscreenCanvas,
+    ): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
+        if (typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas) {
+            return canvas.getContext("2d");
+        }
+        return (canvas as HTMLCanvasElement).getContext("2d");
     }
 
     private createCanvas(): HTMLCanvasElement | OffscreenCanvas {
