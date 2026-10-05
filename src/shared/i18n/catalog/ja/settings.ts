@@ -262,7 +262,7 @@ export const settings = {
         },
         useSystemProxy: {
             label: "このコンピュータのプロキシを使う",
-            description: "プラグインストア、テンプレート、更新、ビルドのダウンロード",
+            description: "Studio のダウンロードはこのコンピュータのプロキシを使います",
         },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",

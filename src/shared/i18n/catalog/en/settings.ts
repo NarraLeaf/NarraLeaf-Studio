@@ -268,7 +268,7 @@ export const settings = {
         },
         useSystemProxy: {
             label: "Use this computer's proxy",
-            description: "For the plugin store, templates, updates and builds.",
+            description: "Studio downloads follow the proxy this computer already uses.",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",

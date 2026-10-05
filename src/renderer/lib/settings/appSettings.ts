@@ -1200,7 +1200,7 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Use this computer's proxy",
         labelKey: "settings.items.useSystemProxy.label",
-        description: "For the plugin store, templates, updates and builds.",
+        description: "Studio downloads follow the proxy this computer already uses.",
         descriptionKey: "settings.items.useSystemProxy.description",
         defaultValue: false,
     },
