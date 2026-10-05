@@ -116,8 +116,13 @@ export function surfaceLocation(surface: UISurface, element?: UIElement): LintLo
     };
 }
 
-export function surfaceTarget(surface: UISurface): SearchJumpTarget {
-    return { kind: "uiSurface", surfaceId: surface.id };
+/**
+ * What opening a finding on a page opens: the page, with the widget the finding is about selected
+ * when there is one - the same widget its location names, so the row the report draws and the
+ * selection the click makes cannot disagree.
+ */
+export function surfaceTarget(surface: UISurface, element?: UIElement): SearchJumpTarget {
+    return { kind: "uiSurface", surfaceId: surface.id, ...(element ? { elementId: element.id } : {}) };
 }
 
 /** A widget inside a component definition, filed under the definition by its name. */
@@ -132,8 +137,9 @@ function componentLocation(component: UIComponentDefinition, element?: UIElement
     };
 }
 
-function componentTarget(component: UIComponentDefinition): SearchJumpTarget {
-    return { kind: "uiComponent", componentId: component.id };
+/** A widget inside a component definition: the definition's editor, with the widget selected. */
+export function componentTarget(component: UIComponentDefinition, element?: UIElement): SearchJumpTarget {
+    return { kind: "uiComponent", componentId: component.id, ...(element ? { elementId: element.id } : {}) };
 }
 
 /** Where a Page widget's finding is filed and what opening it opens, or null for a host that is gone. */
@@ -144,12 +150,12 @@ function frameSiteLocation(
     if (site.host.kind === "surface") {
         const surfaceId = site.host.surfaceId;
         const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
-        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface) } : null;
+        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface, site.element) } : null;
     }
     const componentId = site.host.componentId;
     const component = (document.components ?? []).find(candidate => candidate.id === componentId);
     return component
-        ? { location: componentLocation(component, site.element), target: componentTarget(component) }
+        ? { location: componentLocation(component, site.element), target: componentTarget(component, site.element) }
         : null;
 }
 
@@ -383,11 +389,11 @@ export function listInterfaceTextUnitSites(document: UIDocument, writers: UIText
         }
     };
     for (const { surface, element } of listSurfaceElements(document)) {
-        read(element, surfaceLocation(surface, element), surfaceTarget(surface));
+        read(element, surfaceLocation(surface, element), surfaceTarget(surface, element));
     }
     for (const component of document.components ?? []) {
         for (const element of Object.values(component.elements ?? {})) {
-            read(element, componentLocation(component, element), componentTarget(component));
+            read(element, componentLocation(component, element), componentTarget(component, element));
         }
     }
     return sites;
@@ -666,7 +672,7 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
             ruleId: "ui/empty-behavior",
             messageKey: "lint.rule.uiEmptyBehavior.message",
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -713,7 +719,7 @@ function runUnknownWidget(ctx: LintContext): LintFinding[] {
             messageKey: "lint.rule.uiUnknownWidget.message",
             messageParams: { type: site.element.type },
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -753,7 +759,7 @@ function runComponentMissing(ctx: LintContext): LintFinding[] {
             ruleId: "ui/component-missing",
             messageKey: "lint.rule.uiComponentMissing.message",
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -885,7 +891,7 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
                 ruleId: "ui/list-item-field-missing",
                 messageKey: "lint.rule.uiListItemFieldMissing.message",
                 location: surfaceLocation(site.surface, site.element),
-                target: surfaceTarget(site.surface),
+                target: surfaceTarget(site.surface, site.element),
             });
         }
     }
@@ -919,7 +925,7 @@ function runComponentParamMissing(ctx: LintContext): LintFinding[] {
                 ruleId: "ui/component-param-missing",
                 messageKey: "lint.rule.uiComponentParamMissing.messageOutside",
                 location: surfaceLocation(surface, element),
-                target: surfaceTarget(surface),
+                target: surfaceTarget(surface, element),
             });
         }
     }
@@ -935,7 +941,7 @@ function runComponentParamMissing(ctx: LintContext): LintFinding[] {
                 ruleId: "ui/component-param-missing",
                 messageKey: "lint.rule.uiComponentParamMissing.message",
                 location: componentLocation(component, element),
-                target: componentTarget(component),
+                target: componentTarget(component, element),
             });
         }
     }
@@ -1095,7 +1101,7 @@ function runListTextUntranslated(ctx: LintContext): LintFinding[] {
             messageKey: "lint.rule.uiListTextUntranslated.message",
             messageParams: { text: clipLiteral(words) },
             location: surfaceLocation(surface, element),
-            target: surfaceTarget(surface),
+            target: surfaceTarget(surface, element),
         });
     }
     return findings;
@@ -1240,7 +1246,7 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
                 // and the only spelling of it the author ever typed.
                 messageParams: { action: action.name.trim() || enablement.actionId },
                 location: surfaceLocation(site.surface, site.element),
-                target: surfaceTarget(site.surface),
+                target: surfaceTarget(site.surface, site.element),
             });
         }
     }

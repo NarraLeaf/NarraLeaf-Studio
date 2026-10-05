@@ -554,7 +554,8 @@ describe("variables/unused", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].messageParams).toEqual({ variable: "Playthroughs" });
         expect(findings[0].location).toEqual({ kind: "project" });
-        expect(findings[0].target).toBeUndefined();
+        // Declared in the Variables panel rather than by any row: its row there is where it opens.
+        expect(findings[0].target).toEqual({ kind: "storyVariable", scope: "persistent", variableId: "reg-1" });
     });
 
     it("says nothing about a registry entry a blueprint node names", () => {
@@ -695,6 +696,19 @@ describe("variables/name-collision", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].location).toEqual({ kind: "project" });
         expect(findings[0].target).toBeUndefined();
+    });
+
+    it("opens the registry half of the clash when no story row carries the key", () => {
+        const ctx = createTestLintContext({
+            variableRegistry: [registryEntry("reg-entry", "Playthroughs", "reg-1")],
+            persistentNameCollisions: [{ name: "Playthroughs", storageKeys: ["pk-1", "reg-1"] }],
+        });
+
+        const findings = run("variables/name-collision", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toEqual({ kind: "project" });
+        expect(findings[0].target).toEqual({ kind: "storyVariable", scope: "persistent", variableId: "reg-entry" });
     });
 
     it("reports a saved collision too, anchored on the saved row", () => {

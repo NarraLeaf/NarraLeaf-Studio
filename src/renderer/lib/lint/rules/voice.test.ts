@@ -171,7 +171,10 @@ describe("voice/stale", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].messageKey).toBe("lint.rule.voiceStale.message");
         expect(findings[0].messageParams).toEqual({ locale: "ja" });
-        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
+        // Filed under the line; opened at its row in the language's voice table, where the take is
+        // linked.
+        expect(findings[0].location).toMatchObject({ kind: "story", blockId: "b1" });
+        expect(findings[0].target).toMatchObject({ kind: "voiceLine", locale: "ja", unitId: "t-1" });
     });
 
     /**

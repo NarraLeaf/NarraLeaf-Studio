@@ -49,6 +49,12 @@ import {
     type AssetNameProject,
     type StoryVariableWrite,
 } from "./assetNameGaps";
+import type { SearchJumpTarget } from "../search/searchIndexModel";
+
+/** A story's own row in the Story panel: where a story whose document will not load is reached. */
+function storyEntryTarget(entry: { id: string; name: string }): SearchJumpTarget {
+    return { kind: "storyEntry", storyId: entry.id, storyName: entry.name };
+}
 
 /**
  * The property name a UI reference's `field` path ends in.
@@ -408,9 +414,13 @@ export class ReferenceService extends Service<ReferenceService> {
         }
     }
 
-    /** The one gap a document that will not load produces, named by whatever the author calls it. */
-    private setDocumentUnreadable(key: string, slice: ReferenceSliceKind, location: string): void {
-        this.sliceGaps.set(key, [{ reason: "documentUnreadable", slice, location }]);
+    /**
+     * The one gap a document that will not load produces, named by whatever the author calls it, and
+     * opening on the place that document is listed - a story's row, a motion's editor, a language's
+     * table - since it cannot be opened at a site inside.
+     */
+    private setDocumentUnreadable(key: string, slice: ReferenceSliceKind, location: string, target?: SearchJumpTarget): void {
+        this.sliceGaps.set(key, [{ reason: "documentUnreadable", slice, location, ...(target ? { target } : {}) }]);
     }
 
     // ---------------------------------------------------------------------
@@ -435,7 +445,7 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.setSliceGaps(`story:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
-                    this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name);
+                    this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name, storyEntryTarget(entry));
                 }
             }),
         );
@@ -452,7 +462,7 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.setSliceGaps(`voice:${locale.code}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan voice locale ${locale.code}:`, error);
-                    this.setDocumentUnreadable(`voice:${locale.code}`, "voice", locale.code);
+                    this.setDocumentUnreadable(`voice:${locale.code}`, "voice", locale.code, { kind: "voiceLine", locale: locale.code });
                 }
             }),
         );
@@ -722,7 +732,7 @@ export class ReferenceService extends Service<ReferenceService> {
             const entry = storyService.listStories().find(story => story.id === storyId);
             if (entry) {
                 console.warn(`[ReferenceService] Failed to rescan story ${storyId}:`, error);
-                this.setDocumentUnreadable(`story:${storyId}`, "story", entry.name);
+                this.setDocumentUnreadable(`story:${storyId}`, "story", entry.name, storyEntryTarget(entry));
             } else {
                 this.setSliceGaps(`story:${storyId}`, []);
             }
@@ -755,7 +765,7 @@ export class ReferenceService extends Service<ReferenceService> {
                 this.setSliceGaps(`story:${entry.id}`, []);
             } catch (error) {
                 console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
-                this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name);
+                this.setDocumentUnreadable(`story:${entry.id}`, "story", entry.name, storyEntryTarget(entry));
             }
         }
         this.emitChanged();
@@ -785,7 +795,10 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.setSliceGaps(`storyAnimation:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan animation ${entry.id}:`, error);
-                    this.setDocumentUnreadable(`storyAnimation:${entry.id}`, "storyAnimation", entry.name);
+                    this.setDocumentUnreadable(`storyAnimation:${entry.id}`, "storyAnimation", entry.name, {
+                        kind: "storyMotion",
+                        animationId: entry.id,
+                    });
                 }
             }),
         );
@@ -957,6 +970,8 @@ export class ReferenceService extends Service<ReferenceService> {
                 slice: "design",
                 location: DESIGN_SLICE_LOCATION,
                 affects: ["font"],
+                // The one slice that is a single place: the font stack it failed to read.
+                target: { kind: "projectPage", page: "design", part: "fonts" },
             }]);
         }
     }

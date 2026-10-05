@@ -618,10 +618,10 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 }
             }
 
-            // Registry entries are the one declaration site with no row to jump to, so they are
-            // reported against the project rather than a story. Each is checked against ITS OWN
-            // scope's use set: a saved entry read by a `/set` is used, and reading it off the
-            // persistent tally would report every saved variable in the project as dead.
+            // Registry entries are declared in the Variables panel rather than by any row, so they
+            // are filed under the project and open on their row in that panel. Each is checked
+            // against ITS OWN scope's use set: a saved entry read by a `/set` is used, and reading
+            // it off the persistent tally would report every saved variable in the project as dead.
             for (const registryEntry of ctx.variableRegistry) {
                 if (usedAtProjectScope(registryEntry.scope, registryEntry.id, registryEntry.storageKey)) {
                     continue;
@@ -631,6 +631,7 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                     messageKey: "lint.rule.variablesUnused.message",
                     messageParams: { variable: registryEntry.name },
                     location: { kind: "project" },
+                    target: { kind: "storyVariable", scope: registryEntry.scope, variableId: registryEntry.id },
                 });
             }
 
@@ -653,12 +654,19 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
             for (const { scope, collisions } of byScope) {
                 for (const collision of collisions) {
                     const site = findDeclarationSite(ctx, scope, collision.storageKeys);
+                    // With no row to name - the stories that declare it were not read - the other
+                    // half of the clash is the place to go: the registry entry, in the Variables panel.
+                    const registryEntry = site ? undefined : findRegistryEntry(ctx, scope, collision);
                     findings.push({
                         ruleId: "variables/name-collision",
                         messageKey: "lint.rule.variablesNameCollision.message",
                         messageParams: { variable: collision.name },
                         location: site ? storyLocation(site.entry, site.scene, site.block.id) : { kind: "project" },
-                        ...(site ? { target: blockTarget(site.entry, site.scene, site.block.id) } : {}),
+                        ...(site
+                            ? { target: blockTarget(site.entry, site.scene, site.block.id) }
+                            : registryEntry
+                                ? { target: { kind: "storyVariable" as const, scope, variableId: registryEntry.id } }
+                                : {}),
                     });
                 }
             }
@@ -997,6 +1005,17 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
         },
     },
 ];
+
+/** The registry half of a name clash: the project-level entry of that scope carrying the name. */
+function findRegistryEntry(
+    ctx: LintContext,
+    scope: "saved" | "persistent",
+    collision: { name: string; storageKeys: readonly string[] },
+): { id: string } | undefined {
+    const wanted = new Set(collision.storageKeys);
+    return ctx.variableRegistry.find(entry => entry.scope === scope && wanted.has(entry.storageKey))
+        ?? ctx.variableRegistry.find(entry => entry.scope === scope && entry.name === collision.name);
+}
 
 /**
  * The story declaration row behind one of a collision's storage keys, so the finding has somewhere to

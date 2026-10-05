@@ -14,6 +14,8 @@ import type { AssetReference, ReferenceGapReason } from "../../workspace/service
 import { referenceCoverageGapsFor } from "../../workspace/services/assets/assetDeleteGuard";
 import type { LintAssetEntry, LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
+import { listLiveTextSegments, storyLocation, type LintTextSegmentRef } from "./text/textSegments";
+import { surfaceLocation } from "./ui";
 
 /**
  * `assets` - is every asset in the library actually used, present, and readable.
@@ -91,14 +93,46 @@ export function formatReferenceLocation(reference: AssetReference): string {
  * The referencing site as a {@link LintLocation}, so the report groups a dangling id under the
  * document that holds it rather than under a library row that no longer exists.
  *
- * Derived from the reference's jump target where there is one: the target already carries the ids
- * and the display names, and re-deriving them from the reference's free-text label would be a second
- * source of truth for the same fact. `uiElement` and `voice` references have no `LintLocation` kind
- * of their own and fall back to the project - their "where" still reaches the reader through
- * `{location}` in the message.
+ * Derived from the reference's jump target where there is one: the target already carries the ids,
+ * and re-deriving them from the reference's free-text label would be a second source of truth for
+ * the same fact. A take is filed under the line it voices, found by its text id. The sites with no
+ * finer place - the font stack, a story motion's previews - fall back to the project; their "where"
+ * still reaches the reader through `{location}` in the message.
  */
-function referenceLocation(ctx: LintContext, reference: AssetReference, assetId: string): LintLocation {
+function referenceLocation(
+    ctx: LintContext,
+    reference: AssetReference,
+    assetId: string,
+    lineOf: (textId: string) => LintTextSegmentRef | undefined,
+): LintLocation {
     const target = reference.target;
+    if (target?.kind === "uiSurface") {
+        const surface = ctx.uiDocument?.surfaces.find(candidate => candidate.id === target.surfaceId);
+        const element = target.elementId ? ctx.uiDocument?.elements[target.elementId] : undefined;
+        if (surface) {
+            return surfaceLocation(surface, element);
+        }
+    }
+    if (target?.kind === "uiComponent") {
+        const component = ctx.uiDocument?.components?.find(candidate => candidate.id === target.componentId);
+        if (component) {
+            const element = target.elementId ? component.elements[target.elementId] : undefined;
+            const elementName = element?.name?.trim();
+            return {
+                kind: "component",
+                componentId: component.id,
+                componentName: component.name.trim(),
+                ...(element ? { elementId: element.id } : {}),
+                ...(elementName ? { elementName } : {}),
+            };
+        }
+    }
+    if (target?.kind === "voiceLine" && target.unitId) {
+        const line = lineOf(target.unitId);
+        if (line) {
+            return storyLocation(line);
+        }
+    }
     if (target?.kind === "storyBlock") {
         return {
             kind: "story",
@@ -128,18 +162,35 @@ function referenceLocation(ctx: LintContext, reference: AssetReference, assetId:
         };
     }
     if (reference.kind === "character") {
-        // Character references carry no target (the panel has no deep link yet), so the character is
-        // recovered from the context: by the name the reference was labelled with, and failing that
-        // by the id itself - `LintCharacterEntry.assetIds` is the stored ids, dangling ones included,
+        // By the reference's own target, and failing that by the name it was labelled with or by
+        // the id itself - `LintCharacterEntry.assetIds` is the stored ids, dangling ones included,
         // which is exactly the case this rule is about.
         const character =
-            ctx.characters.find(entry => entry.name === reference.label)
+            (target?.kind === "character" ? ctx.characters.find(entry => entry.id === target.characterId) : undefined)
+            ?? ctx.characters.find(entry => entry.name === reference.label)
             ?? ctx.characters.find(entry => entry.assetIds.includes(assetId));
         if (character) {
             return { kind: "character", characterId: character.id, characterName: character.name };
         }
     }
     return { kind: "project" };
+}
+
+/**
+ * Where opening a dangling reference goes: the site's own target, with the story a take's line is in
+ * filled in when the context knows it - the voice table then opens on that story directly rather
+ * than looking the line up.
+ */
+function referenceTarget(
+    reference: AssetReference,
+    lineOf: (textId: string) => LintTextSegmentRef | undefined,
+): LintFinding["target"] {
+    const target = reference.target;
+    if (target?.kind === "voiceLine" && target.unitId && !target.storyId) {
+        const line = lineOf(target.unitId);
+        return line ? { ...target, storyId: line.story.id } : target;
+    }
+    return target;
 }
 
 export const ASSETS_LINT_RULES: readonly LintRule[] = [
@@ -205,6 +256,13 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
         run(ctx) {
             const known = new Set(ctx.assets.map(asset => asset.id));
             const findings: LintFinding[] = [];
+            // Read once, and only when a take names a missing clip: the voice tables are keyed by
+            // line, and a take's reference knows its line's id and nothing else.
+            let lines: Map<string, LintTextSegmentRef> | null = null;
+            const lineOf = (textId: string): LintTextSegmentRef | undefined => {
+                lines ??= new Map(listLiveTextSegments(ctx).map(ref => [ref.textId, ref]));
+                return lines.get(textId);
+            };
             for (const [assetId, references] of ctx.assetReferences) {
                 if (known.has(assetId)) {
                     continue;
@@ -225,8 +283,8 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
                         ruleId: "assets/missing",
                         messageKey: "lint.rule.assetsMissing.message",
                         messageParams: { location: formatReferenceLocation(reference) },
-                        location: referenceLocation(ctx, reference, assetId),
-                        target: reference.target,
+                        location: referenceLocation(ctx, reference, assetId, lineOf),
+                        target: referenceTarget(reference, lineOf),
                     });
                 }
             }
@@ -418,6 +476,7 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
                         messageParams: { set: assetSetLabel(set), variant: variant.name },
                         ...(variant.key ? { messageParamKeys: { variant: variant.key } } : {}),
                         location: { kind: "project" },
+                        target: assetSetTarget(set),
                     });
                 }
                 for (const cell of contents.ambiguous) {
@@ -432,6 +491,7 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
                         },
                         ...(variant.key ? { messageParamKeys: { variant: variant.key } } : {}),
                         location: { kind: "project" },
+                        target: assetSetTarget(set),
                     });
                 }
             }
@@ -439,6 +499,14 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
         },
     },
 ];
+
+/**
+ * The set's row in the assets panel, with its inspector - where its values are listed and its axes
+ * edited, which is everything a finding about a set asks the author to change.
+ */
+function assetSetTarget(set: AssetSet): LintFinding["target"] {
+    return { kind: "assetSet", assetSetId: set.id };
+}
 
 /** What `{set}` renders as. Falls back to the id only for a set whose name never got typed. */
 function assetSetLabel(set: AssetSet): string {
@@ -483,6 +551,7 @@ function assetSetFinding(set: AssetSet, problem: AssetSetProblem): LintFinding {
     const base = {
         ruleId: "assets/group-incomplete" as const,
         location: { kind: "project" } as const,
+        target: assetSetTarget(set),
     };
     switch (problem.kind) {
         case "residencyInversion":

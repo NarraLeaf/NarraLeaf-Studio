@@ -239,7 +239,13 @@ describe("ReferenceService.getIndexResult", () => {
         const result = service.getIndexResult();
 
         expect(result.complete).toBe(false);
-        expect(result.gaps).toEqual([{ reason: "documentUnreadable", slice: "story", location: "Main Story" }]);
+        expect(result.gaps).toEqual([{
+            reason: "documentUnreadable",
+            slice: "story",
+            location: "Main Story",
+            // A story that will not open is reached through its own row in the Story panel.
+            target: { kind: "storyEntry", storyId: "s1", storyName: "Main Story" },
+        }]);
     });
 
     it("collects a gap from each slice that failed", async () => {
@@ -281,7 +287,12 @@ describe("the incremental story rescan", () => {
 
         expect(service.getIndexResult()).toEqual({
             complete: false,
-            gaps: [{ reason: "documentUnreadable", slice: "story", location: "Main Story" }],
+            gaps: [{
+                reason: "documentUnreadable",
+                slice: "story",
+                location: "Main Story",
+                target: { kind: "storyEntry", storyId: "s1", storyName: "Main Story" },
+            }],
         });
     });
 
@@ -340,7 +351,15 @@ describe("the project design slice", () => {
         expect(service.isReferenced("font-a")).toBe(true);
         // The rung's place in the stack is what an author would recognise the row by.
         expect(service.getReferences("font-b")).toEqual([
-            { id: "design:font:font-b", assetId: "font-b", kind: "design", label: "Default fonts", field: "fonts[2]" },
+            {
+                id: "design:font:font-b",
+                assetId: "font-b",
+                kind: "design",
+                label: "Default fonts",
+                field: "fonts[2]",
+                // Project ▸ Design, at the font stack: where the stack is edited.
+                target: { kind: "projectPage", page: "design", part: "fonts" },
+            },
         ]);
     });
 
@@ -359,7 +378,13 @@ describe("the project design slice", () => {
         await service.ensureReady();
 
         expect(service.getIndexResult().gaps).toEqual([
-            { reason: "sliceFailed", slice: "design", location: "Default fonts", affects: ["font"] },
+            {
+                reason: "sliceFailed",
+                slice: "design",
+                location: "Default fonts",
+                affects: ["font"],
+                target: { kind: "projectPage", page: "design", part: "fonts" },
+            },
         ]);
     });
 });

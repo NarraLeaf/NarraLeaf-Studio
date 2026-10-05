@@ -354,7 +354,8 @@ describe("ui/empty-behavior", () => {
             ruleId: "ui/empty-behavior",
             messageKey: "lint.rule.uiEmptyBehavior.message",
             location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start", elementName: "Start" },
-            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
+            // The click selects the button the row names, not just the page it is on.
+            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start" },
         });
     });
 
@@ -641,7 +642,7 @@ describe("ui/frame-target-missing", () => {
             elementId: "window",
             elementName: "Window",
         });
-        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id" });
+        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id", elementId: "window" });
     });
 });
 
