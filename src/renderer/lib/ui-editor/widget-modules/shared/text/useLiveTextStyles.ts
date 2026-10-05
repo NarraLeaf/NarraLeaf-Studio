@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { TextAppearanceProps } from "narraleaf-react";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -6,6 +7,7 @@ import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext"
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { resolveTextVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { useWidgetRuntimeElementState } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import {
     lineWrapCss,
@@ -16,16 +18,23 @@ import {
     textBodyInlineSizeCss,
     verticalTypographyCss,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import { resolveTextPaintColor } from "@/lib/ui-editor/widget-modules/shared/text/textPaintColor";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import type { TextOrientation, TextWritingMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 
-export type NlrHexColor = `#${string}`;
+/**
+ * The colour the engine's `<Texts>` takes. Its type names hex, named and `{r, g, b, a}` colours, but a
+ * string goes into each word's CSS exactly as written - only the object form is converted - so the
+ * `rgba()` a translucent palette entry resolves to reaches the words unchanged.
+ */
+export type NlrTextColor = NonNullable<TextAppearanceProps["defaultColor"]>;
 
 export type LiveTextStyles = {
     outerStyle: CSSProperties;
     textStyle: CSSProperties;
     textAppearanceProps: {
-        defaultColor: NlrHexColor;
+        /** Always a colour a browser can paint: brand links are resolved before they get here. */
+        defaultColor: NlrTextColor;
         fontSize: CSSProperties["fontSize"];
         fontWeight: CSSProperties["fontWeight"];
         fontWeightBold: CSSProperties["fontWeight"];
@@ -62,6 +71,9 @@ export function useLiveTextStyles({
     element,
     useAppearanceInspectorPreview,
 }: Pick<WidgetRendererProps, "element" | "useAppearanceInspectorPreview">): LiveTextStyles {
+    // The colour below is resolved against the palette while rendering, so a palette edit has to
+    // re-render the line itself: nothing above it on the live path redraws when the palette moves.
+    useBrandPaletteRevision();
     const flatProps = getTextProps(element);
     const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
@@ -96,7 +108,9 @@ export function useLiveTextStyles({
         ...(!useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
         ...(!useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
     };
-    const defaultColor = p.color as NlrHexColor;
+    // Resolved exactly as the canvas resolves it. The stored value may be a brand link, which the
+    // engine would write into the words' CSS as it stands, where the browser drops it.
+    const defaultColor = resolveTextPaintColor(p.color) as NlrTextColor;
     const fontWeightBold: CSSProperties["fontWeight"] = p.fontWeight === "normal" ? "bold" : 700;
 
     return {

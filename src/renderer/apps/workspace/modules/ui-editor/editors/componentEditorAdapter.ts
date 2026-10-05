@@ -209,7 +209,15 @@ export class ComponentDocumentServiceAdapter {
         this.base.updateComponentElementLayout(this.componentId, elementId, patch);
     }
 
-    public updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void {
+    /**
+     * `options` is accepted for the base service's signature and has nothing to act on: a
+     * definition's layout edits are written without an undo step (`updateComponentElementLayout`),
+     * so there is no step for a merge key to fold into.
+     */
+    public updateElementLayouts(
+        layoutPatches: Record<string, Partial<UILayout>>,
+        _options: { mergeKey?: string } = {},
+    ): void {
         for (const [elementId, layoutPatch] of Object.entries(layoutPatches)) {
             this.updateElementLayout(elementId, layoutPatch);
         }
