@@ -3407,7 +3407,10 @@ function buildStoryActionScriptInput(
         sceneFnCatalog: ctx.sceneFnCatalog,
         sceneVariables: ctx.sceneVariables,
         savedVariables: ctx.savedVariables,
-        savedNamespace: SAVED_PERSISTENT_NAMESPACE,
+        // The name the engine registered the namespace under, which is not the one it was created
+        // with: a `Persistent` prefixes its own. Read off the live object for the reason
+        // `resolveVariableSlot` gives - the prefix is the engine's to change.
+        savedNamespace: DevTools.getNamespaceName(ctx.savedPersistent),
         persistence: ctx.persistence,
         devtools: ctx.devtools,
         onDiagnostic,
