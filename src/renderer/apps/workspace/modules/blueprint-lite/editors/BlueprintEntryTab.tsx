@@ -536,7 +536,7 @@ export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabP
     if (!localBp.getBlueprintDocument().blueprints[props.payload.blueprintId]) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-warning">
-                {t("blueprint.tab.notFound", { id: props.payload.blueprintId })}
+                {t("blueprint.tab.notFound")}
             </div>
         );
     }
@@ -1035,12 +1035,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         catalogPrefix: "blueprint.",
     });
 
-    const persistGraphViewToTabPayload = useCallback(
-        (graphView: BlueprintEditorGraphView | null) => {
-            const nextPayload = buildBlueprintPayloadWithGraphFocus(payload, graphView);
-            if (hasSameBlueprintGraphFocus(payload, nextPayload)) {
-                return;
-            }
+    const writeTabPayload = useCallback(
+        (nextPayload: BlueprintEntryTabPayload) => {
             // Detached, this editor has no tab to write to; its restore payload takes the state
             // instead, so which graph was open survives the trip back to the workspace.
             if (updateDetachedEditorPayload(tabId, nextPayload)) {
@@ -1053,7 +1049,18 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             store.updateEditorTabPayload<BlueprintEntryTabPayload>(tabId, nextPayload, groupId);
         },
-        [payload, tabId, uiService],
+        [tabId, uiService],
+    );
+
+    const persistGraphViewToTabPayload = useCallback(
+        (graphView: BlueprintEditorGraphView | null) => {
+            const nextPayload = buildBlueprintPayloadWithGraphFocus(payload, graphView);
+            if (hasSameBlueprintGraphFocus(payload, nextPayload)) {
+                return;
+            }
+            writeTabPayload(nextPayload);
+        },
+        [payload, writeTabPayload],
     );
 
     /**
@@ -1541,8 +1548,30 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.setSelectedNodeIds([]);
     }, [commitIr, editor, ir]);
 
-    /** The node the diagnostics list last asked the canvas to reveal; see {@link onDiagnosticPick}. */
-    const [diagnosticNodeFocus, setDiagnosticNodeFocus] = useState<{ nodeId: string; nonce: number } | null>(null);
+    /**
+     * The node the canvas was last asked to bring into view, and a count that makes asking for the
+     * same node again a new request. Two things ask: the diagnostics list (see
+     * {@link onDiagnosticPick}), and a payload that names a node - the editor opened at one of its
+     * nodes from a writer list, a search result, a problem, a preview.
+     */
+    const [nodeFocus, setNodeFocus] = useState<{ nodeId: string; nonce: number } | null>(null);
+
+    /**
+     * A payload that names a node is a request to be taken there, and it is spent once made: the
+     * node goes to the canvas, and the payload is written back without it. Opening the blueprint at
+     * that node again then names it afresh - re-opening a tab that is already open replaces its
+     * payload with an equal one - and a session restored later puts the tab back where the author
+     * left it rather than at the node it was first opened at. `useBlueprintEditorState` has already
+     * selected the node and switched to its graph by the time this runs.
+     */
+    useEffect(() => {
+        const nodeId = payload.focusNodeId;
+        if (!nodeId) {
+            return;
+        }
+        setNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
+        writeTabPayload({ ...payload, focusNodeId: undefined });
+    }, [payload, writeTabPayload]);
 
     const onDiagnosticPick = useCallback(
         (d: BlueprintGraphEditorDiagnostic) => {
@@ -1569,7 +1598,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     editor.setSelectedNodeIds([nodeId]);
                     // Selecting a node off screen selects something the author cannot see. The nonce
                     // is what makes clicking the same row twice bring it back after a pan.
-                    setDiagnosticNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
+                    setNodeFocus(previous => ({ nodeId, nonce: (previous?.nonce ?? 0) + 1 }));
                 }
                 return;
             }
@@ -2268,8 +2297,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         blueprintSavedVariables={blueprintSavedVariables}
                         selectedNodeIds={editor.selectedNodeIds}
                         onSelectNodeIds={editor.setSelectedNodeIds}
-                        focusNodeId={diagnosticNodeFocus?.nodeId ?? null}
-                        focusNonce={diagnosticNodeFocus?.nonce}
+                        focusNodeId={nodeFocus?.nodeId ?? null}
+                        focusNonce={nodeFocus?.nonce}
                         onCommitIr={commitIr}
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
                         dragConnectCreate={dragConnectCreate}

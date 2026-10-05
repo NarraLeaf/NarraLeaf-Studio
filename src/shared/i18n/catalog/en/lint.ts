@@ -206,6 +206,11 @@ export const lint = {
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
         },
+        storyVideoControlAfterEnd: {
+            title: "Video already finished",
+            description: "A row pausing, resuming, seeking or stopping a video after a play that waits for its end",
+            message: "{object} has already finished playing at this line; to continue while it plays, turn off “Wait for the video” on its play row",
+        },
         storyCharacterMissing: {
             title: "Missing character",
             description: "A row naming a character the project does not have",
@@ -237,7 +242,7 @@ export const lint = {
             messageChoice: "Names a choice that no longer exists",
             messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
-            messageTextKey: "Names a text key the project does not declare",
+            messageTextKey: "Names a translation key the project does not declare",
             messageDlc: "Names a DLC the project does not have",
             messageInputAction: "Names an input action the project does not declare",
         },
@@ -291,13 +296,6 @@ export const lint = {
             messageUnloadedNode: "\"{pin}\" on \"{node}\" receives an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
             messageUnloadedNodeBinding: "\"{prop}\" on \"{element}\" is bound to an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
         },
-        uiUnlocalizedText: {
-            title: "Unlocalized text",
-            description: "Text written straight onto a widget in a project that has a second language",
-            // The literal, because the locator names the page and the widget but nothing can carry
-            // the words themselves - and on a page of forty labels they are what tells them apart.
-            message: "{text} is not bound to a localization key",
-        },
         uiPageUnreachable: {
             title: "Unreachable page",
             description: "A page nothing opens, embeds, or starts on",
@@ -334,6 +332,22 @@ export const lint = {
             title: "Missing item field",
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
+        uiComponentParamMissing: {
+            title: "Missing text parameter",
+            description: "A widget in a component showing a parameter the component does not declare as text",
+            message: "This shows a parameter the component does not declare as text, so every placement shows no words here",
+            messageOutside: "This shows a component parameter but is not inside a component, so the game shows no words here",
+        },
+        uiListTextUntranslated: {
+            title: "Untranslated list content",
+            description: "Words written into a list's content in a project that has a second language",
+            message: "{text} and the rest of this list's content show as written in every language",
+        },
+        uiLocalizationKeyMissing: {
+            title: "Missing translation key",
+            description: "A widget reading its words from a key the project does not have",
+            message: "Reads its words from {key}, which the project does not have",
         },
         uiGestureAnsweredTwice: {
             title: "Gesture answered twice",
@@ -470,6 +484,10 @@ export const lint = {
                 other: "{count} times",
             },
             messageInLanguage: "No project font can draw “{character}” in {language} ({occurrences})",
+            // The widget draws the character in the state it rests in; `{state}` is the name of the
+            // state (appearance variant) whose font cannot.
+            messageInState: "No project font can draw “{character}” in the “{state}” state ({occurrences})",
+            messageInLanguageInState: "No project font can draw “{character}” in {language} in the “{state}” state ({occurrences})",
             messageMore: "{characters} no project font can draw",
             moreCharacterCount: {
                 one: "{count} more character",

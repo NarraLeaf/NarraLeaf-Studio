@@ -362,7 +362,7 @@ describe("localization/missing on interface text", () => {
     it("reports a widget's own unit and a named key the target locale has no row for", async () => {
         const document = interfaceDocument({
             Title: [
-                widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true }, "Game title"),
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain" }, "Game title"),
                 widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
             ],
         });
@@ -380,7 +380,7 @@ describe("localization/missing on interface text", () => {
     it("is quiet once both rows are translated", async () => {
         const document = interfaceDocument({
             Title: [
-                widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true }),
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain" }),
                 widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
             ],
         });
@@ -405,11 +405,11 @@ describe("localization/missing on interface text", () => {
         expect(findings[0].location).toMatchObject({ kind: "surface", elementId: "save-back" });
     });
 
-    it("leaves out text nothing translates, a key with no registered words, and keys it could not read", async () => {
+    it("leaves out words with no letter in them, a key with no registered words, and keys it could not read", async () => {
         const document = interfaceDocument({
             Title: [
-                widget("plain", "nl.text", { text: "Version 1.0" }),
-                widget("blank", "nl.text", { text: "  ", localizable: true }),
+                widget("plain", "nl.text", { text: "1.0" }),
+                widget("blank", "nl.text", { text: "  " }),
                 widget("dangling", "nl.button", { label: "Gallery", localizationKey: "nav.gallery" }),
                 widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
             ],
@@ -435,7 +435,7 @@ describe("localization/missing on interface text", () => {
 
     it("is silent when the project has no second language", async () => {
         const document = interfaceDocument({
-            Title: [widget(TITLE_ID, "nl.text", { text: "Summer Rain", localizable: true })],
+            Title: [widget(TITLE_ID, "nl.text", { text: "Summer Rain" })],
         });
         expect(await run("localization/missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
     });
@@ -445,7 +445,7 @@ describe("localization/stale on interface text", () => {
     it("reports a translation made before the words were rewritten, and not an absent one", async () => {
         const document = interfaceDocument({
             Title: [
-                widget(TITLE_ID, "nl.text", { text: "Summer Rain, Again", localizable: true }),
+                widget(TITLE_ID, "nl.text", { text: "Summer Rain, Again" }),
                 widget("load", "nl.button", { label: "Load", localizationKey: "nav.load" }),
                 widget("save", "nl.button", { label: "Save", localizationKey: "nav.save" }),
             ],

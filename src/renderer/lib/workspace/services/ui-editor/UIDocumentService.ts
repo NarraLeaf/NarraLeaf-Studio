@@ -24,11 +24,36 @@ import {
     getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
+    isUIComponentTextParam,
     type UIComponentParam,
+    type UIElementValueBinding,
 } from "@shared/types/ui-editor/document";
 import { entrySurfacePointerMisses, isEntrySurface, resolveEntrySurface } from "@shared/types/ui-editor/entrySurface";
 import { buildUIComponentEditorSurfaceId, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
+import {
+    migrateUITextSourcesV13,
+    settleIncomingUITextSources,
+    uiTextSiteWithOwnWords,
+    UI_TEXT_SOURCES_SCHEMA_VERSION,
+    type UITextArrivalConversion,
+    type UITextCarriedKeys,
+    type UITextMigrationChange,
+} from "@shared/types/ui-editor/textSourceMigration";
+import { readUITextSite, uiTextSitesOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
+import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
+import { mapCopiedUIComponentDefaultUnits, mapCopiedUITextUnits } from "@shared/types/ui-editor/textUnitCopies";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationService } from "../localization/LocalizationService";
+import {
+    createCarriedTranslationPort,
+    planCarriedTranslations,
+    readProjectLocales,
+    readProjectTranslations,
+    writeCarriedTranslations,
+    type CarriedTranslations,
+} from "../localization/carriedTranslations";
+import type { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
@@ -37,6 +62,8 @@ import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { RendererError } from "@shared/utils/error";
 import { i18nStore, translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { widgetDefaultWordsFor } from "@/lib/ui-editor/widget-modules/defaultWords";
+import type { UIWidgetDefaultWords } from "@/lib/ui-editor/widget-modules/types";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -54,8 +81,11 @@ import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
+import type { UIService } from "../core/UIService";
+import { isBlueprintEntryTabShowing } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
+    applyGroupElements,
     applyPlannedMove,
     applyUngroupContainer,
     canUngroupContainer,
@@ -65,9 +95,12 @@ import {
     normalizeFlowChildLayout,
     normalizeFlowChildLayouts,
     normalizeListSlotsForMovedChildren,
+    planGroupElements,
     planMoveElementsInSurface,
     type MoveUiElementsResult,
+    type PlannedGroup,
 } from "./uiDocumentTreeMove";
+import { createGroupContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/groupProps";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
@@ -295,6 +328,40 @@ type StageSlotTemplate = {
     elements: Record<UIElementId, UIElement>;
     configure: (surfaceId: UISurfaceId) => void;
 };
+
+/** The container Group creates for a plan, before it is put in the tree. */
+function createGroupElement(id: string, plan: PlannedGroup): UIElement {
+    return {
+        id,
+        type: "nl.container",
+        name: translate("widgets.defaults.group.name"),
+        parentId: plan.parentId,
+        childrenIds: [],
+        layout: { ...plan.groupLayout, visible: true, opacity: 1 },
+        props: createGroupContainerProps(plan.flow),
+    };
+}
+
+/**
+ * A component definition seen as a document of its own - one surface rooted at the component's root
+ * - so the tree planners written for surfaces can read and edit its elements table in place.
+ */
+function componentAsDocument(document: UIDocument, component: UIComponentDefinition, surfaceId: string): UIDocument {
+    return {
+        ...document,
+        surfaces: [
+            {
+                id: surfaceId,
+                name: component.name,
+                host: "app",
+                kind: "appSurface",
+                designSize: getComponentPreviewDesignSize(component),
+                rootElementId: component.rootElementId,
+            },
+        ],
+        elements: component.elements,
+    };
+}
 
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
     return {
@@ -666,6 +733,18 @@ export type ImportTemplateBundleInput = {
     graphs: unknown;
     placement: ImportTemplatePlacement;
     assetIdMap?: Record<string, string>;
+    /**
+     * The words, and translations, of the keys the document's widgets name - for the ones this
+     * project lacks, which arrive holding those words themselves (`settleIncomingUITextSources`).
+     */
+    textKeys?: UITextCarriedKeys;
+    /**
+     * What every language says about the words the document's widgets write directly, by unit id
+     * under the ids the widgets have in `document` - a page copied in another window brings them.
+     * Without it, widgets whose ids this project already translates (a page copied in this window)
+     * take those translations.
+     */
+    translations?: CarriedTranslations;
 };
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
@@ -685,12 +764,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
+    /** What the v13 step changed that an author can see, until the workspace has said so. */
+    private textSourceMigrationChanges: UITextMigrationChange[] = [];
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
-        await depend([filesystemService, projectService, uuidService]);
+        // The translation library, because opening a document older than v13 writes the translation
+        // edits its step makes there (see `migrateTextSources`).
+        const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+        await depend([filesystemService, projectService, uuidService, localizationService]);
         await registerAutoSaver(ctx, depend, "uiDocument", "workspace.shell.save.stores.uiDocument", this.autoSaver);
 
         await this.ensureDocumentDir();
@@ -752,7 +836,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         const loadedSnapshot = JSON.stringify(result.data);
-        const migrated = this.migrateIfNeeded(result.data);
+        const migrated = this.migrateIfNeeded(await this.migrateTextSources(result.data));
         this.document = migrated;
         const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
         const normalizedChanged = loadedSnapshot !== JSON.stringify(migrated);
@@ -1025,6 +1109,204 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   }
                 : false,
         });
+    }
+
+    /**
+     * Every widget that reads its words from `keyName`, turned into one that holds `words` itself.
+     *
+     * What removing a key does to the widgets that use it: each keeps showing what it showed, and none
+     * is left naming a key the project no longer has. Component definitions' widgets are included; an
+     * instance holds none of its definition's words, but a text parameter's value it reads from the key
+     * becomes the key's words, given directly (prop `param.<paramId>`). One change to the document,
+     * outside any page's undo history, like the removal of the key it goes with. Returns each site it
+     * converted, for the translations that go with the words (`ui:<elementId>.<prop>`).
+     */
+    public giveKeyedWidgetsTheirWords(keyName: string, words: string): { elementId: string; prop: string }[] {
+        const converted: { elementId: string; prop: string }[] = [];
+        this.mutateDocument(document => {
+            const visit = (table: Record<string, UIElement>): void => {
+                for (const element of Object.values(table)) {
+                    // A placement that reads a text parameter's value from the key takes the key's
+                    // words as the value it gives, translated through its own unit from now on.
+                    const link = getUIComponentLink(element);
+                    if (link?.paramKeys) {
+                        const paramIds = Object.keys(link.paramKeys).filter(paramId => link.paramKeys?.[paramId] === keyName);
+                        if (paramIds.length > 0) {
+                            const params = { ...(link.params ?? {}) };
+                            const paramKeys = { ...link.paramKeys };
+                            for (const paramId of paramIds) {
+                                params[paramId] = words;
+                                delete paramKeys[paramId];
+                                converted.push({ elementId: element.id, prop: `param.${paramId}` });
+                            }
+                            element.extra = {
+                                ...(element.extra ?? {}),
+                                componentLink: {
+                                    componentId: link.componentId,
+                                    linked: true,
+                                    params,
+                                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
+                                },
+                            };
+                        }
+                    }
+                    if (isLinkedUIComponentElement(element)) {
+                        continue;
+                    }
+                    // Every site that reads the key: a plugin's widget can read several of its words
+                    // from one.
+                    for (const site of uiTextSitesOf(element.type)) {
+                        if (!site.keyProp || site.role !== "words" || readUITextSite(element, site).key !== keyName) {
+                            continue;
+                        }
+                        element.props = uiTextSiteWithOwnWords(element, site, words).props;
+                        converted.push({ elementId: element.id, prop: site.textProp });
+                    }
+                }
+            };
+            visit(document.elements);
+            for (const component of document.components ?? []) {
+                visit(component.elements);
+            }
+        }, { history: false });
+        return converted;
+    }
+
+    /**
+     * Whether this project has a named key, for settling elements that arrive from elsewhere. A key
+     * registry that has not been read answers yes for every key, so nothing is converted on a guess.
+     */
+    private readonly hasTextKey = (name: string): boolean => {
+        let keys: Record<string, unknown> | undefined;
+        try {
+            keys = this.getContext().services.get<LocalizationService>(Services.Localization).getKeysIfLoaded()?.keys;
+        } catch {
+            keys = undefined;
+        }
+        return keys ? Object.prototype.hasOwnProperty.call(keys, name) : true;
+    };
+
+    /**
+     * The translations of the keys arriving widgets were turned away from, filed under the widgets'
+     * own units in this project's languages. `converted` carries the widgets' ids in this document.
+     *
+     * In the background: a language's library may still have to be read, and the elements have
+     * arrived already. A language the keys came with no translation for gets none.
+     */
+    private adoptArrivingTranslations(converted: readonly UITextArrivalConversion[], carried: UITextCarriedKeys | undefined): void {
+        if (!carried || converted.length === 0) {
+            return;
+        }
+        let localization: LocalizationService;
+        try {
+            localization = this.getContext().services.get<LocalizationService>(Services.Localization);
+        } catch {
+            return;
+        }
+        const config = localization.getConfiguration();
+        void (async () => {
+            for (const { code } of config.locales) {
+                if (code === config.sourceLocale) {
+                    continue;
+                }
+                const set: Record<string, LocalizationUnit> = {};
+                for (const site of converted) {
+                    const unit = carried[site.keyName]?.translations?.[code];
+                    if (unit?.target) {
+                        set[uiTextUnitId(site.elementId, site.prop)] = { ...unit };
+                    }
+                }
+                if (Object.keys(set).length === 0) {
+                    continue;
+                }
+                try {
+                    await localization.loadDocument(code);
+                    localization.applyUnitEdits(code, { set, remove: [] });
+                } catch (error) {
+                    console.warn(`[UIDocumentService] could not bring translations into ${code}`, error);
+                }
+            }
+        })();
+    }
+
+    /**
+     * Give copied widgets the translations their originals' own words have, under the copies' ids.
+     *
+     * A widget's own words are translated through a unit named after the widget, so a copy - pasted,
+     * duplicated, inside a duplicated page or component - would otherwise arrive translated in no
+     * language. `table` is the arriving elements under their old ids, `idMap` what each became; `skip`
+     * are the sites whose words came from a key this project lacks, which bring the key's translations
+     * instead (`adoptArrivingTranslations`). `extra` are units owned by something other than an element
+     * - a copied component's parameter defaults - already re-keyed, old id to new.
+     *
+     * `carried` is what a clipboard brought with it, which is what a paste from another project has
+     * to go on, and a copy as it was when it was made. Without it the originals are this project's own
+     * and their translations are read from its documents. Either way only languages this project
+     * declares are written, a review is not inherited, and the write is not part of the paste's undo
+     * step (`carriedTranslations.ts`).
+     */
+    private carryCopiedTranslations(
+        table: Readonly<Record<string, UIElement>>,
+        idMap: Readonly<Record<string, string>>,
+        skip: readonly { elementId: string; prop: string }[],
+        carried: CarriedTranslations | undefined,
+        extra?: ReadonlyMap<string, string>,
+    ): void {
+        const units = new Map([...mapCopiedUITextUnits(table, idMap, skip), ...(extra ?? [])]);
+        if (units.size === 0) {
+            return;
+        }
+        let localization: LocalizationService;
+        try {
+            localization = this.getContext().services.get<LocalizationService>(Services.Localization);
+        } catch {
+            return;
+        }
+        const isFrozen = (): boolean => {
+            try {
+                return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze).isFrozen();
+            } catch {
+                return false;
+            }
+        };
+        void (async () => {
+            try {
+                const translations = carried ?? await readProjectTranslations(localization, [...units.keys()]);
+                if (!translations) {
+                    return;
+                }
+                const plan = planCarriedTranslations(translations, units, new Set(readProjectLocales(localization)));
+                if (plan.carried > 0) {
+                    await writeCarriedTranslations(createCarriedTranslationPort(localization, isFrozen), plan);
+                }
+            } catch (error) {
+                console.warn("[UIDocumentService] could not carry the copied widgets' translations", error);
+            }
+        })();
+    }
+
+    /**
+     * The changes the v13 step made on opening this document that an author can see, handed over
+     * once: the workspace tells the author about them in one notice, and a second ask is empty.
+     */
+    public takeTextSourceMigrationChanges(): UITextMigrationChange[] {
+        const changes = this.textSourceMigrationChanges;
+        this.textSourceMigrationChanges = [];
+        return changes;
+    }
+
+    /**
+     * The words a widget inserted into this project is given: in the project's source language, the
+     * language its game is written in (`widgetDefaultWordsFor`).
+     */
+    private widgetDefaultWords(): UIWidgetDefaultWords {
+        let sourceLocale: string | undefined;
+        try {
+            sourceLocale = this.getContext().services.get<LocalizationService>(Services.Localization).getConfiguration().sourceLocale;
+        } catch {
+            sourceLocale = undefined;
+        }
+        return widgetDefaultWordsFor(sourceLocale);
     }
 
     /** A fresh id for something this document will own. */
@@ -1320,6 +1602,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const historyService = this.getHistoryService();
         const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const removedBlueprintId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
         localBp.removeWidgetValueBlueprint(surfaceId, elementId, propPath);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
@@ -1337,6 +1620,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 before: beforeHistory,
                 after: historyService.captureSnapshot(surfaceId),
             });
+        }
+        if (removedBlueprintId) {
+            this.closeTabsShowingBlueprint(removedBlueprintId);
+        }
+    }
+
+    /**
+     * Close the editor tabs showing a value blueprint that clearing its binding has just removed.
+     *
+     * The blueprint is the binding's own - minted for this element's prop and named for it - but the
+     * author writes their logic into it, so its removal is one step on the page's undo history above,
+     * blueprint included. A tab left open on it said only that the blueprint could not be found, and
+     * while it stayed the active editor the inspector's Ctrl+Z went to its stack instead of the page's,
+     * so the step that would bring the logic back was out of reach from where the author was. Closed,
+     * the page the binding belongs to is the editor the inspector edits again.
+     */
+    private closeTabsShowingBlueprint(blueprintId: string): void {
+        const ui = this.getContext().services.get<UIService>(Services.UI);
+        for (const tab of ui.editor.getAll()) {
+            if (isBlueprintEntryTabShowing(tab, blueprintId)) {
+                ui.editor.close(tab.id);
+            }
         }
     }
 
@@ -1455,6 +1760,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return lifted;
     }
 
+    /**
+     * Wrap elements in a new group - an invisible container that takes their place - and return the
+     * group's id, or null when they cannot be wrapped (see `planGroupElements` for which can, and
+     * for why nothing on screen moves).
+     *
+     * One mutation, so Undo puts the tree back as it was in one step.
+     */
+    public groupElements(surfaceId: string, elementIds: readonly string[]): string | null {
+        const plan = planGroupElements(this.getDocument(), surfaceId, elementIds);
+        if (!plan) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const group = createGroupElement(uuidService.generate(), plan);
+        this.mutateDocument(document => {
+            applyGroupElements(document, plan, group);
+        }, {
+            history: { surfaceId },
+        });
+        return group.id;
+    }
+
+    /**
+     * Rename one layer.
+     *
+     * A linked component instance renames like any other layer: its name is copied from the
+     * definition once, when the instance is placed, and is the instance's own from then on - it is
+     * how the outline tells "save slot 1" from "save slot 2". Props and shape are what the definition
+     * owns, and their own setters still refuse them on an instance.
+     */
     public renameElement(elementId: string, name: string): void {
         const trimmed = name.trim();
         if (!trimmed) {
@@ -1463,7 +1798,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const el = document.elements[elementId];
-            if (!el || el.type === "nl.root" || isLinkedUIComponentElement(el)) {
+            if (!el || el.type === "nl.root") {
                 return;
             }
             el.name = trimmed;
@@ -1675,6 +2010,56 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
         return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+    }
+
+    /**
+     * The v13 step, for the project's own document as it is opened (`textSourceMigration.ts`).
+     *
+     * Not part of {@link migrateIfNeeded}, which is also how a template or a page copied from another
+     * project comes in: this step reads the project's key registry and translation files, and the
+     * translation edits it makes are written here, through the localization service, before the
+     * document itself is saved by `load`. Written first so that a document still at v12 on disk -
+     * its own save failed - is migrated again on the next open, and the edits are such that applying
+     * them twice changes nothing.
+     *
+     * A key registry or a language file that cannot be read stops the open rather than being read
+     * as empty: an element whose key could not be found is turned into one that holds its own words,
+     * and a registry that is merely unreadable today would turn every keyed element in the project
+     * into one, for good.
+     */
+    private async migrateTextSources(document: UIDocument): Promise<UIDocument> {
+        const version = document.schemaVersion;
+        if (
+            typeof version !== "number"
+            || version >= UI_TEXT_SOURCES_SCHEMA_VERSION
+            || version < UI_DOCUMENT_MIN_SUPPORTED_VERSION
+        ) {
+            // Current, or one `migrateSchemaVersion` is about to refuse.
+            return document;
+        }
+        const localization = this.getContext().services.get<LocalizationService>(Services.Localization);
+        const config = localization.getConfiguration();
+        const keys = await localization.loadKeys();
+        const translations: Record<string, Record<string, LocalizationUnit>> = {};
+        for (const { code } of config.locales) {
+            if (code !== config.sourceLocale) {
+                translations[code] = (await localization.loadDocument(code)).units;
+            }
+        }
+        const result = migrateUITextSourcesV13(document, {
+            keys: Object.fromEntries(Object.entries(keys.keys).map(([name, key]) => [name, key.sourceText])),
+            sourceLocale: config.sourceLocale,
+            translations,
+        });
+        this.textSourceMigrationChanges = result.changes;
+        const edits = Object.entries(result.localeEdits);
+        if (edits.length > 0) {
+            for (const [locale, edit] of edits) {
+                localization.applyUnitEdits(locale, edit);
+            }
+            await localization.flushPendingChanges();
+        }
+        return result.document;
     }
 
     /**
@@ -2423,6 +2808,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             normalizeFlowChildLayouts(document, Object.keys(duplicatedElements));
         });
+        // The copies' own words, translated as the originals' are.
+        this.carryCopiedTranslations(sourceDocument.elements, elementIdMap, [], undefined);
 
         return duplicatedSurface;
     }
@@ -2453,7 +2840,24 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         // migrateIfNeeded is pure (does not touch this.document) and, unlike load(),
         // does not inject a main surface — so only the template's own surfaces come
         // through and the current document is untouched until the final mutate.
-        const sourceDocument = this.migrateIfNeeded(this.coerceIncomingUIDocument(input.document));
+        const migratedSource = this.migrateIfNeeded(this.coerceIncomingUIDocument(input.document));
+        // Text is settled the way this project stores it, against this project's keys - which is all a
+        // template or a page from elsewhere can be settled against.
+        const arrivals: UITextArrivalConversion[] = [];
+        const settle = (table: Record<string, UIElement>): Record<string, UIElement> => {
+            const settled = settleIncomingUITextSources(table, { hasKey: this.hasTextKey, carried: input.textKeys });
+            arrivals.push(...settled.converted);
+            return settled.table;
+        };
+        const sourceDocument: UIDocument = {
+            ...migratedSource,
+            elements: settle(migratedSource.elements),
+            ...(migratedSource.components
+                ? { components: migratedSource.components.map(component => ({ ...component, elements: settle(component.elements) })) }
+                : {}),
+        };
+        /** Every arriving element's id in this document, by its id in the source. */
+        const arrivedIds: Record<string, string> = {};
 
         let sourceBlueprintDocument: BlueprintDocument | null = null;
         try {
@@ -2495,6 +2899,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             sourceDocument,
             sourceBlueprintDocument,
             input.assetIdMap,
+            arrivedIds,
         );
 
         // Then every surface's new id, before any of them is copied. A template's
@@ -2526,12 +2931,29 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 input.assetIdMap,
                 componentIdMap,
                 surfaceIdMap,
+                arrivedIds,
             );
             if (imported) {
                 importedSurfaces.push(imported);
             }
         }
 
+        this.adoptArrivingTranslations(
+            arrivals
+                .filter(site => arrivedIds[site.elementId])
+                .map(site => ({ ...site, elementId: arrivedIds[site.elementId] })),
+            input.textKeys,
+        );
+        this.carryCopiedTranslations(
+            {
+                ...sourceDocument.elements,
+                ...Object.assign({}, ...(sourceDocument.components ?? []).map(component => component.elements)),
+            },
+            arrivedIds,
+            arrivals,
+            input.translations,
+            mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
+        );
         return { importedSurfaces, skippedSlots, importedComponents };
     }
 
@@ -2551,6 +2973,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         sourceDocument: UIDocument,
         sourceBlueprintDocument: BlueprintDocument | null,
         assetIdMap?: Record<string, string>,
+        /** Filled with each copied element's new id, by its id in the source. */
+        idSink?: Record<string, string>,
     ): { componentIdMap: Record<string, string>; importedComponents: UIComponentDefinition[] } {
         const sourceComponents = sourceDocument.components ?? [];
         if (sourceComponents.length === 0) {
@@ -2585,6 +3009,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const elementIdMap: Record<string, string> = {};
             for (const elementId of Object.keys(source.elements)) {
                 elementIdMap[elementId] = uuidService.generate();
+            }
+            if (idSink) {
+                Object.assign(idSink, elementIdMap);
             }
 
             const blueprintIdMap: Record<string, string> = {};
@@ -2738,6 +3165,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         assetIdMap?: Record<string, string>,
         componentIdMap?: Record<string, string>,
         surfaceIdMap?: Record<string, string>,
+        /** Filled with each copied element's new id, by its id in the source. */
+        idSink?: Record<string, string>,
     ): UISurface | null {
         const sourceRootId = sourceSurface.rootElementId;
         if (!sourceDocument.elements[sourceRootId]) {
@@ -2757,6 +3186,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const newRootElementId = elementIdMap[sourceRootId];
         if (!newRootElementId) {
             return null;
+        }
+        if (idSink) {
+            Object.assign(idSink, elementIdMap);
         }
 
         let localBp: LocalBlueprintService | null = null;
@@ -3184,7 +3616,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 .map(param => ({
                     id: param.id.trim(),
                     name: param.name.trim(),
-                    type: "string" as const,
+                    type: isUIComponentTextParam(param) ? ("text" as const) : ("string" as const),
                     defaultValue: typeof param.defaultValue === "string" ? param.defaultValue : "",
                 }))
                 .filter(param => {
@@ -3198,7 +3630,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: false });
     }
 
-    /** Set one param value on one instance. An empty string is a value, not a reset. */
+    /**
+     * Set one param value on one instance. An empty string is a value, not a reset.
+     *
+     * Words written for a text parameter replace a key the instance named for it: a value holds one
+     * or the other (`UIComponentLink.paramKeys`).
+     */
     public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
@@ -3207,11 +3644,48 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!element || !link) {
                 return;
             }
+            const { [paramId]: _droppedKey, ...paramKeys } = link.paramKeys ?? {};
+            const { paramKeys: _keys, ...rest } = link;
             element.extra = {
                 ...(element.extra ?? {}),
                 componentLink: {
-                    ...link,
+                    ...rest,
                     params: { ...(link.params ?? {}), [paramId]: value },
+                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
+                },
+            };
+        }, {
+            history: surfaceId ? { surfaceId, mergeKey: `component-param:${elementId}:${paramId}` } : false,
+        });
+    }
+
+    /**
+     * Name the translation key one instance's text parameter is read from, or (`null`) name none.
+     *
+     * Naming a key removes the words the instance held for the parameter - a value holds one source -
+     * and naming none leaves the parameter with neither, which falls back to the definition's default.
+     */
+    public setComponentInstanceParamKey(elementId: string, paramId: string, keyName: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            const link = getUIComponentLink(element);
+            if (!element || !link) {
+                return;
+            }
+            const { [paramId]: _droppedWords, ...params } = link.params ?? {};
+            const { [paramId]: _droppedKey, ...paramKeys } = link.paramKeys ?? {};
+            const name = keyName?.trim();
+            if (name) {
+                paramKeys[paramId] = name;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                componentLink: {
+                    componentId: link.componentId,
+                    linked: true,
+                    ...(Object.keys(params).length > 0 ? { params } : {}),
+                    ...(Object.keys(paramKeys).length > 0 ? { paramKeys } : {}),
                 },
             };
         }, {
@@ -3279,6 +3753,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             document.components = [...(document.components ?? []), component];
         }, { history: false });
+        // The copy's own words and its parameters' defaults, translated as the original's are.
+        this.carryCopiedTranslations(
+            source.elements,
+            idMap,
+            [],
+            undefined,
+            mapCopiedUIComponentDefaultUnits([source], { [source.id]: newComponentId }),
+        );
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                 const sourceBp = bpDoc.blueprints[oldBpId];
@@ -3346,6 +3828,50 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 };
             }
         }, { history: false });
+    }
+
+    /**
+     * Bind one prop of one element of a component definition to a field of its list row or to a text
+     * parameter of the component - the two value bindings that need no blueprint - or (`null`) unbind
+     * it. A definition's elements take no Blueprint Value (`ComponentDocumentServiceAdapter`), so there
+     * is no blueprint to clear on the way.
+     */
+    public setComponentElementValueBinding(
+        componentId: string,
+        elementId: string,
+        propPath: string,
+        binding: Extract<UIElementValueBinding, { kind: "listItemField" | "componentParam" }> | null,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            if (binding) {
+                element.valueBindings = { ...(element.valueBindings ?? {}), [propPath]: binding };
+            } else if (element.valueBindings) {
+                delete element.valueBindings[propPath];
+                if (Object.keys(element.valueBindings).length === 0) {
+                    delete element.valueBindings;
+                }
+            }
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    /**
+     * Show one of a component's text parameters in the words of an element of its definition, or
+     * (`null`) stop showing one. The component is the one whose definition holds the element; an
+     * element on a page has no parameters to show and is left alone.
+     */
+    public setElementComponentParamBinding(elementId: string, propPath: string, paramId: string | null): void {
+        const component = findUIComponentHoldingElement(this.getDocument(), elementId);
+        if (!component) {
+            return;
+        }
+        const id = paramId?.trim();
+        this.setComponentElementValueBinding(component.id, elementId, propPath, id ? { kind: "componentParam", paramId: id } : null);
     }
 
     public updateComponentElementProps(
@@ -3533,6 +4059,63 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return { ok: true };
     }
 
+    /**
+     * `ungroupContainers` for a component definition's elements, over a document made of the
+     * component alone. Returns the ids that were lifted out.
+     */
+    public ungroupComponentContainers(componentId: string, containerIds: readonly string[]): string[] {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        const surfaceId = `component:${componentId}`;
+        if (
+            !component ||
+            !containerIds.some(id => canUngroupContainer(componentAsDocument(document, component, surfaceId), surfaceId, id))
+        ) {
+            return [];
+        }
+        const lifted: string[] = [];
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            const view = componentAsDocument(doc, liveComponent, surfaceId);
+            for (const containerId of containerIds) {
+                lifted.push(...(applyUngroupContainer(view, surfaceId, containerId) ?? []));
+            }
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return lifted;
+    }
+
+    /**
+     * `groupElements` for a component definition's elements: the same plan, read and applied over a
+     * document made of the component alone, as `moveComponentElements` does.
+     */
+    public groupComponentElements(componentId: string, elementIds: readonly string[]): string | null {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        if (!component) {
+            return null;
+        }
+        const surfaceId = `component:${componentId}`;
+        const plan = planGroupElements(componentAsDocument(document, component, surfaceId), surfaceId, elementIds);
+        if (!plan) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const group = createGroupElement(uuidService.generate(), plan);
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            applyGroupElements(componentAsDocument(doc, liveComponent, surfaceId), plan, group);
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return group.id;
+    }
+
     public createComponentElement(
         componentId: string,
         parentId: string,
@@ -3552,7 +4135,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             const elementId = uuidService.generate();
-            const defaults = definition.createDefaultElement();
+            const defaults = definition.createDefaultElement(this.widgetDefaultWords());
             const element: UIElement = {
                 id: elementId,
                 type: definition.type,
@@ -3620,11 +4203,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         componentId: string,
         targetParentId: string,
         beforeChildId: string | null,
-        payload: UIEditorClipboardPayload,
+        incoming: UIEditorClipboardPayload,
     ): { ok: true; newRootIds: string[] } | { ok: false; reason: "invalid_clipboard" | "invalid_target" } {
-        if (payload.v !== 1 || payload.topLevelElementIds.length === 0 || Object.keys(payload.elements).length === 0) {
+        if (incoming.v !== 1 || incoming.topLevelElementIds.length === 0 || Object.keys(incoming.elements).length === 0) {
             return { ok: false, reason: "invalid_clipboard" };
         }
+        // Text settled the way this project stores it, against this project's keys.
+        const textArrival = settleIncomingUITextSources(incoming.elements, { hasKey: this.hasTextKey, carried: incoming.textKeys });
+        const payload: UIEditorClipboardPayload = textArrival.table === incoming.elements
+            ? incoming
+            : { ...incoming, elements: textArrival.table };
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
         const target = component?.elements[targetParentId];
@@ -3690,6 +4278,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             normalizeFlowChildLayouts({ ...doc, elements: liveComponent.elements }, newRootIds);
             liveComponent.updatedAt = new Date().toISOString();
         }, { history: false });
+        this.adoptArrivingTranslations(
+            textArrival.converted
+                .filter(site => elementIdMap[site.elementId])
+                .map(site => ({ ...site, elementId: elementIdMap[site.elementId] })),
+            payload.textKeys,
+        );
+        this.carryCopiedTranslations(payload.elements, elementIdMap, textArrival.converted, payload.translations);
         return { ok: true, newRootIds };
     }
 
@@ -3884,7 +4479,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const elementId = uuidService.generate();
 
-        const defaultElement = definition.createDefaultElement();
+        const defaultElement = definition.createDefaultElement(this.widgetDefaultWords());
         const baseLayout: UILayout = {
             x: defaultElement.layout?.x ?? 0,
             y: defaultElement.layout?.y ?? 0,
@@ -3974,11 +4569,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         surfaceId: string,
         targetParentId: string,
         beforeChildId: string | null,
-        payload: UIEditorClipboardPayload,
+        incoming: UIEditorClipboardPayload,
     ): { ok: true; newRootIds: string[] } | { ok: false; reason: "invalid_clipboard" | "invalid_target" } {
-        if (payload.v !== 1 || payload.topLevelElementIds.length === 0 || Object.keys(payload.elements).length === 0) {
+        if (incoming.v !== 1 || incoming.topLevelElementIds.length === 0 || Object.keys(incoming.elements).length === 0) {
             return { ok: false, reason: "invalid_clipboard" };
         }
+        // Text settled the way this project stores it, against this project's keys.
+        const textArrival = settleIncomingUITextSources(incoming.elements, { hasKey: this.hasTextKey, carried: incoming.textKeys });
+        const payload: UIEditorClipboardPayload = textArrival.table === incoming.elements
+            ? incoming
+            : { ...incoming, elements: textArrival.table };
 
         const document = this.getDocument();
         const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
@@ -4174,6 +4774,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             });
         }
 
+        this.adoptArrivingTranslations(
+            textArrival.converted
+                .filter(site => elementIdMap[site.elementId])
+                .map(site => ({ ...site, elementId: elementIdMap[site.elementId] })),
+            payload.textKeys,
+        );
+        this.carryCopiedTranslations(payload.elements, elementIdMap, textArrival.converted, payload.translations);
         return { ok: true, newRootIds };
     }
 

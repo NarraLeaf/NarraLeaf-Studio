@@ -4,7 +4,9 @@ import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { Input } from "@/lib/components/elements/Input";
 import { useTranslation } from "@/lib/i18n";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { FLOATING_OWN_KEYS_ATTRIBUTE, useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 /**
  * The reading typed over a run of text - furigana over kanji, pinyin or zhuyin over hanzi. Compiles
@@ -39,12 +41,22 @@ export function RubyPopover(props: {
     /** Take the popover down. The caller clears the state that renders it. */
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const [draft, setDraft] = useState(props.value ?? "");
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const doc = useHostDocument();
+    /**
+     * A popover on the style strip: the trigger is its owner, so Tab out of it lands on the strip's
+     * next control rather than past the row. The layer's own Escape is the one that does not settle -
+     * focus leaving, or the tab being put away, carries the draft out like any other close - which is
+     * why the field answers Escape for itself (see `onInputKeyDown`).
+     */
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: props.anchorRef ? [props.anchorRef] : undefined,
+    });
     /**
      * The draft and the callback as the unmount effect sees them. That effect is bound once - it has
      * to be, or every keystroke would tear it down and rebuild it, and a close landing in that gap
@@ -63,21 +75,6 @@ export function RubyPopover(props: {
         }
     }, []);
 
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
-                return;
-            }
-            // One rung per press: this takes the popover down and leaves the text as it was. The
-            // `stopPropagation` is because the row's own Escape leaves edit mode entirely.
-            event.stopPropagation();
-            settledRef.current = true;
-            props.onClose();
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
     // Light dismiss: close on any pointerdown outside the panel, letting the event through to
     // whatever was clicked so leaving the popover keeps the author's place. The trigger counts as
     // inside - closing from there is the button's job, and doing it twice reopens the popover.
@@ -89,23 +86,51 @@ export function RubyPopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
         // The field sits inside the row being edited and `KeybindingService` listens on `window`,
         // where Enter commits the row and Tab indents it. Both have to stop here, or typing a reading
         // would end the line it annotates.
         event.stopPropagation();
+        // Every key is the input method's while it is composing: Escape there cancels the conversion,
+        // not the reading.
+        if (isImeKeyEvent(event)) {
+            return;
+        }
         if (event.key === "Enter") {
             event.preventDefault();
             props.onClose();
+            return;
+        }
+        if (event.key === "Escape") {
+            // One rung per press: this takes the popover down and leaves the text as it was. Answered
+            // here rather than by the floating layer, because this is the one close that discards
+            // the draft, and the layer's close cannot say which close it was.
+            event.preventDefault();
+            settledRef.current = true;
+            props.onClose();
+            return;
+        }
+        if (event.key === "Tab") {
+            // The field answers its own keys, so leaving it is walked here: forwards to Remove when
+            // there is one, and otherwise out of the popover - carrying the draft, as focus leaving
+            // always does - and back onto the strip's ruby control, where the keyboard came from.
+            const remove = panelRef.current?.querySelector<HTMLElement>("button");
+            if (!event.shiftKey && remove) {
+                return;
+            }
+            event.preventDefault();
+            props.onClose();
+            props.anchorRef?.current?.focus({ preventScroll: true });
         }
     };
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 140);
-    const left = Math.min(props.anchor.left, window.innerWidth - 236);
+    const view = doc.defaultView ?? window;
+    const top = Math.min(props.anchor.bottom + 6, view.innerHeight - 140);
+    const left = Math.min(props.anchor.left, view.innerWidth - 236);
 
     return createPortal(
         <div
@@ -113,12 +138,14 @@ export function RubyPopover(props: {
             className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
             style={{ top, left: Math.max(8, left) }}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={keepStoryKeysInPopover}
         >
             <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.ruby.title")}</div>
             <Input
                 size="sm"
                 fullWidth
                 autoFocus
+                {...{ [FLOATING_OWN_KEYS_ATTRIBUTE]: "" }}
                 value={draft}
                 placeholder={t("story.ruby.placeholder")}
                 onChange={event => setDraft(event.target.value)}
@@ -138,6 +165,6 @@ export function RubyPopover(props: {
                 </button>
             ) : null}
         </div>,
-        document.body,
+        doc.body,
     );
 }

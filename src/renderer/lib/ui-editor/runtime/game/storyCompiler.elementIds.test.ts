@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Scene, Sound } from "narraleaf-react";
 import { compileStudioStoryToNlr } from "./storyCompiler";
 import type { StoryDocument } from "@shared/types/story";
 
@@ -118,5 +119,123 @@ describe("element ids", () => {
         expect(states.has("nl:scene:scene-a:background")).toBe(true);
         expect(states.has("nl:scene:scene-a:layer:background")).toBe(true);
         expect(states.has("nl:scene:scene-a:layer:displayable")).toBe(true);
+    });
+});
+
+/**
+ * The camera and the sounds, which the engine numbered by where its walk of the action tree first met
+ * them until the compiler named them: `e-<n>` for the camera and for a sound a row acts on, `s-<n>` for
+ * a scene's music. Both numbers moved with the scene the story was entered at and with every line
+ * written ahead of them, so a save's camera and music state went onto whatever had taken the number.
+ */
+function rowBlock(id: string, payload: Record<string, unknown>, kind = "action") {
+    return { kind, id, parentId: null, childrenIds: [], payload };
+}
+
+function stagedDocument(): StoryDocument {
+    const first = {
+        intro: narration("intro", "first"),
+        zoom: rowBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 1.5 } } }),
+        rain: rowBlock("rain", { action: "audio", operation: "playSound", objectName: "rain", assetId: "rain-loop", loop: true }),
+        theme: rowBlock("theme", { action: "audio", operation: "setBgm", assetId: "theme" }),
+        onward: rowBlock("onward", { targetSceneId: "scene-b" }, "jump"),
+    };
+    return {
+        schemaVersion: 16,
+        id: "story-1",
+        name: "Story",
+        scenes: {
+            "scene-a": {
+                id: "scene-a",
+                name: "One",
+                runtimeName: "one",
+                bgm: { assetId: "scene-a-music", loop: true },
+                rootBlockIds: Object.keys(first),
+                blocks: first,
+            },
+            "scene-b": {
+                id: "scene-b",
+                name: "Two",
+                runtimeName: "two",
+                bgm: { assetId: "scene-b-music", loop: true },
+                rootBlockIds: ["b1", "pan"],
+                blocks: {
+                    b1: narration("b1", "second"),
+                    pan: rowBlock("pan", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
+                },
+            },
+        },
+    } as unknown as StoryDocument;
+}
+
+/** Element id -> kind, for the camera and every sound the constructed story can reach. */
+async function cameraAndSounds(doc: StoryDocument, entry: string): Promise<Map<string, string>> {
+    const compiled = await compileStudioStoryToNlr({
+        document: doc,
+        sceneId: entry,
+        resolveAssetUrl: (assetId: string) => `test://${assetId}`,
+    } as Parameters<typeof compileStudioStoryToNlr>[0]);
+    const story = compiled.story as unknown as {
+        constructStory(): unknown;
+        camera: { getId(): string };
+        entryScene: { getSceneRoot(): unknown } | null;
+        getAllChildren(story: unknown, action: unknown): unknown[];
+        getAllChildrenElements(story: unknown, action: unknown): { getId(): string; constructor: { name: string } }[];
+    };
+    story.constructStory();
+    const ids = new Map<string, string>([[story.camera.getId(), "camera"]]);
+    const root = story.entryScene?.getSceneRoot() ?? [];
+    for (const element of story.getAllChildrenElements(story, root)) {
+        if (element instanceof Sound) {
+            ids.set(element.getId(), `sound ${(element as unknown as { config: { src: string } }).config.src}`);
+        }
+    }
+    for (const action of story.getAllChildren(story, root)) {
+        for (const sound of (Scene as unknown as { getOwnedSounds(action: unknown): Sound[] }).getOwnedSounds(action)) {
+            ids.set((sound as unknown as { getId(): string }).getId(), `sound ${(sound as unknown as { config: { src: string } }).config.src}`);
+        }
+    }
+    return ids;
+}
+
+describe("the camera and the sounds", () => {
+    it("leave nothing a save can hold under a positional name", async () => {
+        const doc = stagedDocument();
+        const states = await elementStates(doc);
+        expect(states.size).toBeGreaterThan(0);
+        expect([...states.keys()].filter(id => /^[es]-\d+$/.test(id))).toEqual([]);
+    });
+
+    it("are named from what they are", async () => {
+        const ids = await cameraAndSounds(stagedDocument(), "scene-a");
+        expect(Object.fromEntries(ids)).toEqual({
+            "nl:camera": "camera",
+            "nl:scene:scene-a:music": "sound test://scene-a-music",
+            "nl:scene:scene-b:music": "sound test://scene-b-music",
+            "nl:bgm:scene-a:theme": "sound test://theme",
+            "nl:sound:scene-a:rain": "sound test://rain-loop",
+        });
+    });
+
+    it("keep their names when the story is entered at another scene", async () => {
+        const fromStart = await cameraAndSounds(stagedDocument(), "scene-a");
+        const fromLater = await cameraAndSounds(stagedDocument(), "scene-b");
+        for (const [id, what] of fromLater) {
+            expect(fromStart.get(id)).toBe(what);
+        }
+        expect(fromLater.get("nl:camera")).toBe("camera");
+    });
+
+    it("keep their names when lines are written ahead of them", async () => {
+        const before = await cameraAndSounds(stagedDocument(), "scene-a");
+        const edited = stagedDocument();
+        const scene = edited.scenes["scene-a"];
+        scene.blocks.early = rowBlock("early", { action: "audio", operation: "playSound", objectName: "bell", assetId: "bell" }) as never;
+        scene.blocks.tilt = rowBlock("tilt", { action: "camera", operation: "transform", transform: { mode: "props", to: { rotation: 5 } } }) as never;
+        scene.rootBlockIds.unshift("early", "tilt");
+        const after = await cameraAndSounds(edited, "scene-a");
+        for (const [id, what] of before) {
+            expect(after.get(id)).toBe(what);
+        }
     });
 });

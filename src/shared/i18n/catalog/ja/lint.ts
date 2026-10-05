@@ -200,6 +200,11 @@ export const lint = {
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
         },
+        storyVideoControlAfterEnd: {
+            title: "再生を終えた動画",
+            description: "終了を待つ再生の後で、その動画を一時停止・再開・シーク・停止する行",
+            message: "{object} はこの行ではすでに再生を終えている。再生中に先へ進むには、再生の行の「再生の終了を待つ」をオフにする",
+        },
         storyCharacterMissing: {
             title: "存在しないキャラクター",
             description: "プロジェクトに存在しないキャラクターを指定した行",
@@ -230,7 +235,7 @@ export const lint = {
             messageChoice: "指している選択肢が存在しない",
             messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
-            messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+            messageTextKey: "指している翻訳キーはプロジェクトで宣言されていない",
             messageDlc: "指している DLC はプロジェクトに存在しない",
             messageInputAction: "指している入力アクションはプロジェクトで宣言されていない",
         },
@@ -275,11 +280,6 @@ export const lint = {
             messageUnloadedNode: "「{node}」の「{pin}」が受け取るアセット名は {origin} から来るが、このノード型は読み込まれていないため、指すアセットはリリース後のゲームに入らない。このノード型を提供するプラグインをインストールするか有効にして、再度ビルドする",
             messageUnloadedNodeBinding: "「{element}」の「{prop}」にバインドされたアセット名は {origin} から来るが、このノード型は読み込まれていないため、指すアセットはリリース後のゲームに入らない。このノード型を提供するプラグインをインストールするか有効にして、再度ビルドする",
         },
-        uiUnlocalizedText: {
-            title: "ローカライズされていないテキスト",
-            description: "第二の言語があるプロジェクトで、ウィジェットに直接書かれたテキスト",
-            message: "{text} はローカライズキーに紐づけられていない",
-        },
         uiPageUnreachable: {
             title: "到達できないページ",
             description: "どこからも開かれず、埋め込まれてもおらず、開始ページでもないページ",
@@ -314,6 +314,22 @@ export const lint = {
             title: "項目が見つかりません",
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
             message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
+        },
+        uiComponentParamMissing: {
+            title: "テキストパラメータの欠落",
+            description: "コンポーネントがテキストとして宣言していないパラメータを表示するウィジェット",
+            message: "コンポーネントがテキストとして宣言していないパラメータを表示しているため、置いたものではどれもここに文字が出ない",
+            messageOutside: "コンポーネントのパラメータを表示しているが、コンポーネントの中にないため、ゲームではここに文字が出ない",
+        },
+        uiListTextUntranslated: {
+            title: "翻訳されないリストの内容",
+            description: "第二の言語があるプロジェクトで、リストの内容に書かれた文字",
+            message: "{text} などリストの内容はどの言語でも書かれたまま表示される",
+        },
+        uiLocalizationKeyMissing: {
+            title: "存在しない翻訳キー",
+            description: "プロジェクトにないキーから文字を読むウィジェット",
+            message: "文字を {key} から読むが、このキーはプロジェクトにない",
         },
         uiGestureAnsweredTwice: {
             title: "二重に反応する操作",
@@ -440,6 +456,8 @@ export const lint = {
                 other: "{count} 箇所",
             },
             messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageInState: "状態「{state}」でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
+            messageInLanguageInState: "{language}の状態「{state}」でプロジェクトのフォントに「{character}」が無い（{occurrences}）",
             messageMore: "他に {characters}、プロジェクトのフォントに無い",
             moreCharacterCount: {
                 other: "{count} 文字",

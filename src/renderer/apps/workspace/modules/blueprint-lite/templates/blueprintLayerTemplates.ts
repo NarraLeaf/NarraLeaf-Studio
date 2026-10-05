@@ -27,10 +27,11 @@ import {
     ArrowRightLeft,
     Gamepad2,
     Keyboard,
+    LockOpen,
     MonitorPlay,
+    Presentation,
     SlidersHorizontal,
     Sparkles,
-    Type,
     Volume2,
 } from "lucide-react";
 import type { Locale } from "@shared/i18n/locales";
@@ -44,8 +45,15 @@ import { MOTION_TEMPLATES } from "./library/motion";
 import { KEY_TEMPLATES } from "./library/keys";
 import { WINDOW_TEMPLATES } from "./library/window";
 import { DISPLAY_TEMPLATES } from "./library/display";
+import { CONDITION_TEMPLATES } from "./library/conditions";
 
-/** The shelves of the library, in the order its rail lists them. */
+/**
+ * The shelves of the library, in the order its rail lists them.
+ *
+ * A shelf's icon is also the icon of every template on it. A template card names its shelf beside
+ * its icon, so an icon of the template's own read as the shelf's and disagreed with the rail; one
+ * icon per shelf lets the eye find a kind of template across the grid as well as down the rail.
+ */
 export const BLUEPRINT_TEMPLATE_CATEGORIES = [
     { id: "pageFlow", icon: MonitorPlay },
     { id: "navigation", icon: ArrowRightLeft },
@@ -55,10 +63,20 @@ export const BLUEPRINT_TEMPLATE_CATEGORIES = [
     { id: "motion", icon: Sparkles },
     { id: "keys", icon: Keyboard },
     { id: "window", icon: AppWindow },
-    { id: "display", icon: Type },
+    { id: "display", icon: Presentation },
+    { id: "conditions", icon: LockOpen },
 ] as const satisfies readonly { id: string; icon: LucideIcon }[];
 
 export type BlueprintTemplateCategory = (typeof BLUEPRINT_TEMPLATE_CATEGORIES)[number]["id"];
+
+const CATEGORY_ICONS = new Map<BlueprintTemplateCategory, LucideIcon>(
+    BLUEPRINT_TEMPLATE_CATEGORIES.map(category => [category.id, category.icon]),
+);
+
+/** The icon a template is drawn with: its shelf's. */
+export function blueprintTemplateIcon(template: Pick<BlueprintLayerTemplate, "category">): LucideIcon {
+    return CATEGORY_ICONS.get(template.category)!;
+}
 
 export type BlueprintTemplateText = {
     /** Also the name the layer it creates starts with, so it reads as a name: no full stop. */
@@ -99,7 +117,6 @@ export type BlueprintLayerTemplate = {
     id: string;
     category: BlueprintTemplateCategory;
     owners: readonly BlueprintOwnerRef["kind"][];
-    icon: LucideIcon;
     text: Readonly<Record<Locale, BlueprintTemplateText>>;
     /** The layer's nodes and edges, in the blueprint text format, without the `event` line. */
     graph: (facts: BlueprintLayerTemplateFacts) => string;
@@ -134,6 +151,7 @@ export const BLUEPRINT_LAYER_TEMPLATES: readonly BlueprintLayerTemplate[] = [
     ...KEY_TEMPLATES,
     ...WINDOW_TEMPLATES,
     ...DISPLAY_TEMPLATES,
+    ...CONDITION_TEMPLATES,
 ];
 
 /** A template's words in `locale`, or in English for a language the library is not written in. */

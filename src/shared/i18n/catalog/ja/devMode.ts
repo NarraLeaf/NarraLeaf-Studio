@@ -173,6 +173,7 @@ export const devMode = {
         page: "ページ",
         layer: "レイヤー",
         faded: "一時的に非表示",
+        dialogHidden: "隠れている",
         hiddenForGame: "ゲーム中は非表示",
         returnsOnBack: "「戻る」で再び表示",
         onScreenCount: "{total} 枚中 {onScreen} 枚が画面に出ている",

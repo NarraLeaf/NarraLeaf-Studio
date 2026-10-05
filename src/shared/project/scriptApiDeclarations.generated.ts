@@ -722,9 +722,10 @@ declare module "@narraleaf/script" {
     	 * which is what keeps the drawing of a plain label exactly what it was.
     	 */
     	rich?: UITextRun[];
-    	/** Game-localization opt-in: registers the implicit translation unit \`ui:<elementId>.text\`. */
-    	localizable?: boolean;
-    	/** Named localization key reference; takes precedence over the implicit unit. */
+    	/**
+    	 * Named localization key reference. A keyed text holds no words of its own: the key's are shown,
+    	 * and the element's own words, when it has them, are translated through \`ui:<elementId>.text\`.
+    	 */
     	localizationKey?: string;
     	fontSize: number;
     	color: string;
@@ -907,6 +908,8 @@ declare module "@narraleaf/script" {
     type BlueprintHostApiRuntime = {
     	navigation: {
     		openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
+    		/** \`openSurface\`, after which the page that was on top is no longer in the stack. */
+    		replaceSurface: (surfaceId: string, props?: unknown) => Promise<void>;
     		getPageProps: () => Record<string, unknown>;
     		pageBack: () => Promise<void>;
     		clearPages: () => Promise<void>;
@@ -1463,6 +1466,11 @@ declare module "@narraleaf/script" {
     	stopPropagation(): void;
     	isPropagationStopped(): boolean;
     };
+    type UIElementPointerPoint = {
+    	x: number;
+    	y: number;
+    };
+    type UIElementPointerPositions = (elementId: string) => UIElementPointerPoint | null;
     type UIHostAdapterElementEventOptions = {
     	listItemScope?: UIListItemScope | null;
     	instanceKey?: string;
@@ -1470,6 +1478,12 @@ declare module "@narraleaf/script" {
     	/** Resolved values by param id: the instance's own, falling back to the declared default. */
     	componentParams?: Record<string, string>;
     	eventControl?: BehaviorGraphEventControl;
+    	/**
+    	 * Where a pointer event landed, for each element it bubbles up to: an ancestor's head reads the
+    	 * press in its own box rather than in the box of the element that was hit. Absent for an event
+    	 * with no position, which bubbles with its payload as it is.
+    	 */
+    	pointerPositions?: UIElementPointerPositions;
     	allowClosedScopeExecution?: boolean;
     };
     type UIHostAdapterDrawings = {
@@ -1544,6 +1558,16 @@ declare module "@narraleaf/script" {
     		 * own go.
     		 */
     		valueExecution?: BehaviorGraphValueTracking;
+    		/**
+    		 * The host the body runs on, when it is not this runtime's own adapter: a host standing in
+    		 * front of this one (the global blueprint's, see \`globalHost\`) passes itself, so a fn its
+    		 * graphs call reads the same host as the graph that called it. Absent everywhere else.
+    		 *
+    		 * Typed opaquely because this runtime type is part of the script API declarations that
+    		 * Studio writes into projects, and \`UIHostAdapter\` reaches React's types, which a project
+    		 * does not have. The one reader, the Dev Mode host adapter, narrows it back.
+    		 */
+    		hostAdapter?: unknown;
     	}) => Promise<{
     		returns: Record<string, unknown>;
     	}>;

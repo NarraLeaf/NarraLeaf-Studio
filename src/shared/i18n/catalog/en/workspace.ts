@@ -86,7 +86,7 @@ export const workspace = {
         table: {
             storyLabel: "Source",
             sourceUi: "Interface text",
-            sourceKeys: "Named keys",
+            sourceKeys: "Translation keys",
             modeTranslate: "Translate",
             modeReview: "Review",
             filterAll: "All",
@@ -107,6 +107,12 @@ export const workspace = {
             removeKey: "Remove key",
             removeKeyConfirm: "Remove {name}?",
             removeKeyConfirmDetail: "Existing translations of this key stay in the language files.",
+            removeKeyWidgets: "These widgets keep the key's words and translations as their own:",
+            removeKeyBlueprints: "Blueprints that use the key:",
+            removeKeyUsedByElement: "{owner} ▸ {element}",
+            removeKeyUsedByBlueprint: "Blueprint “{name}”",
+            removeKeyUsedByMore: "and {count} more",
+            removeKeyUsedByAfter: "Once the key is removed, the project check reports each of these blueprints.",
             sourceColumn: "Source",
             targetColumn: "Translation",
             targetPlaceholder: "Translate…",
@@ -236,6 +242,20 @@ export const workspace = {
             dropHint: "Drop audio to assign",
             findPlaceholder: "Find in lines",
         },
+    },
+    // The one notice after a project's interface document is upgraded to v13: the widgets whose
+    // source of words changed in a way the inspector shows, each with a button to it.
+    textSourceMigration: {
+        message: {
+            one: "Interface text was upgraded. The words of {count} widget now come from a different source.",
+            other: "Interface text was upgraded. The words of {count} widgets now come from a different source.",
+        },
+        place: "{n}. {owner} ▸ {element}: {change}",
+        marksKept: "now Direct, keeping its marks, and no longer uses the key {key}",
+        bindingDropped: "a binding that never showed was removed, and the key {key} shows",
+        missingKey: "the key {key} does not exist, so it is now Direct, with the same words and translations",
+        keyDiffered: "now Direct, keeping the words it showed, and no longer uses the key {key}",
+        locate: "Locate {n}",
     },
     // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
     // load, or loads wrong.
@@ -555,7 +575,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the named strings, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the translation keys, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -793,7 +813,7 @@ export const workspace = {
             saveFailed: "Save failed",
             retrySave: "Retry saving now",
             resetZoom: "Reset zoom to 100%",
-            shortcuts: "Keyboard shortcuts",
+            shortcuts: "Shortcuts and mouse actions",
             words: {
                 one: "{count} word",
                 other: "{count} words",
@@ -816,7 +836,7 @@ export const workspace = {
         studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
-                shortcuts: "Keyboard shortcuts",
+                shortcuts: "Shortcuts and mouse actions",
                 notifications: "Notifications",
                 theme: "Theme switcher",
                 zoom: "Zoom level",
@@ -1514,7 +1534,7 @@ export const workspace = {
             conflict: "Also bound to {name}",
             empty: "No matching shortcuts",
             openSettings: "Customize Keyboard Shortcuts",
-            cheatSheetTitle: "Keyboard Shortcuts",
+            cheatSheetTitle: "Shortcuts and Mouse Actions",
             cheatSheetCustomize: "Customize…",
             // Category headers in the settings table and cheat sheet (from the static catalog).
             categories: {
@@ -1535,7 +1555,7 @@ export const workspace = {
             catalog: {
                 commandPalette: "Show and Run Commands",
                 quickOpen: "Quick Open",
-                cheatSheet: "Show Keyboard Shortcuts",
+                cheatSheet: "Show Shortcuts and Mouse Actions",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
                 localizationFind: "Find in Translations",
@@ -1592,6 +1612,108 @@ export const workspace = {
                     playheadEnd: "Move Playhead to End",
                 },
             },
+            // Mouse gestures, drawn as chips beside a label in the cheat sheet and in help topics. Whole
+            // phrases rather than a verb and a noun, because languages order the two differently.
+            gestures: {
+                withModifiers: "{keys}+{gesture}",
+                middleClickTab: "Middle-click a tab",
+                doubleClickTab: "Double-click a tab",
+                clickTab: "Click a tab",
+                doubleClickDivider: "Double-click the divider",
+                doubleClickRow: "Double-click a row",
+                clickRow: "Click a row",
+                dragAcrossRows: "Drag across rows",
+                dragRowHandle: "Drag a row's handle",
+                clickName: "Click a name",
+                dragHandle: "Drag a handle",
+                arrowKeys: "Arrow keys",
+                middleDrag: "Middle-drag",
+                scroll: "Scroll",
+                drag: "Drag",
+                clickElement: "Click an element",
+                doubleClickContainer: "Double-click a container",
+                doubleClickText: "Double-click text or a button",
+                doubleClickImage: "Double-click an image",
+                dragImageAsset: "Drag an image asset onto the canvas",
+                doubleClickOutlineItem: "Double-click an outline item",
+                dragOutlineItem: "Drag an outline item",
+                clickNode: "Click a node",
+                rightClickCanvas: "Right-click the canvas",
+                dragPinToCanvas: "Drag from a pin onto empty canvas",
+                doubleClickWire: "Double-click a wire",
+                doubleClickGroupTitle: "Double-click a group's title",
+                middleClickTitle: "Middle-click the title row",
+                doubleClickTrack: "Double-click a track",
+                clickAsset: "Click an asset",
+                doubleClick: "Double-click",
+                dragToEditorArea: "Drag into the editor area",
+                dragOntoGroup: "Drag onto a group",
+                dragWaveform: "Drag on the waveform",
+                doubleClickWaveform: "Double-click the waveform",
+                doubleClickMarker: "Double-click a marker",
+                doubleClickPicture: "Double-click the picture",
+                doubleClickTimeline: "Double-click the timeline",
+            },
+            // Labels for inputs that cannot be rebound (fixedInputCatalog): gestures, and keys owned
+            // by a browser event or a library.
+            fixed: {
+                toggleSelection: "Add to or Remove from Selection",
+                addToSelection: "Add to Selection",
+                panCanvas: "Pan the Canvas",
+                zoomAtPointer: "Zoom at the Pointer",
+                easingSnap: "Snap an Easing Handle to the Grid",
+                easingNudge: "Nudge a Focused Easing Handle",
+                general: {
+                    keepTabOpen: "Keep a Preview Tab Open",
+                    selectTabs: "Select Several Tabs",
+                    resetSplit: "Split the Editor Area Evenly",
+                },
+                story: {
+                    selectRowRange: "Select a Range of Rows",
+                    moveRows: "Move Rows",
+                    followReference: "Go to What a Name Refers To",
+                    continueRow: "Commit and Continue With the Same Kind of Row",
+                    blankRow: "Commit and Start a Blank Row",
+                    finishEditing: "Finish Editing a Row",
+                    pastePlain: "Paste Without Paste as Rows",
+                },
+                uiEditor: {
+                    selectInside: "Select Inside a Container",
+                    editText: "Edit Text in Place",
+                    discardText: "Discard the Text Being Edited",
+                    crop: "Crop an Image",
+                    suspendSnap: "Suspend Smart Snap",
+                    dropImage: "Add an Image Element",
+                    reorder: "Reorder or Move Into Another Element",
+                },
+                blueprint: {
+                    addNode: "Add a Node",
+                    addConnectedNode: "Add a Connected Node",
+                    deleteWire: "Delete a Wire",
+                    deleteSelection: "Delete Selection",
+                    renameGroup: "Rename a Group",
+                },
+                storyMotion: {
+                    noFrameSnap: "Drag Without Frame Snapping",
+                    addKeyframe: "Add a Keyframe",
+                    panPreview: "Pan the Preview",
+                    zoom: "Zoom the Preview or Timeline",
+                    scrollTimeline: "Scroll the Timeline Sideways",
+                },
+                assets: {
+                    selectAssetRange: "Select a Range of Assets",
+                    open: "Open",
+                    moveToGroup: "Move to a Group",
+                    tileSize: "Resize Thumbnails",
+                    audioScroll: "Scroll the Waveform Sideways",
+                    audioZoomTime: "Zoom the Waveform in Time",
+                    audioZoomAmplitude: "Magnify the Waveform Vertically",
+                    selectAudioRange: "Select a Stretch of Audio",
+                    clearMarker: "Clear a Marker",
+                    videoZoom: "Zoom the Picture",
+                    videoActualSize: "Switch Between Fit and Actual Pixels",
+                },
+            },
         },
         // Global project search: the dock panel and the palette's search mode share these.
         search: {
@@ -1602,7 +1724,7 @@ export const workspace = {
             building: "Building search index…",
             // Shown before anything is typed. "Building" and "no results" both had a line; this
             // state fell through to an empty list and rendered a blank panel.
-            idle: "Search scenes, characters, story text, assets and blueprints.",
+            idle: "Search scenes, characters, story text, interface text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
             // Refined matching, shared with the scene find bar so the same query means one thing.
@@ -1632,8 +1754,9 @@ export const workspace = {
                 blueprint: "Blueprints",
                 asset: "Assets",
                 storyText: "Story Text",
+                uiText: "Interface Text",
                 variable: "Variables",
-                uiTextKey: "UI Text Keys",
+                uiTextKey: "Translation Keys",
                 blueprintNode: "Blueprint Nodes",
             },
             // Trailing badge on a result row standing in for several identical ones.

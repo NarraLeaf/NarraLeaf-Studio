@@ -12,6 +12,8 @@ import { RubyPopover } from "./RubyPopover";
 import { TypePopover } from "./TypePopover";
 import type { ActiveMarks, RichTextInputHandle, RubyTarget, TypeTarget } from "./RichTextInput";
 import { TooltipGroup } from "@/lib/tooltip";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
@@ -213,6 +215,18 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
     const palettePanelRef = useRef<HTMLDivElement | null>(null);
+    /** Whether the palette was opened from the keyboard, which decides where its Escape returns to. */
+    const paletteFromKeyboardRef = useRef(false);
+    const doc = useHostDocument();
+    /**
+     * The colour picker the palette's custom swatch opens. It is portalled to the body on its own,
+     * so it is named here as part of the palette: focus moving into it is not focus leaving.
+     */
+    const colorPickerPanelRef = useMemo(() => ({
+        get current(): HTMLElement | null {
+            return doc.querySelector<HTMLElement>("[data-color-picker-panel]");
+        },
+    }), [doc]);
     /**
      * The ruby popover's anchor, and the words it opened on.
      *
@@ -517,6 +531,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         addRecentColor(color);
     };
     const openPalette = () => {
+        paletteFromKeyboardRef.current = Boolean(stripRef.current?.contains(doc.activeElement));
         const rect = paletteBtnRef.current?.getBoundingClientRect();
         if (props.commitGuard) {
             props.commitGuard.current = true;
@@ -541,6 +556,21 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         }
         props.editor.current?.focus();
     };
+
+    /**
+     * The palette is a floating layer of its own rather than a rung the strip answers for. Opened
+     * with the pointer, focus stayed in the line, so its Escape went to the field - which left the
+     * row - and the strip, which knew about the palette, never heard it. It takes the focus now, and
+     * its Escape closes it alone, splitting by how it was opened the way the button does: back to
+     * the line after the pointer, back to the button after the keyboard. Tab out of it lands on the
+     * strip's next control, the button being its owner.
+     */
+    useFloatingLayer({
+        open: Boolean(pos && palette),
+        onClose: () => closePalette(paletteFromKeyboardRef.current ? "trigger" : "editor"),
+        panelRef: palettePanelRef,
+        ownerRefs: [paletteBtnRef, colorPickerPanelRef],
+    });
 
     // Light dismiss: close the palette on any pointerdown outside it, but let the event fall through
     // to whatever was clicked (a toolbar swatch, the editor) so the author keeps working without a
@@ -730,6 +760,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     className="fixed z-[70] w-52 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
                     style={{ top: palette.top, left: palette.left }}
                     onMouseDown={event => event.stopPropagation()}
+                    onKeyDown={keepStoryKeysInPopover}
                 >
                     <ProjectPalette
                         value={active.color}

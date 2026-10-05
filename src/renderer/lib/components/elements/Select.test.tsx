@@ -72,3 +72,51 @@ describe("Select option activation", () => {
         expect(screen.queryByText("Beta")).toBeNull();
     });
 });
+
+/**
+ * The menu is a floating layer (`useFloatingLayer`). These are the parts of that contract a select is
+ * most often caught out by: it sits in an inspector or a dialog that answers Escape itself, and its
+ * menu is portalled out of that panel while React still bubbles the menu's keys back into it.
+ */
+describe("Select keyboard", () => {
+    const THREE = [...OPTIONS, { value: "c", label: "Gamma" }];
+
+    it("opens on the current option and walks the list with the arrows", () => {
+        render(<Select options={THREE} value="b" onChange={() => undefined} portalMenu />);
+        openMenu();
+        expect(document.activeElement?.textContent).toBe("Beta");
+
+        fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+        expect(document.activeElement?.textContent).toBe("Gamma");
+        fireEvent.keyDown(document.activeElement!, { key: "Home" });
+        expect(document.activeElement?.textContent).toBe("Alpha");
+    });
+
+    it("closes on Escape without the inspector it sits in hearing it, and focus returns", () => {
+        const inspectorEscape = vi.fn();
+        render(
+            <div onKeyDown={event => event.key === "Escape" && inspectorEscape()}>
+                <Select options={THREE} value="a" onChange={() => undefined} portalMenu />
+            </div>,
+        );
+        const trigger = screen.getAllByRole("button")[0]!;
+        trigger.focus();
+        fireEvent.click(trigger);
+        expect(screen.getByRole("listbox")).toBeTruthy();
+
+        fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+
+        expect(screen.queryByRole("listbox")).toBeNull();
+        expect(inspectorEscape).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    it("opens from the trigger on ArrowDown", () => {
+        render(<Select options={THREE} value="c" onChange={() => undefined} />);
+        const trigger = screen.getAllByRole("button")[0]!;
+        trigger.focus();
+        fireEvent.keyDown(trigger, { key: "ArrowDown" });
+        expect(screen.getByRole("listbox")).toBeTruthy();
+        expect(document.activeElement?.textContent).toBe("Gamma");
+    });
+});

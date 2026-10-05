@@ -4,7 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { CANVAS_SIDEBAR_INSET_PADDING } from "@/lib/components/layout/editorSidebarInset";
 import type { FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
-import { blueprintTemplateText, type BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
+import { blueprintTemplateIcon, blueprintTemplateText, type BlueprintLayerTemplate } from "../templates/blueprintLayerTemplates";
 
 type Props = {
     /** The few templates shown as tiles, already narrowed to this blueprint and in display order. */
@@ -51,7 +51,7 @@ export function BlueprintLayerTemplateGrid({ templates, onPickTemplate, onOpenLi
                     style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
                 >
                     {templates.map(template => {
-                        const Icon = template.icon;
+                        const Icon = blueprintTemplateIcon(template);
                         const text = blueprintTemplateText(template, locale);
                         return (
                             <li key={template.id}>

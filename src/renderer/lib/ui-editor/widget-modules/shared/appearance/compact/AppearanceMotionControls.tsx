@@ -7,6 +7,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { formatStorySecondsValue, storyMsToSeconds, storySecondsToMs } from "@shared/utils/storyTime";
 import { InlineMenuTriggerButton } from "@/lib/ui-editor/widget-modules/shared/chrome/InlineMenuTriggerButton";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { Check, Settings2, Trash2 } from "lucide-react";
 import type {
     AppearanceFieldTransition,
@@ -154,6 +155,8 @@ export function AppearanceFieldMotionButton({
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState({ left: 0, top: 0 });
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
     const label = labelOverride ?? getAppearanceFieldLabel(groupKey);
     const transition = getAppearanceGroupTransition(variant, groupKey) ?? null;
 
@@ -187,30 +190,30 @@ export function AppearanceFieldMotionButton({
         if (left < FIELD_POPOVER_MARGIN) {
             left = FIELD_POPOVER_MARGIN;
         }
-        if (left + FIELD_POPOVER_WIDTH > window.innerWidth - FIELD_POPOVER_MARGIN) {
-            left = window.innerWidth - FIELD_POPOVER_WIDTH - FIELD_POPOVER_MARGIN;
+        if (left + FIELD_POPOVER_WIDTH > hostWindow.innerWidth - FIELD_POPOVER_MARGIN) {
+            left = hostWindow.innerWidth - FIELD_POPOVER_WIDTH - FIELD_POPOVER_MARGIN;
         }
-        if (top + panelHeight > window.innerHeight - FIELD_POPOVER_MARGIN) {
+        if (top + panelHeight > hostWindow.innerHeight - FIELD_POPOVER_MARGIN) {
             top = rect.top - panelHeight - FIELD_POPOVER_SPACING;
         }
         if (top < FIELD_POPOVER_MARGIN) {
             top = FIELD_POPOVER_MARGIN;
         }
         setPosition({ left, top });
-    }, []);
+    }, [hostWindow]);
 
     useLayoutEffect(() => {
         if (!open) {
             return;
         }
         handlePosition();
-        window.addEventListener("resize", handlePosition);
-        window.addEventListener("scroll", handlePosition, true);
+        hostWindow.addEventListener("resize", handlePosition);
+        hostWindow.addEventListener("scroll", handlePosition, true);
         return () => {
-            window.removeEventListener("resize", handlePosition);
-            window.removeEventListener("scroll", handlePosition, true);
+            hostWindow.removeEventListener("resize", handlePosition);
+            hostWindow.removeEventListener("scroll", handlePosition, true);
         };
-    }, [handlePosition, open]);
+    }, [handlePosition, hostWindow, open]);
 
     useEffect(() => {
         if (!open) {
@@ -226,21 +229,25 @@ export function AppearanceFieldMotionButton({
             }
             setOpen(false);
         };
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                setOpen(false);
-            }
-        };
-        const timer = setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown, true);
+        const timer = hostWindow.setTimeout(() => {
+            hostDocument.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
-        document.addEventListener("keydown", handleKeyDown);
         return () => {
-            clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown, true);
-            document.removeEventListener("keydown", handleKeyDown);
+            hostWindow.clearTimeout(timer);
+            hostDocument.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [open]);
+    }, [hostDocument, hostWindow, open]);
+
+    // Escape closes the popover and not the inspector it was portalled out of, Tab out of it closes
+    // it, and closing hands focus back to the icon. Focus starts on the panel itself rather than its
+    // first control: with a transition set, that control is the one that deletes it.
+    useFloatingLayer({
+        open,
+        onClose: () => setOpen(false),
+        panelRef,
+        ownerRefs: [buttonRef],
+        initialFocus: panelRef,
+    });
 
     const popover = open && typeof document !== "undefined"
         ? createPortal(
@@ -484,7 +491,7 @@ export function AppearanceFieldMotionButton({
                   )}
                   </fieldset>
               </div>,
-              document.body
+              hostDocument.body
           )
         : null;
 

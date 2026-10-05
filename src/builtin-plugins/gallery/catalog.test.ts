@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_LOCKED_NAME_MASK,
+    GALLERY_ENTRY_KINDS,
+    GALLERY_ROW_FIELDS_BY_KIND,
     collectAudioAssetVariantIds,
     collectSceneVariantIds,
     collectVoiceUnitVariantIds,
     computeGalleryStats,
     createVariantId,
+    galleryWords,
+    localizeGalleryStore,
     isArtworkUnlocked,
     normalizeGalleryCatalog,
     normalizeGalleryStore,
@@ -551,7 +555,7 @@ describe("v4 kinds", () => {
             sceneId: "scene-7",
             startBlockId: "block-3",
         });
-        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1" });
+        expect(rows[2]).toMatchObject({ kind: "voice", voiceUnitId: "text-uuid-1", lineText: "Good morning!" });
     });
 
     it("withholds the clip, the unit id and the scene coordinates while locked", () => {
@@ -566,6 +570,7 @@ describe("v4 kinds", () => {
         expect(rows[1]!.sceneId).toBe("");
         expect(rows[1]!.startBlockId).toBe("");
         expect(rows[2]!.voiceUnitId).toBe("");
+        expect(rows[2]!.lineText).toBe("");
     });
 
     it("carries the line text onto an unlocked voice member and withholds it when locked", () => {
@@ -574,6 +579,21 @@ describe("v4 kinds", () => {
         expect(projectGalleryVariants(store, line, new Set(["vo.v.1"]))[0])
             .toMatchObject({ lineText: "Good morning!", voiceUnitId: "text-uuid-1" });
         expect(projectGalleryVariants(store, line, new Set())[0]!.lineText).toBe("");
+    });
+
+    it("hands out every row field the editor names for a column", () => {
+        // The idle inspector lists these as what an item template can read off a Get Gallery row,
+        // so a name that is not on the row sends the author after a field that is always empty.
+        const store = storeOf({ items: [track, recollection, line, artwork({
+            id: "cg",
+            variants: [{ id: "cg.v", name: "A", imageAssetId: "i" }],
+        })] });
+        for (const kind of GALLERY_ENTRY_KINDS) {
+            const [row] = projectGalleryEntries(store, new Set(), { kind });
+            for (const field of GALLERY_ROW_FIELDS_BY_KIND[kind]) {
+                expect(row, `${kind}.${field}`).toHaveProperty(field);
+            }
+        }
     });
 
     it("filters entries and progress by kind", () => {
@@ -597,6 +617,53 @@ describe("v4 kinds", () => {
         }] });
 
         expect("durationSec" in store.items[0]!.variants[0]!).toBe(false);
+    });
+});
+
+describe("an entry with no members yet", () => {
+    // What "Add Recollection" creates: a scene to point at and nothing to import.
+    const empty = artwork({
+        id: "recall",
+        name: "The Confession",
+        kind: "scene",
+        variants: [],
+        scene: { storyId: "story-1", sceneId: "scene-7" },
+    });
+
+    it("is collected whole by reaching its scene, under its own id", () => {
+        const items = normalizeGalleryStore({ items: [empty] }).items;
+
+        expect(collectSceneVariantIds(items, "scene-7")).toEqual(["recall"]);
+    });
+
+    it("reads as unlocked by that id, and shows its scene once it is", () => {
+        const store = storeOf({ items: [empty] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect(isArtworkUnlocked(store.items[0]!, unlocked)).toBe(true);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({
+            name: "The Confession",
+            unlocked: true,
+            sceneId: "scene-7",
+            image: null,
+        });
+        expect(computeGalleryStats(store, unlocked)).toMatchObject({ total: 1, unlocked: 1 });
+    });
+
+    it("stays unlocked once its first picture is added", () => {
+        // The player got there before the art did; the art must not lock it again.
+        const withArt = { ...empty, variants: [{ id: "recall.v.1", name: "Cover", imageAssetId: "asset-shot" }] };
+        const store = storeOf({ items: [withArt] });
+        const unlocked = readUnlockedVariantIds(["recall"], store.items);
+
+        expect([...unlocked]).toEqual(["recall.v.1"]);
+        expect(projectGalleryEntries(store, unlocked)[0]).toMatchObject({ unlocked: true, assetId: "asset-shot" });
+    });
+
+    it("is locked while nothing has collected it", () => {
+        const store = storeOf({ items: [empty] });
+
+        expect(projectGalleryEntries(store, new Set())[0]).toMatchObject({ locked: true, name: "???", sceneId: "" });
     });
 });
 
@@ -659,5 +726,41 @@ describe("what an automatic signal collects", () => {
         expect(collectSceneVariantIds(items, "   ")).toEqual([]);
         expect(collectAudioAssetVariantIds(items, "")).toEqual([]);
         expect(collectVoiceUnitVariantIds(items, "text-missing")).toEqual([]);
+    });
+});
+
+describe("the words the author writes, for translation", () => {
+    const data = normalizeGalleryStore({
+        version: 4,
+        groups: [{ id: "g1", name: "Chapter one" }],
+        items: [{
+            id: "art.a",
+            name: "Corridor",
+            kind: "cg",
+            description: "At dusk",
+            groupId: "g1",
+            hidden: true,
+            variants: [{ id: "art.a.v.1", name: "Dusk", imageAssetId: "asset" }],
+        }],
+        settings: { lockedNameMask: "Locked" },
+    });
+
+    it("lists every name, description and the locked title under ids that survive a rename", () => {
+        expect(galleryWords(data)).toEqual([
+            { id: "group.g1.name", text: "Chapter one" },
+            { id: "entry.art.a.name", text: "Corridor", context: "Chapter one" },
+            { id: "entry.art.a.description", text: "At dusk", context: "Corridor" },
+            { id: "member.art.a.v.1.name", text: "Dusk", context: "Corridor" },
+            { id: "lockedNameMask", text: "Locked" },
+        ]);
+    });
+
+    it("translates the words and nothing else", () => {
+        const localized = localizeGalleryStore(data, (id, text) => `[${id}] ${text}`);
+        expect(localized.items[0]?.name).toBe("[entry.art.a.name] Corridor");
+        expect(localized.items[0]?.variants[0]).toMatchObject({ id: "art.a.v.1", name: "[member.art.a.v.1.name] Dusk", imageAssetId: "asset" });
+        expect(localized.groups[0]?.name).toBe("[group.g1.name] Chapter one");
+        expect(localized.settings.lockedNameMask).toBe("[lockedNameMask] Locked");
+        expect(localized.items[0]?.hidden).toBe(true);
     });
 });

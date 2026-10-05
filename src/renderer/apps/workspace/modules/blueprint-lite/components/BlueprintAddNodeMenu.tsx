@@ -1,8 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useDismissWhenHidden } from "@/lib/components/layout";
-import { useHostWindow } from "@/lib/components/layout";
+import { useFloatingLayer, useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
@@ -35,6 +34,7 @@ import { cn } from "@/lib/utils/cn";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import {
     resolveBlueprintCategoryLabel,
+    blueprintCategoryFormerLabels,
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
@@ -130,9 +130,6 @@ export function BlueprintAddNodeMenu({
     connectMode = false,
     connectSourceLabel,
 }: Props) {
-    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
-    // moved to unless it is told (`useDismissWhenHidden`).
-    useDismissWhenHidden(onClose, open);
     const { t } = useTranslation();
     // The menu is portalled into, positioned against and keyed off the window it is drawn in.
     const hostWindow = useHostWindow();
@@ -141,14 +138,27 @@ export function BlueprintAddNodeMenu({
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
     const navStateRef = useRef({ activeFlatIndex: -1, itemCount: 0 });
+
+    // A floating layer for what the menu's own keys below do not cover: focus goes into the search
+    // field when it opens, Escape closes the menu and nothing it was portalled out of, Tab out of it
+    // closes it, closing gives focus back to the editor it was opened over, and a tab or panel switch
+    // puts it away rather than leaving it hanging over what the author moved to. The list keeps its
+    // own walk - the highlight is an index, the categories are stepped sideways - so the layer is
+    // given no item selector.
+    useFloatingLayer({
+        open,
+        onClose,
+        panelRef: menuRef,
+        initialFocus: inputRef,
+    });
 
     useEffect(() => {
         if (open) {
             setQuery("");
             setActiveCategoryId(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
-            requestAnimationFrame(() => inputRef.current?.focus());
         }
     }, [open]);
 
@@ -202,6 +212,7 @@ export function BlueprintAddNodeMenu({
         return () => (folded ??= prepareBlueprintAddNodeEntries(entries, {
             title: displayName => resolveBlueprintNodeTitle(displayName, t),
             category: category => resolveBlueprintCategoryLabel(category, t),
+            categoryAliases: blueprintCategoryFormerLabels,
         }));
     }, [entries, t]);
 
@@ -305,12 +316,6 @@ export function BlueprintAddNodeMenu({
                 return;
             }
 
-            if (e.key === "Escape") {
-                e.preventDefault();
-                actionsRef.current.onClose();
-                return;
-            }
-
             if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
                 if (searchOwnsKey(e)) {
                     return;
@@ -384,6 +389,7 @@ export function BlueprintAddNodeMenu({
                 onClick={onClose}
             />
             <div
+                ref={menuRef}
                 role="presentation"
                 className={[
                     "fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border bg-surface-raised shadow-xl",

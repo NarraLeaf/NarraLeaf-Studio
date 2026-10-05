@@ -22,6 +22,7 @@ import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import {
     clearEffectKindPatch,
@@ -376,6 +377,20 @@ function EffectsAnchoredPanel({
 }) {
     const panelRef = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: 0, top: 0 });
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
+    /** The row's edit button, for the layer: an element held in state, read through a ref. */
+    const anchorRef = useRef<HTMLElement | null>(anchorEl);
+    anchorRef.current = anchorEl;
+
+    // Focus goes into the panel, Escape closes it and not the inspector it was portalled out of, Tab
+    // out of it closes it, and closing hands focus back to the edit button it was opened from.
+    useFloatingLayer({
+        open: open && anchorEl !== null,
+        onClose,
+        panelRef,
+        ownerRefs: [anchorRef],
+    });
 
     const reposition = useCallback(() => {
         if (!anchorEl) {
@@ -388,38 +403,38 @@ function EffectsAnchoredPanel({
         if (left < PANEL_MARGIN) {
             left = PANEL_MARGIN;
         }
-        if (left + PANEL_WIDTH > window.innerWidth - PANEL_MARGIN) {
-            left = window.innerWidth - PANEL_WIDTH - PANEL_MARGIN;
+        if (left + PANEL_WIDTH > hostWindow.innerWidth - PANEL_MARGIN) {
+            left = hostWindow.innerWidth - PANEL_WIDTH - PANEL_MARGIN;
         }
-        if (top + ph > window.innerHeight - PANEL_MARGIN) {
+        if (top + ph > hostWindow.innerHeight - PANEL_MARGIN) {
             top = rect.top - ph - PANEL_GAP;
         }
         if (top < PANEL_MARGIN) {
             top = PANEL_MARGIN;
         }
         setPos({ left, top });
-    }, [anchorEl]);
+    }, [anchorEl, hostWindow]);
 
     useLayoutEffect(() => {
         if (!open) {
             return undefined;
         }
         reposition();
-        const raf = requestAnimationFrame(() => requestAnimationFrame(reposition));
-        window.addEventListener("resize", reposition);
-        window.addEventListener("scroll", reposition, true);
+        const raf = hostWindow.requestAnimationFrame(() => hostWindow.requestAnimationFrame(reposition));
+        hostWindow.addEventListener("resize", reposition);
+        hostWindow.addEventListener("scroll", reposition, true);
         let ro: ResizeObserver | undefined;
         if (panelRef.current && typeof ResizeObserver !== "undefined") {
             ro = new ResizeObserver(() => reposition());
             ro.observe(panelRef.current);
         }
         return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", reposition);
-            window.removeEventListener("scroll", reposition, true);
+            hostWindow.cancelAnimationFrame(raf);
+            hostWindow.removeEventListener("resize", reposition);
+            hostWindow.removeEventListener("scroll", reposition, true);
             ro?.disconnect();
         };
-    }, [open, reposition, children]);
+    }, [open, reposition, children, hostWindow]);
 
     useEffect(() => {
         if (!open) {
@@ -440,21 +455,14 @@ function EffectsAnchoredPanel({
             }
             onClose();
         };
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-        const timer = setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown, true);
+        const timer = hostWindow.setTimeout(() => {
+            hostDocument.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
-        document.addEventListener("keydown", handleKeyDown);
         return () => {
-            clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown, true);
-            document.removeEventListener("keydown", handleKeyDown);
+            hostWindow.clearTimeout(timer);
+            hostDocument.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [open, anchorEl, onClose]);
+    }, [open, anchorEl, onClose, hostDocument, hostWindow]);
 
     if (!open || !anchorEl || typeof document === "undefined") {
         return null;
@@ -472,7 +480,7 @@ function EffectsAnchoredPanel({
         >
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-visible space-y-2">{children}</div>
         </div>,
-        document.body
+        hostDocument.body
     );
 }
 

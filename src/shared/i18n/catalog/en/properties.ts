@@ -93,6 +93,12 @@ export const properties = {
         remove: "Remove param",
         namePlaceholder: "Name",
         defaultPlaceholder: "Default",
+        type: "Type",
+        typeString: "String",
+        typeText: "Text",
+        bindLabel: "Parameter",
+        bindNone: "No parameter",
+        bindMissing: "Missing parameter",
     },
     binding: {
         notReady: "Blueprint not ready for this control.",

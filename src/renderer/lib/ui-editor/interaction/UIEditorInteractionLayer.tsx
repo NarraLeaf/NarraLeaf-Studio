@@ -32,7 +32,7 @@ import {
     getSingleSelectedElementId,
     isMoveableInteractionTarget,
 } from "./surfaceInlineTextEditActivation";
-import { beginInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
+import { beginOrExplainInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
 import { beginImageCropEdit } from "./imageCropEdit";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
@@ -779,7 +779,7 @@ export function UIEditorInteractionLayer({
             if (inlineTextEditEnabled && isInlineTextEditableElement(element)) {
                 event.inputEvent?.preventDefault?.();
                 event.inputEvent?.stopPropagation?.();
-                beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);
+                beginOrExplainInlineTextEdit({ stateService, documentService }, surfaceId, liveSelectedSingleElementId);
                 return;
             }
 

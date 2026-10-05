@@ -61,8 +61,9 @@ export const help = {
                 "Press F1 for help on whatever has focus, or whatever the pointer is over. The topic "
                 + "opens beside it and closes on Escape.\n"
                 + "\n"
-                + "Panel headers and dialogs show a question mark under the pointer. It opens the topic "
-                + "for that panel.\n"
+                + "Dialogs, the groups on the Project panel, the blueprint editor and the version rail show a "
+                + "question mark in their header under the pointer. It opens the topic for that place. Side panels "
+                + "show none; press F1 inside the panel instead.\n"
                 + "\n"
                 + "- See also moves to a related topic, and the back arrow in the header returns to the "
                 + "previous one.\n"
@@ -73,10 +74,11 @@ export const help = {
         workspaceLayout: {
             title: "Workspace layout",
             body:
-                "The rail on the left switches the side panel: story, assets, characters, project settings. "
+                "The rail on the left switches the side panel, among them story, characters, search and assets. "
                 + "The middle holds editor tabs, one per open item. The right panel edits the current selection.\n"
                 + "\n"
-                + "- Each project window records its own panel widths and which panels are open.\n"
+                + "- Panel widths and which panels are open are shared by every project, and stay the same when "
+                + "another project is opened.\n"
                 + "- Closing a panel keeps its rail icon. Click the icon to reopen the panel.\n"
                 + "- The editor area can be split in two, and a tab can be dragged into either half.",
         },
@@ -102,35 +104,43 @@ export const help = {
                 + "while an old version is open it runs that version.",
         },
         keyboard: {
-            title: "Keyboard",
+            title: "Keyboard and Mouse",
             body:
-                "The shortcut sheet lists every shortcut in Studio, including those that apply only while a "
-                + "particular editor is open.\n"
+                "Shortcuts and Mouse Actions lists every shortcut and mouse action in Studio, grouped by editor, "
+                + "including those that apply only while a particular editor is open. Opened from an editor, it "
+                + "starts at that editor's group.\n"
                 + "\n"
-                + "- Every shortcut can be changed in Settings, under Shortcuts.\n"
+                + "- Every shortcut can be changed in Settings, under Shortcuts. Mouse actions, and the few keys "
+                + "that Settings does not list, are fixed.\n"
                 + "- A changed shortcut is updated in the sheet, the menus and the command palette.",
         },
         search: {
             title: "Search",
             body:
-                "Search covers story text, scene and character names, assets, blueprint nodes and UI widgets. "
-                + "Every result states where it is, and selecting one opens that place.\n"
+                "The Search panel and the search box in the title bar search the whole project: the names of "
+                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, interface "
+                + "text, translation keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
-                + "- The command palette finds actions and panels by name, not by content.",
+                + "- Interface text is searched in the project's source language. Selecting it opens the page or "
+                + "component with the widget selected. Sample text is marked Sample text after its place.\n"
+                + "- The Search panel can replace story text across the whole project.\n"
+                + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
+                + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
         },
         newProject: {
             title: "Adding a project",
             body:
-                "The launcher adds a project three ways: create one from a template, unpack a project package, "
-                + "or copy one from a version control server.\n"
+                "The launcher adds a project three ways: New project, Import .nlspkg, and Clone from a server.\n"
                 + "\n"
-                + "- A new project needs a name, an app identifier and a stage size. The identifier cannot be "
-                + "changed once the project exists.\n"
-                + "- The target folder must be empty. A folder that does not exist yet is created.\n"
-                + "- A project copied from a server stays connected to it, and the local copy is editable.\n"
-                + "- The bundled template is a short story that runs as delivered: three scenes, one choice, "
-                + "and the title, save, load, config and backlog screens.",
+                + "- A new project needs a template, a project name, an app ID, a location and a stage size. The "
+                + "app ID cannot be changed once the project exists.\n"
+                + "- The location must be an empty folder. A folder that does not exist yet is created with the "
+                + "project.\n"
+                + "- A project cloned from a server stays connected to it, and the local copy is editable.\n"
+                + "- The Empty template holds the project structure only. The Skeleton template is a short story "
+                + "that runs as delivered: three scenes, one choice, and splash, title, extra, save, load, config "
+                + "and backlog screens with their blueprints already wired.",
         },
         undo: {
             title: "Undo and redo",
@@ -184,13 +194,15 @@ export const help = {
             body:
                 "Three scopes, differing in how long a value is kept:\n"
                 + "\n"
-                + "- Scene: belongs to one scene, stored in the save file.\n"
-                + "- Save: belongs to a save file, and must hold a value that can be written to one.\n"
-                + "- Persistent: application-wide, and shared with blueprints.\n"
+                + "- Scene: belongs to one scene, and returns to its default each time the scene is entered. It is "
+                + "stored in the save.\n"
+                + "- Saved: belongs to one save, and returns to its default when a new game starts.\n"
+                + "- Persistent: belongs to no save, and is kept across saves and restarts. Blueprints read and "
+                + "write it too.\n"
                 + "\n"
-                + "A scene variable is declared in the scene it belongs to, as a row like any other. Save and "
-                + "persistent variables outlive the scene they were written in, so they are declared once for "
-                + "the whole project, in the variables panel. Any scene and any blueprint can then use them.",
+                + "A scene variable is declared in the scene it belongs to, as a row like any other. Saved and "
+                + "persistent variables are declared once for the whole project, in the Variables panel, and any "
+                + "scene and any blueprint can then use them. Both must hold a value that can be written to a save.",
         },
         storyFlow: {
             title: "Branches and routes",
@@ -208,8 +220,8 @@ export const help = {
                 + "operation, a call. The row marks what is wrong as it is typed, and a row whose expression "
                 + "does not parse cannot be committed.\n"
                 + "\n"
-                + "- A bare name is a variable in scope. Prefix it with scene, saved or persis to choose the "
-                + "scope.\n"
+                + "- A bare name is a variable in scope. Prefix it with scene., saved. or persistent. to choose "
+                + "the scope.\n"
                 + "- visited reports whether a scene or a label has been reached.\n"
                 + "- A condition must be a test that evaluates to true or false.",
         },
@@ -223,8 +235,22 @@ export const help = {
                 + "\n"
                 + "- The import lists every row it will add, change or remove before writing anything.\n"
                 + "- A scene edited in Studio after the export loses those edits on import, and the import states "
-                + "this first.\n"
-                + "- Pasting several lines at once asks who is speaking, and keeps the answers for the next paste.",
+                + "this first.",
+        },
+        storyPaste: {
+            title: "Paste as Rows",
+            body:
+                "Pasting several lines into the story editor opens Paste as Rows first. It splits each line into "
+                + "a speaker and its text by the separator it recognised, and previews the rows it will insert.\n"
+                + "\n"
+                + "- When the guess is wrong, pick another separator above, or Custom to write a regular "
+                + "expression. A separator can be named and saved for later pastes.\n"
+                + "- Each name found maps to one of four answers: an existing character, New character, Name only, "
+                + "or Not a speaker. A Name only row carries the name and no character. A Not a speaker line "
+                + "becomes narration exactly as pasted.\n"
+                + "- The answer chosen for a name is remembered by the project and used again the next time that "
+                + "name is pasted.\n"
+                + "- Confirming adds the rows below the current line as one undo step.",
         },
         sceneSnapshot: {
             title: "Playing from a row",
@@ -271,7 +297,7 @@ export const help = {
                 + "occurs wherever it appears.",
         },
         storyMotion: {
-            title: "Motion",
+            title: "Story Motion",
             body:
                 "A motion is a reusable movement: a character sliding in, a picture fading, the camera pushing "
                 + "in on the stage. It is defined once and can be used on any row.\n"
@@ -289,7 +315,9 @@ export const help = {
                 + "\n"
                 + "- Drop a folder onto the panel to import every supported file in it.\n"
                 + "- Replacing an asset's file keeps every reference to it.\n"
-                + "- Deleting an asset that is still in use lists its usages first.",
+                + "- Deleting an asset that is still in use lists its usages first.\n"
+                + "- In the bottom panel, the tree on the left opens a folder, and Import and New Group add to the "
+                + "folder named above its contents. Double-click a folder to open it.",
         },
         assetSources: {
             title: "Where an asset's file comes from",
@@ -318,7 +346,7 @@ export const help = {
                 + "- Select two or more files of one type and choose New Set from Selection. In a folder's "
                 + "menu, New Asset Set starts one from files chosen in the dialog.\n"
                 + "- The dialog asks what the set varies by, then which file each value uses.\n"
-                + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
+                + "- Choosing a file for a value in the Values list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
                 + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
                 + "- Story rows, character appearances and dialog avatars, images, backgrounds and videos in "
@@ -374,15 +402,17 @@ export const help = {
         appearances: {
             title: "Character appearances",
             body:
-                "A character is drawn one of three ways, chosen in the character editor.\n"
+                "A character is drawn one of three ways, chosen when the character is created. It cannot be "
+                + "changed afterwards.\n"
                 + "\n"
                 + "- Preset sprites: one finished image per pose.\n"
                 + "- Layered sprite: layers switched by tags on axes, so a costume and an expression change "
                 + "independently.\n"
                 + "- Custom runtime: a model, drawn by a runtime installed in this project.\n"
                 + "\n"
-                + "The dialogue portrait is generated from the drawn result, and can follow one axis so it "
-                + "changes with the character.",
+                + "The dialog avatar is generated from the drawn result, and can follow one axis so it changes "
+                + "with the character. Where no differential gives one, dialogue shows the Default dialog avatar "
+                + "from the character's properties.",
         },
         puppetRuntimes: {
             title: "Model runtimes",
@@ -444,24 +474,38 @@ export const help = {
             title: "Voice-over",
             body:
                 "A voice language holds one clip per spoken line. The panel lists the voice languages with how "
-                + "much of the story each covers, and opening one shows its table of lines.\n"
+                + "much of the story each covers, and opening one shows its voice table.\n"
                 + "\n"
                 + "- Studio imports existing clips. It does not record.\n"
-                + "- A whole folder can be matched at once when the file names follow a pattern.\n"
-                + "- The lines to record can be exported as a spreadsheet file for the person recording them.\n"
-                + "- A line whose text changed after its clip was assigned is marked out of date.\n"
-                + "- Choice options become lines to record only when the panel includes them.",
+                + "- Import audio takes several files at once, and links each file whose name follows the "
+                + "Recording filename pattern to its line.\n"
+                + "- Export recording script writes the lines to record as a spreadsheet file for the person "
+                + "recording them.\n"
+                + "- A line whose text changed after its clip was assigned is marked Outdated, and Export pickup "
+                + "script writes only those lines.\n"
+                + "- Choice options become lines to record only while Voice choice options is on.",
         },
         localization: {
             title: "Languages",
             body:
-                "Every line can carry a translation per language, and each translation is in one of four states: "
-                + "untranslated, translated, out of date, or not needed.\n"
+                "Every line can carry a translation per language. A translation is in one of four states: "
+                + "untranslated, machine, translated or reviewed. When the original text changes after a "
+                + "translation, the translation is marked To review.\n"
                 + "\n"
-                + "- A translation goes out of date when the original text changes after it was translated.\n"
+                + "- The translation table has two modes: Translate, for writing translations, and Review, for "
+                + "approving or returning translated lines one at a time.\n"
                 + "- A language can be exported as CSV, XLIFF, PO or JSON, translated elsewhere, and imported "
-                + "back. The import reports how many lines it applied and how many it could not match.\n"
-                + "- Export and import are in the language row's menu.\n"
+                + "back. The import reports how many lines it applied, how many were unchanged and how many it "
+                + "could not match.\n"
+                + "- Export and import are in the language row's More menu.\n"
+                + "- In an exported file, a translation key's row names the pages and components that use the key.\n"
+                + "- Words written directly on an interface widget are translated like a line: each widget's own "
+                + "words have a row in the translation table, except words made only of digits and symbols, and "
+                + "sample text.\n"
+                + "- A translation key is words shared by every widget that names it. They show its words whether "
+                + "or not the project has a source language, and the key is translated once.\n"
+                + "- Removing a key, or bringing in widgets that use a key the project does not have, gives those "
+                + "widgets the key's words and translations as their own.\n"
                 + "- Changing language during a game restarts it and returns the player to the line they "
                 + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",
@@ -488,7 +532,9 @@ export const help = {
                 + "Studio reads the font file and fills the limit in if the font states which language "
                 + "it was made for; it leaves it empty otherwise.\n"
                 + "- The project check reports characters the script uses that no font in the list can "
-                + "draw, for each language.",
+                + "draw, for each language.\n"
+                + "- A widget is checked in the font of each of its states. A character only one state's font "
+                + "cannot draw is reported with the state's name.",
         },
         inputActions: {
             title: "Input actions",
@@ -500,11 +546,12 @@ export const help = {
                 + "Three steps put one on screen.\n"
                 + "\n"
                 + "- Name the action in the Input Actions panel and give it its bindings.\n"
-                + "- Open the interface that reacts to it, and switch the action on in its Input section.\n"
+                + "- Select the interface that reacts to it, and choose Add actions in the Input section of its "
+                + "properties.\n"
                 + "- Add an On Action node to that interface's blueprint and pick the action.\n"
                 + "\n"
-                + "An interface answers nothing until it is switched on, so naming an action does not make "
-                + "every screen react to it.",
+                + "An interface answers only the actions listed in its Input section, so naming an action does not "
+                + "make every screen react to it.",
         },
         inputActionBindings: {
             title: "Bindings and devices",
@@ -528,11 +575,11 @@ export const help = {
         inputActionAnswering: {
             title: "Answering an action",
             body:
-                "An interface's Input section lists every action the project names. Each one is off until "
-                + "the interface answers it.\n"
+                "An interface's Input section lists the actions it answers. Add actions picks from the actions "
+                + "the project names, and an action that is not listed is not answered.\n"
                 + "\n"
-                + "After an action fires, the input either stops at that interface or carries on to what is "
-                + "drawn behind it. It stops unless the action says otherwise.\n"
+                + "Once an action fires, After it fires decides where the input goes: Intercept stops it at that "
+                + "interface, and Continue carries it on to what is drawn behind it. Intercept is the default.\n"
                 + "\n"
                 + "A control under the pointer takes the input first, so an action bound to a click does not "
                 + "fire when the player clicked a button inside the interface.\n"
@@ -552,8 +599,8 @@ export const help = {
                 "Three nodes read input actions.\n"
                 + "\n"
                 + "- On Action runs when the action fires. It reports which device raised it and where the "
-                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget. "
-                + "On the global blueprint it runs for every action on every screen, before any interface "
+                + "pointer was. It belongs to an interface or to the App logic blueprint, not to one widget. "
+                + "On the App logic blueprint it runs for every action on every screen, before any interface "
                 + "answers it.\n"
                 + "- Is Action Held answers whether the action is held at this moment. A key, a mouse button "
                 + "and a long press can be held; a scroll is an instant and a double click is a sequence, so "
@@ -585,7 +632,13 @@ export const help = {
                 + "- The library states how many placements each component has.\n"
                 + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
-                + "unlinked.",
+                + "unlinked.\n"
+                + "- Parameters are declared on the component and set on each placement. A String parameter is "
+                + "read by the component's blueprints with Get Component Param.\n"
+                + "- A Text parameter holds words a player reads. Inside the component, a text or a button picks it "
+                + "under Parameter, and each placement shows its own words on the canvas and in the game, written "
+                + "directly or from a translation key. Words written directly on a placement are translated as that "
+                + "placement's own, one row each in the translation table.",
         },
         blueprints: {
             title: "Blueprints",
@@ -605,12 +658,16 @@ export const help = {
                 + "- A selection can be framed as a group that moves as one, and the whole graph can be "
                 + "arranged from left to right.\n"
                 + "- Each pin takes one wire. Values with no wire are typed on the node itself.\n"
-                + "- Problems are listed under the canvas, and selecting one selects what it refers to.",
+                + "- Several event heads can listen for the same event. They all start when it happens, and none "
+                + "waits for another to finish.\n"
+                + "- Problems are listed under the canvas, and selecting one selects what it refers to.\n"
+                + "- The node reference on the website lists every node and its pins. Open the full page, below, "
+                + "goes there.",
         },
         scripts: {
             title: "Scripts",
             body:
-                "The logic of a page, a component or a story row is a list of layers, and each layer is "
+                "The logic of a page, a widget or a story row is a list of layers, and each layer is "
                 + "either a blueprint or a script. A blueprint is a graph on a canvas. A script is a TypeScript "
                 + "file under the project's scripts folder, written in an external editor. Studio creates the "
                 + "file once and never writes it again.\n"
@@ -632,15 +689,31 @@ export const help = {
         uiBindings: {
             title: "Values on a screen",
             body:
-                "A widget can show a value that changes at run time instead of fixed text. Bind the property to "
-                + "a field, and the widget shows that field's current value.\n"
+                "A widget can show a value that changes at run time instead of fixed content. Text, a button's "
+                + "label, an image, a slider's value and a switch's state can each be answered by a Blueprint "
+                + "Value.\n"
                 + "\n"
-                + "- A field belongs to the page, to the application, or to one item of a list, and that decides "
-                + "how long its value is kept.\n"
-                + "- Blueprints read and write the same fields, so operating one widget can change what another "
-                + "widget shows.\n"
-                + "- A binding whose field no longer exists is reported as broken, on the surface and in the "
-                + "blueprint.",
+                + "- Text and button labels choose between Direct, Translation key and Blueprint Value. The other "
+                + "properties have a Blueprint Value button.\n"
+                + "- Open Blueprint Value edits the graph, and a Return Value node hands back the result.\n"
+                + "- A Blueprint Value reads the variables of its page and of App logic directly. Other variables "
+                + "are read through Call Fn.\n"
+                + "- When a variable the Blueprint Value read is written, the widget shows the new value.\n"
+                + "- Translation Key Text gives a translation key's text in the player's language, and Format fills "
+                + "values into it. When the player changes language, the widget shows the new language.\n"
+                + "- A widget inside a list row can also show one field of that row, chosen under Field.\n"
+                + "- A widget inside a component can show one of the component's Text parameters, chosen under "
+                + "Parameter. Its own words are then sample text, drawn only while the component is edited.\n"
+                + "- Under a Blueprint Value, the widget's own words are sample text. They are drawn in the editor "
+                + "only, are not part of the built game and are not translated.\n"
+                + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
+                + "Label, lists those blueprints under its text, and its own words are sample text as well. Append "
+                + "Text adds to the widget's own words, which therefore stay in the game.\n"
+                + "- Words a blueprint writes while the game runs are shown as written, in every language, ahead of "
+                + "a translation key and a Blueprint Value, until the page is opened again. Get Text and Get Label "
+                + "read the words on screen.\n"
+                + "- Writes made by a script layer are not listed. The words of a widget that only a script writes "
+                + "are built and translated as written.",
         },
         networkNodes: {
             title: "Network requests",
@@ -726,8 +799,10 @@ export const help = {
             // heading followed by itself.
             title: "Version control",
             body:
-                "A version is a point that can be returned to. History is kept inside the project folder, and no "
-                + "version is created except by submitting one, apart from the checkpoint taken before a restore.\n"
+                "A version is a point that can be returned to, and history is kept inside the project folder. "
+                + "Submitting creates a version, and Studio also records checkpoints of its own: at the interval "
+                + "set in Settings, every 15 minutes by default and only when something changed, and before the "
+                + "workspace closes, before a build and before a restore.\n"
                 + "\n"
                 + "- Submitting a version appends to the list. It never replaces or removes an existing version.\n"
                 + "- Changes are not detected automatically. Run a check to list them.",
@@ -800,10 +875,11 @@ export const help = {
             body:
                 "A build produces the files delivered to players. Choose the target platforms and formats.\n"
                 + "\n"
-                + "- Web, Android and iOS build on any machine. macOS builds only on a Mac.\n"
+                + "- Every platform builds on Windows and on a Mac. On Windows, macOS builds only as a zip, and "
+                + "Linux as a zip or an AppImage.\n"
                 + "- An unsigned build runs, but the first launch shows a security prompt on Windows and macOS.\n"
-                + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
-                + "with the NarraLeaf icon.",
+                + "- Icons come from Project ▸ App. A platform whose icon has not been generated builds with the "
+                + "NarraLeaf icon.",
         },
         saveLocation: {
             title: "Where saves are kept",
@@ -911,9 +987,6 @@ export const help = {
                 + "- A variant stores only the values it changes. A field left empty shows the main "
                 + "value and follows it.\n"
                 + "- Restore removes the variant's own value, and the field follows main again.\n"
-                + "- A variant lists the links the game can open. A build opens the addresses its "
-                + "variant lists and no others, matched exactly, so a page at a different address needs a "
-                + "line of its own.\n"
                 + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
                 + "from then on, and the count beside Delete states how many.",
         },
@@ -972,8 +1045,8 @@ export const help = {
         assetProtection: {
             title: "Asset protection",
             body:
-                "With asset protection enabled, the images, audio, story text and plugin code inside a packaged game "
-                + "are encrypted, and so are the player's saves. Dev Mode is unaffected.\n"
+                "With asset protection enabled, the images, audio, story text and plugin code inside a packaged "
+                + "game are encrypted. The player's saves are not. Dev Mode is unaffected.\n"
                 + "\n"
                 + "- Web, Android and iOS builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "

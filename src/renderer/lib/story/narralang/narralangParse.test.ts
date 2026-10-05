@@ -266,14 +266,15 @@ describe("names", () => {
 // --- The seven verbs spelled `show` ----------------------------------------------------------------------------
 
 describe("one keyword, seven statements", () => {
-    // The default dialect spells `characterEnter`, `imageShow`, `textShow`, `layerShow`, `videoShow`,
-    // `vfxShow` and `displayableShow` all as `show`, and no arrangement of prepositions tells them
-    // apart. What does is the subject: what the name turns out to BE decides which row was meant.
+    // The default dialect spells `characterEnter`, `imageShow`, `textShow`, `layerShow`, `vfxShow`
+    // and `displayableShow` all as `show`, and no arrangement of prepositions tells them apart. What
+    // does is the subject: what the name turns out to BE decides which row was meant. A clip has no
+    // `show` - it comes on with its play - so a clip's name there is a row the script cannot build.
     const stage = [
         "image create bird corridor_dusk",
         "text create title \"第一章\"",
         "layer create sky zindex 5",
-        "video create op corridor_dusk",
+        "video play op corridor_dusk",
         "vfx create petals corridor_dusk",
     ];
 
@@ -300,8 +301,10 @@ describe("one keyword, seven statements", () => {
         expect(lastPayload("show sky")).toMatchObject({ action: "layer", operation: "show", objectName: "sky" });
     });
 
-    it("reads a video", () => {
-        expect(lastPayload("show op")).toMatchObject({ action: "video", operation: "show", objectName: "op" });
+    it("reads a video's hide, and has no show for one", () => {
+        expect(lastPayload("hide op")).toMatchObject({ action: "video", operation: "hide", objectName: "op" });
+        const shown = rows(parse(...stage, "show op"));
+        expect(shown[shown.length - 1].kind).toBe("invalid");
     });
 
     it("reads a vfx", () => {
@@ -392,7 +395,6 @@ describe("the dialect validator", () => {
         expect([...new Set(conflicts.map((conflict) => conflict.keyword))]).toEqual(["show", "hide", "transform"]);
         expect(conflicts.filter((conflict) => conflict.reason === "identical").map((conflict) => conflict.verbs)).toEqual([
             ["textShow", "displayableShow"],
-            ["layerShow", "videoShow"],
             ["characterExit", "imageHide"],
             ["textHide", "displayableHide"],
             ["layerHide", "videoHide"],

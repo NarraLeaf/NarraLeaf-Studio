@@ -13,12 +13,14 @@
  * the workspace's `LocalizationService`, which the runtime bundle does not carry. Dev Mode and the
  * shipped game never publish here; they read the bundle through the context instead.
  *
- * **Published only while the project has a source language** - the same condition under which a
- * build carries the keys at all (`loadGameLocalization`). A project without one ships no keys, so its
- * game shows each widget's own text, and the canvas must too.
+ * **Published whether or not the project has a source language**: a build carries the keys either
+ * way (`keysOnlyLocalization`), so a keyed widget shows its key's words in every game, and on the
+ * canvas too. A key the registry does not hold is drawn as its name, as the game draws it.
  *
  * Comments in English per project convention.
  */
+
+import { resolveUITextWords, type UITextSite } from "@shared/types/ui-editor/textSource";
 
 /** Key name → source-language text, or null when nothing is published. */
 let keys: Readonly<Record<string, string>> | null = null;
@@ -58,23 +60,33 @@ export function setDesignTimeLocalizationKeyWriter(next: ((name: string, sourceT
 }
 
 /**
- * The key a widget's words are drawn from on the canvas, or null when its own words are what show:
- * it has no key, or nothing is published (the project ships no keys, so its game shows the widget's
- * own words too).
+ * The key a widget's words are drawn from on the canvas and edited through, or null: it has no key,
+ * nothing is published yet, or the registry does not hold the key it names - the canvas draws the
+ * key's name then, and typing over it writes the widget's own words and drops the key
+ * (`designTimeDanglingKeyOf`), rather than minting a key nobody asked for.
  */
 export function designTimeKeyOf(localizationKey: string | undefined): string | null {
     const key = localizationKey?.trim();
-    return key && keys ? key : null;
+    return key && keys && Object.prototype.hasOwnProperty.call(keys, key) ? key : null;
 }
 
 /**
  * The words the canvas shows for a widget that may be read from a key, and what an in-place edit
- * starts from. A keyed widget shows its key's source text, as the game does; a key the registry does
- * not hold falls back to the widget's own words there too.
+ * starts from (`resolveUITextWords` on the canvas). A keyed widget on a site that draws its key shows
+ * the key's source text, as the game does; a key the registry does not hold falls back to the
+ * widget's own words there too.
  */
-export function designTimeTextOf(localizationKey: string | undefined, ownText: string): string {
-    const key = designTimeKeyOf(localizationKey);
-    return key ? keys?.[key] ?? ownText : ownText;
+export function designTimeTextOf(site: UITextSite, localizationKey: string | undefined, ownText: string): string {
+    return resolveUITextWords({ site, elementId: "", sourceText: ownText, localizationKey }, { kind: "canvas", keys });
+}
+
+/**
+ * The key a widget names that the published registry does not hold, or null. Typed over on the canvas,
+ * such a widget takes the words as its own and lets go of the key.
+ */
+export function designTimeDanglingKeyOf(localizationKey: string | undefined): string | null {
+    const key = localizationKey?.trim();
+    return key && keys && !Object.prototype.hasOwnProperty.call(keys, key) ? key : null;
 }
 
 /** Write a key's source text through the registered writer. False when there is none. */

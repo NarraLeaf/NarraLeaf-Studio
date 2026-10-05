@@ -47,9 +47,9 @@ node project/app/ui.js widget nl.list
 
 `widget <type>` is the one to reach for before writing anything. It prints where
 the type may be inserted, whether it takes children, the parts it builds for
-itself, every prop with its default, the props a value blueprint may drive, the
-event heads a private blueprint on it may carry, and its commands and readable
-state:
+itself, the palette categories its own nodes are under, every prop with its
+default, the props a value blueprint may drive, the event heads a private
+blueprint on it may carry, and its commands and readable state:
 
 ```
 nl.switch
@@ -57,6 +57,7 @@ nl.switch
   palette    overflow, any surface
   children   structural parts only - an author may not add children
   blueprint  private blueprint supported (owner=widgetMain); the player operates it, so panel gestures stand down over it
+  nodes      Displayable, Switch in its own blueprint; Element in any blueprint
 
   parts (built with the widget; do not delete or re-parent)
     Switch Track  [nl.container]  slot=track
@@ -100,19 +101,19 @@ nl.switch
     windowFullscreenChanged  interaction blueprint.event.head.fullscreenChanged
     windowFocusChanged       interaction blueprint.event.head.windowFocusChanged
 
-  commands (Call Widget Command)
+  commands
     setVisible  Set visible
     setEnabled  Set enabled
     setVariant  Set variant
     setChecked  Set checked
     toggle  Toggle
 
-  readable state (Get Widget State)
+  readable state
     checked  Checked
     visible  Visible
     enabled  Enabled
 
-  writable props (Set Widget Prop)
+  writable props
     checked  Checked
     interactionDisabled  Interaction disabled
 
@@ -126,9 +127,23 @@ nl.switch
       on the `on` variant's `transformOffsetX`.
 ```
 
+`nodes` says what the commands, readable state and writable props further down are
+reached with. No one node calls a command or reads a state by its name: each
+widget type has nodes of its own, and `nodes` names the add-node palette categories
+that hold them in the widget's own blueprint - `List` on a list, where `Set Visible`,
+`Get Selected Index` and `Refresh List Items` are - beside `Displayable`, which every
+drawn widget shares. From any other blueprint the same things are done by the
+Element category's nodes, which take the element as a pin. To see the nodes one
+by one, ask the blueprint tool: `blueprint.js nodes --owner widgetMain --widget <type>`.
+
 The prop table is what a **new** widget of that type carries, not a closed set: a
-widget may hold keys its defaults do not name (`localizationKey` is the common
-one), which is why writing one is a note rather than a refusal.
+widget may hold keys its defaults do not name, which is why writing one is a note
+rather than a refusal. The props that say where a widget's words come from - its
+translation key (`localizationKey`, a text input's `placeholderLocalizationKey`)
+and its marks (`rich`) - are known for each widget that has them and are never
+reported. A file written before v13 may carry `localizable = true`: it is left out,
+with a note (**`ui.legacy_prop`**), because a widget's own words are translated
+whenever the project has a second language.
 
 `hoverSound` and `clickSound` are on every type but `nl.root`, and are what the
 inspector's Sound section writes. Each holds an audio asset id or an asset set id,
@@ -143,10 +158,35 @@ that depends on something - a locked scene card that stays silent.
 
 A text widget's words and a button's label come from one of three places, which
 the inspector offers as one choice: the element's own `text` (a button's
-`label`), a translation key, or a Blueprint Value. In a file the key is
-`localizationKey`, and it wins over the other two - the game and the canvas both
-show the key's source text, so a keyed element's own `text` or `label` is never
-seen. Change the words of a keyed element by changing the key, not the prop.
+`label`), a translation key, or a Blueprint Value - one source, stored once. In a
+file the key is `localizationKey`, and a keyed element holds no `text` or `label`
+of its own: the game and the canvas show the key's source text, which `show`
+prints as a comment under the key (`# words: Start`). Change the words of a keyed
+element by changing the key. Keys are read whether or not the project has a
+source language; a key the project does not have shows its name. The element's
+own words are translated through its own unit (`ui:<elementId>.text`) whenever
+the project has a second language - there is no switch for it.
+A text input's `placeholder` is the same choice without the Blueprint Value: its
+own words, or the key in `placeholderLocalizationKey`, whose text the canvas and
+the game both show. A dialogue line's or NVL line's `text` is sample words the
+canvas shows; in their slots the game draws the story's line instead. So is the
+`text` or `label` of an element whose words a value blueprint or a row field
+answers, or that a blueprint writes over while the game runs (`Set Text`,
+`Clear Text`, `Set Label` - `Append Text` keeps the words it adds to): the
+canvas shows them, a build carries none of them, and nothing translates them.
+
+Inside a component definition a text's `text` or a button's `label` can show
+one of the component's text parameters instead - `bind text = param <paramId>`,
+the component's counterpart of a row field. Each placement gives the parameter
+its own words, written directly or as a translation key, and both the canvas and
+the game draw every placement with its own, with no graph involved. Words a
+placement writes directly are translated through the placement's own unit,
+`ui:<placementId>.param.<paramId>`; a placement that gives none shows the
+parameter's default, translated once through the component's unit,
+`ui:<componentId>.param.<paramId>`. The element's own words are then sample
+text, drawn only while the component itself is edited. A blueprint's
+`Get Component Param` still reads the value as a string - a keyed value as the
+key's name.
 
 `--json` on any of these.
 
@@ -239,7 +279,10 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   `answers <actionId> [consume=false]` says which of the project's actions this
   surface answers.
 - **`component <name> [id=] [size=WxH]`** opens a component definition, with
-  `param <id> <name> = <default>` lines for the values each instance supplies.
+  `param <id> <name> [type=text] = <default>` lines for the values each instance
+  supplies. Without `type=` a param is a string, which a blueprint reads with
+  `Get Component Param`; `type=text` makes it words a player reads, which a
+  widget inside the definition shows with `bind <prop> = param <id>`.
 - **`struct <id>`** and **`action <id> <name>`** declare the two document-wide
   tables: item shapes, and what a gesture means.
 - **`document <name> [id=] [entry=]`** names the document itself. `entry=` makes
@@ -271,8 +314,15 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   <fieldId>`, whether the element is drawn at all for this row - the lock on a
   gallery cell, say. It reads a row's field and nothing else; a value blueprint
   for it is refused, because nothing would evaluate one.
+  **`bind <prop> = param <paramId>`** shows a text parameter of the component
+  the element is inside, as each placement gives it. Only the prop holding a
+  text's or a button's words takes one, only inside a `component` block, and
+  only for a parameter declared `type=text`.
 - **`component <componentId> [param=value …]`** makes the element an instance of
-  a component definition.
+  a component definition. A text parameter's value is either words,
+  `label="Start"`, or a translation key, `label.key=menu.start` - one or the
+  other, as on a widget. `show` prints a keyed value's words as a comment under
+  the line (`# label words: Start`).
 
 Values are JSON where JSON is unambiguous and a bare word otherwise: `cover`,
 `1.5`, `true`, `null`, `"a string"`, `["a", "b"]`, `{"k": 1}`. A bare word is
@@ -373,6 +423,31 @@ document no longer has (the game starts on the fallback page, and Studio drops
 the pointer the next time it opens the project), and **`ui.no_entry_page`** when
 there is no page at all.
 
+Two more are about words, and need `--project` (the keys are read from it):
+
+- **`ui.words_two_sources`** - a block writes `text` or `label` on an element
+  that also names a translation key, with words that are not the key's text: an
+  edit that cannot show, since the key's text is what the game and the canvas
+  draw. An error, with or without a source language. Words that *are* the key's -
+  what `show` printed before v13 - are left out with a note
+  (**`ui.words_dropped`**), since a keyed element holds no words of its own.
+- **`ui.key_missing`** - a block names a key the project does not have. A warning:
+  the widget shows the key's name until the key exists. A placement's
+  `<paramId>.key=` is checked the same way, and naming both words and a key for
+  one parameter is `ui.words_two_sources`.
+
+A component's parameters are checked against what the component declares, in the
+file or in the project:
+
+- **`ui.param_outside_component`**, **`ui.param_not_text`** - a `bind … = param`
+  outside a component block, or naming a parameter the component does not declare
+  as `type=text`. Errors: no placement would give the widget any words.
+- **`ui.param_key_not_text`** - a placement names a key for a string parameter,
+  which reads no key. An error.
+- **`ui.param_unknown`** - a placement gives a value to a parameter the component
+  does not declare. A warning: the value is kept, and read again if a parameter by
+  that id comes back.
+
 Three findings are notes rather than refusals, deliberately:
 
 - **`ui.unknown_prop`** - see the note on the prop table above. Reported once per
@@ -397,7 +472,7 @@ node project/app/ui.js show --project D:/path/to/project --surface Title --out t
 `show` prints in the same format `apply` reads, ids and props included, so the
 way to change something that exists is to dump it, edit two lines and apply it
 back. Printing the shipped skeleton and compiling the result gives the same
-document - eleven surfaces, eleven components and nearly three hundred elements of it - which is
+document - twelve surfaces, three components and some two hundred and fifty elements of it - which is
 asserted in `dsl/roundTrip.test.ts`.
 
 ## Writing
@@ -427,20 +502,61 @@ Four things to know before using it:
 - **Close the project in Studio first.** Nothing reloads this file on its own,
   and a running Studio will write its own copy over yours on the next save.
 - **The document must already be at the current interface schema version.**
-  Eleven versions' worth of migration live on the renderer's `UIDocumentService`
-  and need a service to run, so `apply` refuses and says to open the project in
-  Studio once. Same refusal as `blueprint apply`, same reason.
+  The migration lives on the renderer's `UIDocumentService` and needs a service to
+  run, so `apply` refuses and says to open the project in Studio once. Same refusal
+  as `blueprint apply`, same reason. A v12 document is still *read* as v13 by
+  `show`, `check` and `surfaces` - through the same step Studio runs on opening it -
+  because that step also edits the translation files, which only Studio writes.
 - **The first apply reorders the JSON.** The flat `elements` map comes out in
   tree order, surface by surface, rather than in whatever order a project's
   editing history left it. Nothing reads that order - every element is addressed
   by id, and so is the semantic diff - so it is one reshuffle of the text and
   nothing after it.
 
+## Removing a component definition
+
+```sh
+node project/app/ui.js remove --project D:/path/to/project --component "Old entry"           # dry run
+node project/app/ui.js remove --project D:/path/to/project --component "Old entry" --write
+```
+
+`apply` replaces a component's element tree but never takes the definition away,
+so a component nothing places any more stays in the library until somebody
+deletes it. `remove` does that, and takes everything the definition owns with
+it: its elements, which live inside it, and its blueprints in `uigraphs.json`
+together with the owner entries that point at them - so no orphan is left for
+Studio to collect the next time it opens the project.
+
+- **One definition, named exactly.** `--component` takes an id or a whole name;
+  a name two definitions share lists their ids and removes neither.
+- **Only a definition nothing uses.** Each of these is a refusal,
+  `ui.remove_refused`, that says where it is, and nothing is written:
+  - a placement of it, on any surface or inside another component;
+  - one of its own blueprints that holds anything - nodes, a script layer,
+    members. Removing the definition would throw that work away with it; empty
+    the blueprint with `blueprint apply`, or take it out with `blueprint remove`,
+    first if that is what is meant;
+  - any other blueprint, element or document-wide record that names the
+    definition, one of its elements or one of its blueprints - an Element card
+    pointing into it, a variable read from one of its blueprints;
+  - any other authored file of the project that names one of those ids: what is
+    under `editor/` (but Studio's caches), and the scripts under `scripts/` (but
+    their generated declarations and installed packages).
+- **Close the project in Studio first**, for the same reason as `apply`. Both
+  documents must be at the current schema version, and both are checked before
+  either is written.
+
+Studio lets an author delete a placed component after one confirm, and every
+placement then draws nothing. That is a decision for someone looking at the
+canvas; a command run from a script has nobody to ask, which is why this one
+refuses instead.
+
 ## What this tool does not do
 
 - **It does not write blueprints.** Attaching a graph to a widget is
   `blueprint apply`'s job; this tool reads `uigraphs.json` to check bindings and
-  to warn about orphans, and never writes it.
+  to warn about orphans. The one thing it takes out of that file is what
+  `remove` takes with a component definition - its own, empty blueprints.
 - **It does not know what a widget means.** The catalogue is derived, and a
   derivation cannot say that a container written with `fillVisible = false` alone
   still paints white. The handful of facts like that are in the `notes` block of
@@ -454,4 +570,6 @@ The wrapper is `project/app/ui.js`; the commands are TypeScript under
 the tables it reads are. `dsl/` holds the format: `parse` (text to AST), `compile`
 (AST to document records, checked against the catalogue), `print` (the inverse).
 The scalar syntax is shared with `.bp` rather than restated -
-`blueprint-cli/dsl/values`.
+`blueprint-cli/dsl/values`. `remove.ts` is the `remove` command's plan, and it
+writes `uigraphs.json` through the blueprint tool's own reader and writer, so one
+place still knows how that file is written.

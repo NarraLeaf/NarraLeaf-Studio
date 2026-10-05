@@ -12,15 +12,17 @@ import {
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
-import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { hasLocalizationKey, resolveLocalizationKeyText } from "./localizationKeyText";
+import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
@@ -36,13 +38,10 @@ function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
 async function resolveNamedKeyText(ctx: NodeExecuteContext, keyName: string): Promise<string | null> {
     const api = requireHostApi(ctx);
     const config = api.localization.getConfig();
-    if (!config || !(keyName in (config.keys ?? {}))) {
+    if (!hasLocalizationKey(config, keyName)) {
         return null;
     }
-    const bundle = { ...config, tables: config.tables ?? {}, keys: config.keys ?? {} };
-    const locale = await api.localization.getLocale();
-    const translated = resolveLocalizedUnitText(bundle, locale, localizationKeyUnitId(keyName));
-    return translated ?? bundle.keys[keyName] ?? null;
+    return resolveLocalizationKeyText(config, await api.localization.getLocale(), keyName);
 }
 
 export const localizationBlueprintNodes: BlueprintNodeDef[] = [
@@ -68,6 +67,9 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         ],
         async execute(ctx) {
             const api = requireHostApi(ctx);
+            // A value binding that reaches this through a Fn shows the language; it has to hear the
+            // next switch.
+            ctx.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
             return {
                 nextPort: "next",
                 outputValues: {
@@ -128,6 +130,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
         assetNames: "written",
         displayName: "Get Text",
+        description: "blueprint.nodeDescription.localizationGetText",
         category: "Localization",
         keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup"],
         graphKinds: ["event", "macro"],
@@ -165,6 +168,9 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
                     ctx.node.id,
                 );
             }
+            // A value binding that reaches this through a Fn shows a translated word; it has to hear
+            // the next language switch, as one reading `Translation Key Text` directly does.
+            ctx.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
             const text = await resolveNamedKeyText(ctx, keyName);
             return {
                 nextPort: "next",
@@ -174,6 +180,42 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
                 },
             };
         },
+    },
+    {
+        // `Get Text` with no execution pins. A Blueprint Value and a function accept only nodes that
+        // compute their outputs from their inputs, so while the only way to read a key was latent, a
+        // bound label could not show a translated word at all and a multi-language project had to
+        // write every such label from an event graph. Same pins, same answer, same unknown-key rule
+        // (see `localizationKeyText.ts`); the value is computed where it is read, in
+        // `graphParamResolvers.ts`, which is also where reading it records the player's language.
+        type: BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT,
+        assetNames: "written",
+        displayName: "Translation Key Text",
+        description: "blueprint.nodeDescription.translationKeyText",
+        category: "Localization",
+        keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup", "pure", "value"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        pins: [
+            {
+                id: "key",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Key",
+            },
+            {
+                id: "value",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Text",
+            },
+        ],
+        inspectorParams: [
+            { key: "key", label: "Key", kind: "select", dynamicOptionsSource: "localizationKeys" },
+        ],
+        execute: () => ({}),
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT,
@@ -216,9 +258,17 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        // Superseded by Format, which fills the same `{0}` placeholders from an array, also fills
+        // `{name}` from an object, takes the array a Make Array builds (this node's `list` pin accepts
+        // only an untyped value), and is pure - so it is the one that works in a Blueprint Value and a
+        // function, with a template from Translation Key Text. Kept registered, executing exactly as it
+        // always has, so graphs that already hold one keep running; out of the palette so the catalogue
+        // stops offering two formatters.
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
         assetNames: "assembled",
         displayName: "Format Text",
+        description: "blueprint.nodeDescription.formatText",
+        hideInPalette: true,
         category: "Localization",
         keywords: ["localization", "format", "placeholder", "interpolate", "template", "text"],
         graphKinds: ["event", "macro"],

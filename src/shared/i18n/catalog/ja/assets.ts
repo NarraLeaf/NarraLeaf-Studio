@@ -165,6 +165,7 @@ export const assets = {
         list: "リスト表示",
         icons: "アイコン表示",
         overview: "概要",
+        details: "詳細表示",
     },
     filter: {
         label: "絞り込み",
@@ -184,6 +185,15 @@ export const assets = {
     },
     list: {
         emptyFiltered: "現在の絞り込みに一致するアセットがない",
+    },
+    browser: {
+        results: {
+            other: "{count} 件の結果",
+        },
+        selected: {
+            other: "{count} 件を選択",
+        },
+        location: "場所",
     },
     iconView: {
         updating: "更新している…",
@@ -389,13 +399,13 @@ export const assets = {
             locale: "言語",
             release: "バリアント",
         },
-        deletedVariant: "削除されたバリアント",
+        deletedVariant: "削除された値",
         variantCount: {
-            one: "バリアント {count} 件",
-            other: "バリアント {count} 件",
+            one: "値 {count} 件",
+            other: "値 {count} 件",
         },
-        variantsResolved: "バリアント {total} 件中 {resolved} 件",
-        unfinished: "バリアント未宣言",
+        variantsResolved: "値 {total} 件中 {resolved} 件",
+        unfinished: "値が未宣言",
         inUseTitle: "{name} はまだ使われている",
         inUseMessage: "次の箇所がこれを指定しており、解決できなくなる：",
         deleteConfirmMessage: "このアセットセットの中のファイルもすべて削除される",
@@ -410,7 +420,7 @@ export const assets = {
         },
         create: {
             title: "アセットセットの新規作成",
-            subTitle: "このバリアントの下にセットを作成",
+            subTitle: "この値の下にセットを作成",
             no: {
                 locale: "このプロジェクトの言語は 1 つ。",
                 release: "このプロジェクトにバリアントはない。",
@@ -422,9 +432,9 @@ export const assets = {
             axes: "変化の軸",
             filter: "メンバー共通のタグ",
             residencyBlocked: "バリアントによって変わるセットは、言語によって変わるセットの下に置けない。",
-            fallback: "既定のバリアント",
-            fallbackMissing: "このバリアントにファイルがないため、セット全体が解決できない。",
-            variants: "バリアント",
+            fallback: "既定の値",
+            fallbackMissing: "この値にファイルがないため、セット全体が解決できない。",
+            variants: "値",
             variantInherited: "既定",
             variantMissing: "ファイルなし",
             variantAmbiguous: "ファイル {count} 件",

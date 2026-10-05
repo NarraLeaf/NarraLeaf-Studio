@@ -6,7 +6,7 @@ import {
     plainTextEditPatch,
     type MarkedLabelProps,
 } from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
-import { labelSourceOf, type LabelSource } from "@/lib/ui-editor/widget-modules/shared/text/labelSource";
+import { requireUITextSite, uiTextSourceOf, type UITextSource } from "@shared/types/ui-editor/textSource";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "./types";
 
 export function getButtonProps(element: UIElement): ButtonWidgetProps {
@@ -30,12 +30,15 @@ export const BUTTON_MARKED_LABEL: MarkedLabelProps = {
     write: (label, rich) => ({ label, rich }),
 };
 
+/** The button's site (`textSites.ts`). */
+export const BUTTON_SITE = requireUITextSite("nl.button");
+
 /**
  * The source a stored button's `label` is read from - derived, not stored, in the order the game
- * resolves it (`labelSourceOf`): a key wins over the button's own label and over a Blueprint Value.
+ * resolves it (`uiTextSourceOf`): a key wins over the button's own label and over a Blueprint Value.
  */
-export function buttonLabelSourceOf(element: UIElement, keysApply: boolean): LabelSource | null {
-    return labelSourceOf(element, "label", getButtonProps(element).localizationKey, keysApply);
+export function buttonLabelSourceOf(element: UIElement): UITextSource | null {
+    return uiTextSourceOf(element, BUTTON_SITE);
 }
 
 /** The props patch that writes a button's label from a box that holds plain text; see `textValuePatch`. */

@@ -21,10 +21,12 @@ import {
     extractUiTranslationRows,
     type TranslatableUnitRef,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows } from "@/lib/workspace/services/localization/pluginWords";
 import { countBlockWords } from "@/lib/workspace/stats/storyTextStats";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { readProjectTextWriters } from "@/lib/workspace/services/ui-editor/blueprint/projectTextWriters";
 
 /**
  * How many speakers the snapshot keeps, busiest first. Everything past it is folded into one
@@ -426,7 +428,10 @@ async function collectTranslatableRows(
         }
     }
     const uiDocument = ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
-    for (const row of extractUiTranslationRows(uiDocument)) {
+    for (const row of extractUiTranslationRows(uiDocument, readProjectTextWriters(ctx.services))) {
+        rows.push({ unitId: row.unitId, sourceText: row.sourceText });
+    }
+    for (const row of listPluginWordsRows()) {
         rows.push({ unitId: row.unitId, sourceText: row.sourceText });
     }
     const keysDocument =

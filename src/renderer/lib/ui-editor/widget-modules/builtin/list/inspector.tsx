@@ -25,6 +25,7 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { i18nStore, useTranslation } from "@/lib/i18n";
+import { useFloatingLayer, useHostDocument, useHostWindow } from "@/lib/components/layout";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel, type UIStructDef, type UIStructField } from "@shared/types/ui-editor/struct";
 import { ListContentModal } from "./ListContentModal";
@@ -197,6 +198,8 @@ function ListContentPaddingEditor({
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const hostWindow = useHostWindow();
+    const hostDocument = useHostDocument();
 
     useEffect(() => {
         setSidesOpen(false);
@@ -242,6 +245,16 @@ function ListContentPaddingEditor({
 
     const closeSides = useCallback(() => setSidesOpen(false), []);
 
+    // Focus goes into the popover, Escape closes it without reaching the inspector it was opened
+    // from (portal events bubble through the React tree), Tab out of it closes it, and closing hands
+    // focus back to the chevron.
+    useFloatingLayer({
+        open: sidesOpen,
+        onClose: closeSides,
+        panelRef,
+        ownerRefs: [anchorRef],
+    });
+
     useLayoutEffect(() => {
         if (!sidesOpen || !anchorRef.current) {
             return;
@@ -255,17 +268,17 @@ function ListContentPaddingEditor({
             const rect = anchor.getBoundingClientRect();
             const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 140;
             const viewportPadding = 8;
-            const width = Math.min(Math.max(rect.width, 260), window.innerWidth - viewportPadding * 2);
+            const width = Math.min(Math.max(rect.width, 260), hostWindow.innerWidth - viewportPadding * 2);
             let left = rect.left;
             let top = rect.bottom + 6;
 
-            if (left + width > window.innerWidth - viewportPadding) {
-                left = window.innerWidth - width - viewportPadding;
+            if (left + width > hostWindow.innerWidth - viewportPadding) {
+                left = hostWindow.innerWidth - width - viewportPadding;
             }
             if (left < viewportPadding) {
                 left = viewportPadding;
             }
-            if (top + panelHeight > window.innerHeight - viewportPadding) {
+            if (top + panelHeight > hostWindow.innerHeight - viewportPadding) {
                 top = rect.top - panelHeight - 6;
             }
             if (top < viewportPadding) {
@@ -276,13 +289,13 @@ function ListContentPaddingEditor({
         };
 
         updatePosition();
-        window.addEventListener("resize", updatePosition);
-        window.addEventListener("scroll", updatePosition, true);
+        hostWindow.addEventListener("resize", updatePosition);
+        hostWindow.addEventListener("scroll", updatePosition, true);
         return () => {
-            window.removeEventListener("resize", updatePosition);
-            window.removeEventListener("scroll", updatePosition, true);
+            hostWindow.removeEventListener("resize", updatePosition);
+            hostWindow.removeEventListener("scroll", updatePosition, true);
         };
-    }, [sidesOpen]);
+    }, [hostWindow, sidesOpen]);
 
     useEffect(() => {
         if (!sidesOpen) {
@@ -300,23 +313,15 @@ function ListContentPaddingEditor({
             closeSides();
         };
 
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                closeSides();
-            }
-        };
-
-        const timer = window.setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown, true);
+        const timer = hostWindow.setTimeout(() => {
+            hostDocument.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
-        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            window.clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown, true);
-            document.removeEventListener("keydown", handleKeyDown);
+            hostWindow.clearTimeout(timer);
+            hostDocument.removeEventListener("mousedown", handlePointerDown, true);
         };
-    }, [closeSides, sidesOpen]);
+    }, [closeSides, hostDocument, hostWindow, sidesOpen]);
 
     const sides = [
         { key: "contentPaddingTop" as const, label: t("widgets.sides.top") },
@@ -373,7 +378,7 @@ function ListContentPaddingEditor({
                           </div>
                       </fieldset>
                   </div>,
-                  globalThis.document.body,
+                  hostDocument.body,
               )
             : null;
 
@@ -930,7 +935,7 @@ export function createListInspector(ctx: InspectorContext) {
                                 type: "select",
                                 label: t("widgets.list.runtimeItems"),
                                 options: [
-                                    { value: "none", label: t("widgets.list.runtimePreviewOnly") },
+                                    { value: "none", label: t("widgets.list.runtimeListContent") },
                                     { value: "surfaceState", label: t("widgets.list.runtimePageState") },
                                     { value: "globalState", label: t("widgets.list.runtimeAppState") },
                                     { value: "pageProp", label: t("widgets.list.runtimePageProps") },

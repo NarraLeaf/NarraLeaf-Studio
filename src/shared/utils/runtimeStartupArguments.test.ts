@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import {
     ALLOWED_STARTUP_SWITCHES,
@@ -10,6 +12,13 @@ import {
     REFUSAL_LOG_PREFIX,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
+    SANDBOX_ENVIRONMENT_VARIABLE,
+    SANDBOX_FALLBACK_NOTICE,
+    SANDBOX_PROBE,
+    SANDBOX_SWITCH,
+    environmentDisablesSandbox,
+    startupSwitchNames,
+    type SandboxLaunchFacts,
 } from "./runtimeStartupArguments";
 
 /**
@@ -206,6 +215,19 @@ describe("the masked guard table", () => {
         "inspect-publish-uid",
     ];
     const EXPECTED_REFUSAL = "refusing to start: this build does not accept ";
+    const EXPECTED_SANDBOX = {
+        switchName: "no-sandbox",
+        environmentVariable: "ELECTRON_DISABLE_SANDBOX",
+        helper: "chrome-sandbox",
+        programs: ["/usr/bin/unshare", "/bin/unshare"],
+        programArguments: ["-Ur", "true"],
+        restrictions: [
+            "/proc/sys/kernel/unprivileged_userns_clone=0",
+            "/proc/sys/user/max_user_namespaces=0",
+            "/proc/sys/kernel/apparmor_restrict_unprivileged_userns=1",
+        ],
+        notice: "accepting a launch without the sandbox this machine cannot provide: ",
+    };
     const decoded = {
         seed: 91,
         step: 31,
@@ -213,18 +235,55 @@ describe("the masked guard table", () => {
         debugging: EXPECTED_DEBUGGING,
         logs: "use-logs",
         refusalPrefix: EXPECTED_REFUSAL,
+        fallback: EXPECTED_SANDBOX,
     };
+    /** Every name and line the table holds, none of which may appear as a literal. */
+    const PLAINTEXT = [
+        ...EXPECTED_ALLOWED,
+        ...EXPECTED_DEBUGGING,
+        EXPECTED_REFUSAL,
+        "no-sandbox",
+        "ELECTRON_DISABLE_SANDBOX",
+        "chrome-sandbox",
+        "/usr/bin/unshare",
+        "/bin/unshare",
+        "/proc/sys",
+        "userns",
+        EXPECTED_SANDBOX.notice,
+    ];
 
     it("decodes to exactly the names and text the guard is written against", () => {
         expect(ALLOWED_STARTUP_SWITCHES).toEqual(EXPECTED_ALLOWED);
         expect(DEBUGGING_SWITCHES).toEqual(EXPECTED_DEBUGGING);
         expect(RUNTIME_LOGS_SWITCH).toBe("use-logs");
         expect(REFUSAL_LOG_PREFIX).toBe(EXPECTED_REFUSAL);
+        expect(SANDBOX_SWITCH).toBe(EXPECTED_SANDBOX.switchName);
+        expect(SANDBOX_ENVIRONMENT_VARIABLE).toBe(EXPECTED_SANDBOX.environmentVariable);
+        expect(SANDBOX_FALLBACK_NOTICE).toBe(EXPECTED_SANDBOX.notice);
+        expect(SANDBOX_PROBE).toEqual({
+            helper: "chrome-sandbox",
+            programs: ["/usr/bin/unshare", "/bin/unshare"],
+            programArguments: ["-Ur", "true"],
+            restrictions: [
+                { file: "/proc/sys/kernel/unprivileged_userns_clone", value: "0" },
+                { file: "/proc/sys/user/max_user_namespaces", value: "0" },
+                { file: "/proc/sys/kernel/apparmor_restrict_unprivileged_userns", value: "1" },
+            ],
+        });
+    });
+
+    it("carries none of it in the module's code", () => {
+        // The module's source without its comments is what ends up in a shipped main.js.
+        const source = fs.readFileSync(path.join(__dirname, "runtimeStartupArguments.ts"), "utf-8");
+        const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+        for (const name of PLAINTEXT) {
+            expect(code).not.toContain(name);
+        }
     });
 
     it("masks every name and the refusal line, and round-trips under its key", () => {
         const blob = buildGuardMaskTable(decoded);
-        for (const name of [...EXPECTED_ALLOWED, ...EXPECTED_DEBUGGING, EXPECTED_REFUSAL]) {
+        for (const name of PLAINTEXT) {
             expect(blob).not.toContain(name);
         }
         expect(parseGuardMaskTable(blob)).toEqual(decoded);
@@ -237,8 +296,138 @@ describe("the masked guard table", () => {
         expect(one).not.toBe(two);
         expect(parseGuardMaskTable(two).allowed).toEqual(EXPECTED_ALLOWED);
         expect(parseGuardMaskTable(two).refusalPrefix).toBe(EXPECTED_REFUSAL);
-        for (const name of [...EXPECTED_ALLOWED, ...EXPECTED_DEBUGGING, EXPECTED_REFUSAL]) {
+        expect(parseGuardMaskTable(two).fallback).toEqual(EXPECTED_SANDBOX);
+        for (const name of PLAINTEXT) {
             expect(two).not.toContain(name);
         }
+    });
+});
+
+/**
+ * The one situation the sandbox switch is accepted in: Linux, on a machine the game finds cannot
+ * provide a sandbox. Everything else refuses it, the environment variable that turns into it included.
+ *
+ * The machine is examined through a function the review calls, and the tests count the calls: an
+ * ordinary launch, and every launch on another platform, must never examine it at all.
+ */
+describe("running without the sandbox", () => {
+    function facts(overrides: Partial<Omit<SandboxLaunchFacts, "machineCapable">> & { canSandbox?: boolean } = {}) {
+        let asked = 0;
+        const { canSandbox = true, ...rest } = overrides;
+        const launch: SandboxLaunchFacts = {
+            inEffect: false,
+            environment: false,
+            machineCapable: () => {
+                asked += 1;
+                return canSandbox;
+            },
+            ...rest,
+        };
+        return { launch, asked: () => asked };
+    }
+    const reviewWith = (args: string[], platform: NodeJS.Platform, launch: SandboxLaunchFacts) =>
+        reviewStartupArguments(args, platform, ALLOWED_STARTUP_SWITCHES, launch);
+
+    it("accepts the switch on a Linux machine that cannot sandbox", () => {
+        const machine = facts({ inEffect: true, canSandbox: false });
+        const result = reviewWith(["--no-sandbox"], "linux", machine.launch);
+        expect(result.refused).toEqual([]);
+        expect(result.fallback).toBe("accepted");
+        expect(machine.asked()).toBe(1);
+    });
+
+    it("refuses it on a Linux machine that can", () => {
+        const machine = facts({ inEffect: true, canSandbox: true });
+        const result = reviewWith(["--no-sandbox"], "linux", machine.launch);
+        expect(result.refused).toEqual(["--no-sandbox"]);
+        expect(result.fallback).toBe("refused");
+    });
+
+    it("refuses it on Windows and macOS without examining anything", () => {
+        for (const platform of ["win32", "darwin"] as const) {
+            const machine = facts({ inEffect: true, canSandbox: false });
+            expect(reviewWith(["--no-sandbox"], platform, machine.launch).refused).toEqual(["--no-sandbox"]);
+            expect(machine.asked()).toBe(0);
+        }
+    });
+
+    it("examines nothing for an ordinary launch", () => {
+        const machine = facts({ canSandbox: false });
+        const result = reviewWith(["--disable-gpu"], "linux", machine.launch);
+        expect(result).toEqual({ refused: [], removable: ["disable-gpu"], fallback: "not-asked" });
+        expect(machine.asked()).toBe(0);
+    });
+
+    it("reads every spelling Chromium reads", () => {
+        // A single dash is a switch on POSIX, and a value does not stop Chromium seeing the switch.
+        for (const spelling of ["-no-sandbox", "--no-sandbox=1"]) {
+            expect(reviewWith([spelling], "linux", facts({ canSandbox: false }).launch).refused).toEqual([]);
+            expect(reviewWith([spelling], "linux", facts({ canSandbox: true }).launch).refused).toEqual([spelling]);
+        }
+        expect(reviewWith(["/No-Sandbox"], "win32", facts({ canSandbox: false }).launch).refused).toEqual(["/No-Sandbox"]);
+    });
+
+    it("still refuses everything else on the same command line", () => {
+        const result = reviewWith(["--no-sandbox", "--remote-debugging-port=9222"], "linux", facts({ canSandbox: false }).launch);
+        expect(result.refused).toEqual(["--remote-debugging-port=9222"]);
+        expect(result.fallback).toBe("accepted");
+    });
+
+    it("treats the environment variable as the switch, and names it when refusing", () => {
+        // Electron has already put the switch on Chromium's command line; argv does not show it.
+        const variable = { inEffect: true, environment: true };
+        expect(reviewWith([], "linux", facts({ ...variable, canSandbox: false }).launch).refused).toEqual([]);
+        expect(reviewWith([], "linux", facts({ ...variable, canSandbox: true }).launch).refused)
+            .toEqual(["ELECTRON_DISABLE_SANDBOX"]);
+        const windows = facts({ ...variable, canSandbox: false });
+        const refused = reviewWith([], "win32", windows.launch);
+        expect(refused.refused).toEqual(["ELECTRON_DISABLE_SANDBOX"]);
+        // Taken off Chromium's command line with everything else when the launch is refused.
+        expect(refused.removable).toEqual(["no-sandbox"]);
+        expect(windows.asked()).toBe(0);
+    });
+
+    it("names both routes when both were used", () => {
+        expect(reviewWith(["--no-sandbox"], "darwin", facts({ inEffect: true, environment: true }).launch).refused)
+            .toEqual(["--no-sandbox", "ELECTRON_DISABLE_SANDBOX"]);
+    });
+
+    it("leaves alone a variable Electron did not act on", () => {
+        // Chromium's command line is the authority on whether the sandbox will be off.
+        const machine = facts({ inEffect: false, environment: true });
+        expect(reviewWith([], "win32", machine.launch)).toEqual({ refused: [], removable: [], fallback: "not-asked" });
+    });
+
+    it("names the switch when nothing visible explains it", () => {
+        expect(reviewWith([], "win32", facts({ inEffect: true }).launch).refused).toEqual(["--no-sandbox"]);
+    });
+
+    it("does not read the switch after the argument terminator, where Chromium does not either", () => {
+        const machine = facts({ canSandbox: false });
+        const result = reviewWith(["--", "--no-sandbox"], "linux", machine.launch);
+        expect(result.refused).toEqual(["--no-sandbox"]);
+        expect(result.fallback).toBe("not-asked");
+        expect(machine.asked()).toBe(0);
+    });
+
+    it("refuses it when no facts are given, which is how every other caller reviews", () => {
+        expect(reviewStartupArguments(["--no-sandbox"], "linux").refused).toEqual(["--no-sandbox"]);
+        expect(startupSwitchNames(["--no-sandbox", "--use-logs"], "linux")).toEqual(["no-sandbox", "use-logs"]);
+    });
+});
+
+describe("environmentDisablesSandbox", () => {
+    it("reads presence, as Electron does, rather than the value", () => {
+        for (const value of ["1", "0", "false"]) {
+            expect(environmentDisablesSandbox({ ELECTRON_DISABLE_SANDBOX: value }, "linux")).toBe(true);
+            expect(environmentDisablesSandbox({ ELECTRON_DISABLE_SANDBOX: value }, "win32")).toBe(true);
+        }
+        expect(environmentDisablesSandbox({}, "linux")).toBe(false);
+    });
+
+    it("counts an empty variable where getenv does, and not on Windows", () => {
+        expect(environmentDisablesSandbox({ ELECTRON_DISABLE_SANDBOX: "" }, "linux")).toBe(true);
+        expect(environmentDisablesSandbox({ ELECTRON_DISABLE_SANDBOX: "" }, "darwin")).toBe(true);
+        expect(environmentDisablesSandbox({ ELECTRON_DISABLE_SANDBOX: "" }, "win32")).toBe(false);
     });
 });

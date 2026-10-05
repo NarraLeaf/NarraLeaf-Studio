@@ -65,9 +65,28 @@ const compilePlayback = (document: StoryDocument, targetBlockId: string | null) 
 /** Per-statement action-type arrays of the compiled preview scene. */
 function sceneStatementTypes(scene: unknown): string[][] {
     const statements = ((scene as { actions?: unknown[] }).actions ?? []) as unknown[];
-    return statements.map(statement => DevTools.chainToActions(statement as any)
-        .flat(Number.POSITIVE_INFINITY)
-        .map((action: any) => action?.type as string));
+    return statements.map(statement => statementActions(statement).map((action: any) => action?.type as string));
+}
+
+/**
+ * The actions one of the scene's statements stands for. The compiler hands a scene each statement
+ * already turned into its actions (so they can be named); a chain or a list of either is read the way
+ * the engine reads it.
+ */
+function statementActions(statement: any): any[] {
+    if (Array.isArray(statement)) {
+        return statement.flatMap(statementActions);
+    }
+    if (typeof statement?.getActions === "function") {
+        return DevTools.chainToActions(statement).flat(Number.POSITIVE_INFINITY).flatMap(statementActions);
+    }
+    return statement ? [statement] : [];
+}
+
+/** Whether the scene runs a menu: the menu's action, which the compiler builds from the Menu chain. */
+function sceneHasMenu(scene: unknown): boolean {
+    const statements = ((scene as { actions?: unknown[] }).actions ?? []) as unknown[];
+    return statements.flatMap(statementActions).some(action => action?.type === "menu:action");
 }
 
 describe("compileStagePreviewToNlr", () => {
@@ -183,8 +202,7 @@ describe("compileStagePreviewToNlr", () => {
         };
         const document = baseDocument(blocks, ["choice"]);
         const compiled = await compilePreview(document, "choice");
-        const statements = ((compiled.scene as { actions?: unknown[] }).actions ?? []) as unknown[];
-        expect(statements.some(statement => Array.isArray((statement as { choices?: unknown })?.choices))).toBe(true);
+        expect(sceneHasMenu(compiled.scene)).toBe(true);
     });
 
     it("carries snapshot diagnostics into the compiled diagnostics", async () => {
@@ -233,8 +251,7 @@ describe("compileStagePreviewToNlr", () => {
             const boundBlockIds = compiled.actionIdBindings.map(binding => binding.blockId);
             expect(boundBlockIds).toEqual(["a-say", "after"]);
             // No menu is rendered: the choice was made by starting here.
-            const statements = ((compiled.scene as { actions?: unknown[] }).actions ?? []) as unknown[];
-            expect(statements.some(statement => Array.isArray((statement as { choices?: unknown })?.choices))).toBe(false);
+            expect(sceneHasMenu(compiled.scene)).toBe(false);
         });
 
         it("holds before a scene jump and reports where playback ended", async () => {

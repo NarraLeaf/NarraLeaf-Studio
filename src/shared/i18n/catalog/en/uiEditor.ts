@@ -18,8 +18,8 @@ export const uiEditor = {
     ownerLabel: {
         globalMain: "App logic",
         surfaceMain: "Page logic",
-        widgetMain: "Component logic",
-        widgetValue: "Component value",
+        widgetMain: "Widget logic",
+        widgetValue: "Widget value",
         storyAction: "Story action",
     },
     // The five stage slots a Game UI can take. Named once here because the author meets the same
@@ -44,8 +44,8 @@ export const uiEditor = {
         createGameUi: "Create Game UI",
         globalSubtitle: "Global",
         blueprintType: "Blueprint",
-        openGlobalBlueprint: "Open global blueprint",
-        globalBlueprintUnavailable: "Global blueprint unavailable",
+        openGlobalBlueprint: "Open App logic",
+        globalBlueprintUnavailable: "App logic unavailable",
         openSurface: "Open {label}",
         renameSurface: "Rename {label}",
         duplicateSurface: "Duplicate {label}",
@@ -60,6 +60,11 @@ export const uiEditor = {
         pageValidationHint: "Check the page name and size before creating it.",
         gameUiSlotHint: "Select an available Game UI slot before creating it.",
         allSlotsUsed: "All Game UI slots already have a surface. Open an existing Game UI from the list.",
+        // Offered while no page has anything on it. The page comes from the starter template.
+        starterTitlePage: {
+            title: "Create Title Page",
+            description: "Includes Start and Continue buttons with their blueprints. Replaces the empty entry page.",
+        },
     },
     naming: {
         page: "Page {index}",
@@ -173,6 +178,9 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "Unknown widget",
         widgetRenderFailed: "Widget failed to draw",
+        wordsFromRowField: "These words come from the list row field “{field}”.",
+        wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
+        wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
     },
     editor: {
         componentNotFound: "Component not found",
@@ -223,7 +231,7 @@ export const uiEditor = {
         showSelected: "Show selected",
         hideSelected: "Hide selected",
         addToComponentLibrary: "Add to Component Library",
-        addToGroup: "Add to group",
+        group: "Group",
         ungroup: "Ungroup",
         addState: "Add state",
         arrange: {

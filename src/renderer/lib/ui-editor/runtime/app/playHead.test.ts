@@ -93,21 +93,18 @@ async function compiledRun(): Promise<{
 }
 
 describe("what a returnable jump actually compiles to", () => {
-    it("leaves the action that throws unnamed, and names the one that runs before it", async () => {
-        // The premise the whole resolution rests on, checked against a real compile rather than
-        // assumed. `scene:preSuspend` - the action that refuses a call to a scene already on the
-        // stage - is the engine's own machinery, so it carries a positional id and is in no binding
-        // table. That is why resolving the CURRENT action alone reported this failure as having no
-        // place in the author's story at all.
+    it("names the action that throws after the jump row it was built for", async () => {
+        // `scene:preSuspend` - the action that refuses a call to a scene already on the stage - is the
+        // engine's own machinery, built inside the jump row's statement. It used to carry a positional
+        // id and sit in no binding table, so a failure it raised was placed by the row before it; the
+        // compiler now names it from the jump row, so the failure carries that row's name itself.
         const { actions, bindings } = await compiledRun();
 
         const preSuspend = actions.find(action => action.type === "scene:preSuspend");
-        expect(preSuspend).toBeDefined();
-        expect(preSuspend?.named).toBe(false);
-        expect(preSuspend?.id).toMatch(/^a-\d+$/);
-        expect(bindings.some(binding => binding.staticId === preSuspend?.id)).toBe(false);
+        expect(preSuspend?.id).toBe("nl:action:scene-1:j:scene:preSuspend:0");
+        expect(bindings.find(binding => binding.staticId === preSuspend?.id)?.blockId).toBe("j");
 
-        // And the action immediately before it is the jump row's own.
+        // And the action immediately before it is the jump row's own, as it always was.
         const index = actions.findIndex(action => action.type === "scene:preSuspend");
         const before = actions[index - 1];
         expect(before?.type).toBe("control:do");
@@ -130,7 +127,7 @@ describe("the play head over a real run", () => {
             }
         }
 
-        expect(playHead.actionId()).toMatch(/^a-\d+$/);
+        expect(playHead.actionId()).toBe("nl:action:scene-1:j:scene:preSuspend:0");
         expect(playHead.blockId()).toBe("j");
     });
 

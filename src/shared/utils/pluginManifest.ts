@@ -27,6 +27,7 @@ import {
     type PluginManifestV2,
     type PluginSidecarContribution,
     type PluginSidecarTargetContribution,
+    type PluginWidgetTextContribution,
 } from "../types/plugins";
 
 export type PluginManifestValidationResult =
@@ -281,6 +282,7 @@ const CONTRIBUTES_KEYS = [
     "buildConfig",
     "externalLinks",
     "network",
+    "widgetText",
 ] as const;
 
 /**
@@ -355,6 +357,7 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         buildConfig: [],
         externalLinks: [],
         network: [],
+        widgetText: {},
     };
     if (value === undefined) {
         return empty;
@@ -454,7 +457,117 @@ function validateContributes(value: unknown, pluginId: string): Required<PluginC
         result.network = patterns;
     }
 
+    if (value.widgetText !== undefined) {
+        const widgetText = validateWidgetText(value.widgetText, result.widgets);
+        if (typeof widgetText === "string") {
+            return widgetText;
+        }
+        result.widgetText = widgetText;
+    }
+
     return result;
+}
+
+/** A widget prop name: what the element's props are keyed by, and what the `.ui` format writes. */
+const WIDGET_PROP_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Props a drawing writes onto the element it hands a widget, which a declaration may not claim: the
+ * host would overwrite the words with its own bookkeeping, or read the words as it.
+ */
+const RESERVED_WIDGET_TEXT_PROPS: readonly string[] = ["runtimeTextOrigin", "runtimeTextUnit"];
+
+/**
+ * The words-holding props of each contributed widget.
+ *
+ * Refused rather than repaired, as every other declaration here is, because the install prompt is
+ * where the plugin's author learns of a mistake soonest:
+ *
+ *  - a widget type the plugin does not list in `widgets`, which no element can ever be;
+ *  - a prop or key prop that is not a plain identifier, or that names one of the props the drawing
+ *    writes itself;
+ *  - the same prop twice, a key prop that is one of the word props, or one key prop shared by two
+ *    word props - each of those leaves two sources of words in one place, which is the shape every
+ *    interface text is kept out of;
+ *  - a `localized` label under a code that is not a locale code, or an empty one.
+ *
+ * The key prop is filled in when it was left out (`<prop>LocalizationKey`), so every reader past
+ * this point has one answer for where a widget keeps its key.
+ */
+function validateWidgetText(
+    value: unknown,
+    widgets: readonly string[],
+): Record<string, PluginWidgetTextContribution[]> | string {
+    if (!isRecord(value)) {
+        return "Plugin contributes.widgetText must be an object keyed by widget type";
+    }
+    const out: Record<string, PluginWidgetTextContribution[]> = {};
+    for (const [type, raw] of Object.entries(value)) {
+        if (!widgets.includes(type)) {
+            return `Plugin contributes.widgetText names a widget not declared in contributes.widgets: ${type}`;
+        }
+        if (!Array.isArray(raw) || raw.length === 0) {
+            return `Plugin contributes.widgetText["${type}"] must be a non-empty array of text props`;
+        }
+        const entries: PluginWidgetTextContribution[] = [];
+        const claimed = new Set<string>();
+        for (const item of raw) {
+            if (!isRecord(item)) {
+                return `Plugin contributes.widgetText["${type}"] entries must be objects with a prop`;
+            }
+            const prop = typeof item.prop === "string" ? item.prop.trim() : "";
+            if (!WIDGET_PROP_NAME_PATTERN.test(prop) || RESERVED_WIDGET_TEXT_PROPS.includes(prop)) {
+                return `Plugin contributes.widgetText["${type}"] has an invalid prop: ${JSON.stringify(item.prop)}`;
+            }
+            const keyProp = item.keyProp === undefined
+                ? `${prop}LocalizationKey`
+                : typeof item.keyProp === "string" ? item.keyProp.trim() : "";
+            if (!WIDGET_PROP_NAME_PATTERN.test(keyProp) || RESERVED_WIDGET_TEXT_PROPS.includes(keyProp)) {
+                return `Plugin contributes.widgetText["${type}"] prop "${prop}" has an invalid keyProp: ${JSON.stringify(item.keyProp)}`;
+            }
+            if (keyProp === prop) {
+                return `Plugin contributes.widgetText["${type}"] prop "${prop}" keeps its key in itself`;
+            }
+            for (const name of [prop, keyProp]) {
+                if (claimed.has(name)) {
+                    return `Plugin contributes.widgetText["${type}"] declares "${name}" more than once`;
+                }
+                claimed.add(name);
+            }
+            if (item.label !== undefined && typeof item.label !== "string") {
+                return `Plugin contributes.widgetText["${type}"] prop "${prop}" label must be a string`;
+            }
+            if (item.multiline !== undefined && typeof item.multiline !== "boolean") {
+                return `Plugin contributes.widgetText["${type}"] prop "${prop}" multiline must be true or false`;
+            }
+            let localized: Record<string, string> | undefined;
+            if (item.localized !== undefined) {
+                if (!isRecord(item.localized)) {
+                    return `Plugin contributes.widgetText["${type}"] prop "${prop}" localized must be an object keyed by locale code`;
+                }
+                localized = {};
+                for (const [code, label] of Object.entries(item.localized)) {
+                    if (!LOCALE_CODE_PATTERN.test(code)) {
+                        return `Plugin contributes.widgetText["${type}"] prop "${prop}" localized has an invalid locale code: ${code}`;
+                    }
+                    if (typeof label !== "string" || !label.trim()) {
+                        return `Plugin contributes.widgetText["${type}"] prop "${prop}" localized["${code}"] must be a non-empty string`;
+                    }
+                    localized[code] = label;
+                }
+            }
+            const label = typeof item.label === "string" && item.label.trim() ? item.label : undefined;
+            entries.push({
+                prop,
+                keyProp,
+                ...(label ? { label } : {}),
+                ...(localized && Object.keys(localized).length > 0 ? { localized } : {}),
+                ...(item.multiline === true ? { multiline: true } : {}),
+            });
+        }
+        out[type] = entries;
+    }
+    return out;
 }
 
 /**
@@ -722,8 +835,10 @@ function validateSidecars(
             return `Plugin sidecar "${id}" kind must be "executable" or "node"`;
         }
         const transport = item.transport ?? SIDECAR_DEFAULTS.transport;
-        if (transport !== "stdio-jsonl") {
-            return `Plugin sidecar "${id}" transport must be "stdio-jsonl"`;
+        // `jsonl` names the framing; `stdio-jsonl` is its older spelling and stays valid for
+        // manifests already published with it.
+        if (transport !== "jsonl" && transport !== "stdio-jsonl") {
+            return `Plugin sidecar "${id}" transport must be "jsonl" (or the older "stdio-jsonl")`;
         }
         const autostart = item.autostart ?? SIDECAR_DEFAULTS.autostart;
         if (autostart !== "onGameStart" && autostart !== "onRequest") {

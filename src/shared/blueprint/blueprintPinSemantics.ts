@@ -203,7 +203,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.element.list.isScrolledToEnd", "blueprint.element.list.isScrolledToStart",
     "blueprint.list.getScrollProgress", "blueprint.list.getScrollOffset",
     "blueprint.list.isScrolledToEnd", "blueprint.list.isScrolledToStart",
-    "blueprint.local.declareVar", "blueprint.local.get",
+    "blueprint.local.declareVar", "blueprint.local.get", "blueprint.localization.keyText",
     "blueprint.math.abs", "blueprint.math.add", "blueprint.math.ceil",
     "blueprint.math.decrement", "blueprint.math.divide", "blueprint.math.equal", "blueprint.math.floor",
     "blueprint.math.greater", "blueprint.math.greaterOrEqual", "blueprint.math.increment",
@@ -371,10 +371,13 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 
-/** Flow ends here: `in` arrives and nothing leaves. Returns, and the three ways to leave a game. */
+/**
+ * Flow ends here: `in` arrives and nothing leaves. Returns, the three ways to leave a game, and the
+ * page change that takes the asking page off the screen.
+ */
 const TAIL_NODE_TYPES: readonly string[] = [
     "blueprint.data.returnValue", "blueprint.flow.return", "blueprint.fn.return", "blueprint.game.quit",
-    "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit",
+    "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit", "blueprint.page.replace",
 ];
 
 /** The three loops. `loop` runs the body, `completed` carries on once it stops. */

@@ -24,6 +24,7 @@ import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
+import { uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import {
     UI_INTERACTION_SOUND_KINDS,
     UI_INTERACTION_SOUND_PROP,
@@ -33,6 +34,8 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { queryNodes } from "../blueprint-cli/catalog";
 import { propAssignmentKey } from "./dsl/parse";
 import { cliPluginOwnerOf, listCliPluginWidgetModules } from "./plugins";
 import { nearest } from "./text";
@@ -80,6 +83,12 @@ export type WidgetDetail = WidgetSummary & {
     commands: { id: string; displayName: string; availability: string; description?: string }[];
     readableState: { id: string; displayName: string; description?: string }[];
     writableProps: { propPath: string; displayName: string; description?: string }[];
+    /**
+     * The palette categories of the nodes that act on this widget from its own blueprint - the ones
+     * offered there and nowhere else, event heads aside. They are what an author reaches `commands`,
+     * `readableState` and `writableProps` with; from any other blueprint it is the Element category.
+     */
+    ownBlueprintNodeCategories: string[];
     /** Parts the widget builds for itself when inserted, which an author must not delete. */
     parts: WidgetPartDoc[];
     /** States the widget's own state bar offers, for widgets whose states are not appearance variants. */
@@ -100,13 +109,63 @@ function markedLabelNote(stringProp: string): string {
         + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
 }
 
-/** A translation key replaces a text's or a button's own words - in the game and on the canvas alike. */
-function keyedWordsNote(widget: string, stringProp: string): string {
-    return `A ${widget} with \`localizationKey\` is read from that translation key - in the game, and on the `
-        + `canvas in the project's source language - and its own \`${stringProp}\` is not shown at all. Its `
-        + "words are the key's source text in `editor/localization/keys.json`; writing "
-        + `\`${stringProp}\` changes nothing a player sees. Without the key, \`localizable = true\` translates `
-        + `\`${stringProp}\` through the element's own unit.`;
+/**
+ * Where a widget's words come from: one source, stored once. A translation key replaces the words -
+ * in the game and on the canvas alike - and a keyed widget holds none of its own; without a key the
+ * widget's own words are shown and translated through its own unit.
+ */
+function keyedWordsNote(widget: string, site: UITextSite, keyProp: string): string {
+    const stringProp = site.textProp;
+    return `A ${widget} with \`${keyProp}\` is read from that translation key - in the game, and on the `
+        + `canvas - and holds no \`${stringProp}\` of its own. Its words are the key's source text in `
+        + "`editor/localization/keys.json`, translated as the key; `show` prints them as a comment. "
+        + `Without the key, the ${widget}'s own \`${stringProp}\` is shown, and translated through the `
+        + `element's own unit (\`ui:<elementId>.${stringProp}\`) whenever the project has a second language.`;
+}
+
+/** What a widget is called in a note about its words. */
+const TEXT_SITE_NOUNS: Readonly<Record<string, string>> = {
+    "nl.text": "text",
+    "nl.button": "button",
+    "nl.textInput": "text input",
+};
+
+/**
+ * The notes about a widget's words, read from its text sites (`textSites.ts`, and for a plugin's widget
+ * the props its manifest declares) rather than written per widget, so a widget whose words gain a key
+ * or marks gains the note with them.
+ */
+function textSiteNotes(type: string): string[] {
+    const notes: string[] = [];
+    for (const site of uiTextSitesOf(type)) {
+        if (site.role !== "words") {
+            continue;
+        }
+        if (site.marksProp) {
+            notes.push(markedLabelNote(site.textProp));
+        }
+        if (site.keyProp && site.canvasDrawsKey) {
+            notes.push(keyedWordsNote(TEXT_SITE_NOUNS[type] ?? type, site, site.keyProp));
+        }
+        if (site.valueBinding === "offered") {
+            notes.push(componentParamWordsNote(TEXT_SITE_NOUNS[type] ?? type, site.textProp));
+        }
+    }
+    return notes;
+}
+
+/**
+ * How a widget inside a component shows words each placement gives it: a text parameter, bound the
+ * way a list row's field is, translated per placement.
+ */
+function componentParamWordsNote(widget: string, stringProp: string): string {
+    return `Inside a component definition, \`bind ${stringProp} = param <paramId>\` shows one of the `
+        + "component's text parameters (`param <paramId> <name> type=text = <default>`): every placement "
+        + "draws the value it gives - written directly, `component <id> <paramId>=\"…\"`, or as a key, "
+        + "`<paramId>.key=<key>` - on the canvas and in the game, and no graph is involved. Words written "
+        + "directly are translated through the placement's own unit (`ui:<placementId>.param.<paramId>`), "
+        + "a default through the component's (`ui:<componentId>.param.<paramId>`). The "
+        + `${widget}'s own \`${stringProp}\` is then sample text, drawn only while the component itself is edited.`;
 }
 
 /**
@@ -131,16 +190,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     "nl.button": [
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
             + "flat prop alone leaves the variant row holding the old one; see the container note.",
-        markedLabelNote("label"),
-        keyedWordsNote("button", "label"),
     ],
     "nl.image": [
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
             + "image prop a value blueprint can drive, which is what makes per-row thumbnails possible.",
-    ],
-    "nl.text": [
-        markedLabelNote("text"),
-        keyedWordsNote("text", "text"),
     ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "
@@ -198,8 +251,8 @@ export function findWidgetModule(type: string): UIWidgetModule | undefined {
  *
  * Read from the element the module builds rather than from a type declaration, because the defaults
  * are the only machine-readable statement of what a widget's prop bag holds - the types are erased
- * before anything can ask. A widget may also carry keys no default declares (`localizationKey` is
- * the common one), so this is the shape of a new widget, not a closed set.
+ * before anything can ask. A widget may also carry keys no default declares (the props naming where
+ * its words come from - see `textSites.ts`), so this is the shape of a new widget, not a closed set.
  */
 function readProps(module: UIWidgetModule): Record<string, unknown> {
     try {
@@ -291,10 +344,34 @@ export function describeWidget(type: string): WidgetDetail | null {
         })),
         readableState: (logic?.readableState ?? []).map(state => ({ ...state })),
         writableProps: (logic?.writableProps ?? []).map(prop => ({ ...prop })),
+        ownBlueprintNodeCategories: ownBlueprintNodeCategories(module.type),
         parts: readParts(module),
         editorStates: readEditorStates(module),
-        notes: [...(WIDGET_NOTES[module.type] ?? [])],
+        notes: [...(WIDGET_NOTES[module.type] ?? []), ...textSiteNotes(module.type)],
     };
+}
+
+/**
+ * The categories an author finds a widget's own nodes under in the add-node palette of its blueprint:
+ * Set Visible, Get Selected Index, Refresh List Items and the rest of the List category on a list, and
+ * the Displayable category on anything drawn.
+ *
+ * Read off the question `blueprint.js nodes --owner widgetMain --widget <type>` asks the palette: the
+ * nodes offered on a widget of this type and not on a widget of no particular type. Event heads are
+ * left to the `events` section, which names them one by one.
+ */
+function ownBlueprintNodeCategories(type: string): string[] {
+    registerCoreBlueprintNodes();
+    const onAnyWidget = new Set(queryNodes({ ownerKind: "widgetMain" }).map(node => node.type));
+    const categories = new Set<string>();
+    for (const node of queryNodes({ ownerKind: "widgetMain", widgetElementType: type })) {
+        const role = blueprintNodeRegistry.get(node.type)?.role;
+        if (onAnyWidget.has(node.type) || role === "eventHead" || role === "elementEventHead") {
+            continue;
+        }
+        categories.add(node.category);
+    }
+    return [...categories];
 }
 
 /**
@@ -472,6 +549,13 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
                 : "no private blueprint"
         }${detail.operable ? "; the player operates it, so panel gestures stand down over it" : ""}`,
     );
+    if (detail.commands.length + detail.readableState.length + detail.writableProps.length > 0) {
+        // Where the commands, state and props listed further down are reached from. No one node
+        // reaches them: each widget type has nodes of its own, under the categories named here.
+        const own = detail.ownBlueprintNodeCategories;
+        const inOwn = own.length > 0 ? `${own.join(", ")} in its own blueprint; ` : "";
+        lines.push(`  nodes      ${inOwn}Element in any blueprint`);
+    }
 
     if (detail.parts.length > 0) {
         lines.push("");
@@ -517,9 +601,9 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     }
 
     for (const [title, rows] of [
-        ["commands (Call Widget Command)", detail.commands.map(c => `${c.id}  ${c.displayName}${c.availability === "planned" ? "  (planned)" : ""}`)],
-        ["readable state (Get Widget State)", detail.readableState.map(s => `${s.id}  ${s.displayName}`)],
-        ["writable props (Set Widget Prop)", detail.writableProps.map(p => `${p.propPath}  ${p.displayName}`)],
+        ["commands", detail.commands.map(c => `${c.id}  ${c.displayName}${c.availability === "planned" ? "  (planned)" : ""}`)],
+        ["readable state", detail.readableState.map(s => `${s.id}  ${s.displayName}`)],
+        ["writable props", detail.writableProps.map(p => `${p.propPath}  ${p.displayName}`)],
         ["editor states", detail.editorStates.map(s => `${s.id ?? "(rest)"}  ${s.name}`)],
     ] as const) {
         if (rows.length > 0) {

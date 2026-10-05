@@ -163,11 +163,27 @@ export function ElementAnimationLayer(props: {
             initial={false}
             animate={started ? "animate" : "enter"}
             exit="exit"
+            onUpdate={KEEP_ON_MAIN_THREAD}
         >
             {children}
         </motion.div>
     );
 }
+
+/**
+ * Handed to `onUpdate` so motion animates these layers on the main thread instead of through the
+ * Web Animations API.
+ *
+ * With WAAPI, an element hidden while its enter is still playing - a splash that the player skips
+ * half a second in - did not fade out: it vanished in the next frame. Interrupting an accelerated
+ * opacity animation left motion with a stale value to leave from, so the exit had nothing to do
+ * and finished at once. An `onUpdate` listener is motion's own reason to keep a value off WAAPI
+ * (it cannot report every frame from there), which makes it the switch. The cost is one main-thread
+ * tween per animated element while it moves, which these layers can afford: they exist only on
+ * elements that declare an animation, and only while it plays. MEASURED in Dev Mode: hidden 0.5 s
+ * into a 0.6 s fade-in, the element was gone within 50 ms before, and faded out over ~0.4 s after.
+ */
+const KEEP_ON_MAIN_THREAD = () => undefined;
 
 /**
  * Exactly the content box of the node wrapper above it, which is a column flex container. Anything

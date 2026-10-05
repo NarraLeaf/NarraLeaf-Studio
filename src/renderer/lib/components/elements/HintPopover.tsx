@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { cn } from "../../utils/cn";
+import { useHostWindow } from "../layout/hostWindow";
 
 /** Gap between the trigger icon and the popover. */
 const HINT_GAP_PX = 4;
@@ -32,7 +33,9 @@ export interface AnchoredPanelProps {
 }
 
 /**
- * A panel portalled to `document.body` and placed against an anchor with `fixed` coordinates.
+ * A panel portalled to the body of the window it is drawn in, and placed against an anchor with
+ * `fixed` coordinates. The window is the host's (see `useHostWindow`): in a detached editor that is
+ * the editor's own window, whose body and viewport are the ones the anchor is measured in.
  *
  * The portal is the point. A panel rendered in place is clipped by the first `overflow-hidden`
  * ancestor it meets, and in this app that is nearly always the panel it was opened from — a sidebar,
@@ -45,6 +48,7 @@ export interface AnchoredPanelProps {
  */
 export function AnchoredPanel({ anchor, width, className, role, panelRef, children }: AnchoredPanelProps) {
     const ownRef = useRef<HTMLDivElement | null>(null);
+    const hostWindow = useHostWindow();
     const [style, setStyle] = useState<React.CSSProperties | null>(null);
     // Held in a ref so a caller's inline arrow does not re-run placement on every render.
     const anchorRef = useRef(anchor);
@@ -58,18 +62,18 @@ export function AnchoredPanel({ anchor, width, className, role, panelRef, childr
             }
 
             const panelHeight = (panelRef?.current ?? ownRef.current)?.getBoundingClientRect().height ?? 0;
-            const spaceBelow = window.innerHeight - box.bottom - HINT_GAP_PX;
+            const spaceBelow = hostWindow.innerHeight - box.bottom - HINT_GAP_PX;
             const openAbove = panelHeight > spaceBelow && box.top - HINT_GAP_PX > spaceBelow;
 
             const top = openAbove
                 ? Math.max(HINT_MARGIN_PX, box.top - HINT_GAP_PX - panelHeight)
                 : Math.min(
                       box.bottom + HINT_GAP_PX,
-                      Math.max(HINT_MARGIN_PX, window.innerHeight - HINT_MARGIN_PX - panelHeight),
+                      Math.max(HINT_MARGIN_PX, hostWindow.innerHeight - HINT_MARGIN_PX - panelHeight),
                   );
             const left = Math.max(
                 HINT_MARGIN_PX,
-                Math.min(box.left, window.innerWidth - HINT_MARGIN_PX - width),
+                Math.min(box.left, hostWindow.innerWidth - HINT_MARGIN_PX - width),
             );
 
             setStyle({ position: "fixed", top, left, width });
@@ -77,15 +81,15 @@ export function AnchoredPanel({ anchor, width, className, role, panelRef, childr
 
         position();
         // The first pass runs before the panel has a measurable height; re-run once it does.
-        const raf = requestAnimationFrame(position);
-        window.addEventListener("resize", position);
-        window.addEventListener("scroll", position, true);
+        const raf = hostWindow.requestAnimationFrame(position);
+        hostWindow.addEventListener("resize", position);
+        hostWindow.addEventListener("scroll", position, true);
         return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", position);
-            window.removeEventListener("scroll", position, true);
+            hostWindow.cancelAnimationFrame(raf);
+            hostWindow.removeEventListener("resize", position);
+            hostWindow.removeEventListener("scroll", position, true);
         };
-    }, [panelRef, width]);
+    }, [hostWindow, panelRef, width]);
 
     return createPortal(
         <div
@@ -101,7 +105,7 @@ export function AnchoredPanel({ anchor, width, className, role, panelRef, childr
         >
             {children}
         </div>,
-        document.body,
+        hostWindow.document.body,
     );
 }
 

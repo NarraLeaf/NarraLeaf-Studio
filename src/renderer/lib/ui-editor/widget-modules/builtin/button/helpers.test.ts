@@ -20,26 +20,21 @@ const FIELD = { label: { kind: "listItemField", fieldId: "name" } } as UIElement
 const TEXT_BINDING = { text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" } } as UIElement["valueBindings"];
 
 describe("buttonLabelSourceOf", () => {
-    it("reads a button with its own label as literal, translated through its own unit or not", () => {
-        expect(buttonLabelSourceOf(button({}), true)).toBe("literal");
-        expect(buttonLabelSourceOf(button({ localizable: true }), true)).toBe("literal");
-        expect(buttonLabelSourceOf(button({}, TEXT_BINDING), true)).toBe("literal");
+    it("reads a button with its own label as literal", () => {
+        expect(buttonLabelSourceOf(button({}))).toBe("literal");
+        expect(buttonLabelSourceOf(button({}, TEXT_BINDING))).toBe("literal");
     });
 
-    it("reads a button with both its own label and a key as keyed, which is what the game shows", () => {
-        expect(buttonLabelSourceOf(button({ localizationKey: "config.skipAllText" }), true)).toBe("key");
+    it("reads a button with a key as keyed, whether or not the project has a source language", () => {
+        expect(buttonLabelSourceOf(button({ localizationKey: "config.skipAllText" }))).toBe("key");
     });
 
     it("puts a key before a Blueprint Value, in the order the game resolves them", () => {
-        expect(buttonLabelSourceOf(button({ localizationKey: "config.skipAllText" }, BLUEPRINT), true)).toBe("key");
-        expect(buttonLabelSourceOf(button({}, BLUEPRINT), true)).toBe("blueprint");
-    });
-
-    it("ignores a key while the project carries none, as a build does", () => {
-        expect(buttonLabelSourceOf(button({ localizationKey: "config.skipAllText" }), false)).toBe("literal");
+        expect(buttonLabelSourceOf(button({ localizationKey: "config.skipAllText" }, BLUEPRINT))).toBe("key");
+        expect(buttonLabelSourceOf(button({}, BLUEPRINT))).toBe("blueprint");
     });
 
     it("offers none of the three for a list row's button bound to a field of the row", () => {
-        expect(buttonLabelSourceOf(button({}, FIELD), true)).toBeNull();
+        expect(buttonLabelSourceOf(button({}, FIELD))).toBeNull();
     });
 });

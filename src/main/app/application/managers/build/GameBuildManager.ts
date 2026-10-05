@@ -19,7 +19,10 @@ import {
     deriveIosBundleVersion,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     gameBuildArtifactBaseName,
+    hostBuildLimitsSentence,
+    hostCanBuildFormat,
     hostCanBuildTarget,
+    hostPackagesWithoutPlatformTools,
     iosAppDirectoryName,
     isDesktopBuildPlatform,
     isMobileBuildPlatform,
@@ -128,9 +131,11 @@ import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
 import { dlcForAppTag, findDlc, type ProjectDlc } from "@shared/types/dlc";
 import { readProjectDlcFromDir } from "../../utils/dlcFile";
-import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
+import { openPayload, patchCarriesEntry } from "./patchPayload";
+import { readBuildPayloadInWorker } from "./readBuildPayloadInWorker";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
+import { downloadFailureHints } from "./downloadFailureHint";
 import { readProjectAppTagDocumentFromDir, readProjectAppTagsFromDir } from "../../utils/appTagsFile";
 import {
     createEmptyAppTagDocument,
@@ -213,6 +218,17 @@ type BuildSession = {
      * carry it. Null until they have run, which is every run that failed before them.
      */
     assetCompression: AssetCompressionReport | null;
+    /**
+     * The codec image directories this run's compiles produced, one per output root, removed when
+     * the run finishes successfully and left in place when it does not.
+     *
+     * Removed because nothing reads them again: each image is copied into its app dir during the
+     * compile, and the next compile under the same root writes its own. They sit inside the
+     * author's project folder and carry the title's material, so a finished run leaves none
+     * behind. A failed run keeps them, because what the codec step produced is part of what there
+     * is to look at when it is the step that failed.
+     */
+    codecScratch: string[];
 };
 
 /**
@@ -643,6 +659,17 @@ export class GameBuildManager {
                     section: "targets",
                     detail: { platform: target.platform },
                 });
+                continue;
+            }
+            for (const format of target.formats) {
+                if (!hostCanBuildFormat(hostPlatform, target.platform, format)) {
+                    findings.push({
+                        code: "unbuildable-format",
+                        severity: "error",
+                        section: "targets",
+                        detail: { platform: target.platform, format },
+                    });
+                }
             }
         }
         const crossTargets = desktopTargets.filter(
@@ -881,6 +908,12 @@ export class GameBuildManager {
         if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
         }
+        // Read through the same reader the build applies the key with, so the dialog and the build
+        // cannot disagree about whether there is one. Desktop targets only: the web export and the
+        // mobile packages read no patch whether or not there is a key.
+        if (desktopTargets.length > 0 && !readDistributionKey(projectConfig?.app)) {
+            findings.push({ code: "distribution-key-missing", severity: "warning", section: "content" });
+        }
         findings.push(...await collectProgressCarryFindings({
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
@@ -991,6 +1024,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         // Another Studio having the project is refused the same way and for a kindred reason: the
@@ -1090,6 +1124,7 @@ export class GameBuildManager {
             appTagName: "",
             assetReport: null,
             assetCompression: null,
+            codecScratch: [],
         };
         this.sessions.set(key, session);
         const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
@@ -1291,6 +1326,7 @@ export class GameBuildManager {
             onAudit: report => { contentAudit = report; },
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.emit(session, {
             level: "info",
             source: "Build",
@@ -1318,6 +1354,7 @@ export class GameBuildManager {
         const summary = await this.sealPatch(
             session,
             artifact.appDir,
+            artifact.codecImageDir,
             request,
             baselineAppDir,
             outputFile,
@@ -1470,6 +1507,7 @@ export class GameBuildManager {
                 cancelled: () => session.cancelled,
             });
             session.worker = null;
+            this.noteCodecScratch(session, artifact);
             this.ensureNotCancelled(session);
 
             const outputFile = resolveDlcDeliveryPath(
@@ -1482,6 +1520,7 @@ export class GameBuildManager {
             const summary = await this.sealPatch(
                 session,
                 artifact.appDir,
+                artifact.codecImageDir,
                 { outputFile, name: dlc.name },
                 options.baselineAppDir,
                 outputFile,
@@ -1564,6 +1603,7 @@ export class GameBuildManager {
             cancelled: () => session.cancelled,
         });
         session.worker = null;
+        this.noteCodecScratch(session, artifact);
         this.ensureNotCancelled(session);
         return artifact.appDir;
     }
@@ -1682,6 +1722,11 @@ export class GameBuildManager {
     private async sealPatch(
         session: BuildSession,
         appDir: string,
+        /**
+         * Where the codec this process seals with is compiled: the codec image directory of the
+         * compile that produced `appDir`, which the run removes once it has succeeded.
+         */
+        codecScratchDir: string,
         request: GamePatchExportRequest,
         /**
          * The build being updated, already resolved: the folder the author named, or the one the
@@ -1705,30 +1750,35 @@ export class GameBuildManager {
          */
         let baselinePack: GameRuntimePackV1 | null = null;
         if (baselineAppDir) {
-            const previous = await openPayload(baselineAppDir).catch((error: unknown) => {
-                throw new Error(
-                    `Could not read the build this patch is for at ${baselineAppDir}: `
-                    + `${error instanceof Error ? error.message : String(error)}`,
-                );
-            });
-            try {
-                baseline = await digestPayload(previous);
-                baselinePack = previous.pack;
-                // Before anything is written: what this patch does to saves is the author's to know
-                // while they can still decide not to ship it. A warning, never a refusal - a patch
-                // that breaks saves is sometimes exactly the patch an author means to make, and a
-                // gate here would teach them to turn the whole check off.
-                await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
-                // Beside it because it answers the other half of the same question: whether the game
-                // this file lands in is the game the content was made for. Saves are about the
-                // player's progress, the engine is about the code that will read it.
-                this.emit(session, {
-                    source: "Build",
-                    ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+            /*
+             * Read in the compile worker, which has exited by the time the answer arrives. The
+             * baseline is the build folder the author named or a staging folder this export
+             * compiled, and either is built into again later: read here, it would stay held - a
+             * packaged build's archive by Electron's asar patch, a sealed one's reader as a loaded
+             * module - and the next build into it would fail until Studio exited.
+             */
+            const previous = await readBuildPayloadInWorker(this.app, baselineAppDir, { digests: true })
+                .catch(async (error: unknown) => {
+                    await payload.close().catch(() => undefined);
+                    throw new Error(
+                        `Could not read the build this patch is for at ${baselineAppDir}: `
+                        + `${error instanceof Error ? error.message : String(error)}`,
+                    );
                 });
-            } finally {
-                await previous.close().catch(() => undefined);
-            }
+            baseline = new Map(previous.digests ?? []);
+            baselinePack = previous.pack;
+            // Before anything is written: what this patch does to saves is the author's to know
+            // while they can still decide not to ship it. A warning, never a refusal - a patch
+            // that breaks saves is sometimes exactly the patch an author means to make, and a
+            // gate here would teach them to turn the whole check off.
+            await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
+            // Beside it because it answers the other half of the same question: whether the game
+            // this file lands in is the game the content was made for. Saves are about the
+            // player's progress, the engine is about the code that will read it.
+            this.emit(session, {
+                source: "Build",
+                ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+            });
         } else {
             this.emit(session, {
                 level: "warning",
@@ -1755,11 +1805,18 @@ export class GameBuildManager {
              * to read, with no sign of trouble at the point it was made. The two
              * halves have to be built the same way or the patch is dead on
              * arrival.
+             *
+             * Compiled in this run's scratch directory, never beside the file.
+             * The folder the file is written into is the folder the author
+             * ships, and the codec compiled here stays loaded in this process,
+             * so on Windows it cannot be deleted until Studio exits: left beside
+             * the patch, it went out to players inside the zipped folder.
              */
+            await fs.mkdir(codecScratchDir, { recursive: true });
             const writer = await createAssetOverlay(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
-            }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
+            }, await this.titleCompileOptions(codecScratchDir, "Exporting a patch"));
             // Zero is the default the reader already applies, so it is left unsaid rather than
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
@@ -1956,12 +2013,11 @@ export class GameBuildManager {
         // stored selection carried across hosts (or any non-UI caller) could still
         // ask for one. Fail early and clearly rather than deep inside electron-builder.
         // (The web target builds everywhere and needs no check.)
-        const unbuildable = desktopTargets.filter(target => !hostCanBuildTarget(hostPlatform, target.platform));
+        const unbuildable = desktopTargets.flatMap(target => target.formats
+            .filter(format => !hostCanBuildFormat(hostPlatform, target.platform, format))
+            .map(format => `${target.platform} ${format}`));
         if (unbuildable.length > 0) {
-            throw new Error(
-                `Cannot build for ${unbuildable.map(t => t.platform).join(", ")} on this machine. ` +
-                `macOS builds require a Mac; Linux builds require a Unix host.`,
-            );
+            throw new Error(`Cannot build ${unbuildable.join(", ")} on this machine. ${hostBuildLimitsSentence(hostPlatform)}`);
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
         this.noteRunVariant(session, appTag);
@@ -2116,6 +2172,7 @@ export class GameBuildManager {
                 onAudit: report => { contentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, desktopArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -2171,6 +2228,7 @@ export class GameBuildManager {
                 onAudit: report => { webContentAudit = report; },
             });
             session.worker = null;
+            this.noteCodecScratch(session, webArtifact);
             this.emit(session, {
                 level: "info",
                 source: "Build",
@@ -2265,6 +2323,8 @@ export class GameBuildManager {
             ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
+            hostCacheRoot: this.app.getCacheRootDir(),
+            downloadRewrites: currentDownloadRewrites(),
             asarUnpack: buildAsarUnpackPatterns(protectAssets),
             electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
@@ -2287,6 +2347,9 @@ export class GameBuildManager {
                     hostPlatform,
                 )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
+                    : {}),
+                ...(hostPackagesWithoutPlatformTools(hostPlatform, target.platform)
+                    ? { hostElectronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
                 ...await this.resolveDesktopTargetSigning(session, target.platform, signing),
@@ -3324,7 +3387,10 @@ export class GameBuildManager {
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
         // whose URL layout differs - so it is NOT synthesized from the same
-        // string; it is inherited from the environment if the user set it.
+        // string. It has a setting of its own, build.electronBuilderBinariesMirror,
+        // which travels in the config and which the worker turns into that variable
+        // around packaging (withBinariesMirrorEnv); with the setting empty, whatever
+        // the host's environment says is inherited here and used as before.
         return new Promise<string[]>((resolve, reject) => {
             if (session.cancelled) {
                 reject(new Error("Build cancelled"));
@@ -3916,8 +3982,56 @@ export class GameBuildManager {
      */
     private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
         const stamped = this.stampRunVariant(session, snapshot);
+        if (stamped.status === "done") {
+            await this.discardCodecScratch(session);
+        }
         await writeLastGameBuildRun(session.projectPath, this.runRecord(session, stamped));
         session.snapshot = stamped;
+    }
+
+    /** Remember where one of this run's compiles produced its codec images; see `codecScratch`. */
+    private noteCodecScratch(session: BuildSession, artifact: GameRuntimeArtifactCompileResult): void {
+        if (!session.codecScratch.includes(artifact.codecImageDir)) {
+            session.codecScratch.push(artifact.codecImageDir);
+        }
+    }
+
+    /**
+     * Remove the codec images a successful run produced.
+     *
+     * Best effort and silent on the build console: the run has already succeeded, and a file that
+     * will not go is not a fact about the game. It is written to the application log instead, and
+     * the next successful run under the same root removes it.
+     *
+     * Entry by entry rather than in one recursive call, because one entry can be refused while the
+     * rest can go: the codec a patch is sealed with is compiled in this process and stays loaded in
+     * it, and on Windows a loaded image cannot be deleted until the process exits. One recursive
+     * removal stops at the first refusal and leaves the entries after it behind as well.
+     */
+    private async discardCodecScratch(session: BuildSession): Promise<void> {
+        for (const dir of session.codecScratch) {
+            let entries: string[];
+            try {
+                entries = await fs.readdir(dir);
+            } catch {
+                // Nothing there: a compile that needed no images, or a directory already gone.
+                continue;
+            }
+            const refused: string[] = [];
+            for (const entry of entries) {
+                try {
+                    await fs.rm(path.join(dir, entry), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+                } catch {
+                    refused.push(entry);
+                }
+            }
+            if (refused.length > 0) {
+                this.app.logger.warn(`[Build] left in ${dir} until nothing holds it: ${refused.join(", ")}`);
+                continue;
+            }
+            await fs.rmdir(dir).catch(() => undefined);
+        }
+        session.codecScratch = [];
     }
 
     /**
@@ -4000,6 +4114,9 @@ export class GameBuildManager {
         if (!session.cancelled) {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
+            for (const hint of downloadFailureHints(message, getMainTranslator(this.app))) {
+                this.emit(session, { level: "warning", source: "Build", message: hint });
+            }
         }
         // Not awaited, unlike the finished path: this is reached from synchronous callers - the
         // cancel handler answers with the snapshot it just set - and a failed run is not one anybody

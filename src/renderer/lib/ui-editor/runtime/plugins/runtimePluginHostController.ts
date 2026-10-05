@@ -23,7 +23,10 @@ import type { Game, LiveGame, Scene } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
+    isKeysOnlyLocalization,
+    isValidPluginWordsId,
     localizationKeyUnitId,
+    pluginWordsUnitId,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import type { GameMenuSpec } from "@shared/types/gameMenu";
@@ -307,9 +310,23 @@ export class RuntimePluginHostController {
      *
      * Read from the action stream rather than from the dialog on screen: only a line-bearing action
      * writes here, so an async branch stepping the play head in between cannot replace the answer
-     * with an unrelated action's.
+     * with an unrelated action's. This is the answer for an NVL line, which ends before the play
+     * head moves on; an ADV line ends after it has, and is named by the two fields below instead.
      */
     private pendingDialogueTextId: string | null = null;
+    /** The text id of the ADV line on screen, from the engine's own record of its dialog. */
+    private shownDialogueTextId: string | null = null;
+    /**
+     * The text id of the ADV line just advanced past, for the `lineEnd` that follows it.
+     *
+     * An advance in ADV settles the dialog and lets the story run on before the engine says the line
+     * ended - so by `lineEnd` the play head already stands on the next line, and the action stream
+     * names that one. The line that ended is the one whose dialog was settled. That settle and its
+     * `lineEnd` happen in one synchronous turn, so the value only lives for the rest of that turn: a
+     * dialog settled by a rollback, with no `lineEnd` after it, cannot name some later line.
+     */
+    private settledDialogueTextId: string | null = null;
+    private settleGeneration = 0;
 
     private engineSnapshot: { scene: RuntimePluginStateSnapshot; saved: RuntimePluginStateSnapshot } = {
         scene: new Map(),
@@ -386,7 +403,7 @@ export class RuntimePluginHostController {
             }
         }
         this.sceneMusicAssetIdBySceneId = compiled.sceneBackgroundMusicAssetIds ?? {};
-        this.pendingDialogueTextId = null;
+        this.forgetDialogue();
         this.bindEngineEvents(liveGame);
         this.engineSnapshot = snapshotEngineScopes(this.session);
         this.persistentSnapshot = snapshotPersistentScope(this.session, this.attachment?.scope ?? null);
@@ -405,7 +422,7 @@ export class RuntimePluginHostController {
         this.audioAssetByActionId = new Map();
         this.textIdByActionId = new Map();
         this.sceneMusicAssetIdBySceneId = {};
-        this.pendingDialogueTextId = null;
+        this.forgetDialogue();
         this.engineSnapshot = { scene: new Map(), saved: new Map() };
     }
 
@@ -561,10 +578,14 @@ export class RuntimePluginHostController {
                 this.engineSnapshot = snapshotEngineScopes(this.session);
             }
         }));
+        push(gameState.events.on("event:state.dialog.change", () => {
+            this.readAdvDialog(gameState.getAdvDialogState());
+        }));
         push(gameState.events.on("event:state.player.lineEnd", () => {
-            const textId = this.pendingDialogueTextId;
+            const textId = this.settledDialogueTextId ?? this.pendingDialogueTextId;
             // Consumed, not kept: a line the compile never named must report null rather than
             // inherit the id of whichever line ran before it.
+            this.settledDialogueTextId = null;
             this.pendingDialogueTextId = null;
             this.hub.emit("dialogueEnd", { textId });
             this.pumpEngineState();
@@ -590,6 +611,35 @@ export class RuntimePluginHostController {
         if (textId) {
             this.pendingDialogueTextId = textId;
         }
+    }
+
+    /**
+     * Follow the engine's record of the ADV dialog on screen: which line it is while it shows, and
+     * which line it was once it is settled (see {@link settledDialogueTextId}).
+     */
+    private readAdvDialog(state: { actionId: string | null } | null): void {
+        if (state) {
+            this.shownDialogueTextId = state.actionId ? this.textIdByActionId.get(state.actionId) ?? null : null;
+            return;
+        }
+        if (this.shownDialogueTextId === null) {
+            return;
+        }
+        this.settledDialogueTextId = this.shownDialogueTextId;
+        this.shownDialogueTextId = null;
+        const generation = ++this.settleGeneration;
+        queueMicrotask(() => {
+            if (this.settleGeneration === generation) {
+                this.settledDialogueTextId = null;
+            }
+        });
+    }
+
+    private forgetDialogue(): void {
+        this.pendingDialogueTextId = null;
+        this.shownDialogueTextId = null;
+        this.settledDialogueTextId = null;
+        this.settleGeneration += 1;
     }
 
     // ------------------------------------------------------------------- state
@@ -686,9 +736,24 @@ export class RuntimePluginHostController {
         return translated ?? bundle.keys?.[name] ?? null;
     }
 
+    /** One of a plugin's own words in the player's language, or the words as written. */
+    private readPluginWords(pluginId: string, id: string, text: string): string {
+        const bundle = this.attachment?.bundle.localization;
+        const words = typeof text === "string" ? text : "";
+        if (!bundle || typeof id !== "string" || !isValidPluginWordsId(id)) {
+            return words;
+        }
+        return resolveLocalizedUnitText(
+            { sourceLocale: bundle.sourceLocale, locales: bundle.locales, tables: bundle.tables ?? {} },
+            this.readLocale(),
+            pluginWordsUnitId(pluginId, id),
+        ) ?? words;
+    }
+
     private readLocale(): string {
         const attachment = this.attachment;
-        if (!attachment) {
+        // A project without a source language ships its keys and no language to read them in.
+        if (!attachment || (attachment.bundle.localization && isKeysOnlyLocalization(attachment.bundle.localization))) {
             return "";
         }
         const stored = attachment.scope.persistenceGet(LOCALE_STORAGE_KEY);
@@ -787,6 +852,7 @@ export class RuntimePluginHostController {
                     };
                 },
                 text: key => this.readLocalizedText(key),
+                words: (pluginId, id, text) => this.readPluginWords(pluginId, id, text),
             },
         };
 

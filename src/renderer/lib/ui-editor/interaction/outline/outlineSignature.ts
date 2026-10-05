@@ -1,11 +1,12 @@
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { isUIFlowLayoutParentElement, type UIDocument } from "@shared/types/ui-editor/document";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 /**
  * Everything the layer outline draws, and nothing else.
  *
- * The outline shows the tree, each layer's name and type, and whether it is hidden. It does not show
+ * The outline shows the tree, each layer's name and type, whether it is hidden, and - through the order a
+ * parent's rows are listed in - whether that parent lays its children out in flow. It does not show
  * position, size, colour, text, bindings or any other property - yet it used to rebuild all of its
  * rows on every document change, and each row carries a `useDraggable` and each gap a `useDroppable`.
  * On a 60-layer page that is ~120 dnd-kit registrations re-run for a drag that moved one button two
@@ -40,6 +41,7 @@ export function computeOutlineSignature(document: UIDocument, surfaceId: string)
                 element.name ?? "",
                 element.layout.visible === false ? "0" : "1",
                 isComponentEditorRootElement(element) ? "c" : "",
+                isUIFlowLayoutParentElement(element) ? "f" : "",
                 element.childrenIds.join(","),
             ].join("|"),
         );

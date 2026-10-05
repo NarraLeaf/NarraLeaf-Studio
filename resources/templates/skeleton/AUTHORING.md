@@ -31,19 +31,30 @@ and the `content.<locale>/` overlays only).
 
 ## 3. Layout a reader can follow
 
-- Execution runs left to right along one row per band; a band is one chain.
-- A data node sits below and just before the input it feeds, so its wire runs forwards and up. One
-  Element node per consumer, directly under it, rather than one Element fanned out across the graph.
-- A chain fed by an execution node's output (a head's value, a Memo's result) starts to the right of
-  that node. No wire runs backwards.
-- An If keeps its true branch on its own row, to the right; the false branch drops to a band of its
-  own that starts under the If, so its wire runs straight down beside the first branch.
+- Every layer is laid out by `node project/app/blueprint.js format`, which runs the same layout as
+  the canvas toolbar's Format graph button, and is applied as it comes out. Cards are not placed by
+  hand: if a formatted layer is still hard to read, change the graph, not the positions.
+- What that gives: execution runs left to right along one row; an If's true branch continues the
+  row and its false branch starts a row of its own below everything the true branch led to; a loop
+  (For, For Each, While) reads the same way, its body continuing the row and Completed starting a
+  row below; a data node sits just before and below the input it feeds, a card's feeders stacked in
+  the order of its inputs; a note goes above the part of the graph it was written over; a frame is
+  re-fitted around the cards it held and keeps everything else out of its whole rectangle, so a
+  section can be framed even where the other side of a branch starts right under it.
+- The template is laid out once, in English, and the Chinese and Japanese trees keep its positions.
+  `format` allows for a card turning out narrower in another language, so the counts it reports are
+  the ones every language's editor shows. Format the English source, never the generated trees.
+- A frame holds the cards its rectangle fully contains when `format` runs. To frame a section whose
+  cards are not yet together, place them inside the new frame's rectangle in the `.bp` first - away
+  from the rest if need be - and let `format` put the frame back in the row.
+- `format` reports what is left on each layer: wire crossings, wires drawn under a card that is
+  neither of their ends, and backwards wires. The graph is the cause of every one of them, so bring
+  each layer to the lowest count a restructure can reach. The usual causes: one Element node fanned
+  out to several consumers (give each consumer its own Element node), a value computed early and read
+  far away (read it again where it is used), and several execution nodes that each produce one input
+  of a later node.
 - No two cards overlap, and a frame either holds a card entirely or not at all. This is measured
-  from the cards the editor actually draws (their DOM rectangles), not from stored positions: an
-  Element card is about 211 units tall and a Set Element Variant card about 230.
-- Spacing is constant: 90 between execution cards, 60 between a data card and what it feeds, 40
-  between rows, 90 between bands, frames padded 56 at the top and 32 elsewhere.
-- The graph starts at the origin, note first.
+  from the cards the editor actually draws (their DOM rectangles), not from stored positions.
 
 ## 4. The current way to write each thing
 
@@ -56,6 +67,9 @@ and the `content.<locale>/` overlays only).
   reads as words, needs no literal node, and works for every widget type.
 - Highlight with **Set Element Variant** (Selected / Default), each with its own Element node.
 - Branch with **If** (True / False). If Else only when there is an else-if.
+- A page the player never comes back to - the Splash page - hands over with **Replace Page**, not
+  Go Page. Go Page would leave it at the bottom of the page stack, where every Title button's
+  `Go Page (None)` lands.
 - **Memo** only where one value feeds two inputs (an output feeds one input; Memo, literals, Element
   nodes and Fn head params are the exceptions), and the note says so.
 - No palette-hidden node types: compare `node project/app/blueprint.js nodes --all` with the plain
@@ -64,7 +78,24 @@ and the `content.<locale>/` overlays only).
   section** (`clickSound` / `hoverSound`), not in a blueprint. A blueprint plays a sound only when
   the sound depends on something — a locked card that opens nothing, a dialog whose first answer
   acts and whose others back out — and then it calls `UI confirm cue` or `UI back cue` from the
-  Global blueprint after the check.
+  Global blueprint after the check. A key has no element to carry a sound, so a page that answers
+  one plays the cue itself: the Confirm page calls `UI back cue` when Escape backs out of a question.
+- A list that fills itself, in its own blueprint, uses the **Set List Content** that takes no
+  Element input. The Log, Load and Extra lists are written that way.
+- Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
+  question. Each text's wire then runs forwards into its own input, and none crosses another.
+  Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather
+  than keeping the press in a Memo.
+- Escape backs out of a question: the Confirm page answers Dismiss by closing with no answer, so
+  **Show Confirm** leaves through Dismissed. Whatever a question does after Cancel, it does after
+  Dismissed too - wire both to the same nodes, or neither.
+- When both branches of an If end by doing the same thing, that thing is a function called from
+  both. Wires run back together would pass under every card between them, and a copy would have
+  to be kept in step.
+- A Blueprint Value has one Init head. Every Init and Flush head on every layer runs each time the
+  value is read and the last one returned wins, so a second head only does the work twice.
+- A page's rail shows the entry for the page itself as text, not as a button: a button there would
+  open a second copy of the page on top of it.
 
 ## 5. Repetition becomes structure
 
@@ -76,6 +107,8 @@ and the `content.<locale>/` overlays only).
   in the note:
   - which node runs (the three toggle pairs each change their setting with a different node; the
     master volume is set with Set Global Volume, not a track);
+  - a setting that is a field on the node with no pin, because a param reaches only a pin (the
+    Gallery nodes' Type, which is why the four Extra lists stay copies; Play Sound's track);
   - a label or any other prop: a component instance draws its definition's props, so instances
     cannot differ in text on the canvas. That is why the volume component holds the slider and its
     number but not the row's label.
@@ -92,7 +125,13 @@ title and from inside a game.
 - The English template is the source. The Chinese and Japanese trees are generated from it with
   `scripts/gen-skeleton-locale.mjs`; every new layer name, note and frame title needs an entry in
   `scripts/gen-skeleton-locale.zh.json` and `.ja.json`, and an entry nothing uses any more has to go.
-  Run the generator, then `--check`.
+  Run the generator, then `--check`. The generator also brings the English interface document to the
+  version Studio writes, through the step Studio runs on opening a project; a conflict in the
+  template's files is resolved by running it again, not by hand.
+- A widget's words have one source. A keyed widget holds no words of its own - its key's are shown.
+  A widget's own words with a letter in them are translated through its own unit
+  (`ui:<elementId>.<prop>`) in `zh-CN.json` and `ja.json`, which the generator promotes into the
+  Chinese and Japanese trees; sample words (under a binding, or written over by a blueprint) are not.
 - In the Chinese and Japanese notes, nodes, widgets, pages and panels are called by the names the
   interface shows in that language (the `blueprint.node.*`, `uiEditor.*` and `properties.*`
   catalogues), and elements by the names their Element cards show — never by type ids.
@@ -102,7 +141,7 @@ title and from inside a game.
 
 ## 8. Tools
 
-- Edit with `node project/app/blueprint.js show` → edit the `.bp` → `check` → `apply --write`, and
+- Edit with `node project/app/blueprint.js show` → edit the `.bp` → `format` → `check` → `apply --write`, and
   `node project/app/ui.js` for elements and components. Never edit `uidoc.json` or `uigraphs.json` by
   hand. Keep each blueprint's id and its first layer's id, so references and history follow.
 - Before and after any change: `blueprint.js check` and `ui.js check` on `content/`, `content.zh/`

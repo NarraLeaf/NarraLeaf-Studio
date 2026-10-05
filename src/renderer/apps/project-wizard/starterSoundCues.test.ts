@@ -21,6 +21,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DATA_MEMO,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
@@ -240,13 +241,20 @@ function assertHoverSound(element: Element): void {
 }
 
 /**
- * The rail entries each in-game page authors for itself, and the one the Extra page carries.
+ * The rail entries each in-game page authors for itself.
  *
- * Title is not among them: it is the one entry that is the same on every rail - never the page you
- * are standing on, so never wearing the active look - and the four pages place one component
- * instead of holding four copies of it. Its sounds are asserted once, below.
+ * Title and Back are not among them: each is the same on every rail that places it, so the pages
+ * place one component instead of holding copies of it, and its sounds are asserted once, below.
  */
-const RAIL_ENTRIES = ["Save", "Load", "Config", "Back"];
+const RAIL_ENTRIES = ["Save", "Load", "Config"];
+
+/**
+ * The entries a page's rail can press: every one but the entry for the page itself, which is a
+ * label (see "the rail's entry for the page it is on" below). The Log page has no such entry.
+ */
+function pressableRailEntries(page: string): string[] {
+    return RAIL_ENTRIES.filter(entry => entry !== page);
+}
 
 /** Every button that answers a click, and the clip it uses. Back is the one that means undo. */
 const CLICKS: readonly { page: string; button: string; clip: string }[] = [
@@ -262,7 +270,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         clip: "ui-confirm",
     })),
     ...[
-        "Save", "Load", "Config", "Text", "Sound", "All text", "Read only", "On", "Off",
+        "Save", "Load", "Text", "Sound", "All text", "Read only", "On", "Off",
         // The sound page's own pair, named apart from the fullscreen pair above because two
         // buttons on one screen cannot both be called On.
         "Mute on", "Mute off",
@@ -272,18 +280,15 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         clip: "ui-confirm",
     })),
     // The Config page's other rail entries are in the block above, among its controls.
-    { page: "Config", button: "Back", clip: "ui-back" },
     ...["Log", "Save", "Load"].flatMap(page =>
-        RAIL_ENTRIES.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
+        pressableRailEntries(page).map(button => ({ page, button, clip: "ui-confirm" })),
     ),
-    { page: "Extra", button: "Back", clip: "ui-back" },
 ];
 
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({ page: "Title", button })),
-    ...["Config", "Log", "Save", "Load"].flatMap(page => RAIL_ENTRIES.map(button => ({ page, button }))),
-    { page: "Extra", button: "Back" },
+    ...["Config", "Log", "Save", "Load"].flatMap(page => pressableRailEntries(page).map(button => ({ page, button }))),
     // The segment rail is a menu, so it answers the pointer the way the nav rails do.
     ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
 ];
@@ -297,14 +302,6 @@ const ROW_CLICKS: readonly { page: string; list: string }[] = [
 /** The card the save and load pages both place; its Hit area is what answers a press. */
 const SAVE_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 
-/**
- * The scene card, which the component library still holds and no page places any more: the Scenes
- * page became the Extra screen's Recollection segment, whose rows come out of the gallery. It is
- * asserted here because its cue is still one of the cues the template declares, and because the
- * gate in front of it is the shape a row that may be locked has to keep.
- */
-const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
-
 /** The Extra screen's recollection grid, whose rows start the scene they point at. */
 const RECOLLECTION_GRID = "5107c0a1-0000-4000-8000-000000000320";
 
@@ -313,6 +310,9 @@ const CG_GRID = "5107c0a1-0000-4000-8000-000000000310";
 
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
+
+/** The button the Save, Load, Config, Log and Extra rails all place to leave the page. */
+const BACK_BUTTON = "f4c4cb26-ea0d-4cfc-9b4e-e11e9d3b54be";
 
 describe("the sounds the starter template makes", () => {
     it("declares the cues its gated sounds call once, on the track the player can turn down", () => {
@@ -331,10 +331,10 @@ describe("the sounds the starter template makes", () => {
         // is what says nobody added one somewhere outside them.
         const clicks = ALL_ELEMENTS.filter(element => soundOf(element, "click") !== null);
         const hovers = ALL_ELEMENTS.filter(element => soundOf(element, "hover") !== null);
-        // The buttons each page authors, the Title button and the save card's hit area, and the
-        // rows of the two lists whose every press is a pick.
-        expect(clicks).toHaveLength(CLICKS.length + 1 + 1 + ROW_CLICKS.length);
-        expect(hovers).toHaveLength(HOVERS.length + 1);
+        // The buttons each page authors, the Title and Back buttons and the save card's hit area,
+        // and the rows of the two lists whose every press is a pick.
+        expect(clicks).toHaveLength(CLICKS.length + 2 + 1 + ROW_CLICKS.length);
+        expect(hovers).toHaveLength(HOVERS.length + 2);
 
         // The music and voice rows are deliberately not among them: the sound such a row makes is
         // the clip it plays, and two sounds for one press is one too many. Nor is a press inside
@@ -345,8 +345,8 @@ describe("the sounds the starter template makes", () => {
                 Object.values(event.graph.nodes).filter(node => isCueCall(node)),
             ),
         );
-        // The scene card, the recollection and CG rows, and the confirm dialog's two answers: the
-        // sounds that depend on something.
+        // The recollection and CG rows, the confirm dialog's two answers, and Escape on the confirm
+        // dialog: the sounds that depend on something, and the one a key makes.
         expect(cues).toHaveLength(5);
     });
 
@@ -378,10 +378,26 @@ describe("the sounds the starter template makes", () => {
         assertHoverSound(button);
     });
 
+    it("the back button answers wherever a rail places it", () => {
+        // One button, placed on the Save, Load, Config, Log and Extra rails, with the clip that
+        // means undo.
+        const button = elementById(BACK_BUTTON);
+        assertClickSound(button, "ui-back");
+        assertHoverSound(button);
+    });
+
     it("the save card answers being picked, wherever it is placed", () => {
         // One card, placed six times on Save and six times on Load. The sound is on the card, so a
         // page cannot have a slot that answers and a slot that does not.
-        assertClickSound(elementById(SAVE_CARD), "ui-confirm");
+        expect(soundOf(elementById(SAVE_CARD), "click")).toBe(CLIP["ui-confirm"]);
+        // Two layers answer the press - saving on the Save page, loading on the Load page - and
+        // neither plays a cue of its own on top of the card's sound.
+        const pressGraphs = graphsFor(SAVE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        expect(pressGraphs).toHaveLength(2);
+        for (const graph of pressGraphs) {
+            const acted = next(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK).id, "then");
+            expect(isCueCall(acted)).toBe(false);
+        }
 
         // Deleting a slot is a right-click, and it stays silent: a click sound answers clicks
         // alone, and the question a right-click raises answers with a cue of its own.
@@ -411,28 +427,14 @@ describe("the sounds the starter template makes", () => {
     });
 
     it("a recollection tile answers only when the row is unlocked", () => {
-        // The same shape as the scene card below, for the same reason: a locked row's press ends at
-        // the gate, and a sound in front of it would answer a press that does nothing.
+        // A locked row's press ends at the gate, and a sound in front of it would answer a press that
+        // does nothing.
         const graph = graphFor(RECOLLECTION_GRID, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const gate = next(graph, click.id, "then");
         expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
         assertCue(next(graph, gate.id, "true"), "ui-confirm");
         expect(subtree(RECOLLECTION_GRID).filter(element => soundOf(element, "click") !== null)).toEqual([]);
-    });
-
-    it("a scene card answers only when it has a scene to open", () => {
-        // One card, placed once per scene. Which scene it opens and what that scene is called are
-        // its params, so a page cannot have a card that answers and a card that does not.
-        const graph = graphFor(SCENE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-        // The cue sits past the visited gate rather than in front of it. A locked card's click
-        // ends at that gate, and a sound answering a press that does nothing is the one thing a UI
-        // sound must not teach.
-        const gate = next(graph, click.id, "then");
-        expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
-        assertCue(next(graph, gate.id, "true"), "ui-confirm");
-        expect(soundOf(elementById(SCENE_CARD), "click")).toBeNull();
     });
 
     it("the confirm dialog answers in two voices, one per kind of answer", () => {
@@ -445,5 +447,18 @@ describe("the sounds the starter template makes", () => {
         assertCue(next(graph, branch.id, "false"), "ui-confirm");
         assertCue(next(graph, branch.id, "true"), "ui-back");
         expect(subtree(list.id).filter(element => soundOf(element, "click") !== null)).toEqual([]);
+    });
+
+    it("the confirm dialog backs out on Escape in the voice of its ways out", () => {
+        // Escape is a key, so no element's sound can answer it: the page's own blueprint plays the
+        // cue Cancel plays before it closes.
+        const confirm = document.surfaces.find(surface => surface.name === "Confirm")!;
+        const blueprint = blueprints.find(
+            candidate => candidate.owner.kind === "surfaceMain" && candidate.owner.surfaceId === confirm.id,
+        )!;
+        const graphs = Object.values(blueprint.graphs.events).map(event => event.graph);
+        expect(graphs).toHaveLength(1);
+        const head = only(graphs[0]!, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+        assertCue(next(graphs[0]!, head.id, "then"), "ui-back");
     });
 });

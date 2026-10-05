@@ -502,6 +502,16 @@
       "status": "translated",
       "target": "无存档"
     },
+    "key:splash.disclaimer": {
+      "sourceHash": "fnv1a:7a3bfb30",
+      "status": "translated",
+      "target": "本作品纯属虚构。\n与现实中的人物、团体、地点及事件无关。"
+    },
+    "key:splash.wordmark": {
+      "sourceHash": "fnv1a:e1f0617a",
+      "status": "translated",
+      "target": "你的工作室"
+    },
     "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
       "sourceHash": "fnv1a:b762c709",
       "status": "translated",

@@ -9,7 +9,7 @@ export const widgets = {
          * The section holding this control's logic, which may be a blueprint or a script. Worded
          * like `uiEditor.ownerLabel.widgetMain`, because it is the same thing under another panel.
          */
-        controlLabel: "Component logic",
+        controlLabel: "Widget logic",
     },
     appearance: {
         title: "Appearance",
@@ -67,12 +67,26 @@ export const widgets = {
         enableItalic: "Enable italic",
         disableItalic: "Disable italic",
     },
+    sampleText: {
+        label: "Sample text",
+        hint: "Shown in the editor only. The game shows the story's current line.",
+        bindingNoEffect: "This binding has no effect in the {slot} slot.",
+        removeBinding: "Remove",
+        hintBlueprintValue: "Shown in the editor only. The game shows the Blueprint Value's result.",
+        hintWritten: "Shown in the editor only. The game shows what the blueprints below write.",
+        hintComponentParam: "Shown while editing the component only. Each placement shows the value it sets for the parameter.",
+    },
+    textWriters: {
+        title: "Written in the game by",
+        entry: "{blueprint} › {node}",
+        count: "×{count}",
+    },
     localization: {
+        direct: "Direct",
         translationKey: "Translation key",
-        noSourceLanguage: "The project has no source language",
         none: "None",
         createKey: "Create new key…",
-        createKeyTitle: "New localization key",
+        createKeyTitle: "New translation key",
         keyName: "Key name",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "Letters, digits, and dots/underscores/hyphens between them.",
@@ -86,7 +100,7 @@ export const widgets = {
         title: "List",
         sectionContent: "Content",
         runtimeItems: "Runtime items",
-        runtimePreviewOnly: "Preview only",
+        runtimeListContent: "List content",
         runtimePageState: "Page state array",
         runtimeAppState: "App state array",
         runtimePageProps: "Page props array",
@@ -164,8 +178,6 @@ export const widgets = {
         value: "Value",
         valueHint: "Starting text. What the player types is held by the running game, not by this document.",
         placeholder: "Placeholder",
-        placeholderKey: "Placeholder key",
-        placeholderKeyHint: "The placeholder is shown to the player: attach a key to translate it.",
         sectionBehavior: "Behavior",
         inputMode: "Input mode",
         inputModeText: "Text",
@@ -183,11 +195,9 @@ export const widgets = {
         sectionColor: "Color",
         sectionBehavior: "Behavior",
         interactionDisabled: "Interaction disabled",
-        localizeLabel: "Localize label",
     },
     text: {
         title: "Text",
-        localizeText: "Localize text",
     },
     /**
      * The marks a label's text carries, set over the characters selected in the box above them.
@@ -230,7 +240,6 @@ export const widgets = {
         start: "Start",
         center: "Center",
         end: "End",
-        stretch: "Stretch",
         spaceBetween: "Space between",
         spaceAround: "Space around",
         gapHint: "Gap between children",
@@ -379,6 +388,7 @@ export const widgets = {
         button: { name: "Button", label: "Button" },
         choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
         container: { name: "Container" },
+        group: { name: "Group" },
         dialog: { name: "Sentence", text: "The current line will appear here." },
         frame: { name: "Page" },
         image: { name: "Image" },

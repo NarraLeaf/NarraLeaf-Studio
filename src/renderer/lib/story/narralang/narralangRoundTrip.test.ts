@@ -377,9 +377,10 @@ const corpus: Record<string, StoryScene> = {
         { id: "s11", kind: "action", payload: { action: "text", operation: "hide", objectName: "title", target: TITLE } },
         { id: "s12", kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "sky", target: { kind: "custom", sourceBlockId: "s1", name: "sky" }, zIndex: 7 } },
         { id: "s13", kind: "action", payload: { action: "layer", operation: "transform", objectName: "sky", target: { kind: "custom", sourceBlockId: "s1", name: "sky" }, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 400 } } },
-        { id: "s14", kind: "action", payload: { action: "video", operation: "create", objectName: "op", assetId: "asset-op", muted: true } },
+        { id: "s14", kind: "action", payload: { action: "video", operation: "play", objectName: "op", assetId: "asset-op", muted: true } },
         { id: "s15", kind: "action", payload: { action: "video", operation: "seek", objectName: "op", target: OP, timeMs: 3000 } },
-        { id: "s16", kind: "action", payload: { action: "video", operation: "play", objectName: "op", target: OP } },
+        // Played again: every play carries its file, and defines the clip rather than pointing at it.
+        { id: "s16", kind: "action", payload: { action: "video", operation: "play", objectName: "op", assetId: "asset-op" } },
         { id: "s17", kind: "action", payload: { action: "video", operation: "pause", objectName: "op", target: OP } },
         { id: "s18", kind: "action", payload: { action: "video", operation: "resume", objectName: "op", target: OP } },
         { id: "s19", kind: "action", payload: { action: "video", operation: "stop", objectName: "op", target: OP } },
@@ -610,8 +611,8 @@ describe("a scene written before stable references", () => {
         { id: "l2", kind: "action", payload: { action: "image", operation: "show", objectName: "bird" } },
         { id: "l3", kind: "action", payload: { action: "text", operation: "create", objectName: "title", text: "第一章" } },
         { id: "l4", kind: "action", payload: { action: "text", operation: "setText", objectName: "title", text: "第二章" } },
-        { id: "l5", kind: "action", payload: { action: "video", operation: "create", objectName: "op", assetId: "asset-op" } },
-        { id: "l6", kind: "action", payload: { action: "video", operation: "play", objectName: "op" } },
+        { id: "l5", kind: "action", payload: { action: "video", operation: "play", objectName: "op", assetId: "asset-op" } },
+        { id: "l6", kind: "action", payload: { action: "video", operation: "pause", objectName: "op" } },
         { id: "l7", kind: "action", payload: { action: "audio", operation: "playSound", assetId: "asset-door", objectName: "door" } },
         { id: "l8", kind: "action", payload: { action: "audio", operation: "stopSound", objectName: "door" } },
     ] as never);

@@ -45,6 +45,7 @@ export const SEARCH_GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
     blueprint: "workspace.shell.search.groups.blueprint" as TranslationKey,
     asset: "workspace.shell.search.groups.asset" as TranslationKey,
     storyText: "workspace.shell.search.groups.storyText" as TranslationKey,
+    uiText: "workspace.shell.search.groups.uiText" as TranslationKey,
     variable: "workspace.shell.search.groups.variable" as TranslationKey,
     uiTextKey: "workspace.shell.search.groups.uiTextKey" as TranslationKey,
     blueprintNode: "workspace.shell.search.groups.blueprintNode" as TranslationKey,

@@ -41,6 +41,9 @@ import type { PluginWidgetModule } from "@/lib/plugins/pluginWidgetApi";
 import { sanitizePluginWidgetDeclaration } from "@/lib/plugins/pluginWidgetGuard";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
+import { uiTextSitesFromPluginDeclaration, type UITextSite } from "@shared/types/ui-editor/textSource";
+import type { PluginWidgetTextContribution } from "@shared/types/plugins";
+import { validatePluginManifest } from "@shared/utils/pluginManifest";
 
 export class CliPluginError extends Error {}
 
@@ -57,7 +60,7 @@ type ManifestLike = {
     id?: unknown;
     name?: unknown;
     entries?: { studio?: unknown };
-    contributes?: { widgets?: unknown };
+    contributes?: { widgets?: unknown; widgetText?: unknown };
 };
 
 /**
@@ -181,7 +184,7 @@ function recordingApp(manifest: ManifestLike, registered: PluginWidgetModule[]):
  * The host's side of a plugin widget, as this tool needs it: the declaration, the two builders
  * `ui widget` reads, and nothing that draws.
  */
-function toWidgetModule(pluginId: string, module: PluginWidgetModule): UIWidgetModule {
+function toWidgetModule(pluginId: string, module: PluginWidgetModule, textSites: readonly UITextSite[]): UIWidgetModule {
     const { logicApi, acceptsChildren, partSlots } = sanitizePluginWidgetDeclaration(pluginId, module);
     let displayName = module.type;
     try {
@@ -195,6 +198,7 @@ function toWidgetModule(pluginId: string, module: PluginWidgetModule): UIWidgetM
         logicApi,
         acceptsChildren,
         ...(partSlots.length > 0 ? { partSlots } : {}),
+        ...(textSites.length > 0 ? { textSites } : {}),
         displayName,
         icon: module.icon,
         createDefaultElement: () => module.createDefaultElement(),
@@ -258,6 +262,15 @@ export function loadCliPlugin(dirArg: string): LoadedCliPlugin {
     }
 
     const declared = Array.isArray(manifest.contributes?.widgets) ? (manifest.contributes.widgets as unknown[]) : [];
+    // Which props are words, as Studio reads them: through its own validator, so a declaration it
+    // refuses at install is not one this tool answers from either.
+    const validated = validatePluginManifest(manifest);
+    let widgetText: Record<string, PluginWidgetTextContribution[]> = {};
+    if (validated.ok) {
+        widgetText = validated.manifest.contributes.widgetText;
+    } else if (manifest.contributes?.widgetText !== undefined) {
+        notes.push(`${name}'s manifest is not one Studio installs (${validated.error}), so its text props are not read.`);
+    }
     const widgetTypes: string[] = [];
     for (const module of registered) {
         const type = typeof module?.type === "string" ? module.type : "";
@@ -271,7 +284,8 @@ export function loadCliPlugin(dirArg: string): LoadedCliPlugin {
             notes.push(`${name} registers widget "${type}" without declaring it in contributes.widgets - left out, as Studio leaves it out.`);
             continue;
         }
-        widgetModuleRegistry.register(toWidgetModule(id, module), { ownerPluginId: id, ownerPluginName: name });
+        const textSites = uiTextSitesFromPluginDeclaration(type, widgetText[type]);
+        widgetModuleRegistry.register(toWidgetModule(id, module, textSites), { ownerPluginId: id, ownerPluginName: name });
         widgetTypes.push(type);
     }
     return { id, name, dir, widgetTypes, notes };

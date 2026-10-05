@@ -162,7 +162,7 @@ export function PluginInstallPermissionSections({
     rounded = true,
     className,
 }: PluginInstallPermissionSectionsProps) {
-    const { t } = useTranslation();
+    const { t, formatList } = useTranslation();
     const groups = useMemo(() => groupInstallPermissions(permissions), [permissions]);
 
     if (
@@ -203,7 +203,7 @@ export function PluginInstallPermissionSections({
                                 {permission.platforms.length > 0 ? (
                                     <div className="mt-0.5 text-xs text-warning/80">
                                         {t("pluginPermission.permissions.sidecarPlatforms", {
-                                            platforms: permission.platforms.join(", "),
+                                            platforms: formatList(permission.platforms, { style: "narrow" }),
                                         })}
                                     </div>
                                 ) : null}
@@ -224,7 +224,7 @@ export function PluginInstallPermissionSections({
                             {permission.hosts.length > 0 ? (
                                 <div className="mt-0.5 text-xs text-fg-muted">
                                     {t("pluginPermission.permissions.buildDependencyHosts", {
-                                        hosts: permission.hosts.join(", "),
+                                        hosts: formatList(permission.hosts, { style: "narrow" }),
                                     })}
                                 </div>
                             ) : null}

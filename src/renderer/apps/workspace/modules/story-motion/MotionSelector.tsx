@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
@@ -40,6 +40,14 @@ const TOOL_BUTTON_CLASS = "inline-flex h-9 cursor-default items-center gap-1.5 r
 /** Which half of the picker is showing: the project's own motions, or the preset library. */
 type MotionSelectorTab = "project" | "presets";
 
+/**
+ * The rows the arrow keys walk: a project motion's pick button, or a preset card. The gallery's cards
+ * carry the same attribute (`StoryMotionPresetGallery`), spelled out there rather than imported from
+ * here, which would make the two files import each other.
+ */
+const MOTION_OPTION_ATTRIBUTE = "data-motion-option";
+const MOTION_OPTION_SELECTOR = `[${MOTION_OPTION_ATTRIBUTE}]`;
+
 function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
 }
@@ -63,10 +71,8 @@ export function MotionSelector(props: {
     onClose: () => void;
     onSelect: (animationId: string) => void;
 }) {
-    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
-    // moved to unless it is told (`useDismissWhenHidden`).
-    useDismissWhenHidden(props.onClose, props.visible);
     const { t } = useTranslation();
+    const doc = useHostDocument();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const storyService = useMemo(
@@ -86,31 +92,49 @@ export function MotionSelector(props: {
     const panelRef = useRef<HTMLDivElement | null>(null);
     const hoverTimer = useRef<number | null>(null);
 
+    /**
+     * Which tab an opening starts on, settled while the opening renders rather than in an effect
+     * after it. A project with no motion for this target has nothing to show in the project tab, so
+     * the popover opens on the library instead of on an empty list - and it has to be the library in
+     * the very first frame, because that is the frame the focus is placed in: an effect switching the
+     * tab a moment later unmounted the search field the focus had just been put in.
+     */
+    const [openedFor, setOpenedFor] = useState<{ visible: boolean; targetKind: StoryMotionTargetKind }>({
+        visible: false,
+        targetKind: props.targetKind,
+    });
+    if (openedFor.visible !== props.visible || openedFor.targetKind !== props.targetKind) {
+        setOpenedFor({ visible: props.visible, targetKind: props.targetKind });
+        if (props.visible && storyService) {
+            const initial = storyService.listAnimationAssets();
+            setAssets([...initial]);
+            setTab(initial.some(asset => asset.targetKind === props.targetKind) ? "project" : "presets");
+        }
+    }
+
     useEffect(() => {
         if (!storyService || !props.visible) {
             return;
         }
-        const initial = storyService.listAnimationAssets();
-        setAssets([...initial]);
-        // A project with no motion for this target has nothing to show in the project tab, so the
-        // popover opens on the library instead of on an empty list.
-        setTab(initial.some(asset => asset.targetKind === props.targetKind) ? "project" : "presets");
         return storyService.onAnimationsChanged(index => setAssets([...index.animations]));
     }, [storyService, props.visible, props.targetKind]);
 
-    useEffect(() => {
-        if (!props.visible) {
-            return;
-        }
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                props.onClose();
-            }
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [props.visible, props]);
+    /**
+     * A floating layer, and the one the "add a transform / transition" field opens - so it is what the
+     * keyboard sees first. It opens on the search field (on the presets tab, the first preset), the
+     * arrows walk the motions or the preset cards, Enter binds one, and focus goes back to the field.
+     * Escape closes the picker alone: it used to listen on the window's bubble phase, where it never
+     * heard anything, because the inspector the field sits in took the key on the way up and closed
+     * itself instead. Tab out of it closes it too, rather than walking on into the page behind the
+     * click-catching backdrop.
+     */
+    useFloatingLayer({
+        open: props.visible,
+        onClose: props.onClose,
+        panelRef,
+        ownerRefs: [props.anchorRef],
+        itemSelector: MOTION_OPTION_SELECTOR,
+    });
 
     useEffect(() => () => {
         if (hoverTimer.current !== null) {
@@ -266,6 +290,7 @@ export function MotionSelector(props: {
                                     index > 0 ? "border-l border-edge" : "",
                                     tab === option ? "bg-primary/20 text-primary" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                                 ].join(" ")}
+                                aria-pressed={tab === option}
                                 onClick={() => setTab(option)}
                             >
                                 {t(`motion.selector.tab.${option}`)}
@@ -320,6 +345,8 @@ export function MotionSelector(props: {
                             >
                                 <button
                                     type="button"
+                                    {...{ [MOTION_OPTION_ATTRIBUTE]: "" }}
+                                    data-selected={selected ? "true" : undefined}
                                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     onClick={() => props.onSelect(asset.id)}
                                 >
@@ -363,7 +390,7 @@ export function MotionSelector(props: {
                 />
             ) : null}
         </>,
-        document.body,
+        doc.body,
     );
 }
 

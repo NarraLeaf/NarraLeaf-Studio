@@ -433,7 +433,21 @@ export function findArtwork(artworks: GalleryArtwork[], artworkId: string): Gall
 }
 
 /**
- * Every variant of a `scene` entry that replays the given scene.
+ * What the unlock record holds for an entry unlocked as a whole: every member's id, or the entry's
+ * own id while it has no members yet.
+ *
+ * The second half is what lets an entry be collected as it stands. A recollection is created empty -
+ * there is nothing to import, the author picks a scene - and with nothing but member ids to record,
+ * reaching its scene collected nothing at all until a picture was added. Recorded by its own id
+ * instead, it reads as unlocked now, and once members exist {@link readUnlockedVariantIds} expands
+ * that id to all of them, so a player who got there before the art did keeps it.
+ */
+export function artworkUnlockIds(artwork: GalleryArtwork): string[] {
+    return artwork.variants.length > 0 ? artwork.variants.map(variant => variant.id) : [artwork.id];
+}
+
+/**
+ * What reaching the given scene collects: every `scene` entry that replays it, whole.
  *
  * A recollection has nothing finer than the scene to be at, so reaching it collects the whole
  * entry - unlike the two audio matchers below, where the member is the thing the player heard.
@@ -445,7 +459,7 @@ export function collectSceneVariantIds(artworks: GalleryArtwork[], sceneId: stri
     }
     return artworks
         .filter(artwork => artwork.kind === "scene" && artwork.scene?.sceneId === id)
-        .flatMap(artwork => artwork.variants.map(variant => variant.id));
+        .flatMap(artworkUnlockIds);
 }
 
 /**
@@ -509,10 +523,12 @@ export function resolveCoverVariant(artwork: GalleryArtwork): GalleryVariant | n
 /**
  * Read the persisted unlock record as a set of variant ids.
  *
- * v1 stored artwork ids, because unlocking was per-artwork. Those entries are
- * expanded to every variant of the artwork on read, so a player who unlocked a
- * CG before the split keeps seeing it. The catalog is needed for that expansion,
- * which is why unlock reads are always catalog-aware.
+ * An artwork id in the record means the whole entry. v1 stored nothing else, because unlocking was
+ * per-artwork, and an entry with no members is recorded that way today (see
+ * {@link artworkUnlockIds}). Such an id is expanded to every variant of the artwork on read, so a
+ * player who unlocked a CG before the split keeps seeing it; on an entry that still has no members
+ * it stays as it is. The catalog is needed for that expansion, which is why unlock reads are always
+ * catalog-aware.
  */
 export function readUnlockedVariantIds(value: unknown, artworks: GalleryArtwork[]): Set<string> {
     const stored = Array.isArray(value)
@@ -523,8 +539,8 @@ export function readUnlockedVariantIds(value: unknown, artworks: GalleryArtwork[
     for (const id of stored) {
         const artwork = artworkById.get(id);
         if (artwork) {
-            for (const variant of artwork.variants) {
-                unlocked.add(variant.id);
+            for (const unlockId of artworkUnlockIds(artwork)) {
+                unlocked.add(unlockId);
             }
             continue;
         }
@@ -550,9 +566,9 @@ export function resolveShownVariant(artwork: GalleryArtwork, unlocked: Set<strin
     return artwork.variants.find(variant => unlocked.has(variant.id)) ?? cover;
 }
 
-/** True when any variant of the artwork is unlocked. */
+/** True when any variant of the artwork is unlocked, or - with no variants yet - the entry itself. */
 export function isArtworkUnlocked(artwork: GalleryArtwork, unlocked: Set<string>): boolean {
-    return artwork.variants.some(variant => unlocked.has(variant.id));
+    return artworkUnlockIds(artwork).some(id => unlocked.has(id));
 }
 
 export function countUnlockedVariants(artwork: GalleryArtwork, unlocked: Set<string>): number {
@@ -603,10 +619,27 @@ export type GalleryEntryView = {
     durationSec: number;
     /** `voice`: the shown member's unit id, for Resolve Voice Asset. */
     voiceUnitId: string;
+    /**
+     * `voice`: the shown member's line as it read when picked - what a voice row is recognised by,
+     * the way a CG row is recognised by its picture. Empty while locked, like the clip.
+     */
+    lineText: string;
     /** `scene`: where Start Game should replay from. Empty while locked. */
     storyId: string;
     sceneId: string;
     startBlockId: string;
+};
+
+/**
+ * The row fields the editor names for each column, beside the `Get Gallery` steps: the ones an item
+ * template for that column reaches for. Typed as keys of {@link GalleryEntryView} so the hint can
+ * never name a field the node does not hand out.
+ */
+export const GALLERY_ROW_FIELDS_BY_KIND: Record<GalleryEntryKind, readonly (keyof GalleryEntryView)[]> = {
+    cg: ["name", "image", "unlocked", "variantCount"],
+    scene: ["name", "image", "unlocked", "storyId", "sceneId"],
+    music: ["name", "audioAssetId", "durationSec", "unlocked"],
+    voice: ["name", "voiceUnitId", "lineText", "unlocked"],
 };
 
 /** One member of an entry: a differential, a track, or a voice line. */
@@ -641,6 +674,94 @@ export type GalleryProjectionOptions = {
 
 function lockedPlaceholderAssetId(artwork: GalleryArtwork, settings: GallerySettings): string | null {
     return artwork.lockedImageAssetId ?? settings.lockedImageAssetId;
+}
+
+/**
+ * The ids the words an author writes in the Gallery editor are offered for translation under - the
+ * studio entry lists them (`galleryWords`), the game reads them back (`localizeGalleryStore`), and the
+ * translation unit is `plugin:narraleaf.gallery/<id>`. Keyed by the entry's, member's or group's own
+ * id, so correcting a name keeps its translations.
+ */
+export const GALLERY_WORDS_IDS = {
+    entryName: (artworkId: string) => `entry.${artworkId}.name`,
+    entryDescription: (artworkId: string) => `entry.${artworkId}.description`,
+    memberName: (variantId: string) => `member.${variantId}.name`,
+    groupName: (groupId: string) => `group.${groupId}.name`,
+    lockedNameMask: "lockedNameMask",
+} as const;
+
+/** One of the gallery's words, as the studio entry offers it for translation. */
+export type GalleryWordsEntry = { id: string; text: string; context?: string };
+
+/**
+ * Every word a player reads that the author wrote in the Gallery editor: each entry's name and
+ * description, each member's name, each group's name, and the title locked entries are shown by.
+ * The context is where the words sit, for a translator. Hidden entries are listed too - they are
+ * shown once found.
+ */
+export function galleryWords(data: GalleryStoreData): GalleryWordsEntry[] {
+    const out: GalleryWordsEntry[] = [];
+    const groupNames = new Map(data.groups.map(group => [group.id, group.name] as const));
+    for (const group of data.groups) {
+        out.push({ id: GALLERY_WORDS_IDS.groupName(group.id), text: group.name });
+    }
+    for (const artwork of data.items) {
+        const group = artwork.groupId ? groupNames.get(artwork.groupId) : undefined;
+        out.push({ id: GALLERY_WORDS_IDS.entryName(artwork.id), text: artwork.name, ...(group ? { context: group } : {}) });
+        if (artwork.description) {
+            out.push({ id: GALLERY_WORDS_IDS.entryDescription(artwork.id), text: artwork.description, context: artwork.name });
+        }
+        for (const variant of artwork.variants) {
+            out.push({ id: GALLERY_WORDS_IDS.memberName(variant.id), text: variant.name, context: artwork.name });
+        }
+    }
+    if (data.settings.lockedNameMask) {
+        out.push({ id: GALLERY_WORDS_IDS.lockedNameMask, text: data.settings.lockedNameMask });
+    }
+    return out;
+}
+
+/**
+ * The catalog with every word the author wrote in the player's language - `words(id, text)` answers
+ * one word (`app.game.locale.words` in a game), the words as written where there is no translation.
+ * Ids, art and unlock bookkeeping are untouched, so every projection reads it as it reads the authored
+ * catalog, and the lock discipline - a locked entry's real name never leaves - applies to the
+ * translated names alike.
+ */
+export function localizeGalleryStore(data: GalleryStoreData, words: (id: string, text: string) => string): GalleryStoreData {
+    return {
+        ...data,
+        groups: data.groups.map(group => ({ ...group, name: words(GALLERY_WORDS_IDS.groupName(group.id), group.name) })),
+        items: data.items.map(artwork => ({
+            ...artwork,
+            name: words(GALLERY_WORDS_IDS.entryName(artwork.id), artwork.name),
+            description: artwork.description
+                ? words(GALLERY_WORDS_IDS.entryDescription(artwork.id), artwork.description)
+                : artwork.description,
+            variants: artwork.variants.map(variant => ({
+                ...variant,
+                name: words(GALLERY_WORDS_IDS.memberName(variant.id), variant.name),
+            })),
+        })),
+        settings: {
+            ...data.settings,
+            lockedNameMask: data.settings.lockedNameMask
+                ? words(GALLERY_WORDS_IDS.lockedNameMask, data.settings.lockedNameMask)
+                : data.settings.lockedNameMask,
+        },
+    };
+}
+
+/**
+ * The title anything locked is shown by: its own name once unlocked, the catalog's mask while
+ * locked. An empty mask is the author asking for real names throughout.
+ *
+ * Every reader that hands out a name goes through this, the single-item nodes as much as the
+ * projections below - a title is as much a spoiler as the art, and a node that forgot the mask
+ * would print the name of a CG the player has not reached.
+ */
+export function shownGalleryName(name: string, unlocked: boolean, settings: GallerySettings): string {
+    return unlocked || !settings.lockedNameMask ? name : settings.lockedNameMask;
 }
 
 /**
@@ -687,9 +808,7 @@ export function projectGalleryEntries(
             // position in the array the List widget receives.
             index: views.length,
             id: artwork.id,
-            name: isUnlocked || !store.settings.lockedNameMask
-                ? artwork.name
-                : store.settings.lockedNameMask,
+            name: shownGalleryName(artwork.name, isUnlocked, store.settings),
             description: isUnlocked ? artwork.description : "",
             kind: artwork.kind,
             groupId: artwork.groupId ?? "",
@@ -709,6 +828,7 @@ export function projectGalleryEntries(
             audioAssetId: isUnlocked ? cover?.audioAssetId ?? "" : "",
             durationSec: isUnlocked ? cover?.durationSec ?? 0 : 0,
             voiceUnitId: isUnlocked ? cover?.voiceUnitId ?? "" : "",
+            lineText: isUnlocked ? cover?.lineText ?? "" : "",
             storyId: isUnlocked ? artwork.scene?.storyId ?? "" : "",
             sceneId: isUnlocked ? artwork.scene?.sceneId ?? "" : "",
             startBlockId: isUnlocked ? artwork.scene?.startBlockId ?? "" : "",
@@ -741,9 +861,7 @@ export function projectGalleryVariants(
             index: views.length,
             id: variant.id,
             artworkId: artwork.id,
-            name: isUnlocked || !store.settings.lockedNameMask
-                ? variant.name
-                : store.settings.lockedNameMask,
+            name: shownGalleryName(variant.name, isUnlocked, store.settings),
             unlocked: isUnlocked,
             locked: !isUnlocked,
             image: toImageAssetValue(assetId),

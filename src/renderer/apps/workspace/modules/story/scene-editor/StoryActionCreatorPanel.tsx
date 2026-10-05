@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
@@ -7,6 +7,7 @@ import { Button, PanelHeader, SectionCard } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
+import { useHostDocument } from "@/lib/components/layout";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import type { PaletteActionCommand } from "./storyActionCommands";
 import {
@@ -73,7 +74,39 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     const { t: ct } = useCommandTranslation();
     const [query, setQuery] = useState("");
     const [activeTab, setActiveTab] = useState<SidebarTab>(ALL_CATEGORY_ID);
-    const [openCommandId, setOpenCommandId] = useState<string | null>(null);
+    const [openCommandId, setOpenCommandIdState] = useState<string | null>(null);
+    const doc = useHostDocument();
+    /**
+     * The control that opened the page - the row the author pressed - so that backing out puts the
+     * focus back on it. Without this the page's own controls unmounted under the focus and it fell to
+     * the body, and the next Tab or arrow started from the top of the window instead of from the row.
+     */
+    const openerRef = useRef<HTMLElement | null>(null);
+    const refocusOpenerRef = useRef(false);
+    const setOpenCommandId = useCallback((commandId: string | null) => {
+        if (commandId) {
+            const active = doc.activeElement;
+            openerRef.current = active instanceof HTMLElement && active !== doc.body ? active : null;
+        } else {
+            refocusOpenerRef.current = true;
+        }
+        setOpenCommandIdState(commandId);
+    }, [doc]);
+    useEffect(() => {
+        if (openCommandId || !refocusOpenerRef.current) {
+            return;
+        }
+        refocusOpenerRef.current = false;
+        const opener = openerRef.current;
+        openerRef.current = null;
+        // Only while the focus is still the page's: an author who has since clicked into the scene
+        // beside the panel keeps the focus where they put it.
+        const active = doc.activeElement;
+        const lost = !active || active === doc.body || !active.isConnected || active.closest("[data-command-page]") !== null;
+        if (opener?.isConnected && lost) {
+            opener.focus({ preventScroll: true });
+        }
+    }, [doc, openCommandId]);
     // The same set the `/` menu leads with, so a star set here heads that menu on the next line typed.
     const { starredIds, toggleStarred } = useStarredStoryCommands();
     const pluginCommands = useStoryPluginActionCommands();
@@ -202,9 +235,13 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         node?.focus({ preventScroll: true });
     }, []);
 
+    // While a command's page covers the list, the list is out of reach: the page is drawn over it, so
+    // Tab walking on into rows nobody can see would be walking blind.
+    const listCovered = Boolean(openCommandId && (openCommand || openPlugin));
+
     return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface">
-            <div className="border-b border-edge bg-surface px-3 py-3">
+            <div className="border-b border-edge bg-surface px-3 py-3" inert={listCovered}>
                 <SearchBox
                     value={query}
                     onChange={setQuery}
@@ -241,7 +278,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                 </div>
             </div>
 
-            <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+            <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2" inert={listCovered}>
                 {starredCommands.length === 0 && visibleGroups.length === 0 ? (
                     <div className="rounded-md border border-edge bg-fill-subtle px-3 py-3 text-sm text-fg-subtle">
                         {/* An empty starred tab is not a search that missed: it says what the tab is for. */}
@@ -301,6 +338,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                         key={openCommandId}
                         ref={focusSubPage}
                         tabIndex={-1}
+                        data-command-page=""
                         onKeyDown={event => {
                             if (event.key === "Escape") {
                                 event.stopPropagation();

@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
 import { ExternalLink, GitBranch, Pencil } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
-import type { UIElement, UIElementValueBinding, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
+import {
+    getUIComponentParams,
+    isUIComponentTextParam,
+    type UIElement,
+    type UIElementValueBinding,
+    type UIElementValueBindingValueType,
+} from "@shared/types/ui-editor/document";
+import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
@@ -93,6 +100,67 @@ export function ListItemFieldBindingRow(props: {
 }
 
 /**
+ * The row that shows one of the component's text parameters in an element's words, inside the
+ * definition - the component's counterpart of {@link ListItemFieldBindingRow}, and above the source
+ * choice for the same reason: one binding slot, so picking a parameter is what replaces any other
+ * binding there.
+ *
+ * Offered only inside a definition that declares a text parameter, or on an element already bound
+ * to one. A binding whose parameter is gone stays selected and is named as missing, so the author
+ * sees what the element is waiting for rather than an empty picker.
+ */
+export function ComponentParamBindingRow(props: {
+    data: UIInspectorData;
+    liveElement: UIElement;
+    propPath: string;
+    disabled?: boolean;
+    /** Told after a pick lands, with the param id (null when unbound). */
+    onBound?: (paramId: string | null) => void;
+}): ReactNode {
+    const { t } = useTranslation();
+    const { data, liveElement, propPath } = props;
+    const component = findUIComponentHoldingElement(data.documentService.getDocument(), liveElement.id);
+    if (!component) {
+        return null;
+    }
+    const textParams = getUIComponentParams(component).filter(isUIComponentTextParam);
+    const binding = liveElement.valueBindings?.[propPath];
+    const current = binding?.kind === "componentParam" ? binding.paramId : "";
+    if (textParams.length === 0 && !current) {
+        return null;
+    }
+    const label = t("properties.componentParams.bindLabel");
+    const options = [
+        { value: "", label: t("properties.componentParams.bindNone") },
+        ...textParams.map(param => ({ value: param.id, label: param.name.trim() || param.id })),
+        ...(current && !textParams.some(param => param.id === current)
+            ? [{ value: current, label: t("properties.componentParams.bindMissing") }]
+            : []),
+    ];
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <Select
+                size="sm"
+                className="min-w-0 flex-1"
+                value={current}
+                options={options}
+                portalMenu
+                fullWidth
+                ariaLabel={label}
+                disabled={props.disabled}
+                onChange={value => {
+                    const paramId = String(value) || null;
+                    data.documentService.setElementComponentParamBinding(liveElement.id, propPath, paramId);
+                    props.onBound?.(paramId);
+                }}
+            />
+        </div>
+    );
+}
+
+/**
  * The field picker on its own, for a prop with no blueprint-value control beside it.
  *
  * An image is the case that needs it: its picture is bound per row like any other prop, but its
@@ -161,8 +229,12 @@ export type BlueprintValueBindingState = {
     clear: () => void;
 };
 
+/**
+ * The prop's Blueprint Value control state. A null config is a prop that offers no Blueprint Value -
+ * a text input's placeholder - and answers "nothing bound, nothing can be" without a second hook.
+ */
 export function useBlueprintValueBinding(
-    config: BlueprintValueFieldConfig,
+    config: BlueprintValueFieldConfig | null,
     data: UIInspectorData,
 ): BlueprintValueBindingState {
     const { t } = useTranslation();
@@ -172,7 +244,7 @@ export function useBlueprintValueBinding(
     const surfaceId = data.surfaceId;
     const isComponentEditorSurface = Boolean(parseComponentEditorSurfaceId(surfaceId));
     const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
-    const storedBinding = live.valueBindings?.[config.propPath];
+    const storedBinding = config ? live.valueBindings?.[config.propPath] : undefined;
     // This control speaks for the blueprint binding only. A prop bound to a list item field is
     // bound by a different control, and reading its field id as a blueprint id would have this
     // one report a blueprint that does not exist.
@@ -188,7 +260,7 @@ export function useBlueprintValueBinding(
     void blueprintRevision;
 
     const openValueBlueprint = (blueprintId: string, options?: BlueprintOpenOptions) => {
-        if (!surfaceId) {
+        if (!surfaceId || !config) {
             return;
         }
         openBlueprint({
@@ -208,7 +280,7 @@ export function useBlueprintValueBinding(
         binding,
         blueprintName: blueprint?.name,
         surfaceId,
-        createUnavailable: !surfaceId
+        createUnavailable: !surfaceId || !config
             ? ""
             : isComponentEditorSurface
               ? t("widgetChrome.blueprint.componentsUnavailable")
@@ -219,7 +291,7 @@ export function useBlueprintValueBinding(
             }
         },
         create: () => {
-            if (!surfaceId) {
+            if (!surfaceId || !config) {
                 return;
             }
             // Read again rather than from this render: a caller may have rewritten the element on
@@ -236,7 +308,11 @@ export function useBlueprintValueBinding(
             );
             openValueBlueprint(blueprintId);
         },
-        clear: () => data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath),
+        clear: () => {
+            if (config) {
+                data.documentService.clearElementBlueprintValueBinding(live.id, config.propPath);
+            }
+        },
     };
 }
 

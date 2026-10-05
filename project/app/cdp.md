@@ -43,8 +43,10 @@ so; the reload lands in a window on the wrong screen.
 Before believing an answer from a machine that has more than one Studio on it,
 check who holds the port (`netstat -ano`, then match the PID to a process) and
 give your own instance a port nobody wants:
-`node project/app/dev-electron.js --cdp --cdp-port=9377`, then `--port 9377`
-here.
+`node project/app/dev-electron.js --cdp --cdp-port=9377 --window-tag="<task>"`,
+then `--port 9377` here. The tag puts `[<task>]` in front of every title that
+instance shows, so the person at the machine can see which windows are being
+driven and keep their hands off them; launch nothing without one.
 
 ## CLI
 

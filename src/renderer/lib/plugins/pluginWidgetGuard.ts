@@ -6,6 +6,9 @@ import type { RuntimeWidgetRendererProps } from "@/lib/ui-editor/runtime/plugins
 import { narrowWidgetEventDispatchForPlugin } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendWidgetLogicTab } from "@/lib/ui-editor/widget-modules/shared/blueprint/widgetLogicTab";
+import { prependPluginTextSection } from "@/lib/ui-editor/widget-modules/shared/text/pluginTextSection";
+import type { UITextSite } from "@shared/types/ui-editor/textSites";
+import { recordLiveDocumentService } from "./pluginWidgetHostData";
 import type {
     UIInspectorData,
     UIWidgetModule,
@@ -204,13 +207,11 @@ export function guardInspectorDataForPluginWidget(data: UIInspectorData): UIInsp
     if (!pluginId) {
         return data;
     }
-    return {
-        ...data,
-        documentService: createPluginWidgetDocumentApi(
-            pluginId,
-            data.documentService,
-        ) as unknown as UIDocumentService,
-    };
+    const facade = createPluginWidgetDocumentApi(pluginId, data.documentService) as unknown as UIDocumentService;
+    // The host's own fields in the widget's schema (the words of its declared text props) read the
+    // live service; the plugin's fields never see the record.
+    recordLiveDocumentService(facade, data.documentService);
+    return { ...data, documentService: facade };
 }
 
 /**
@@ -280,6 +281,11 @@ export function guardPluginWidgetModule(
     module: PluginWidgetModule,
     game: RuntimePluginGame,
     services: { documentService: UIDocumentService; stateService: UIEditorStateService },
+    /**
+     * The props its manifest declares as words (`uiTextSitesFromPluginDeclaration`). The registry
+     * answers the shared readers with them, and the inspector gets the host's text field for each.
+     */
+    textSites: readonly UITextSite[] = [],
 ): UIWidgetModule {
     const doc = (): PluginWidgetDocumentApi => createPluginWidgetDocumentApi(pluginId, services.documentService);
     const state = (): PluginWidgetEditorStateApi =>
@@ -294,6 +300,7 @@ export function guardPluginWidgetModule(
         logicApi,
         acceptsChildren,
         ...(partSlots.length > 0 ? { partSlots } : {}),
+        ...(textSites.length > 0 ? { textSites } : {}),
         displayName: module.displayName,
         icon: module.icon,
         createDefaultElement: () => module.createDefaultElement(),
@@ -309,13 +316,16 @@ export function guardPluginWidgetModule(
     if (module.listEditorStates) {
         guarded.listEditorStates = element => module.listEditorStates!(element);
     }
-    if (module.createInspector || logicApi?.supportsPrivateBlueprint) {
+    if (module.createInspector || logicApi?.supportsPrivateBlueprint || textSites.length > 0) {
         guarded.createInspector = context => {
             const own = module.createInspector?.({ element: context.element, documentService: doc() }) as unknown as
                 ReturnType<NonNullable<UIWidgetModule["createInspector"]>>;
+            // The words of every declared text prop are the host's field, as a text's are; see
+            // `prependPluginTextSection`.
+            const withText = prependPluginTextSection(own, context.element, textSites);
             // The way into the widget's blueprint is a host section no plugin can build; see
             // `appendWidgetLogicTab`. It reads the workspace, never the plugin's facade.
-            return logicApi?.supportsPrivateBlueprint ? appendWidgetLogicTab(own, context.element) : own;
+            return logicApi?.supportsPrivateBlueprint ? appendWidgetLogicTab(withText, context.element) : withText;
         };
     }
     if (module.createDockerBarItems) {

@@ -12,6 +12,7 @@ import type {
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import type { UIElementPointerPositions } from "./elementPointerPosition";
 
 export type UIHost = "app" | "player";
 
@@ -32,6 +33,12 @@ export type UIHostAdapterElementEventOptions = {
     /** Resolved values by param id: the instance's own, falling back to the declared default. */
     componentParams?: Record<string, string>;
     eventControl?: BehaviorGraphEventControl;
+    /**
+     * Where a pointer event landed, for each element it bubbles up to: an ancestor's head reads the
+     * press in its own box rather than in the box of the element that was hit. Absent for an event
+     * with no position, which bubbles with its payload as it is.
+     */
+    pointerPositions?: UIElementPointerPositions;
     allowClosedScopeExecution?: boolean;
 };
 
@@ -125,6 +132,16 @@ export type UIHostAdapterBlueprintRuntime = {
          * own go.
          */
         valueExecution?: BehaviorGraphValueTracking;
+        /**
+         * The host the body runs on, when it is not this runtime's own adapter: a host standing in
+         * front of this one (the global blueprint's, see `globalHost`) passes itself, so a fn its
+         * graphs call reads the same host as the graph that called it. Absent everywhere else.
+         *
+         * Typed opaquely because this runtime type is part of the script API declarations that
+         * Studio writes into projects, and `UIHostAdapter` reaches React's types, which a project
+         * does not have. The one reader, the Dev Mode host adapter, narrows it back.
+         */
+        hostAdapter?: unknown;
     }) => Promise<{ returns: Record<string, unknown> }>;
     frame?: {
         getParam: (key: string) => unknown;

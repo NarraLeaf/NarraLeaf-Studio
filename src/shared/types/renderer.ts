@@ -73,7 +73,11 @@ import type { UpdateState } from "@shared/constants/update";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
-import type { ProjectTemplateDescriptor } from "./projectTemplate";
+import type {
+    ProjectTemplateAssetContent,
+    ProjectTemplateDescriptor,
+    ProjectTemplateInterfaceContent,
+} from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportFileEntry, AssetExportFileResult, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
@@ -1235,6 +1239,8 @@ export interface RendererPreloadedInterface {
             productName: string | null;
             version: string | null;
             builtAt: string | null;
+            /** False when the build was made without a distribution key, so it reads no patch. */
+            acceptsPatches: boolean;
         }>>;
     };
 
@@ -1425,6 +1431,10 @@ export interface RendererPreloadedInterface {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
         /** `locale` picks the template's own copy of its content written in that language, if it has one. */
         scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string }>>;
+        /** A template's interface documents, to bring a page out of it into an open project. */
+        readInterface(templateId: string, locale?: string): Promise<RequestStatus<ProjectTemplateInterfaceContent>>;
+        /** A template's own asset files, by id. An id the template does not ship is left out. */
+        readAssets(templateId: string, assetIds: string[], locale?: string): Promise<RequestStatus<ProjectTemplateAssetContent[]>>;
     };
 
     assets: {

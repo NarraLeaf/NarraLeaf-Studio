@@ -67,6 +67,7 @@ import {
     resolveBlueprintCommentColorKey,
 } from "@/lib/ui-editor/blueprint-comment-colors";
 import { readBlueprintCommentSize } from "../blueprintGroupFrame";
+import { BLUEPRINT_PIN_ATTRIBUTE, BLUEPRINT_PIN_SIDE_ATTRIBUTE } from "../blueprintWireEnds";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
@@ -918,8 +919,9 @@ function InputPinRow({
                 {pinCaption(pin, semantic, t)}
             </span>
         );
+    const pinRowIdentity = { [BLUEPRINT_PIN_ATTRIBUTE]: pin.id, [BLUEPRINT_PIN_SIDE_ATTRIBUTE]: "input" };
     return (
-        <div className="group relative flex min-h-[20px] w-full min-w-0 items-center pl-1 pr-0.5">
+        <div className="group relative flex min-h-[20px] w-full min-w-0 items-center pl-1 pr-0.5" {...pinRowIdentity}>
             <Handle
                 type="target"
                 position={Position.Left}
@@ -1001,10 +1003,14 @@ function OutputPinRow({
     const { t } = useTranslation();
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
     const editable = Boolean(removable && nodeId && onPatchNodeParam);
+    const pinRowIdentity = { [BLUEPRINT_PIN_ATTRIBUTE]: pin.id, [BLUEPRINT_PIN_SIDE_ATTRIBUTE]: "output" };
     if (editable && nodeId && onPatchNodeParam) {
         // Editable dynamic output pin (e.g. Fn head parameters): remove + rename + type cluster.
         return (
-            <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end gap-0.5 pl-0.5 pr-1">
+            <div
+                className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end gap-0.5 pl-0.5 pr-1"
+                {...pinRowIdentity}
+            >
                 {onRemovePin ? (
                     <Button
                         type="button"
@@ -1058,7 +1064,7 @@ function OutputPinRow({
         );
     }
     return (
-        <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
+        <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1" {...pinRowIdentity}>
             <span
                 className="min-w-0 flex-1 truncate pr-3.5 text-right text-2xs leading-tight text-fg-muted"
                 data-tip={pinCaption(pin, semantic, t)}

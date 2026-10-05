@@ -20,6 +20,16 @@ import type { TranslationExchangeRow } from "@shared/utils/localizationExchange"
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
 import {
+    uiTextSiteLabel,
+    uiTextSitesOf,
+    uiTextUnitBindingOf,
+    uiTextUnitId,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
+import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import { listUIPlacementTextValues, uiComponentTextValueUnitBinding } from "@shared/types/ui-editor/componentTextParams";
+import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
+import {
     countSegmentInterpolations,
     segmentHasMarkup,
     serializeSegmentMarkupText,
@@ -194,64 +204,108 @@ export function extractSceneTranslationRows(document: StoryDocument): SceneTrans
         }));
 }
 
-/** One localizable UI widget text (implicit unit `ui:<elementId>.<prop>`). */
+/**
+ * One widget's own words on an interface (implicit unit `ui:<elementId>.<prop>`), or the words a
+ * component placement gives a text parameter (`ui:<placementId>.param.<paramId>`, or the
+ * definition's `ui:<componentId>.param.<paramId>` for a default).
+ */
 export type UiTranslationRow = {
     unitId: string;
+    /** The widget, or the placement whose parameter value this is. */
     elementId: string;
-    prop: "text" | "label";
-    /** Author-facing element name (never the raw element id). */
+    /** The prop holding the widget's words, or `param.<paramId>` for a parameter's value. */
+    prop: UITextSite["textProp"] | `param.${string}`;
+    /**
+     * Author-facing element name (never the raw element id); "placement › parameter" for a parameter,
+     * and "widget › words" for a plugin widget that declares more than one prop as words.
+     */
     elementName: string;
     /** Page (or component) the element lives on, for grouping. */
     groupName: string;
     sourceText: string;
 };
 
-const LOCALIZABLE_WIDGETS: Record<string, "text" | "label"> = {
-    "nl.text": "text",
-    "nl.button": "label",
-};
-
-function getLocalizableWidgetText(element: UIElement): { prop: "text" | "label"; sourceText: string } | null {
-    const prop = LOCALIZABLE_WIDGETS[element.type];
-    if (!prop) {
-        return null;
+/**
+ * The words an element translates through its own unit, site by site - each site's prop, read the way
+ * the game reads it (`uiTextUnitBindingOf`): every element's own words with a letter in them. A named
+ * key translates through the key registry instead, and its row is the key's. Studio's own widgets have
+ * one site; a plugin's widget has one per prop its manifest declares as words (`uiTextSitesOf`).
+ *
+ * Sample words have no row (`textSample.ts`): a value binding or a blueprint decides what the game
+ * shows there, and a package carries neither the sample words nor a translation of them.
+ */
+function getLocalizableWidgetTexts(
+    element: UIElement,
+    writers: UITextWriterIndex,
+): { site: UITextSite; sourceText: string }[] {
+    const out: { site: UITextSite; sourceText: string }[] = [];
+    for (const site of uiTextSitesOf(element.type)) {
+        if (site.role !== "words" || uiTextSampleCauseOf(element, site, writers.get(element.id))) {
+            continue;
+        }
+        const binding = uiTextUnitBindingOf(element, site);
+        if (binding?.kind === "implicit") {
+            out.push({ site, sourceText: binding.sourceText });
+        }
     }
-    const props = element.props as Record<string, unknown> | undefined;
-    // Named-key references translate through the key registry, not an implicit unit.
-    if (!props || props.localizable !== true || (typeof props.localizationKey === "string" && props.localizationKey.trim())) {
-        return null;
-    }
-    const sourceText = props[prop];
-    if (typeof sourceText !== "string" || !sourceText.trim()) {
-        return null;
-    }
-    return { prop, sourceText };
+    return out;
 }
 
-/** Stable unit id for a widget's localizable text prop (mirrors the runtime resolver). */
+/** Stable unit id for a widget's own words - the runtime resolver's (`uiTextUnitId`). */
 export function uiTranslationUnitId(elementId: string, prop: string): string {
-    return `ui:${elementId}.${prop}`;
+    return uiTextUnitId(elementId, prop);
 }
 
 /**
- * Collect every opted-in UI widget text: top-level elements grouped by their
- * page, component-definition elements grouped by their component's name.
+ * Collect every widget's own words: top-level elements grouped by their page,
+ * component-definition elements grouped by their component's name.
+ *
+ * `writers` are the project's writers of interface words (`indexUITextWriters`), which decide whose
+ * words are sample text. Required, so no caller can leave the words a blueprint writes over in the
+ * table by forgetting them. `locale` is the editor's, for what a plugin widget calls each of its words.
  */
-export function extractUiTranslationRows(document: UIDocument): UiTranslationRow[] {
+export function extractUiTranslationRows(
+    document: UIDocument,
+    writers: UITextWriterIndex,
+    options: { locale?: string } = {},
+): UiTranslationRow[] {
     const rows: UiTranslationRow[] = [];
+    // A parameter's default is one unit however many placements fall back to it.
+    const paramUnits = new Set<string>();
     const pushRow = (element: UIElement, groupName: string) => {
-        const text = getLocalizableWidgetText(element);
-        if (!text) {
-            return;
+        const texts = getLocalizableWidgetTexts(element, writers);
+        const severalSites = uiTextSitesOf(element.type).length > 1;
+        for (const { site, sourceText } of texts) {
+            const elementName = element.name || element.type;
+            rows.push({
+                unitId: uiTranslationUnitId(element.id, site.textProp),
+                elementId: element.id,
+                prop: site.textProp,
+                elementName: severalSites ? `${elementName} › ${uiTextSiteLabel(site, options.locale ?? "")}` : elementName,
+                groupName,
+                sourceText,
+            });
         }
-        rows.push({
-            unitId: uiTranslationUnitId(element.id, text.prop),
-            elementId: element.id,
-            prop: text.prop,
-            elementName: element.name || element.type,
-            groupName,
-            sourceText: text.sourceText,
-        });
+        // A placement carries none of its definition's words - inside it they are sample text - but it
+        // puts the words it gives the definition's text parameters on screen, each in its own unit.
+        for (const { component, param, value } of listUIPlacementTextValues(document, element)) {
+            const binding = uiComponentTextValueUnitBinding(value);
+            if (binding?.kind !== "implicit" || paramUnits.has(binding.unitId)) {
+                continue;
+            }
+            paramUnits.add(binding.unitId);
+            const paramName = param.name.trim() || param.id;
+            rows.push({
+                unitId: binding.unitId,
+                elementId: element.id,
+                prop: `param.${param.id}`,
+                elementName: value.origin === "default"
+                    ? `${component.name || element.name || element.type} › ${paramName}`
+                    : `${element.name || component.name || element.type} › ${paramName}`,
+                groupName: value.origin === "default" ? component.name || groupName : groupName,
+                sourceText: binding.sourceText,
+            });
+        }
     };
     for (const element of Object.values(document.elements)) {
         const surfaceId = findUIElementSurfaceId(document, element.id);

@@ -18,11 +18,20 @@ export const build = {
     },
     unavailable: {
         windows: "Cannot build Windows apps on this machine.",
-        macos: "macOS apps can only be built on a Mac.",
+        macos: "Cannot build macOS apps on this machine.",
         linux: "Cannot build Linux apps on this machine.",
         web: "Web builds are available on every machine.",
         android: "Android builds are available on every machine.",
         ios: "iOS builds are available on every machine.",
+    },
+    // A format a platform offers that this machine cannot produce, shown on its greyed-out chip.
+    formatUnavailable: {
+        windows: "Not available on this machine.",
+        macos: "Requires a Mac.",
+        linux: "Not available on Windows.",
+        web: "Not available on this machine.",
+        android: "Not available on this machine.",
+        ios: "Not available on this machine.",
     },
     format: {
         zip: "Portable ZIP",
@@ -88,7 +97,7 @@ export const build = {
         appId: "App ID",
         copyright: "Copyright",
         icons: "Icons",
-        iconsHint: "Click an icon to change it in project settings",
+        iconsHint: "Click an icon to change it in Project ▸ App",
         iconUnset: "Not set",
         // What an empty version or copyright reads as. The section only reports these now, so a blank
         // field has to say it is blank rather than look like a control waiting for input.
@@ -97,8 +106,8 @@ export const build = {
     },
     content: {
         protection: "Asset protection",
-        protectionOn: "Assets and saves are encrypted in the packaged game.",
-        protectionOff: "Assets and saves ship unencrypted.",
+        protectionOn: "Assets are encrypted in the packaged game.",
+        protectionOff: "Assets ship unencrypted.",
         plugins: "Bundled plugins",
         pluginsNone: "No plugins are bundled with this game.",
         pluginsRescanUnavailable: "The plugin list cannot be rescanned in this window.",
@@ -160,6 +169,8 @@ export const build = {
             artifactReadVersioned: "{product} {version}, built {date}",
             artifactVariantStated: "Read from the build folder.",
             artifactVariantUnknown: "This build does not state its variant. Select it below.",
+            // A build made before the project had a key. Stated, not refused: the export still runs.
+            artifactNoKey: "This build was made without a distribution key. The game ignores any patch exported for it.",
             artifactVariantMismatch: "This build is {build}. The DLC attaches to {variant}.",
             artifactWholeGame: "The patch includes the whole game.",
             /** The second question: whose content goes in. Only asked where a project has variants. */
@@ -289,10 +300,20 @@ export const build = {
     mirror: {
         official: "official source",
         change: "Change",
+        /**
+         * Printed under a build that failed fetching a toolset, Electron or Zig. `{section}` is the
+         * settings category's own label, so the path reads the way the settings window does.
+         */
+        downloadFailed:
+            "A file the build needed could not be downloaded. If this network reaches github.com slowly or not at all, choose a mirror for the build's downloads in Settings › {section} and build again.",
+        /** Added after `downloadFailed` when the failure was a certificate that would not verify. */
+        certificateFailed:
+            "The download's certificate could not be verified. That usually means a proxy, network accelerator or antivirus program on this computer is intercepting HTTPS; turning it off may fix this without a mirror.",
     },
     preflight: {
         "no-targets": "Select at least one platform and format.",
         "unbuildable-platform": "This machine cannot build for {platform}.",
+        "unbuildable-format": "This machine cannot build the {format} format for {platform}.",
         "version-invalid": "Version {version} is not a valid semantic version; the build will fail.",
         "version-missing": "No version set; the game builds as 0.0.0.",
         "identifier-missing": "No project identifier; using the app id {appId}.",
@@ -337,6 +358,9 @@ export const build = {
             + "{targetPlatform} target on a {targetPlatform} machine.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "mobile-unprotected": "Asset protection does not apply to Android or iOS packages.",
+        // Shown beside a Create button, so the sentence states the consequence and leaves the
+        // remedy to the button.
+        "distribution-key-missing": "No distribution key. The game this build produces will not accept patches.",
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",

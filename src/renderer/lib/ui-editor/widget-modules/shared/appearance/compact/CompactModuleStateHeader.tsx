@@ -8,7 +8,7 @@ import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import {
     ensureModuleExclusiveState,
     listModuleExclusiveStatesPresent,
-    moduleFullyHasExclusiveState,
+    moduleHasExclusiveState,
     removeModuleExclusiveState,
     type ModuleEditMode,
     SYSTEM_STATE_KEYS,
@@ -57,7 +57,7 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
 
     const menu = useMemo((): ContextMenuDef => {
         return SYSTEM_STATE_KEYS.map(state => {
-            const exists = moduleFullyHasExclusiveState(variant, moduleKeys, state);
+            const exists = moduleHasExclusiveState(variant, moduleKeys, state);
             return {
                 id: `state-${state}`,
                 label: exists

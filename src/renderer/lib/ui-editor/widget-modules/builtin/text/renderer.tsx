@@ -15,12 +15,14 @@ import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
@@ -28,7 +30,7 @@ import {
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
@@ -50,12 +52,13 @@ import {
     resolveTextVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import { getTextProps, textValuePatch } from "./helpers";
+import { getTextProps, TEXT_SITE, textValuePatch } from "./helpers";
 import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
@@ -63,7 +66,6 @@ import {
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
-const TEXT_VALUE_PROP_PATH = "text";
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -82,7 +84,7 @@ function assignMotionTransition(
  */
 function designTimeTextOfElement(element: UIElement): string {
     const props = getTextProps(element);
-    return designTimeTextOf(props.localizationKey, props.text);
+    return designTimeTextOf(TEXT_SITE, props.localizationKey, props.text);
 }
 
 function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
@@ -93,12 +95,15 @@ function commitTextEditValue(documentService: UIDocumentService, elementId: stri
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
         return;
     }
-    if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
-        documentService.clearElementBlueprintValueBinding(elementId, TEXT_VALUE_PROP_PATH);
-    }
+    // Typed over a key the project does not have - drawn as its name - the words become the text's own
+    // and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getTextProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? textValuePatch(docEl, nextText) : { text: nextText },
+        {
+            ...(docEl ? textValuePatch(docEl, nextText) : { text: nextText }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 
@@ -211,9 +216,11 @@ export function TextRenderer({
             }
             e.preventDefault();
             e.stopPropagation();
-            beginInlineTextEdit(stateService, surface.id, element.id);
+            if (editHost) {
+                beginOrExplainInlineTextEdit(editHost, surface.id, element.id);
+            }
         },
-        [element.id, isEditing, stateService, surface.id],
+        [editHost, element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -245,13 +252,16 @@ export function TextRenderer({
     // Localized display text. At design time the source language's: the element's own words, or
     // its key's when it is read from one - the canvas shows what the game shows.
     const displayText = useLocalizedWidgetText({
+        // The text widget's site, for the dialogue line and the NVL line too: they draw through this
+        // renderer outside their slots and are read as text there.
+        site: TEXT_SITE,
         elementId: element.id,
-        prop: "text",
         sourceText: p.text,
-        localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
-        resolveKeyAtDesignTime: true,
+        origin: uiTextRuntimeOriginOf(element),
+        unitId: uiTextRuntimeUnitOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayText, uiTextRuntimeOriginOf(element) === "bound");
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`
     // driven by a value blueprint and a list row's own field all arrive here as a different string,

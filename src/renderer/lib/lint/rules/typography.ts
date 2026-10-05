@@ -10,7 +10,7 @@ import type { TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule, LintRuleOptions } from "../types";
-import { listSurfaceTextSites, surfaceLocation, surfaceTarget } from "./ui";
+import { listSurfaceTextSites, surfaceLocation, surfaceTarget, type SurfaceTextFace } from "./ui";
 import { segmentLiteralText } from "./text/displayWidth";
 import { listLiveTextSegments, storyBlockTarget, storyLocation } from "./text/textSegments";
 
@@ -104,13 +104,14 @@ type TextSite = {
     location: LintLocation;
     target?: SearchJumpTarget;
     /**
-     * The font this site chose for itself, when it is a widget that has one.
+     * The faces this site is drawn in, when it is a widget: its resting one first, then each one its
+     * other states switch to, each naming the font the widget chose for it, if any.
      *
      * Story text has none - it is set in the project's stack, and a character's colour is the only
      * thing a speaker overrides. A widget with its own face still falls through to the project's
      * stack for what that face lacks, which is what {@link stackFor} composes.
      */
-    fontAssetId?: string;
+    faces?: readonly SurfaceTextFace[];
 };
 
 /** Everything a player reads, in the language the author wrote it in. */
@@ -200,7 +201,7 @@ function collectTextSites(ctx: LintContext): TextSite[] {
                 source: site.text,
                 location: surfaceLocation(site.surface, site.element),
                 target: surfaceTarget(site.surface),
-                ...(site.fontAssetId ? { fontAssetId: site.fontAssetId } : {}),
+                faces: site.faces,
             });
         }
     }
@@ -302,6 +303,8 @@ type MissingCharacter = {
     count: number;
     location: LintLocation;
     target?: SearchJumpTarget;
+    /** The widget's state whose face cannot draw it there, when its resting face can. */
+    state?: string;
 };
 
 /**
@@ -359,16 +362,7 @@ export function findMissingCharacters(input: {
     // Keyed on the stack rather than on the site: every line of a scene resolves the same one.
     const drawable = new Map<string, (codePoint: number) => boolean>();
 
-    for (const site of input.sites) {
-        const ids = stackFor(input.entries, input.locale, site.fontAssetId);
-        if (ids.length === 0) {
-            // Nothing is declared for this text in this language, so what draws it is the host's own
-            // typeface and its coverage is not ours to assert - the same silence a project with no
-            // fonts at all gets, applied one site at a time. When it is a whole language that has
-            // been left with nothing, `typography/locale-no-font` says so once instead of this
-            // saying it about every character in the script.
-            continue;
-        }
+    const coverFor = (ids: readonly string[]): ((codePoint: number) => boolean) => {
         const key = ids.join("|");
         let covers = drawable.get(key);
         if (!covers) {
@@ -378,6 +372,24 @@ export function findMissingCharacters(input: {
             covers = codePoint => coverages.some(entry => coversCodePoint(entry, codePoint));
             drawable.set(key, covers);
         }
+        return covers;
+    };
+
+    for (const site of input.sites) {
+        // Every face the words are drawn in, the resting one first, so a character only a state's
+        // face lacks is reported for that state and one the resting face lacks for the widget.
+        const faces = (site.faces && site.faces.length > 0 ? site.faces : [{} as SurfaceTextFace])
+            .map(face => ({ face, ids: stackFor(input.entries, input.locale, face.fontAssetId) }))
+            // Nothing is declared for this face in this language, so what draws it is the host's
+            // own typeface and its coverage is not ours to assert - the same silence a project with
+            // no fonts at all gets, applied one site at a time. When it is a whole language that has
+            // been left with nothing, `typography/locale-no-font` says so once instead of this
+            // saying it about every character in the script.
+            .filter(({ ids }) => ids.length > 0)
+            .map(({ face, ids }) => ({ face, covers: coverFor(ids) }));
+        if (faces.length === 0) {
+            continue;
+        }
 
         for (const character of input.textFor(site)) {
             const codePoint = character.codePointAt(0)!;
@@ -386,7 +398,11 @@ export function findMissingCharacters(input: {
                 already.count += 1;
                 continue;
             }
-            if (isIgnored(codePoint) || covers(codePoint)) {
+            if (isIgnored(codePoint)) {
+                continue;
+            }
+            const lacking = faces.find(({ covers }) => !covers(codePoint));
+            if (!lacking) {
                 continue;
             }
             found.set(codePoint, {
@@ -395,6 +411,7 @@ export function findMissingCharacters(input: {
                 count: 1,
                 location: site.location,
                 ...(site.target ? { target: site.target } : {}),
+                ...(lacking.face.state ? { state: lacking.face.state } : {}),
             });
         }
     }
@@ -422,6 +439,18 @@ function fontFormat(ctx: LintContext, assetId: string): string {
     return ext.trim().toLowerCase().replace(/^\./, "");
 }
 
+/** The message for one missing character: naming the language when the project has them, and the state. */
+function glyphMessageKey(named: boolean, inState: boolean): TranslationKey {
+    if (inState) {
+        return (named
+            ? "lint.rule.typographyGlyphCoverage.messageInLanguageInState"
+            : "lint.rule.typographyGlyphCoverage.messageInState") as TranslationKey;
+    }
+    return (named
+        ? "lint.rule.typographyGlyphCoverage.messageInLanguage"
+        : "lint.rule.typographyGlyphCoverage.message") as TranslationKey;
+}
+
 async function runGlyphCoverage(
     ctx: LintContext,
     entries: readonly ProjectFontEntry[],
@@ -442,8 +471,10 @@ async function runGlyphCoverage(
         referenced.add(entry.assetId);
     }
     for (const site of sites) {
-        if (site.fontAssetId) {
-            referenced.add(site.fontAssetId);
+        for (const face of site.faces ?? []) {
+            if (face.fontAssetId) {
+                referenced.add(face.fontAssetId);
+            }
         }
     }
     const { coverage, unreadable, unloadable } = await readStacks(ctx, referenced);
@@ -497,13 +528,14 @@ async function runGlyphCoverage(
         for (const entry of missing.slice(0, maxCharacters)) {
             findings.push({
                 ruleId: "typography/glyph-coverage" as const,
-                messageKey: (named
-                    ? "lint.rule.typographyGlyphCoverage.messageInLanguage"
-                    : "lint.rule.typographyGlyphCoverage.message") as TranslationKey,
+                messageKey: glyphMessageKey(named, Boolean(entry.state)),
                 messageParams: {
                     character: entry.character,
                     count: entry.count,
                     ...(named ? { language } : {}),
+                    // The state, because the widget's resting face draws the character and only the
+                    // state's does not - an author looking at the widget would otherwise see no fault.
+                    ...(entry.state ? { state: entry.state } : {}),
                 },
                 messageParamCounts: {
                     occurrences: { key: "lint.rule.typographyGlyphCoverage.occurrenceCount", count: entry.count },

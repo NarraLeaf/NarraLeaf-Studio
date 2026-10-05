@@ -255,6 +255,37 @@ export class ComponentDocumentServiceAdapter {
         return;
     }
 
+    /**
+     * The row-field binding, on a definition's element. The base service's own version looks the
+     * element up in the document's table, which a definition's elements are not in.
+     */
+    public setElementListItemFieldBinding(elementId: string, propPath: string, fieldId: string | null): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        const id = fieldId?.trim();
+        this.base.setComponentElementValueBinding(
+            this.componentId,
+            elementId,
+            propPath,
+            id ? { kind: "listItemField", fieldId: id } : null,
+        );
+    }
+
+    /** Show one of this component's text parameters in an element's words, or (`null`) stop showing one. */
+    public setElementComponentParamBinding(elementId: string, propPath: string, paramId: string | null): void {
+        if (this.isVirtualRoot(elementId)) {
+            return;
+        }
+        const id = paramId?.trim();
+        this.base.setComponentElementValueBinding(
+            this.componentId,
+            elementId,
+            propPath,
+            id ? { kind: "componentParam", paramId: id } : null,
+        );
+    }
+
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {
         const actualParentId = this.mapParentId(parentId);
         if (!actualParentId) {
@@ -278,6 +309,16 @@ export class ComponentDocumentServiceAdapter {
             return { ok: false, reason: "invalid_movers" };
         }
         return this.base.moveComponentElements(this.componentId, movers, actualParentId, beforeChildId);
+    }
+
+    public groupElements(_surfaceId: string, elementIds: readonly string[]): string | null {
+        const ids = elementIds.filter(id => !this.isVirtualRoot(id) && !this.isComponentRoot(id));
+        return ids.length > 0 ? this.base.groupComponentElements(this.componentId, ids) : null;
+    }
+
+    public ungroupContainers(_surfaceId: string, containerIds: string[]): string[] {
+        const ids = containerIds.filter(id => !this.isVirtualRoot(id) && !this.isComponentRoot(id));
+        return ids.length > 0 ? this.base.ungroupComponentContainers(this.componentId, ids) : [];
     }
 
     public deleteElements(elementIds: string[]): void {
@@ -310,6 +351,11 @@ export class ComponentDocumentServiceAdapter {
      */
     public setComponentInstanceParam(elementId: string, paramId: string, value: string): void {
         this.base.setComponentInstanceParam(elementId, paramId, value);
+    }
+
+    /** Delegated for the reason {@link setComponentInstanceParam} is. */
+    public setComponentInstanceParamKey(elementId: string, paramId: string, keyName: string | null): void {
+        this.base.setComponentInstanceParamKey(elementId, paramId, keyName);
     }
 
     public unlinkComponentInstance(_elementId: string): string[] {

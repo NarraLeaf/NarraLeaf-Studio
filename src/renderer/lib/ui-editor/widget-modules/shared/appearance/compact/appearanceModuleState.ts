@@ -153,22 +153,24 @@ export function findExclusiveStateRowIndex(
     return -1;
 }
 
-/** Every property in the module has a dedicated row for this exclusive state. */
-export function moduleFullyHasExclusiveState(
+/**
+ * Whether the module has this state at all: at least one of its properties carries a row for it.
+ *
+ * This is what the module's title bar answers with its chips. A state is authored property by
+ * property - the shipped title buttons give `hovered` a text shadow in Effects and an X offset in
+ * Transform and nothing else - so asking for every property would hide a hover the canvas visibly
+ * plays, and the author could not find where it was set. Properties without a row show and keep
+ * the default's value while the state is being edited.
+ */
+export function moduleHasExclusiveState(
     variant: AppearanceVariant,
     moduleKeys: readonly string[],
     state: SystemStateKey
 ): boolean {
-    for (const key of moduleKeys) {
+    return moduleKeys.some(key => {
         const g = findPropertyGroup(variant, key);
-        if (!g) {
-            return false;
-        }
-        if (findExclusiveStateRowIndex(g.rows, state) < 0) {
-            return false;
-        }
-    }
-    return true;
+        return g != null && findExclusiveStateRowIndex(g.rows, state) >= 0;
+    });
 }
 
 /**
@@ -272,7 +274,12 @@ export function updateRowValueForModuleEdit(
 }
 
 /**
- * Like updateRowValueForModuleEdit, but if the exclusive-state row is missing, materializes the whole module state first.
+ * Like updateRowValueForModuleEdit, but creates the exclusive-state row it writes to when it is missing.
+ *
+ * A module that does not have the state yet gets it whole, as "Add" in the module's menu does. A
+ * module that already has it - on some of its properties - gets a row for this one property only:
+ * the others keep following the default, which is what they showed while the state was being
+ * edited, rather than being pinned to a copy of today's default value.
  */
 export function updateRowValueForModuleEditOrEnsure(
     variant: AppearanceVariant,
@@ -284,22 +291,16 @@ export function updateRowValueForModuleEditOrEnsure(
     if (editMode === "default") {
         return updateRowValueForModuleEdit(variant, groupKey, editMode, value);
     }
-    let v = variant;
-    if (!moduleFullyHasExclusiveState(v, moduleKeys, editMode)) {
-        v = ensureModuleExclusiveState(v, moduleKeys, editMode);
-    }
+    const v = moduleHasExclusiveState(variant, moduleKeys, editMode)
+        ? ensureModuleExclusiveState(variant, [groupKey], editMode)
+        : ensureModuleExclusiveState(variant, moduleKeys, editMode);
     return updateRowValueForModuleEdit(v, groupKey, editMode, value);
 }
 
+/** The states the module's title bar offers a chip for: those any of its properties has a row for. */
 export function listModuleExclusiveStatesPresent(
     variant: AppearanceVariant,
     moduleKeys: readonly string[]
 ): SystemStateKey[] {
-    const out: SystemStateKey[] = [];
-    for (const state of SYSTEM_STATE_KEYS) {
-        if (moduleFullyHasExclusiveState(variant, moduleKeys, state)) {
-            out.push(state);
-        }
-    }
-    return out;
+    return SYSTEM_STATE_KEYS.filter(state => moduleHasExclusiveState(variant, moduleKeys, state));
 }

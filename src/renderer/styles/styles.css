@@ -526,6 +526,23 @@ select:focus {
 }
 
 /*
+ * The keyboard's place in an open menu, dropdown or picker list: rows tagged by `floatingLayer.ts`
+ * as the arrows walk them. `:focus-visible`, so a row focused because the menu opened under the
+ * pointer is not lit as well as hovered - only one the keyboard moved to. The row's own fill, the
+ * hover colour, rather than a ring: these are menu rows, and the outline rule above strips rings
+ * from buttons anyway. A checkbox row has no fill to show, and gets the outline.
+ */
+[data-floating-item]:focus-visible {
+    background-color: var(--nl-fill);
+    outline: none;
+}
+
+input[data-floating-item]:focus-visible {
+    outline: 2px solid rgb(var(--nl-primary)) !important;
+    outline-offset: 1px !important;
+}
+
+/*
  * Keyboard focus on a running game's controls - a button, a switch, a list row - the same three
  * `GAME_KEYBOARD_CONTROL_SELECTOR` names in runtime/input/pointerKeyboardFocus.ts.
  *
@@ -953,6 +970,37 @@ input[type="radio"]:focus {
 
 .narraleaf-blueprint-flow .react-flow__handle-right::before {
     inset: -4px -12px -4px -6px;
+}
+
+/*
+ * The mark on a node the canvas has just been moved to by following a wire: an outline in the wire's
+ * colour (`--nl-blueprint-arrive`, set by the rule that starts it), held long enough to find the
+ * node, then faded. Which node wears it is written by `BlueprintWireEmphasis`.
+ */
+@keyframes narraleaf-blueprint-arrive {
+    0%,
+    55% {
+        outline: 2px solid var(--nl-blueprint-arrive);
+        outline-offset: 3px;
+    }
+    100% {
+        outline: 2px solid transparent;
+        outline-offset: 3px;
+    }
+}
+
+/*
+ * Blueprint: the selected wire.
+ *
+ * `!important` because a wire paints its colour inline - exec or data, from `blueprintEdgeStyle` -
+ * and the inline stroke beats React Flow's own selected style, so a selected wire looked like every
+ * other one while Delete was aimed at it. The foreground colour rather than the accent: the accent
+ * is a teal close to the exec wires' cyan, so a selected exec wire would barely change and a
+ * selected data wire would read as an exec one. The pins at both ends keep the type colour.
+ */
+.narraleaf-blueprint-flow .react-flow__edge.selected .react-flow__edge-path {
+    stroke: rgb(var(--nl-fg)) !important;
+    stroke-width: 2.5px !important;
 }
 
 /*

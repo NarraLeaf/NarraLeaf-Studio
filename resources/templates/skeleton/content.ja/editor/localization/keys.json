@@ -212,6 +212,12 @@
     },
     "slot.empty": {
       "sourceText": "データなし"
+    },
+    "splash.disclaimer": {
+      "sourceText": "この作品はフィクションです。\n実在の人物・団体・事件などとは一切関係ありません。"
+    },
+    "splash.wordmark": {
+      "sourceText": "あなたのスタジオ"
     }
   },
   "schemaVersion": 1

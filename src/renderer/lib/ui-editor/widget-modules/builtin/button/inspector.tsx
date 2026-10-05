@@ -32,7 +32,7 @@ import {
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { i18nStore, translate } from "@/lib/i18n";
 import { TextRunMarksEditor } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
-import { BUTTON_MARKED_LABEL, getButtonProps } from "./helpers";
+import { BUTTON_MARKED_LABEL, BUTTON_SITE, getButtonProps } from "./helpers";
 import type { ButtonWidgetProps } from "./types";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
@@ -79,7 +79,7 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 }
 
 const BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG: BlueprintValueFieldConfig = {
-    propPath: "label",
+    propPath: BUTTON_SITE.textProp,
     valueType: "string",
     valueLabel: "label",
     title: "widgets.blueprintValue.buttonTextTitle",
@@ -105,11 +105,9 @@ const BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG: BlueprintValueFieldConfig = {
  * Value - the same one choice a text's words are (`createLabelSourceField`).
  */
 export const ButtonLabelSourceField = createLabelSourceField({
+    site: BUTTON_SITE,
     blueprint: BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG,
     label: BUTTON_MARKED_LABEL,
-    getLocalizationKey: element => getButtonProps(element).localizationKey,
-    getLocalizable: element => Boolean(getButtonProps(element).localizable),
-    localizeLabel: "widgets.button.localizeLabel",
 });
 
 export function createButtonInspector(ctx: InspectorContext) {

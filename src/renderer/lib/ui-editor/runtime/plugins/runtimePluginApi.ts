@@ -22,6 +22,7 @@ import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { StoryCompilePass } from "../game/storyCompilePass";
+import type { RuntimeStoryActionDef } from "../game/storyPluginActions";
 import type { GameTimelineSpanName } from "../app/gameTimeline";
 
 /**
@@ -39,6 +40,9 @@ export type {
     StageImage,
     StoryCompilePass,
 } from "../game/storyCompilePass";
+
+/** The story-action pair's game-side types, re-exported for the reason the block above gives. */
+export type { RuntimeStoryActionContext, RuntimeStoryActionDef } from "../game/storyPluginActions";
 
 /**
  * A widget's event declaration, by name: the object a plugin shares between its studio entry's
@@ -426,6 +430,13 @@ export type RuntimePluginLocale = {
      * added after the plugin was installed. `null` when the project declares no such key.
      */
     text(key: string): string | null;
+    /**
+     * Words this plugin wrote directly and offered for translation from its studio entry
+     * (`app.services.localization.registerWords`), in the language the game is running in: the
+     * translation of the unit `id` names along the language's fallback chain, else `text` - the words
+     * as written, which the plugin passes because the game carries translations and not source words.
+     */
+    words(id: string, text: string): string;
 };
 
 /**
@@ -579,7 +590,7 @@ export type RuntimePluginStory = {
 /**
  * The game-side plugin surface.
  *
- * Everything below the always-present five is **capability-gated**: a domain the
+ * Everything below the always-present six is **capability-gated**: a domain the
  * manifest did not declare is *absent from this object*, not a method that
  * throws. That is the whole contract — the install prompt lists exactly the
  * domains present here, so what the user approved and what the plugin can do are
@@ -593,6 +604,18 @@ export type RuntimePluginGame = {
     widgets: {
         register(def: RuntimeWidgetRendererDef): void;
         registerMany(defs: RuntimeWidgetRendererDef[]): void;
+    };
+    /**
+     * What runs when the story reaches a row one of this plugin's story actions inserted. The id is
+     * the one the studio entry registered the action under; the story waits on the row until `run`
+     * settles. See {@link RuntimeStoryActionDef}.
+     *
+     * Always present, like `blueprintNodes`: a runner only ever runs on a row the author placed, and
+     * only on this plugin's own rows, so it grants nothing an install prompt would have to name.
+     */
+    storyActions: {
+        register(def: RuntimeStoryActionDef): void;
+        registerMany(defs: RuntimeStoryActionDef[]): void;
     };
     /**
      * Read-only access to plugin storage published with the game, for the

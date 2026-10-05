@@ -104,6 +104,7 @@ import type {
 } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { resolveLocalizedStoredText } from "@shared/types/localization";
+import { GAME_LOCALE_STATE_KEY } from "../../blueprint-runtime/blueprintStateWrites";
 import { buildSaveMetadataFromFields, readSaveMetadataFields } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
 import { saveSchemaPinId } from "../effectivePins";
@@ -1429,6 +1430,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
         displayName: "Is Game Overlay",
+        description: "blueprint.nodeDescription.isGameOverlay",
         category: "Game",
         keywords: ["game", "overlay", "layer", "page", "surface", "pause", "menu"],
         graphKinds: ["event", "function", "macro"],
@@ -2020,6 +2022,11 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             const fields = getActiveSaveSchemaFields();
             const byFieldId = readSaveMetadataFields(fields, metadata);
             const localization = api.localization.getConfig();
+            if (localization) {
+                // The string fields below are shown in the player's language, so a value binding that
+                // reads them through a Fn has to hear the next language switch.
+                ctx.valueExecution?.trackState?.(GAME_LOCALE_STATE_KEY);
+            }
             const locale = localization ? await api.localization.getLocale() : "";
             const outputValues: Record<string, unknown> = { metadata };
             for (const field of fields) {

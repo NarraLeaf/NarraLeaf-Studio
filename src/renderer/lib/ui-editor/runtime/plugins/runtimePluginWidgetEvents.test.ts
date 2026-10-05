@@ -88,6 +88,7 @@ async function writeRatingPlugin(id: string, options: { declareLogic: boolean })
             buildConfig: [],
             externalLinks: [],
             network: [],
+            widgetText: {},
         },
         permissions: [],
     };

@@ -6,7 +6,7 @@ import {
     plainTextEditPatch,
     type MarkedLabelProps,
 } from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
-import { labelSourceOf, type LabelSource } from "@/lib/ui-editor/widget-modules/shared/text/labelSource";
+import { requireUITextSite, uiTextSourceOf, type UITextSource } from "@shared/types/ui-editor/textSource";
 import { defaultTextWidgetProps, type TextWidgetProps } from "./types";
 
 /**
@@ -50,12 +50,15 @@ export function getTextProps(element: UIElement): TextWidgetProps {
     };
 }
 
-/** Where a text widget's words come from; see {@link labelSourceOf}. */
-export type TextSource = LabelSource;
+/** The text widget's site (`textSites.ts`). */
+export const TEXT_SITE = requireUITextSite("nl.text");
 
-/** The source a stored text element's `text` is read from - derived, not stored (`labelSourceOf`). */
-export function textSourceOf(element: UIElement, keysApply: boolean): TextSource | null {
-    return labelSourceOf(element, "text", getTextProps(element).localizationKey, keysApply);
+/** Where a text widget's words come from; see {@link uiTextSourceOf}. */
+export type TextSource = UITextSource;
+
+/** The source a stored text element's `text` is read from - derived, not stored (`uiTextSourceOf`). */
+export function textSourceOf(element: UIElement): TextSource | null {
+    return uiTextSourceOf(element, TEXT_SITE);
 }
 
 /** A text label keeps its string in `text` and its runs beside it in `rich`. */

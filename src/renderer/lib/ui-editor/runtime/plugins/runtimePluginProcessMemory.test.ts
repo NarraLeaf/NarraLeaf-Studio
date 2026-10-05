@@ -52,6 +52,7 @@ async function writePlugin(id: string, capabilities: PluginRuntimeCapability[]):
             reservedSaveIds: [],
             runtimeData: [],
             network: [],
+            widgetText: {},
             locales: [],
             runtimeCapabilities: capabilities,
             sidecars: [],

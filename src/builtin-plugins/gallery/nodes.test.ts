@@ -155,12 +155,21 @@ describe("getVariant", () => {
         });
     });
 
-    it("returns a null image for a locked variant, but still names it", async () => {
-        // The UI draws a silhouette from the null image and labels the slot.
+    it("returns a null image and the locked title for a locked variant", async () => {
+        // The UI draws a silhouette from the null image and labels the slot with the mask, the same
+        // title Get Gallery Variants gives that row - the real name is as much a spoiler as the art.
         const result = await run(V2_CATALOG, `${P}.getVariant`, { galleryItemId: "art.a" }, { index: 0 });
 
         expect(result.outputValues?.image).toBeNull();
         expect(result.outputValues?.unlocked).toBe(false);
+        expect(result.outputValues?.name).toBe("???");
+    });
+
+    it("names a locked variant by its real name when the catalog sets no mask", async () => {
+        const unmasked = { ...V2_CATALOG, settings: { lockedImageAssetId: null, lockedNameMask: "" } };
+
+        const result = await run(unmasked, `${P}.getVariant`, { galleryItemId: "art.a" }, { index: 0 });
+
         expect(result.outputValues?.name).toBe("Day");
     });
 
@@ -196,11 +205,12 @@ describe("getCover", () => {
         expect(result.outputValues?.name).toBe("Alpha");
     });
 
-    it("hides the cover image while it is locked", async () => {
+    it("hides the cover image and the title while it is locked", async () => {
         const result = await run(V2_CATALOG, `${P}.getCover`, { galleryItemId: "art.a" });
 
         expect(result.outputValues?.image).toBeNull();
         expect(result.outputValues?.unlocked).toBe(false);
+        expect(result.outputValues?.name).toBe("???");
     });
 });
 
@@ -218,6 +228,12 @@ describe("artwork iteration", () => {
             unlocked: true,
             variantCount: 1,
         });
+    });
+
+    it("masks the title of an artwork the player has not unlocked", async () => {
+        const first = await run(LEGACY_CATALOG, `${P}.getArtworkAt`, {}, { index: 0 });
+
+        expect(first.outputValues).toMatchObject({ artworkId: "art.a", name: "???", unlocked: false });
     });
 
     it("returns empty outputs past the end", async () => {
@@ -412,6 +428,36 @@ describe("unlockAll", () => {
     });
 });
 
+describe("an entry with no variants yet", () => {
+    const EMPTY_RECOLLECTION = {
+        version: 4,
+        items: [{
+            id: "art.r",
+            name: "Rooftop",
+            kind: "scene",
+            variants: [],
+            scene: { storyId: "story-1", sceneId: "scene-1" },
+        }],
+    };
+
+    it("is unlocked, asked about and locked again as a whole", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.add`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
+
+        const asked = await run(EMPTY_RECOLLECTION, `${P}.isUnlocked`, { galleryItemId: "art.r" });
+        expect(asked.outputValues?.unlocked).toBe(true);
+
+        await run(EMPTY_RECOLLECTION, `${P}.remove`, { galleryItemId: "art.r" });
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual([]);
+    });
+
+    it("is included when the whole gallery is unlocked", async () => {
+        await run(EMPTY_RECOLLECTION, `${P}.unlockAll`);
+
+        expect(persistence[RUNTIME_UNLOCKED_KEY]).toEqual(["art.r"]);
+    });
+});
+
 describe("wired variant ids", () => {
     it("unlocks the variant named by the pin rather than the picker", async () => {
         // A CG viewer unlocks what the player is looking at, which is only known
@@ -451,5 +497,70 @@ describe("palette shape", () => {
         for (const legacy of ["add", "remove", "clear", "isUnlocked", "getVariantCount", "getVariant", "getCover", "getArtworkCount", "getArtworkAt"]) {
             expect(types.has(`${P}.${legacy}`)).toBe(true);
         }
+    });
+});
+
+describe("the words the author wrote, in the player's language", () => {
+    const CATALOG = {
+        version: 4,
+        groups: [{ id: "g1", name: "第一章" }],
+        items: [
+            {
+                id: "art.a",
+                name: "放学后的走廊",
+                kind: "cg",
+                description: "黄昏的走廊",
+                groupId: "g1",
+                variants: [{ id: "art.a.v.1", name: "黄昏", imageAssetId: "asset-a" }],
+            },
+            { id: "art.b", name: "空无一人的教室", kind: "cg", variants: [{ id: "art.b.v.1", name: "午后", imageAssetId: "asset-b" }] },
+        ],
+        settings: { lockedNameMask: "未解锁" },
+    };
+    const TRANSLATIONS: Record<string, string> = {
+        "entry.art.a.name": "The corridor after school",
+        "entry.art.a.description": "The corridor at dusk",
+        "member.art.a.v.1.name": "Dusk",
+        "group.g1.name": "Chapter one",
+        lockedNameMask: "Locked",
+        // A locked entry's name is never handed out, translated or not.
+        "entry.art.b.name": "The empty classroom",
+    };
+
+    function ctxInEnglish(params: Record<string, unknown> = {}) {
+        return {
+            params,
+            resolveInput: () => undefined,
+            game: {
+                log: () => undefined,
+                store: {
+                    get: async (key: string) => persistence[key] ?? null,
+                    set: async (key: string, value: unknown) => {
+                        persistence[key] = value;
+                    },
+                },
+                locale: { current: "en", onChange: () => () => undefined, text: () => null, words: (id: string, text: string) => TRANSLATIONS[id] ?? text },
+            },
+        } as never;
+    }
+
+    it("hands out names, descriptions, group names and the locked title translated in a game", async () => {
+        persistence[RUNTIME_UNLOCKED_KEY] = ["art.a.v.1"];
+        const nodes = nodesFor(CATALOG);
+        const entries = await nodes.get(`${P}.getEntries`)!.execute(ctxInEnglish()) as { outputValues: { entries: { name: string; description: string; groupName: string }[] } };
+        expect(entries.outputValues.entries.map(entry => [entry.name, entry.description, entry.groupName])).toEqual([
+            ["The corridor after school", "The corridor at dusk", "Chapter one"],
+            ["Locked", "", ""],
+        ]);
+        const variants = await nodes.get(`${P}.getVariants`)!.execute(ctxInEnglish({ galleryItemId: "art.a" })) as { outputValues: { entries: { name: string }[] } };
+        expect(variants.outputValues.entries.map(variant => variant.name)).toEqual(["Dusk"]);
+        const groups = await nodes.get(`${P}.getGroups`)!.execute(ctxInEnglish()) as { outputValues: { groups: { name: string }[] } };
+        expect(groups.outputValues.groups.map(group => group.name)).toEqual(["Chapter one"]);
+    });
+
+    it("reads the words as written where the game has no locale, as in the editor", async () => {
+        persistence[RUNTIME_UNLOCKED_KEY] = ["art.a.v.1"];
+        const entries = await run(CATALOG, `${P}.getEntries`) as { outputValues: { entries: { name: string }[] } };
+        expect(entries.outputValues.entries.map(entry => entry.name)).toEqual(["放学后的走廊", "未解锁"]);
     });
 });

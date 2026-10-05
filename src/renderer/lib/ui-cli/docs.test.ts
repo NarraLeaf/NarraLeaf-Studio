@@ -79,11 +79,12 @@ describe("the interface guide", () => {
         }
     });
 
-    it("names only diagnostic codes the checker can emit", () => {
+    it("names only diagnostic codes the tool can emit", () => {
         // Both halves matter: a code the guide explains and nothing emits is prose about a finding
-        // nobody will ever see, and it reads as a promise.
+        // nobody will ever see, and it reads as a promise. `remove.ts` is here for the one code a
+        // command reports outside `check`: why a component definition was not removed.
         const inGuide = new Set([...GUIDE.matchAll(/`(ui\.[a-z_]+)`/g)].map(match => match[1]));
-        const sources = ["dsl/compile.ts", "check.ts"]
+        const sources = ["dsl/compile.ts", "check.ts", "remove.ts"]
             .map(file => fs.readFileSync(path.resolve(__dirname, file), "utf8"))
             .join("\n");
         const emitted = new Set([...sources.matchAll(/"(ui\.[a-z_]+)"/g)].map(match => match[1]));

@@ -17,13 +17,17 @@ import type {
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import {
     actionableStageRefName,
+    BGM_STAGE_OBJECT_NAME,
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
     revealCreates,
     savedVariableDefs,
     sceneVariableDefs,
+    soundStageObjectName,
     storyPersistentDefs,
+    videoPlayHidesOnEnd,
+    videoPlayWaits,
 } from "@shared/types/story";
 import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
@@ -145,18 +149,99 @@ export type StageSnapshotVideo = {
     assetId?: string;
     muted?: boolean;
     /**
-     * On the stage at the target row: a row the walk ran declared it, and no row since hid it - the
-     * engine takes a hidden clip off the stage entirely. False for a clip only another arm, or a row
-     * at or past the target, declares; that one is registered for the tail and nothing more.
+     * On the stage at the target row, and only ever hidden there: a play the walk ran left the clip
+     * behind it, and no row since hid it - the engine takes a hidden clip off the stage entirely.
+     * False for a clip only another arm, or a row at or past the target, defines; that one is
+     * registered for the tail and nothing more.
+     *
+     * Never shown. The only clip a walk leaves on the stage is one that played to its end and held
+     * its last frame (`hide=false`), and a launch has no way to reproduce that frame without knowing
+     * the clip's length - the same approximation `videoSkipped` already reports for the preview.
      */
     staged: boolean;
+};
+
+/**
+ * An ambience overlay the scene declares, and how it stands at the target row.
+ *
+ * The overlay half of {@link StageSnapshotVideo}, for the same reason: an overlay is an Actionable
+ * with no pose, and a launch needs it in the tail's registry and, when the walked path left it there,
+ * on the stage. Unlike a clip it can be shown again faithfully - it loops, so any frame is the right
+ * one - so a launch puts it back showing as well.
+ */
+export type StageSnapshotVfx = {
+    /** Normalized object name - the compiler's overlay-registry key. */
+    objectName: string;
+    /** The `create` row that declares it, whose source and compositing the overlay is built from. */
+    sourceBlockId: string;
     /**
-     * Showing a frame nothing has moved past: revealed on the walked path, and neither hidden nor
-     * run since. A clip that played to its end shows its last frame in a full playthrough, which a
-     * launch has no way to reproduce without knowing the clip's length, so it arrives staged and
-     * hidden instead - the same approximation `videoSkipped` already reports for the preview.
+     * On the stage at the target row: a create or a show on the walked path put it there, and nothing
+     * within a scene takes an overlay off the stage - a hide leaves it there, invisible and paused.
+     * False for one only another arm, or a row at or past the target, declares.
      */
-    visible: boolean;
+    staged: boolean;
+    /** The show on the walked path that left it showing, with no hide after it - its options are that showing's. */
+    shownBy?: string;
+    /** A pause on the walked path with no resume after it. */
+    paused: boolean;
+    /** The rate a `setRate` on the walked path left it at. */
+    rate?: number;
+};
+
+/**
+ * How a sound stands at the target row, read the way the engine keeps it.
+ *
+ * Only what the walked path did to it, and only what the engine would still remember: a `/vol`, a
+ * `/rate` or a `/seek` acts on a clip that is playing and does nothing to one that is not, a start
+ * puts the level back to the one the clip was built with and the play head back to its in point,
+ * while the rate and the mute flag stay with the clip across a stop and the next start.
+ */
+export type StageSnapshotSoundState = {
+    /**
+     * Started on the walked path - or, for the scene's own music, by the scene - and not stopped
+     * since. Not the same as still audible: a clip that does not loop ends by itself after a time
+     * nothing on the path records, so whether this one is heard at the target row is decided where
+     * the clip is built, from the clip (see the launch in the story compiler).
+     */
+    playing: boolean;
+    /** Paused while playing, with no resume after it. */
+    paused: boolean;
+    /** The `/vol` row that last set its level since it last started. */
+    volumeBy?: string;
+    /** The rate a `/rate` left it at while it played. */
+    rate?: number;
+    /** What the last `/mute` or `/unmute` left it at; the engine applies it to every later start too. */
+    muted?: boolean;
+    /** Where the last `/seek` since it last started put the play head, in milliseconds. */
+    seekMs?: number;
+};
+
+/**
+ * A sound handle the scene's rows start, and how it stands at the target row.
+ *
+ * The Actionable half of the stage again, for the reason {@link StageSnapshotVideo} gives: a launch's
+ * tail has to find every handle a full compile of the scene would have built for its `/vol` and
+ * `/stop` rows, and the ones the walked path left playing have to be playing.
+ */
+export type StageSnapshotSound = StageSnapshotSoundState & {
+    /** The registry key the handle is built under - the compiler's sound-registry key. */
+    objectName: string;
+    /**
+     * The row the compiler builds the handle from: the first row in the scene, in the order the
+     * compiler reads them, that starts a sound under this name and names a file. Its track, loop,
+     * level and clip are the handle's for good - a later row that starts the same name plays this
+     * handle again rather than building another.
+     */
+    sourceBlockId: string;
+};
+
+/**
+ * The music channel at the target row: the scene's own configured track, or the `/bgm` row that
+ * last replaced it.
+ */
+export type StageSnapshotMusic = StageSnapshotSoundState & {
+    /** The `/bgm` row whose track is playing; absent for the scene's own configured music. */
+    setBy?: string;
 };
 
 export type StoryStageSnapshot = {
@@ -188,6 +273,28 @@ export type StoryStageSnapshot = {
      * stage, which the engine requires before any row may pause, stop, seek or hide it.
      */
     videos: StageSnapshotVideo[];
+    /**
+     * Every ambience overlay the scene declares, on any arm and at any row - the overlay half of
+     * {@link videos}. An overlay belongs to its scene like every other stage object, so these are the
+     * only overlays a launch's tail can address.
+     */
+    vfx: StageSnapshotVfx[];
+    /**
+     * The music channel at the target row, or null when nothing is on it: a `/bgm` with no file
+     * cleared it, or the scene has no music of its own and no `/bgm` row on the path gave it any.
+     *
+     * A scene's music belongs to the scene - the engine stops it when the story leaves - so this is
+     * the scene's own reading and never one carried in from an earlier scene.
+     */
+    music: StageSnapshotMusic | null;
+    /**
+     * Every sound handle the scene's rows start, on any arm and at any row, in the order the compiler
+     * builds them - the sound half of {@link videos}. Each says how the walked path left it.
+     *
+     * Only this scene's: the compiler keys sounds per scene, so a handle another scene started is not
+     * one any row here can address.
+     */
+    sounds: StageSnapshotSound[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -341,6 +448,25 @@ class SnapshotWalker {
     private declaring = false;
     /** Clips by registry key, in the order they were first met - the walk's, then the declaration pass's. */
     private readonly videos = new Map<string, StageSnapshotVideo>();
+    /** Overlays by registry key, in the order they were first met - the walk's, then the declaration pass's. */
+    private readonly vfx = new Map<string, StageSnapshotVfx>();
+    /**
+     * Each row's place in the order the compiler reads the scene, which is the order its sound
+     * registry fills in. See {@link scanCompileOrder}.
+     */
+    private readonly compileOrder = new Map<string, number>();
+    /** Sound name → the row the compiler builds that handle from, in the order they are built. */
+    private readonly soundSources = new Map<string, string>();
+    /** Sound name → what the walked path did to that handle. */
+    private readonly soundStates = new Map<string, StageSnapshotSoundState>();
+    /** The music channel as the walk has it so far; see {@link StoryStageSnapshot.music}. */
+    private music: StageSnapshotMusic | null;
+    /**
+     * How many disabled rows the walk is inside. Only ever above zero on the way to a target row
+     * that sits under one: such a row is compiled out with everything beneath it, so nothing passed
+     * on the way down acts on the stage.
+     */
+    private inert = 0;
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
@@ -379,9 +505,12 @@ class SnapshotWalker {
         for (const def of Object.values(this.sceneDefs)) {
             this.variables.scene.set(def.storageKey, def.defaultValue ?? null);
         }
+        // A scene that names its own track starts it before its first row runs.
+        this.music = scene.bgm?.assetId?.trim() ? { playing: true, paused: false } : null;
     }
 
     run(): StoryStageSnapshot {
+        this.scanCompileOrder(this.scene.rootBlockIds);
         if (this.targetBlockId === null) {
             // Scene start: nothing has executed yet.
         } else if (!this.pathBlockIds.has(this.targetBlockId)) {
@@ -401,6 +530,13 @@ class SnapshotWalker {
                 .filter(key => !this.displayables.has(key))
                 .map(key => this.declared.get(key) as StageSnapshotDisplayable),
             videos: [...this.videos.values()],
+            vfx: [...this.vfx.values()],
+            music: this.music,
+            sounds: [...this.soundSources].map(([objectName, sourceBlockId]) => ({
+                objectName,
+                sourceBlockId,
+                ...(this.soundStates.get(objectName) ?? { playing: false, paused: false }),
+            })),
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
@@ -428,7 +564,8 @@ class SnapshotWalker {
     private collectDeclarations(blockIds: readonly string[]): void {
         for (const blockId of blockIds) {
             const block = this.scene.blocks[blockId];
-            if (!block) {
+            // A disabled row declares nothing: the compiler drops it with everything under it.
+            if (!block || block.disabled) {
                 continue;
             }
             if (block.kind === "action" && declaresStageObject(block.payload)) {
@@ -451,7 +588,12 @@ class SnapshotWalker {
                     case "video":
                         this.declareVideo(block, block.payload);
                         break;
-                    // vfx / audio declare Actionables, which no record here models.
+                    // An overlay has a table of its own too, filled the same way.
+                    case "vfx":
+                        this.declareVfx(block, block.payload);
+                        break;
+                    // A sound handle is built from the first row in compile order that names a file,
+                    // which is a question of order rather than of arms - see `scanCompileOrder`.
                     default:
                         break;
                 }
@@ -470,6 +612,128 @@ class SnapshotWalker {
             record.visible = false;
             delete record.props.opacity;
         }
+    }
+
+    /**
+     * Number every row in the order the compiler reads the scene, and note which row each sound
+     * handle is built from.
+     *
+     * The compiler reads a scene top to bottom, every arm of every branch, each row before the rows
+     * nested under it - and a row it reaches with a sound name nobody has built yet, and a file, is
+     * the row that builds that handle. A later row naming the same sound plays the same handle;
+     * a row reached before any such row has no handle to act on. So whether a row on the walked
+     * path really did anything to a sound is a question of where the two sit in THIS order, not in
+     * the order the path met them: the first `/sound rain` can sit in an arm the path did not take.
+     *
+     * A disabled row is skipped with its subtree, and a list stops after an `/ending` or `/quit` -
+     * both exactly as the compiler does it.
+     */
+    private scanCompileOrder(blockIds: readonly string[]): void {
+        for (const blockId of blockIds) {
+            const block = this.scene.blocks[blockId];
+            if (!block || block.disabled) {
+                continue;
+            }
+            this.compileOrder.set(block.id, this.compileOrder.size);
+            if (block.kind === "action" && block.payload.action === "audio"
+                && block.payload.operation === "playSound" && block.payload.assetId?.trim()) {
+                const name = soundStageObjectName(block.payload);
+                // The music channel's own name is not a handle a sound row builds: a row that
+                // starts "bgm" plays the music.
+                if (name !== BGM_STAGE_OBJECT_NAME && !this.soundSources.has(name)) {
+                    this.soundSources.set(name, block.id);
+                }
+            }
+            this.scanCompileOrder(block.childrenIds ?? []);
+            if (block.kind === "control" && (block.payload.control === "ending" || block.payload.control === "quit")) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * An audio row on the walked path, read the way the compiler and the engine read it.
+     *
+     * A `/bgm` with a file puts a new track on the music channel and one with none clears it; every
+     * other verb acts on a handle by name, and the music channel is the handle named "bgm". What
+     * each verb leaves is in {@link StageSnapshotSoundState}. A row naming a sound no row before it
+     * built - in compile order, see {@link scanCompileOrder} - acts on nothing, which is what the
+     * compiler makes of it too (and reports).
+     */
+    private applyAudio(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "audio" }>): void {
+        if (payload.operation === "setBgm") {
+            this.music = payload.assetId?.trim() ? { setBy: block.id, playing: true, paused: false } : null;
+            return;
+        }
+        const declaredName = soundStageObjectName(payload);
+        const name = declaresStageObject(payload)
+            ? declaredName
+            : actionableStageRefName(this.scene, payload.target, "audio", declaredName).name;
+        const state = name === BGM_STAGE_OBJECT_NAME ? this.music : this.soundStateAt(name, block.id);
+        if (!state) {
+            return;
+        }
+        switch (payload.operation) {
+            case "playSound":
+                // A start plays the clip from its in point at the level it was built with, whatever a
+                // `/vol` or `/seek` did to it before; the rate and the mute flag it keeps.
+                state.playing = true;
+                state.paused = false;
+                delete state.volumeBy;
+                delete state.seekMs;
+                return;
+            case "stopSound":
+                state.playing = false;
+                state.paused = false;
+                delete state.volumeBy;
+                delete state.seekMs;
+                return;
+            case "muteSound":
+                // Recorded on the clip whether it is playing or not, and applied to its next start.
+                state.muted = payload.muted ?? true;
+                return;
+            default:
+                break;
+        }
+        // The rest act on a clip that is playing and do nothing to one that is not.
+        if (!state.playing) {
+            return;
+        }
+        switch (payload.operation) {
+            case "pauseSound":
+                state.paused = true;
+                return;
+            case "resumeSound":
+                state.paused = false;
+                return;
+            case "setVolume":
+                state.volumeBy = block.id;
+                return;
+            case "setRate":
+                state.rate = payload.rate ?? 1;
+                return;
+            case "seekSound":
+                state.seekMs = payload.timeMs ?? 0;
+                return;
+            default:
+                return;
+        }
+    }
+
+    /** The walk's record of a named sound, or null when the compiler has no handle by that name at this row. */
+    private soundStateAt(name: string, blockId: string): StageSnapshotSoundState | null {
+        const source = this.soundSources.get(name);
+        const sourceAt = source === undefined ? undefined : this.compileOrder.get(source);
+        const rowAt = this.compileOrder.get(blockId);
+        if (sourceAt === undefined || rowAt === undefined || sourceAt > rowAt) {
+            return null;
+        }
+        let state = this.soundStates.get(name);
+        if (!state) {
+            state = { playing: false, paused: false };
+            this.soundStates.set(name, state);
+        }
+        return state;
     }
 
     private visitList(blockIds: readonly string[], insideNvl: boolean): void {
@@ -491,7 +755,25 @@ class SnapshotWalker {
             this.nvl = insideNvl;
             return;
         }
+        // A disabled row is compiled out with everything under it, so a playthrough never runs it.
+        // The walk only goes in when the target row is somewhere beneath, and then acts on nothing
+        // it passes on the way.
+        if (block.disabled) {
+            if (!this.pathBlockIds.has(block.id)) {
+                return;
+            }
+            this.inert += 1;
+            try {
+                this.visitLiveBlock(block, insideNvl);
+            } finally {
+                this.inert -= 1;
+            }
+            return;
+        }
+        this.visitLiveBlock(block, insideNvl);
+    }
 
+    private visitLiveBlock(block: StoryBlock, insideNvl: boolean): void {
         if (block.kind === "nodeAction") {
             if (block.payload.action === "choice") {
                 this.visitChoice(block, insideNvl);
@@ -572,7 +854,8 @@ class SnapshotWalker {
             }
         }
         for (const branch of branches) {
-            if (branch.payload.control !== "conditionBranch") {
+            // A disabled branch is compiled out of the condition, so the game never takes it.
+            if (branch.payload.control !== "conditionBranch" || branch.disabled) {
                 continue;
             }
             if (branch.payload.branch === "else" || this.evaluateCondition(branch.payload.condition, branch.id)) {
@@ -664,6 +947,9 @@ class SnapshotWalker {
     }
 
     private applyAction(block: StoryBlock, payload: StoryActionPayload): void {
+        if (this.inert > 0) {
+            return;
+        }
         switch (payload.action) {
             case "setBackground": {
                 if (payload.assetId) {
@@ -701,12 +987,20 @@ class SnapshotWalker {
                 this.applyVideo(block, payload);
                 return;
             case "vfx":
+                // The preview draws no overlay, which is what the diagnostic says. The record is for a
+                // launch, which puts the overlay back the way this path left it.
                 this.diagnostic(block.id, translate("story.preview.diagnostics.ambienceSkipped"));
+                this.applyVfx(block, payload);
                 return;
             case "blueprint":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
                 return;
-            // audio / wait / nvl: no settled visual state.
+            case "audio":
+                // Nothing the preview draws; the record is for a launch, which starts the music and
+                // the looping sounds this path left playing.
+                this.applyAudio(block, payload);
+                return;
+            // wait / nvl: no settled state.
             default:
                 return;
         }
@@ -800,12 +1094,23 @@ class SnapshotWalker {
     /**
      * A clip row on the walked path, read the way the compiler and the engine read it.
      *
-     * A declaring row builds the clip through the compiler's get-or-create, so the first declaration
-     * of a name is the one that stands and a later one only acts on it. What each operation leaves:
-     * `create` mounts the clip hidden; a reveal (`show`, or a `play` naming its own clip) puts it on
-     * screen; `hide` takes it off the stage altogether; and anything that runs or moves the clip
-     * leaves it showing a frame a launch cannot reproduce. A row addressing a clip nothing on the
-     * path declared changes nothing here - the compile of the tail reports it.
+     * A `play` builds the clip through the compiler's get-or-create, so the first play of a name is
+     * the one that stands and a later one plays that clip again. What each row leaves:
+     *
+     *  - **A play that waits** has finished by the time the next row runs. It leaves nothing when it
+     *    clears its clip away (the default), and leaves the clip holding its last frame when it does
+     *    not - which a launch can stage but not show (see {@link StageSnapshotVideo.staged}).
+     *  - **A play that does not wait is not restored at all.** The story moved on while the clip ran,
+     *    so at the target row the clip could be anywhere in its length, finished, or gone - nothing on
+     *    the walked path says which, and a launch that guessed would start a clip part-way through or
+     *    put back one a playthrough had already cleared away. The launch starts with no clip on the
+     *    stage, and a row in the tail that addresses it finds none, which is what a playthrough also
+     *    gives once the clip has ended.
+     *  - **A hide** takes the clip off the stage altogether.
+     *
+     * Anything else - `pause`, `resume`, `seek`, `stop` - acts on a running clip, which by the rules
+     * above is never one the record has on the stage. A row addressing a clip nothing on the path
+     * defined changes nothing here - the compile of the tail reports it.
      */
     private applyVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): void {
         const declares = declaresStageObject(payload);
@@ -816,39 +1121,77 @@ class SnapshotWalker {
         if (!record) {
             return;
         }
+        if (payload.operation === "play") {
+            record.staged = videoPlayWaits(payload) && !videoPlayHidesOnEnd(payload);
+            return;
+        }
+        if (payload.operation === "hide") {
+            record.staged = false;
+        }
+    }
+
+    /**
+     * An overlay row on the walked path. A create puts the overlay on the stage, hidden; a show
+     * reveals it; a hide makes it invisible and leaves it on the stage; pause, resume and a rate act
+     * on its loop. A row addressing an overlay nothing on the path declared changes nothing here -
+     * the compile of the tail reports it.
+     */
+    private applyVfx(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "vfx" }>): void {
+        const declares = declaresStageObject(payload);
+        const name = declares
+            ? normalizeObjectName(payload.objectName)
+            : actionableStageRefName(this.scene, payload.target, "vfx", payload.objectName).name;
+        const record = declares ? this.declareVfx(block, payload) : this.vfx.get(name);
+        if (!record) {
+            return;
+        }
         switch (payload.operation) {
             case "create":
                 record.staged = true;
                 return;
             case "show":
                 record.staged = true;
-                record.visible = true;
+                record.shownBy = block.id;
                 return;
             case "hide":
-                record.staged = false;
-                record.visible = false;
+                delete record.shownBy;
                 return;
-            case "play":
-                // A play that names its own clip reveals it on the way in; it then runs to the end,
-                // which is a frame this record cannot describe either way.
-                record.staged = record.staged || declares;
-                record.visible = false;
+            case "pause":
+                record.paused = true;
                 return;
             case "resume":
-            case "seek":
-                record.visible = false;
+                record.paused = false;
                 return;
-            // `pause` and `stop` hold whatever frame the clip is on.
+            case "setRate":
+                record.rate = payload.rate;
+                return;
             default:
                 return;
         }
     }
 
+    /** The overlay a create row declares - the existing record when an earlier row declared the name first. */
+    private declareVfx(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "vfx" }>): StageSnapshotVfx {
+        const name = normalizeObjectName(payload.objectName);
+        const existing = this.vfx.get(name);
+        if (existing) {
+            return existing;
+        }
+        const record: StageSnapshotVfx = {
+            objectName: name,
+            sourceBlockId: block.id,
+            staged: false,
+            paused: false,
+        };
+        this.vfx.set(name, record);
+        return record;
+    }
+
     /**
-     * The clip a declaring row builds - the existing record when an earlier row declared the name.
+     * The clip a play builds - the existing record when an earlier play defined the name.
      *
-     * An earlier declaration with no clip builds nothing in the compiler (it reports the row and
-     * moves on), so the first row that does name one is the one the clip is built from.
+     * An earlier play with no file builds nothing in the compiler (it reports the row and moves on),
+     * so the first row that does name one is the one the clip is built from.
      */
     private declareVideo(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "video" }>): StageSnapshotVideo {
         const name = normalizeObjectName(payload.objectName);
@@ -869,7 +1212,6 @@ class SnapshotWalker {
             ...(payload.assetId ? { assetId: payload.assetId } : {}),
             ...(payload.muted !== undefined ? { muted: payload.muted } : {}),
             staged: false,
-            visible: false,
         };
         this.videos.set(name, record);
         return record;

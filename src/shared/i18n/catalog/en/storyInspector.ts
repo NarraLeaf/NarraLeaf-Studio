@@ -1,8 +1,9 @@
 /** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
-    // The disclosure that hides this line's translation/voice unit id. The id itself is a uuid, so
-    // the label names what it is FOR rather than what it is.
-    textId: "Localization key",
+    // The disclosure that hides this line's translation/voice unit id. It carries the name of the
+    // `unit_id` column the translation and recording-script exports show it under, which is where an
+    // author meets it; a translation key is a different thing and has its own name.
+    textId: "Unit ID",
     advanced: "Advanced",
     advancedParams: "Advanced params",
     noVariablesDeclared: "No variables declared",
@@ -418,8 +419,7 @@ export const storyInspector = {
     },
 
     videoOperation: {
-        // "Play" waits for the clip to finish before the story continues; "Resume" does not.
-        play: "Play (wait for end)",
+        play: "Play",
         pause: "Pause",
         resume: "Resume",
         stop: "Stop",
@@ -514,6 +514,10 @@ export const storyInspector = {
         videoName: "Video name",
         videoAsset: "Video asset",
         seekTime: "Seek to",
+        hideOnEnd: "Hide when finished",
+        leave: "Exit",
+        waitForEnd: "Wait for the video",
+        skipHint: "The player can end the video early by clicking or pressing the skip key.",
     },
 
     nvl: {
@@ -593,8 +597,8 @@ export const storyInspector = {
         conditionContainer: "Condition container. Add condition branches as children.",
         control: "Control",
         sequence: "Sequence",
-        parallel: "Parallel all",
-        race: "Race any",
+        parallel: "Parallel",
+        race: "Race",
         repeat: "Repeat",
         mode: {
             do: "Do",

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useDismissWhenHidden, useFloatingLayer } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Star, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
@@ -19,8 +19,7 @@ import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
 import { getCommandLineDraftReason, getCommandLineReason } from "./storyCommandReason";
-import { isMacPlatform } from "@/lib/app/platform";
-import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
+import { useShortcutLabels } from "@/apps/workspace/hooks/useShortcutLabels";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useBadgeImageUrl, useStoryImageAsset } from "./storyBadgeImageCache";
@@ -75,7 +74,7 @@ import {
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
 import { StoryVoiceIndicator } from "./StoryVoiceIndicator";
-import { PausePopover } from "./PausePopover";
+import { keepStoryKeysInPopover, PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import { storyAppearanceLabel, type StoryAppearanceSelection } from "./storyAppearanceLabel";
 import { STORY_DENSITY_METRICS, useStoryEditorTextStyle } from "./storyEditorTextStyle";
@@ -997,8 +996,14 @@ function TextEditBox(props: {
         // Defer so focus can settle.
         window.setTimeout(() => {
             if (performance.now() - lastToolbarInteractRef.current < 500) {
-                // Toolbar interaction — keep editing and restore focus to the editor.
-                props.editorRef.current?.focus();
+                // Toolbar interaction — keep editing, and give the editor its focus back if the press
+                // dropped it. Only then: a control that opens a popover (the palette, the ruby and
+                // type panels, the expression picker) hands the focus to that popover on purpose,
+                // and pulling it back here took the keyboard straight out of what had just opened.
+                const settled = globalThis.document.activeElement;
+                if (!settled || settled === globalThis.document.body || !settled.isConnected) {
+                    props.editorRef.current?.focus();
+                }
                 return;
             }
             if (commitGuardRef.current) {
@@ -1178,11 +1183,11 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
     // Scoped: inserting and deleting a row write the story document and nothing else.
     const freeze = useFreezeGuard(useStoryDocumentScope());
-    // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
-    // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
-    const isMac = isMacPlatform();
-    const insertKeys = formatKeybinding("shift+enter", isMac);
-    const deleteKeys = formatKeybinding("delete", isMac);
+    // Rendered from the catalog entries the two keys are bound under, so a key rebound in Settings
+    // shows rebound here too; a hint that prints the default is how it drifts from the key it names.
+    const shortcuts = useShortcutLabels();
+    const insertKeys = shortcuts.forBinding("story.insert-blank-after-selection") ?? "";
+    const deleteKeys = shortcuts.forBinding("story.delete") ?? "";
     return (
         <div
             className={[
@@ -1249,6 +1254,16 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
     const open = anchor !== null;
+    // A floating layer, so the strip is a strip for the keyboard too: it opens on the placement that
+    // is set, the arrows walk the three, Enter picks one and focus goes back to the button. Escape
+    // closes the strip alone - before, it fell through to the editor and closed the inspector instead.
+    useFloatingLayer({
+        open,
+        onClose: () => setAnchor(null),
+        panelRef,
+        ownerRefs: [buttonRef],
+        itemSelector: "[data-stage-placement]",
+    });
 
     useEffect(() => {
         if (!open) {
@@ -1313,6 +1328,19 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                     className="fixed z-[70] flex gap-0.5 rounded-lg border border-edge bg-surface-raised p-1 shadow-2xl"
                     style={{ top: Math.min(anchor.top, window.innerHeight - 48), right: Math.max(8, anchor.right) }}
                     onMouseDown={event => event.stopPropagation()}
+                    onKeyDown={event => {
+                        // The strip is laid out across, so Left and Right walk it as well as the
+                        // Up and Down every floating list answers.
+                        if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !event.altKey && !event.ctrlKey && !event.metaKey) {
+                            const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-stage-placement]"));
+                            const at = items.indexOf(event.target as HTMLElement);
+                            if (at >= 0) {
+                                event.preventDefault();
+                                items[(at + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length].focus();
+                            }
+                        }
+                        keepStoryKeysInPopover(event);
+                    }}
                 >
                     {STAGE_PLACEMENTS.map(placement => {
                         const Icon = placement.icon;
@@ -1322,6 +1350,8 @@ function GroupHeadPositionControl(props: { position: StoryStagePlacement | undef
                                 key={placement.value}
                                 type="button"
                                 tabIndex={-1}
+                                data-stage-placement={placement.value}
+                                data-selected={selected ? "true" : undefined}
                                 data-tip={t(`story.position.${placement.value}` as TranslationKey)}
                                 aria-label={t(`story.position.${placement.value}` as TranslationKey)}
                                 aria-pressed={selected}
@@ -1594,22 +1624,29 @@ function ConditionChip(props: {
 }) {
     const lookups = useConditionSummaryLookups(props.scene, props.document);
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const chipRef = useRef<HTMLButtonElement | null>(null);
     const block = props.block;
     if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
         return null;
     }
     const payload = block.payload;
-    const openPopover = (event: MouseEvent) => {
+    const togglePopover = (event: MouseEvent) => {
         event.stopPropagation();
+        if (anchor) {
+            setAnchor(null);
+            return;
+        }
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
         setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
     };
     return (
         <>
             <button
+                ref={chipRef}
                 type="button"
+                aria-expanded={anchor !== null}
                 className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
-                onClick={openPopover}
+                onClick={togglePopover}
                 onMouseDown={event => event.stopPropagation()}
             >
                 {storyConditionSummary(payload.condition, lookups)}
@@ -1617,6 +1654,7 @@ function ConditionChip(props: {
             {anchor ? (
                 <ConditionPopover
                     anchor={anchor}
+                    ownerRef={chipRef}
                     document={props.document}
                     sceneId={props.scene.id}
                     value={payload.condition}
@@ -1648,6 +1686,7 @@ function RepeatUntilChip(props: {
 }) {
     const lookups = useConditionSummaryLookups(props.scene, props.document);
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const chipRef = useRef<HTMLButtonElement | null>(null);
     const block = props.block;
     if (block.kind !== "control" || block.payload.control !== "repeat" || block.payload.until === undefined) {
         return null;
@@ -1656,10 +1695,16 @@ function RepeatUntilChip(props: {
     return (
         <>
             <button
+                ref={chipRef}
                 type="button"
+                aria-expanded={anchor !== null}
                 className="min-w-0 max-w-[240px] truncate rounded-md border border-edge bg-fill-subtle px-2 py-0.5 text-xs text-fg-muted transition-colors hover:border-primary/50 hover:text-fg"
                 onClick={event => {
                     event.stopPropagation();
+                    if (anchor) {
+                        setAnchor(null);
+                        return;
+                    }
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     setAnchor({ top: rect.top, left: rect.left, bottom: rect.bottom });
                 }}
@@ -1670,6 +1715,7 @@ function RepeatUntilChip(props: {
             {anchor ? (
                 <ConditionPopover
                     anchor={anchor}
+                    ownerRef={chipRef}
                     document={props.document}
                     sceneId={props.scene.id}
                     value={payload.until}
@@ -2791,7 +2837,10 @@ function useActionCommandMenuState(
 
     /**
      * Picking a category is a pointer gesture only, and it does not move the highlight itself — the
-     * effect above does, because the new category is a new `stops` and the old key is not in it.
+     * effect above does, by the rule a typed filter follows: the highlight stays where it was when the
+     * new `stops` still hold that row (going back to 全部 usually does - it lists every command once,
+     * under its own subject) and moves to the first row when they do not. The menu scrolls whichever
+     * row that is into view.
      */
     const chooseCategory = (next: MenuCategory) => {
         setCategory(next);
@@ -2961,18 +3010,40 @@ function ActionCommandMenu(props: {
     const scopeCategory = getCommandCategory("character");
     const ScopeIcon = scopeCategory.icon;
 
+    /**
+     * What the list holds, as one value: it changes when a filter is typed or a category chosen, and
+     * not merely because a parent rendered.
+     */
+    const listContents = useMemo(() => props.stops.map(stop => stop.key).join("\n"), [props.stops]);
+
+    // The highlighted row is the one Enter takes, so it has to be a row the author can see - after an
+    // arrow moves it, and after the list changes under it. A typed filter or a new category keeps the
+    // highlight on the row it was on whenever the new list still holds it, which can leave that row
+    // anywhere in the new list - back under 全部, a sound command chosen from 声音 sits dozens of
+    // rows down. So the list is brought to the highlight on either change, not only when it moves.
+    // The first row is shown from the very top, so the section header and the padding above it stay
+    // in view rather than being scrolled just past.
+    const firstKey = props.stops[0]?.key ?? null;
     useEffect(() => {
         if (!props.activeKey) {
             return;
         }
         window.requestAnimationFrame(() => {
-            const activeItem = listRef.current?.querySelector(`[data-action-command-key="${props.activeKey}"]`);
-            activeItem?.scrollIntoView({ block: "nearest" });
+            const list = listRef.current;
+            if (!list) {
+                return;
+            }
+            if (props.activeKey === firstKey) {
+                list.scrollTop = 0;
+                return;
+            }
+            list.querySelector(`[data-action-command-key="${props.activeKey}"]`)?.scrollIntoView({ block: "nearest" });
         });
-    }, [props.activeKey]);
+    }, [firstKey, listContents, props.activeKey]);
 
     // A new category is a new list, so it starts at its top rather than wherever the last one was
-    // scrolled to — the highlight moves to the first row, and it has to be the row you can see.
+    // scrolled to - header and all, when the highlight moved to the first row. Runs before the frame
+    // the effect above waits for, so a highlight further down is then scrolled into view from here.
     useEffect(() => {
         if (listRef.current) {
             listRef.current.scrollTop = 0;
@@ -3337,9 +3408,16 @@ export function CharacterSelectTrigger(props: {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const pickerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const tagRef = useRef<HTMLSpanElement | null>(null);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState("");
     const frame = useAnchoredMenuFrame(rootRef, editing, 288);
+    /**
+     * Set by a close that should hand the focus back to the nametag. The field it was in unmounts
+     * with the close, which dropped the focus on `<body>` - and the next Tab started from the top of
+     * the window. A close by a click elsewhere leaves it unset: focus is going where that click went.
+     */
+    const refocusTagRef = useRef(false);
 
     const committedName = props.characterId
         ? getCharacterName(props.characters, props.characterId)
@@ -3377,10 +3455,31 @@ export function CharacterSelectTrigger(props: {
     // Only worth offering when the name is genuinely new — otherwise it is a duplicate of a candidate.
     const canCreate = Boolean(trimmed) && !candidates.some(candidate => candidate.kind === "character" && candidate.name.toLowerCase() === trimmed.toLowerCase());
 
-    const close = () => {
+    const close = (refocus = true) => {
+        refocusTagRef.current = refocus;
         setEditing(false);
         setDraft("");
     };
+
+    useEffect(() => {
+        if (editing || !refocusTagRef.current) {
+            return;
+        }
+        refocusTagRef.current = false;
+        tagRef.current?.focus({ preventScroll: true });
+    }, [editing]);
+
+    // The picker hangs off the name field and the field keeps the focus and answers its own keys
+    // (the arrows walk the candidates, Escape cancels), so this is a layer only for what the field
+    // cannot see: focus moving on to something else, and the tab or panel being put away.
+    useFloatingLayer({
+        open: editing,
+        onClose: () => close(false),
+        panelRef: pickerRef,
+        ownerRefs: [rootRef],
+        initialFocus: false,
+        restoreFocus: false,
+    });
 
     const beginEditing = () => {
         setDraft(committedName);
@@ -3417,7 +3516,7 @@ export function CharacterSelectTrigger(props: {
             if (rootRef.current?.contains(target) || pickerRef.current?.contains(target)) {
                 return;
             }
-            close();
+            close(false);
         };
         window.addEventListener("pointerdown", handlePointerDown);
         return () => window.removeEventListener("pointerdown", handlePointerDown);
@@ -3454,6 +3553,7 @@ export function CharacterSelectTrigger(props: {
                     A `<span>` also has no keyboard activation and no cursor of its own; both are spelled
                     out below, exactly as `InspectOnlyButton` spells them out. */}
                 <span
+                    ref={tagRef}
                     role="button"
                     tabIndex={frozen ? -1 : 0}
                     aria-disabled={frozen || undefined}

@@ -11,8 +11,7 @@ import { BuiltinWidgetModules } from "./builtin";
 import { TextWidgetModule } from "./builtin/text";
 import { DialogSentenceWidgetModule } from "./builtin/dialog";
 import { NvlTextsWidgetModule } from "./builtin/nvl";
-import { TextBlueprintValueField } from "./builtin/text/inspector";
-import { TextSourceField } from "./builtin/text/TextSourceField";
+import { DialogSentenceSampleTextField, TextSourceField } from "./builtin/text/TextSourceField";
 import { ChoiceListWidgetModule } from "./builtin/choiceList";
 import { ListWidgetModule } from "./builtin/list";
 import { applyInspectorOverrides, extendWidgetModule } from "./inheritance";
@@ -114,11 +113,11 @@ describe("widget module inheritance", () => {
 
         expect(schema?.id).toBe("ui-inspector:nl.dialog.sentence:el-1");
         // The text widget chooses between its own words, a translation key and a Blueprint Value in
-        // one field; the dialog line, whose text the story replaces, keeps the two that apply to it.
+        // one field; the dialog line, whose text the story replaces, holds sample words only.
         const contentOf = (s: PropertyEditorSchema<UIInspectorData> | undefined) =>
             (findField(s, "text.content") as { component?: unknown } | undefined)?.component;
         expect(contentOf(inherited)).toBe(TextSourceField);
-        expect(contentOf(schema)).toBe(TextBlueprintValueField);
+        expect(contentOf(schema)).toBe(DialogSentenceSampleTextField);
         expect(allFieldIds(schema)).not.toContain("section.localization");
         // Everything else the parent offers is still there, unrestated.
         expect(allFieldIds(schema)).toContain("section.typography");

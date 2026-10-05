@@ -59,6 +59,36 @@ export type ProjectTemplateDescriptor = {
 };
 
 /**
+ * The documents a page is brought out of a bundled template with, read in one language.
+ *
+ * Raw JSON as the template ships it, migrated and validated by the workspace that reads it - the
+ * same footing as a UI template's bundle. See `readProjectTemplateInterface` in main.
+ */
+export type ProjectTemplateInterfaceContent = {
+    /** The language variant the documents were read from, when one was. */
+    contentLocale?: string;
+    /** `editor/ui/uidoc.json`. */
+    uiDocument: unknown;
+    /** `editor/ui/uigraphs.json`, or null when the template has no blueprints. */
+    uiGraphs: unknown;
+    /** `editor/brand.json`, or null when the template keeps the default palette. */
+    brand: unknown;
+    /**
+     * `editor/localization/keys.json`, or null when the template names no key: the words its widgets
+     * read from a key, which a project lacking the key receives on the widgets instead.
+     */
+    localizationKeys: unknown;
+    /** `assets/assets.metadata.<type>.json`, keyed by the type segment of the file name. */
+    assetRecords: Record<string, unknown>;
+};
+
+/** One of a bundled template's own asset files. */
+export type ProjectTemplateAssetContent = {
+    assetId: string;
+    dataBase64: string;
+};
+
+/**
  * The copy of a template's content an author writing in `requested` receives, if any.
  *
  * The same matching the shipped game uses to pick a player's language

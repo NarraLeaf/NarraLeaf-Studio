@@ -4,6 +4,7 @@ import type {
     GameRuntimeArtifactCompileInput,
     GameRuntimeArtifactCompileResult,
 } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
+import type { PayloadSummary } from "@/app/application/managers/build/patchPayload";
 
 /**
  * Message protocol between GameBuildManager / PreviewManager (main process) and
@@ -78,7 +79,32 @@ export type CompileWorkerProgressMessage = {
     progress: StudioTaskProgress | null;
 };
 
-export type CompileWorkerInboundMessage = CompileWorkerStartMessage;
+/**
+ * Read a build's payload: what it says about itself, and the digest of every entry when asked.
+ *
+ * Here rather than in the main process because a packaged build can only be read through
+ * Electron's asar patch, and the patch keeps every archive it opens open until the process exits -
+ * which on Windows would leave the author unable to build into that folder again for as long as
+ * Studio ran. This process exits once it has answered, and everything it held goes with it,
+ * including the native reader a sealed build carries. See `managers/build/patchPayload.ts`.
+ */
+export type CompileWorkerReadPayloadMessage = {
+    type: "read-payload";
+    /** The folder the author picked, or a compiled app directory. */
+    target: string;
+    digests: boolean;
+};
+
+/** The answer to a {@link CompileWorkerReadPayloadMessage}; see `PayloadSummary`. */
+export type CompileWorkerPayloadMessage = {
+    type: "payload";
+    summary: PayloadSummary;
+};
+
+export type CompileWorkerInboundMessage = CompileWorkerStartMessage | CompileWorkerReadPayloadMessage;
+
+/** What the worker answers a {@link CompileWorkerReadPayloadMessage} with. */
+export type CompileWorkerReadPayloadReply = CompileWorkerPayloadMessage | CompileWorkerErrorMessage;
 
 export type CompileWorkerOutboundMessage =
     | CompileWorkerDoneMessage

@@ -32,6 +32,8 @@ import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/comp
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
 import { guardPluginWidgetModule } from "./pluginWidgetGuard";
+import { uiTextSitesFromPluginDeclaration } from "@shared/types/ui-editor/textSource";
+import { registerPluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import type { PluginWidgetModule } from "./pluginWidgetApi";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -438,6 +440,12 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
             `use app.services.${namespace} from the studio entry instead.`,
         );
     };
+    const storyActionsUnavailable = (): never => {
+        throw new Error(
+            `[plugin:${pluginId}] app.game.storyActions is only available in a game runtime entry; ` +
+            "it registers what runs when the story reaches the row, which only a running game does.",
+        );
+    };
 
     return {
         blueprintNodes: {
@@ -447,6 +455,13 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
         widgets: {
             register: () => registrationUnavailable("widgets"),
             registerMany: () => registrationUnavailable("widgets"),
+        },
+        // Not `registrationUnavailable`: the studio entry's `app.services.story.actions` registers
+        // the action the author inserts, which is the other half of the pair rather than this one,
+        // and pointing at it would send the reader to the wrong registration.
+        storyActions: {
+            register: () => storyActionsUnavailable(),
+            registerMany: () => storyActionsUnavailable(),
         },
         data: {
             // In a game this reads the copy published with the pack, synchronously.
@@ -583,6 +598,9 @@ export function createPluginApp(
         module,
         nodeGame,
         { documentService: uiDocument, stateService: uiEditorState },
+        // Read off the manifest rather than the module: the runtime entry draws the same widget and
+        // reads the same declaration, so the two cannot disagree about which props are words.
+        uiTextSitesFromPluginDeclaration(module.type, descriptor.manifest.contributes.widgetText?.[module.type]),
     );
 
     // Every registration a plugin makes through this app object is recorded
@@ -885,6 +903,9 @@ export function createPluginApp(
                         .map(([name, definition]) => ({ name, sourceText: definition.sourceText }))
                         .sort((a, b) => a.name.localeCompare(b.name));
                 },
+                // Scoped to this plugin by the registry (`plugin:<id>/<word id>`), and taken back on
+                // unload with everything else the plugin registered.
+                registerWords: source => trackReturn(registerPluginWords(descriptor.plugin.id, shownName, source)),
             },
             story: {
                 listStories: () => story.listStories().map(entry => ({

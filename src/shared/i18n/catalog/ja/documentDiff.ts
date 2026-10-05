@@ -89,7 +89,7 @@ export const documentDiff = {
         characters: "キャラクター",
         dictionaryTerms: "辞書の項目",
         transformPresets: "変換プリセット",
-        localizationKeys: "ローカライズのキー",
+        localizationKeys: "翻訳キー",
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
         saveFields: "セーブ項目",
@@ -251,9 +251,9 @@ export const documentDiff = {
      * その行の目印になるから。
      */
     localizationKeys: {
-        added: "名前付き文字列を追加",
-        removed: "名前付き文字列を削除",
-        changed: "名前付き文字列を変更",
+        added: "翻訳キーを追加",
+        removed: "翻訳キーを削除",
+        changed: "翻訳キーを変更",
     },
     /**
      * インターフェースのドキュメント。サーフェスと、その上の要素。
@@ -408,7 +408,7 @@ export const documentDiff = {
         added: "トラックを追加",
         removed: "トラックを削除",
         renamed: "名前を変更",
-        rerouted: "別のバスへ出力するようになった",
+        rerouted: "別のトラックへ出力するようになった",
         reroutedToMaster: "マスター出力へ直接出すようになった",
         /** 値の組はつまみ自身の数（100 分率）。保存されている 0 から 1 ではない。 */
         volume: "音量を変更",
@@ -420,12 +420,11 @@ export const documentDiff = {
         changed: "トラックを変更",
     },
     /**
-     * 第 1 段階のプロジェクトのセーブ変数とグローバル変数。
+     * 第 1 段階のプロジェクトのセーブ変数と永続変数。
      *
      * この段階の理由の行が `defaultValue`。どの周回もそこから始まり、その変数ができる前に書かれた
      * セーブもその値として読まれる。つまり出荷されるゲームが変わるのに、件数は 1 つも動かない。
      * スコープの 2 行は、その変数がいま何なのかを言う。保存されている 2 語を組にはしない。
-     * 片方の persistent は、パネルでのそのスコープの呼び名ですらない。
      */
     variables: {
         added: "変数を追加",
@@ -434,7 +433,7 @@ export const documentDiff = {
         defaultValue: "既定値を変更",
         valueType: "型を変更",
         scopeSaved: "セーブ変数になった",
-        scopeGlobal: "グローバル変数になった",
+        scopeGlobal: "永続変数になった",
         /** 値を入れておくキー。名前の変更では決して動かさないように作ってある。 */
         storageKey: "すでに保存された値はもう読み出せない",
         description: "備考を変更",

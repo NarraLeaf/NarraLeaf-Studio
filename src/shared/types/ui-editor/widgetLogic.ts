@@ -40,18 +40,29 @@ export type WidgetLogicWritablePropDef = {
 export type WidgetLogicApi = {
     supportsPrivateBlueprint: boolean;
     blueprintLabel?: string;
+    /**
+     * The events a private blueprint on this widget can be started by. Every entry is load-bearing:
+     * the node palette, graph validation, the dispatcher and `ui.js widget` all read this list, so an
+     * event belongs here only once the runtime raises it and a head node for it is registered.
+     */
     events: readonly WidgetLogicEventDef[];
+    /**
+     * `commands`, `readableState` and `writableProps` describe the widget to a reader - `ui.js
+     * widget` prints them - and nothing executes them: no blueprint node looks a widget up in these
+     * lists. What a graph can actually do to a widget is in the node catalogue.
+     */
     commands: readonly WidgetLogicCommandDef[];
     readableState: readonly WidgetLogicReadableStateDef[];
     writableProps: readonly WidgetLogicWritablePropDef[];
     /**
      * Whether the player operates this widget directly - a Button, a Switch, a Slider, a Text Input,
      * a list they pick a row from. Scenery (Container, Text, Image, Video, Model, the page host)
-     * leaves it unset.
+     * leaves it unset. A Video with its native controls showing is operable too, but that is a prop
+     * on the instance, so `isOperableHitElement` in `surfaceInputActions.ts` answers it there.
      *
-     * Declared rather than derived, and the retreat is deliberate. A panel-wide gesture has to stand
-     * down over a control (`overControls: "skip"` in `inputAction.ts`), so something has to answer
-     * "is this a control", and the tempting derivation - "declares an interaction event beyond the
+     * Declared rather than derived, and the retreat is deliberate. A panel-wide gesture stands down
+     * over a control (`pointerInputClaimedByControl` in `surfaceInputActions.ts`), so something has
+     * to answer "is this a control", and the tempting derivation - "declares an interaction event beyond the
      * shared displayable set" - is wrong at both ends: `nl.button` declares exactly the displayable
      * set, and `nl.frame` declares `pageEvent`. Nothing else in an entry separates a Button from a
      * Container, because what makes a Button a control is how the runtime draws and handles it, not
@@ -393,68 +404,18 @@ const SWITCH_EVENTS: readonly WidgetLogicEventDef[] = [
 ];
 
 /**
- * The displayable set plus the three media events. They are `lifecycle`, not `interaction`: the
- * element raises them on its own as the clip advances - nothing the player did causes `ended`.
- */
-const VIDEO_EVENTS: readonly WidgetLogicEventDef[] = [
-    INIT_EVENT,
-    FLUSH_EVENT,
-    ...SURFACE_LIFECYCLE_EVENTS,
-    UNMOUNT_EVENT,
-    {
-        id: "play",
-        displayName: "Play",
-        description: "Fires when playback starts or resumes.",
-        dispatchKind: "lifecycle",
-        headNodeTypes: ["blueprint.event.head.videoPlay"],
-    },
-    {
-        id: "pause",
-        displayName: "Pause",
-        description: "Fires when playback pauses without reaching the end.",
-        dispatchKind: "lifecycle",
-        headNodeTypes: ["blueprint.event.head.videoPause"],
-    },
-    {
-        id: "ended",
-        displayName: "Ended",
-        description: "Fires when the clip reaches its end. A looping clip never raises it.",
-        dispatchKind: "lifecycle",
-        headNodeTypes: ["blueprint.event.head.videoEnded"],
-    },
-    ...DISPLAYABLE_EVENTS,
-    ...BROADCAST_EVENTS,
-    ...WINDOW_EVENTS,
-];
-
-/**
- * The displayable set plus the two the *backend* raises.
+ * Video and Model: the displayable set, and nothing of their own.
  *
- * `lifecycle`, not `interaction`: nothing the player did causes either. `ready` is the engine's own
- * boundary - the first frame has been drawn - and `error` is a runtime that was found and then
- * misbehaved. A project simply carrying no puppet runtime raises neither; that is `missing-backend`,
- * a quiet state and not an event, so a graph listening for `error` does not fire on every machine
- * where the author's runtime is not installed.
+ * Neither widget reports what happens inside it to a blueprint. The video element's play, pause and
+ * end, and the puppet backend's ready and error states, drive the widget's own drawing and are not
+ * dispatched, and no head node exists to start a graph on them - so none is listed. An event offered
+ * here that never fires is a graph an author wires and then waits on forever.
  */
-const PUPPET_EVENTS: readonly WidgetLogicEventDef[] = [
+const MEDIA_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
     ...SURFACE_LIFECYCLE_EVENTS,
     UNMOUNT_EVENT,
-    {
-        id: "ready",
-        displayName: "Ready",
-        description: "Fires when the model's first frame has been drawn.",
-        dispatchKind: "lifecycle",
-        headNodeTypes: ["blueprint.event.head.puppetReady"],
-    },
-    {
-        id: "error",
-        displayName: "Error",
-        description: "Fires when the runtime was found and then failed. A missing runtime is not an error.",
-        dispatchKind: "lifecycle",
-        headNodeTypes: ["blueprint.event.head.puppetError"],
-    },
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
     ...WINDOW_EVENTS,
@@ -521,7 +482,7 @@ function createCollectionWidgetLogicApi(blueprintLabel: string): WidgetLogicApi 
             {
                 id: "refreshItems",
                 displayName: "Refresh items",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [
@@ -619,7 +580,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             {
                 id: "setSource",
                 displayName: "Set image source",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [
@@ -633,13 +594,12 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
      * `nl.video` owns the DOM `<video>`, so the split between the two lists below is not cosmetic:
      * `readableState` entries like `currentTime` change inside the element with nothing writing to
      * the override store, and `commands` like Play / Seek are one-shot actions rather than state.
-     * Phase 2 of the Surface video card supplies the mechanism for both; everything listed as
-     * `planned` here is deliberately not claimed to work yet.
+     * Every command marked `planned` has no implementation behind it.
      */
     "nl.video": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Video logic",
-        events: VIDEO_EVENTS,
+        events: MEDIA_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             { id: "play", displayName: "Play", availability: "planned" },
@@ -680,8 +640,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
      * from that. `readableState` entries like `status` and `currentMotion` change *inside* the
      * backend with nothing writing to the override store, and `command` is the engine's own escape
      * hatch - a named one-shot the engine never interprets, which by contract does not block unless
-     * the caller asks it to. Phase 2 of the Surface puppet card supplies the mechanism for both;
-     * everything marked `planned` here is deliberately not claimed to work yet.
+     * the caller asks it to. Every command marked `planned` has no implementation behind it.
      *
      * `setParam` / `setSlot` are commands rather than writable props even though `params` / `slots`
      * are stored, because writing one key is not the same as replacing the map, and the engine's
@@ -690,7 +649,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.puppet": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Model logic",
-        events: PUPPET_EVENTS,
+        events: MEDIA_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             { id: "setMotion", displayName: "Set motion", availability: "planned" },
@@ -848,7 +807,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             {
                 id: "setPage",
                 displayName: "Set page",
-                availability: "planned",
+                availability: "available",
             },
         ],
         readableState: [

@@ -17,6 +17,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     formatBlueprintKeyboardBinding,
 } from "@shared/types/blueprint/graph";
@@ -163,7 +164,7 @@ describe("blueprint layer templates", () => {
         expect(featuredFor(OWNERS.componentButton)).toEqual(["openPage", "goBack", "startGame", "quitApp"]);
         // A widget with templates of its own shows those before the ones any clickable widget takes.
         expect(featuredFor(OWNERS.slider)).toEqual(["musicVolumeSlider", "sfxVolumeSlider", "textSpeedSlider", "masterVolumeSlider"]);
-        expect(featuredFor(OWNERS.switch)).toEqual(["fullscreenSwitch", "skipReadTextSwitch", "muteWhenUnfocusedSwitch", "openPage"]);
+        expect(featuredFor(OWNERS.switch)).toEqual(["fullscreenSwitch", "skipReadTextSwitch", "muteWhenUnfocusedSwitch", "autoForwardSwitch"]);
         expect(featuredFor(OWNERS.label)).toEqual(["playtimeText", "clockText", "openPage", "goBack"]);
     });
 
@@ -260,6 +261,14 @@ describe("blueprint layer templates", () => {
 
         const start = build("startGame", OWNERS.button, { ...FACTS, gameStart: undefined });
         expect(start.pendingNodeIds).toHaveLength(1);
+
+        // The endings counted are the default story's; which ending a widget waits for is the
+        // author's to say.
+        const count = build("endingCountText", OWNERS.label);
+        expect(nodesOfType(count.ir, BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS).map(node => node.params?.storyId))
+            .toEqual(["story", "story"]);
+        expect(count.pendingNodeIds).toEqual([]);
+        expect(build("showAfterEnding", OWNERS.button).pending.map(entry => entry.keys)).toEqual([["endingId"]]);
     });
 
     it("gives every node an id of its own, and every edge a node at each end", () => {

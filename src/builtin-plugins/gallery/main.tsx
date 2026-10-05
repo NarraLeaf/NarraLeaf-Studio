@@ -10,6 +10,11 @@
  * their edits in an in-editor preview immediately. The runtime entry registers
  * the same defs against the copy published with the game (see runtime.ts).
  *
+ * The names, descriptions and locked title the author writes are offered to the
+ * project's translation table (`galleryWords`), so they are translated like the
+ * words on the game's interface; the game reads them back in the player's
+ * language (`localizeGalleryStore`).
+ *
  * The fourth registration is the catalog's place in version control: the store
  * holds a versioned project document in memory, so it re-reads whenever Studio
  * replaces the project's documents. Without it, restoring a past version would
@@ -24,6 +29,7 @@ import { GalleryEditorTab } from "./GalleryEditorTab";
 import { GalleryPanel } from "./GalleryPanel";
 import { createGalleryTranslator, galleryTitle } from "./messages";
 import { createGalleryStore } from "./store";
+import { galleryWords } from "./catalog";
 import {
     DYNAMIC_OPTIONS_SOURCE,
     GROUP_OPTIONS_SOURCE,
@@ -56,6 +62,11 @@ export default definePlugin({
 
         const unregisterReloader = app.services.workspace.registerReloader(() => store.reload());
 
+        const unregisterWords = app.services.localization.registerWords({
+            list: () => galleryWords(store.getData()),
+            subscribe: listener => store.subscribe(listener),
+        });
+
         const unregisterArtworkOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
             DYNAMIC_OPTIONS_SOURCE,
             () => store.getArtworkOptions(),
@@ -87,6 +98,7 @@ export default definePlugin({
         return () => {
             unregisterPanel();
             unregisterReloader();
+            unregisterWords();
             unregisterArtworkOptions();
             unregisterVariantOptions();
             unregisterGroupOptions();

@@ -13,7 +13,7 @@ export const blueprint = {
     tab: {
         title: "Blueprint",
         invalid: "Blueprint tab is invalid.",
-        notFound: "Blueprint not found: {id}",
+        notFound: "Blueprint not found in this project",
     },
     /** Breakpoints, set from a node's context menu and hit by the Dev Mode debugger. */
     breakpoint: {
@@ -47,6 +47,23 @@ export const blueprint = {
             one: "Deleted the unknown node and its {count} hidden connection. Undo to restore.",
             other: "Deleted the unknown node and its {count} hidden connections. Undo to restore.",
         },
+    },
+    /**
+     * Following a wire to its other end: the tooltip on a hovered wire, which names the end away
+     * from the pointer, and the rows of the wire's and a pin's context menus that go there.
+     * `{target}` is `end` filled in, or the node alone for a pin with no label; `{node}` there is
+     * `nodeDetail` when the card shows something under its title (an element, a field's value).
+     */
+    wire: {
+        nodeDetail: "{node} ({detail})",
+        end: "{node} · {pin}",
+        connectedTo: "Connected to {target}",
+        goTo: "Go to {target}",
+        /** One of several rows naming cards that read alike, numbered left to right as they sit on the graph. */
+        goToNth: "Go to {target} ({n})",
+        goToConnected: "Go to connected node",
+        /** A wire's accessible name: its output end, then its input end, each written as `end` is. */
+        name: "Wire from {from} to {to}",
     },
     /**
      * A paste of nodes copied in another project.
@@ -155,7 +172,7 @@ export const blueprint = {
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
             inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
             stepLimit: "\"{head}\" stopped at \"{node}\" after {steps} steps without a wait.",
-            stepLimitGlobal: "\"{head}\" in the global blueprint stopped at \"{node}\" after {steps} steps without a wait.",
+            stepLimitGlobal: "\"{head}\" in App logic stopped at \"{node}\" after {steps} steps without a wait.",
             unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
@@ -344,6 +361,7 @@ export const blueprint = {
             keys: "Keys",
             window: "Window",
             display: "Display",
+            conditions: "Conditions",
         },
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
@@ -1286,6 +1304,7 @@ export const blueprint = {
         getVisible: "Get Visible",
         getWrapMode: "Get Wrap Mode",
         goPage: "Go Page",
+        replacePage: "Replace Page",
         goBack: "Go back",
         showLayer: "Show Layer",
         hideLayer: "Hide Layer",
@@ -1501,6 +1520,7 @@ export const blueprint = {
         toggle: "Toggle",
         toggleDialogDisplay: "Toggle Dialog Display",
         toggleSwitch: "Toggle Switch",
+        translationKeyText: "Translation Key Text",
         trim: "Trim",
         trimEnd: "Trim End",
         trimStart: "Trim Start",
@@ -1546,6 +1566,7 @@ export const blueprint = {
      * can mistake for one another.
      */
     nodeDescription: {
+        getComponentParam: "The value this placement sets for the chosen parameter, or the parameter's default when it sets none. A Text parameter that reads from a translation key gives the key's name; Translation Key Text gives its words.",
         compareEqual: "True when A and B are the same value of the same type. The number 1 and the text \"1\" are not equal.",
         compareNotEqual: "True when A and B differ in value or in type. The number 1 and the text \"1\" count as different.",
         compareGreaterThan: "True when A is greater than B. Both sides are compared as numbers; a side that cannot be read as a number gives false.",
@@ -1559,6 +1580,12 @@ export const blueprint = {
         appBoot: "Runs once each time the game starts, after the first screen is showing, and does not hold that screen back. On Game Ready has already run by then. In Dev Mode it runs again after every reload.",
         gameReady: "Runs when the game is ready, before any story starts and before the first screen shows; the screen waits for it to finish. Runs before App Boot, and can run again when a game is started or loaded.",
         goBack: "Closes the current page and returns to the page beneath it. On the bottom page it does nothing.",
+        replacePage: "Opens a page in place of the current page, and closes the current page. Go back and Go Page set to None do not return to it.",
+        isGameOverlay: "True when this page, layer or Game UI is shown over a running game. In App logic, true while a page or a modal layer covers the story.",
+        localizationGetText: "Gets a translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. Translation Key Text gives the same text and can also be used in Blueprint Value and functions.",
+        translationKeyText: "A translation key's text in the player's current language, or its source text when that language has no translation. A key that does not exist gives its name. The same text as Get Text, and also usable in Blueprint Value and functions. A Blueprint Value that shows it updates when the player changes language.",
+        format: "Replaces the placeholders in Template with values: {0}, {1} and so on with the items of an array, {name} with the field of that name in an object. A placeholder with no value becomes empty. A translated template comes from Translation Key Text.",
+        formatText: "Replaces {0}, {1} and so on in Text with the items of Values. Format does the same, also fills {name} from an object, and can be used in Blueprint Value and functions.",
     },
     // A live session leaves the blueprint document writable. What the canvas gains is a mark
     // saying who else is inside a node.

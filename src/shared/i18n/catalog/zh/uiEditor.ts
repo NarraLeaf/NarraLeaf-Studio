@@ -5,7 +5,7 @@ export const uiEditor = {
         page: "页面",
         gameUi: "游戏 UI",
         mainPage: "入口页面",
-        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、回想或画廊",
+        pageDescription: "页面是完整的屏幕，例如标题、设置、存档、记录或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
     },
     // 蓝图归谁所有——蓝图面板、标签标题、控件旁的只读区说的是同一批词，所以在这里定一次。
@@ -14,7 +14,7 @@ export const uiEditor = {
         surfaceMain: "页面逻辑",
         widgetMain: "控件逻辑",
         widgetValue: "控件取值",
-        storyAction: "剧情动作",
+        storyAction: "故事动作",
     },
     stageSlot: {
         onStage: "舞台",
@@ -36,8 +36,8 @@ export const uiEditor = {
         createGameUi: "新建游戏 UI",
         globalSubtitle: "全局",
         blueprintType: "蓝图",
-        openGlobalBlueprint: "打开全局蓝图",
-        globalBlueprintUnavailable: "全局蓝图不可用",
+        openGlobalBlueprint: "打开应用逻辑",
+        globalBlueprintUnavailable: "应用逻辑不可用",
         openSurface: "打开 {label}",
         renameSurface: "重命名 {label}",
         duplicateSurface: "创建 {label} 副本",
@@ -52,12 +52,16 @@ export const uiEditor = {
         pageValidationHint: "创建前检查页面名称和尺寸",
         gameUiSlotHint: "创建前选择可用的游戏 UI 位置",
         allSlotsUsed: "所有游戏 UI 位置均已有界面。从列表中打开已有的游戏 UI",
+        starterTitlePage: {
+            title: "新建标题页",
+            description: "「开始」「继续」按钮已接好，替换空白的入口页面",
+        },
     },
     naming: {
         page: "页面 {index}",
         gameUi: "{slot} UI",
         component: "组件 {index}",
-        inputAction: "操作 {index}",
+        inputAction: "意图 {index}",
     },
     // 这个面板留下的撤销步骤叫什么（"撤销 移动界面 标题"）。
     history: {
@@ -159,6 +163,9 @@ export const uiEditor = {
     canvas: {
         unknownWidget: "未知控件",
         widgetRenderFailed: "控件绘制失败",
+        wordsFromRowField: "此文字来自列表行字段“{field}”",
+        wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
+        wordsFromComponentParam: "此文字来自组件参数“{param}”，在各放置处设置",
     },
     editor: {
         componentNotFound: "未找到组件",
@@ -209,7 +216,7 @@ export const uiEditor = {
         showSelected: "显示所选",
         hideSelected: "隐藏所选",
         addToComponentLibrary: "添加到组件库",
-        addToGroup: "添加到分组",
+        group: "编组",
         ungroup: "取消编组",
         addState: "添加状态",
         arrange: {

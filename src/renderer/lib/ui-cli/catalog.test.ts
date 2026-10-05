@@ -10,7 +10,14 @@
 
 import { describe, expect, it } from "vitest";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
-import { describeWidget, listBuiltinStructs, listWidgetModules, nearestWidgetTypes, queryWidgets } from "./catalog";
+import {
+    describeWidget,
+    formatWidgetDetail,
+    listBuiltinStructs,
+    listWidgetModules,
+    nearestWidgetTypes,
+    queryWidgets,
+} from "./catalog";
 
 describe("the widget catalogue", () => {
     it("describes every registered widget type", () => {
@@ -71,6 +78,18 @@ describe("the widget catalogue", () => {
         expect(nearestWidgetTypes("nl.buton")).toEqual(["nl.button"]);
         expect(nearestWidgetTypes("nl.containr")).toContain("nl.container");
         expect(nearestWidgetTypes("something else entirely")).toEqual([]);
+    });
+
+    it("names the palette categories a widget's own nodes are under, and no node that does not exist", () => {
+        expect(describeWidget("nl.list")?.ownBlueprintNodeCategories).toEqual(["Displayable", "List"]);
+        expect(describeWidget("nl.switch")?.ownBlueprintNodeCategories).toEqual(["Displayable", "Switch"]);
+        // Event heads are the events section's to name, and they are under Events.
+        expect(describeWidget("nl.button")?.ownBlueprintNodeCategories).not.toContain("Events");
+        const printed = formatWidgetDetail(describeWidget("nl.list")!);
+        expect(printed).toContain("  nodes      Displayable, List in its own blueprint; Element in any blueprint");
+        expect(printed).not.toMatch(/Call Widget Command|Get Widget State|Set Widget Prop/);
+        // A type with nothing to command, read or write says nothing about nodes either.
+        expect(formatWidgetDetail(describeWidget("nl.root")!)).not.toContain("  nodes ");
     });
 
     it("knows the struct shapes that ship with Studio", () => {

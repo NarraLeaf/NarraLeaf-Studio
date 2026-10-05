@@ -219,3 +219,106 @@ describe("compiling a .ui file", () => {
             .toContain("ui.unknown_slot");
     });
 });
+
+describe("where a widget's words come from", () => {
+    const keyed = (label: string) =>
+        `${MINIMAL}        Start: nl.button id=start @0,0 10x10\n            label = ${JSON.stringify(label)}\n            localizationKey = menu.start\n`;
+    const KEYS = { sourceLocale: "en", keys: new Map([["menu.start", "Start"]]) };
+
+    function diagnostics(text: string, options: Parameters<typeof compileUiFile>[1]) {
+        return compileUiFile(parseUiFile(text), options).diagnostics;
+    }
+
+    function compiled(text: string, options: Parameters<typeof compileUiFile>[1]) {
+        return compileUiFile(parseUiFile(text), options);
+    }
+
+    it("takes a widget's key and marks as props it has, and leaves out the switch an older file carries", () => {
+        const text = `${MINIMAL}        Title: nl.text id=t @0,0 10x10\n            text = "Hello"\n            localizable = true\n`
+            + "            rich = []\n";
+        const result = compiled(text, {});
+        expect(result.diagnostics.map(item => item.code)).not.toContain("ui.unknown_prop");
+        expect(result.diagnostics.filter(item => item.code === "ui.legacy_prop").map(item => item.severity)).toEqual(["info"]);
+        const title = Object.values(result.surfaces[0].elements).find(element => element.id === "t");
+        expect(title?.props).toEqual({ text: "Hello", rich: [] });
+        expect(codes(`${MINIMAL}        Art: nl.image id=a @0,0 10x10\n            localizationKey = menu.start\n`)).toContain("ui.unknown_prop");
+    });
+
+    it("refuses words written onto a keyed widget that the key's text would replace", () => {
+        const found = diagnostics(keyed("Begin the game"), { textKeys: KEYS }).filter(item => item.code === "ui.words_two_sources");
+        expect(found).toHaveLength(1);
+        expect(found[0].severity).toBe("error");
+        expect(found[0].message).toContain("menu.start");
+    });
+
+    it("leaves out words that are the key's, as a keyed widget holds none of its own", () => {
+        const result = compiled(keyed("Start"), { textKeys: KEYS });
+        expect(result.diagnostics.filter(item => item.code === "ui.words_dropped").map(item => item.severity)).toEqual(["info"]);
+        expect(result.diagnostics.map(item => item.code)).not.toContain("ui.words_two_sources");
+        const start = Object.values(result.surfaces[0].elements).find(element => element.id === "start");
+        expect(start?.props).toEqual({ localizationKey: "menu.start" });
+    });
+
+    it("refuses them without a source language too, where keys are read as well", () => {
+        const found = diagnostics(keyed("Begin"), { textKeys: { ...KEYS, sourceLocale: "" } })
+            .filter(item => item.code === "ui.words_two_sources");
+        expect(found.map(item => item.severity)).toEqual(["error"]);
+    });
+
+    it("says nothing without the project's keys, and names a key the project does not have", () => {
+        expect(codes(keyed("Begin"))).not.toContain("ui.words_two_sources");
+        const missing = diagnostics(keyed("Begin"), { textKeys: { sourceLocale: "en", keys: new Map() } });
+        expect(missing.map(item => item.code)).not.toContain("ui.words_two_sources");
+        expect(missing.filter(item => item.code === "ui.key_missing").map(item => item.severity)).toEqual(["warning"]);
+    });
+});
+
+describe("a component's text parameters", () => {
+    const COMPONENT = `component "Nav item" id=nav size=400x80
+    param label "Label" type=text = "Item"
+    param target "Target" = title
+    Root: nl.container id=nav-root @0,0 400x80
+        Label: nl.text id=nav-label @0,0 400x80
+            text = "Sample"
+            bind text = param label
+`;
+    const PAGE = (link: string) => `${MINIMAL}        Nav: nl.container id=p1 @0,0 400x80\n            component nav ${link}\n`;
+    const KEYS = { sourceLocale: "zh", keys: new Map([["nav.title", "标题"]]) };
+
+    function compiled(text: string, options: Parameters<typeof compileUiFile>[1] = {}) {
+        return compileUiFile(parseUiFile(text), options);
+    }
+
+    it("reads a text parameter, the binding that shows it, and a placement's words and key", () => {
+        const result = compiled(`${COMPONENT}\n${PAGE('label="Start"')}\n${MINIMAL.replace('"S" id=s', '"T" id=t')}        Nav: nl.container id=p2 @0,0 400x80\n            component nav label.key=nav.title\n`, { textKeys: KEYS });
+        expect(result.diagnostics).toEqual([]);
+        const component = result.components[0].component;
+        expect(component.params).toEqual([
+            { id: "label", name: "Label", type: "text", defaultValue: "Item" },
+            { id: "target", name: "Target", type: "string", defaultValue: "title" },
+        ]);
+        expect(component.elements["nav-label"].valueBindings).toEqual({ text: { kind: "componentParam", paramId: "label" } });
+        expect(result.surfaces[0].elements.p1.extra).toEqual({ componentLink: { componentId: "nav", linked: true, params: { label: "Start" } } });
+        expect(result.surfaces[1].elements.p2.extra).toEqual({ componentLink: { componentId: "nav", linked: true, paramKeys: { label: "nav.title" } } });
+    });
+
+    it("refuses a parameter binding outside a component, on a string parameter, or on a prop that is not words", () => {
+        expect(codes(`${MINIMAL}        T: nl.text @0,0 10x10\n            bind text = param label\n`)).toContain("ui.param_outside_component");
+        expect(codes(COMPONENT.replace("bind text = param label", "bind text = param target"))).toContain("ui.param_not_text");
+        expect(codes(COMPONENT.replace("bind text = param label", "bind text = param gone"))).toContain("ui.param_not_text");
+        expect(codes(COMPONENT.replace("Label: nl.text id=nav-label @0,0 400x80\n            text = \"Sample\"\n            bind text = param label", "Art: nl.image id=nav-art @0,0 400x80\n            bind imageFill.assetId = param label")))
+            .toContain("ui.prop_not_bindable");
+    });
+
+    it("checks the values a placement gives against what the component declares", () => {
+        const check = (link: string) => compiled(`${COMPONENT}\n${PAGE(link)}`, { textKeys: KEYS }).diagnostics.map(item => `${item.severity} ${item.code}`);
+        expect(check('label="A" label.key=nav.title')).toEqual(["error ui.words_two_sources"]);
+        expect(check("target.key=nav.title")).toEqual(["error ui.param_key_not_text"]);
+        expect(check("label.key=nav.gone")).toEqual(["warning ui.key_missing"]);
+        expect(check('other="x"')).toEqual(["warning ui.param_unknown"]);
+    });
+
+    it("refuses a param type that is neither string nor text", () => {
+        expect(() => parseUiFile(COMPONENT.replace("type=text", "type=words"))).toThrow(/string or text/);
+    });
+});

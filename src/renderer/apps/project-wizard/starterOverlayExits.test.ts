@@ -43,14 +43,22 @@ type GraphEdge = { from: { nodeId: string; port: string }; to: { nodeId: string;
 type Graph = { nodes: Record<string, GraphNode>; edges: GraphEdge[] };
 type Blueprint = {
     id: string;
-    owner: { kind: string; surfaceId?: string; elementId?: string };
+    owner: { kind: string; surfaceId?: string; componentId?: string; elementId?: string };
     graphs: { events: Record<string, { graph: Graph }> };
 };
-type Element = { id: string; name: string; type: string; childrenIds?: string[] };
+type Element = {
+    id: string;
+    name: string;
+    type: string;
+    childrenIds?: string[];
+    extra?: { componentLink?: { componentId: string; linked?: boolean } };
+};
 type Surface = { id: string; name: string; rootElementId: string; actions?: UISurfaceActionEnablement[] };
+type Component = { id: string; name: string; rootElementId: string };
 type UIDoc = {
     surfaces: Surface[];
     elements: Record<string, Element>;
+    components: Component[];
     actions?: Record<string, UIInputActionDef>;
 };
 
@@ -130,6 +138,28 @@ function graphsOf(owner: (blueprint: Blueprint) => boolean): Graph[] {
     return blueprints
         .filter(owner)
         .flatMap(blueprint => Object.values(blueprint.graphs.events).map(event => event.graph));
+}
+
+/**
+ * The graphs that answer a click on a button. A button placed as an instance of a component has no
+ * blueprint of its own: a press runs the definition's, written once on the definition's root and
+ * run for whichever page placed it.
+ */
+function clickGraphsOf(button: Element): Graph[] {
+    const link = button.extra?.componentLink;
+    const component = link ? document.components.find(candidate => candidate.id === link.componentId) : undefined;
+    if (link) {
+        expect(component, `${button.name} places a component the document does not hold`).toBeDefined();
+    }
+    return graphsOf(blueprint =>
+        component
+            ? blueprint.owner.kind === "componentWidgetMain"
+                && blueprint.owner.componentId === component.id
+                && blueprint.owner.elementId === component.rootElementId
+            : blueprint.owner.kind === "widgetMain" && blueprint.owner.elementId === button.id,
+    ).filter(graph =>
+        Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+    );
 }
 
 /**
@@ -216,14 +246,20 @@ describe("every starter screen leaves a running game the same way", () => {
         const buttons = buttonsOn(screenName, "Back");
         expect(buttons, `${screenName} has ${buttons.length} Back buttons`).toHaveLength(1);
 
-        const graphs = graphsOf(
-            blueprint => blueprint.owner.kind === "widgetMain" && blueprint.owner.elementId === buttons[0]!.id,
-        ).filter(graph =>
-            Object.values(graph.nodes).some(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
-        );
+        const graphs = clickGraphsOf(buttons[0]!);
         expect(graphs, `Back on ${screenName} has ${graphs.length} graphs answering a click`).toHaveLength(1);
 
         const graph = graphs[0]!;
         assertClearsThenSteps(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK).id, "then");
+    });
+
+    it("places one Back button on every rail that can, rather than a copy per page", () => {
+        // Back is the same press on every one of these pages, so the graph is written once, on a
+        // component, and a change to what Back does cannot reach some pages and miss others.
+        const placed = SCREENS.map(screenName =>
+            buttonsOn(screenName, "Back")[0]?.extra?.componentLink?.componentId);
+        const component = document.components.find(candidate => candidate.id === placed[0]);
+        expect(component?.name).toBe("Back button");
+        expect(placed).toEqual(placed.map(() => component!.id));
     });
 });

@@ -105,6 +105,7 @@ Manifest 字段：
 | `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的子进程。声明它本身就是权限请求，无需再声明能力。字段与两种 kind 的通道差异见下面的 [sidecars](#sidecars随游戏发布的子进程) 一节。 |
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
+| `widgetText` | `Record<string, PluginWidgetTextContribution[]>` | 按 widget type 列出它哪些 prop 是玩家读的字。键必须在 `widgets` 里。宿主像对待内建文本与按钮一样对待这些 prop，见下面的 [控件里玩家读的字](#控件里玩家读的字widgettext)。**不派生安装权限**。 |
 
 `buildConfig` 每个字段：
 
@@ -363,6 +364,65 @@ app.services.widgets.register({
 
 写了 `partSlots` 就不用再写 `acceptsChildren`；两个都写时按 `partSlots` 算（有部件的控件不收别的），并在控制台说明。
 插件停用时部件原样留在文档里，和 `acceptsChildren` 一样。
+
+### 插件自己写给玩家的字（`registerWords`）
+
+插件的编辑器里作者写给玩家看的字（菜单项的名字、画廊条目的标题），用 `app.services.localization.registerWords` 交给项目的译表：
+
+```ts
+const unregister = app.services.localization.registerWords({
+  list: () => store.entries().map(entry => ({ id: `entry.${entry.id}.name`, text: entry.name, context: entry.group })),
+  subscribe: listener => store.subscribe(listener),
+});
+```
+
+- 每段有字母的字在译表「界面文本」里占一行，按插件名分组，也进导出与翻译进度；翻译单元是 `plugin:<插件 ID>/<id>`。
+- `id` 用插件自己的、稳定的 id（字母、数字，中间可用 `.` `_` `-`）：译文挂在 id 上，用字本身拼 id 会让作者改一个字就丢掉全部译文。
+- 列表变了就调用 `subscribe` 收到的 listener；插件卸载时登记自动收回。
+- 游戏里用 runtime 入口的 `app.game.locale.words(id, text)` 取回当前语言的字（要声明 `runtimeCapabilities: ["locale"]`）；
+  菜单栏标签写 `words: id`，由游戏在画菜单时取译文，见 [runtime-api.md](./runtime-api.md#gamemenu)。
+- 作者选用翻译键的字跟着键翻译，不用再登记。让作者在「直接写」与「翻译键」之间选，用插件 UI 的 `ui.WordsField`：
+  与内建文本、按钮的同一个字段，值是 `{ text, key }`（`key` 为 `null` 表示直接写）。
+
+### 控件里玩家读的字（`widgetText`）
+
+控件里有玩家读的字（标题、说明、按钮上的字）时，在 manifest 里按 widget type 列出这些 prop：
+
+```json
+"contributes": {
+  "widgets": ["acme.badges.badge"],
+  "widgetText": {
+    "acme.badges.badge": [
+      { "prop": "caption", "label": "Caption", "localized": { "zh": "说明", "ja": "キャプション" } },
+      { "prop": "hint", "keyProp": "hintKey", "multiline": true }
+    ]
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `prop` | `string` | 存字的 prop，标识符写法（字母或下划线开头，只含字母、数字、下划线）。 |
+| `keyProp` | `string` | 可选。作者选用翻译键时键名存在哪个 prop，缺省为 `<prop>LocalizationKey`。不能与任何 `prop` 或别的 `keyProp` 相同。 |
+| `label` | `string` | 可选。属性面板里这段字的名字；缺省时只有一段字的控件显示「文本」，多段字的显示 prop 名。 |
+| `localized` | `Record<string, string>` | 可选。`label` 的各语言写法，按 Studio 界面语言代码精确匹配，与插件名的 `localized` 相同。 |
+| `multiline` | `boolean` | 可选。为 `true` 时属性面板给多行输入框；缺省为单行。 |
+
+声明之后，宿主按内建文本与按钮的同一套规矩处理这些字：
+
+- **属性面板**在「属性」页最上面加一个「内容」分组，每段字一个字段，与文本控件的同一个：「直接写」或「翻译键」二选一；
+  选翻译键时可以就地新建键、改键的源文本。**不要再为这些 prop 自己写字段**——宿主的字段就是它们的编辑入口。
+- **画布**上，用翻译键的字显示键的源文本；直接写的字照写的显示。
+- **游戏**里，`render` 收到的 `element.props.<prop>` 已经是玩家当前语言下的字：键的译文（没有译文时为键的源文本），
+  或者直接写的字的译文。**渲染器永远不用自己查键**，读 prop 即可；玩家在游戏里切换语言时控件随之重画。
+  `keyProp` 是宿主的，渲染器不要读它来决定显示什么。
+- 直接写的字有自己的翻译单元 `ui:<元素 id>.<prop>`，与内建控件的字一样**自动进项目的译表与导出**（项目有第二种语言时），
+  用翻译键的字跟着键走。项目检查报缺译文、指向不存在的键；字形检查也读这些字。
+- 删除翻译键、粘贴或导入指向本项目没有的键的控件时，这些 prop 与内建控件一样改为直接写，保留键的文字与译文。
+
+没有 `widgetText` 的插件与以前完全一样：prop 原样交给 `render`，Studio 不把它们当作玩家读的字。
+声明在 manifest 里而不是在注册时，是因为 studio 入口编辑这个控件、runtime 入口画这个控件，两边读的必须是同一份声明。
+蓝图的「设置文本」类节点和值绑定只作用于内建控件，不写这些 prop。
 
 ### 控件自己的事件（`logicApi`）
 

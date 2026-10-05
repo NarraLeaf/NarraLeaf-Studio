@@ -269,6 +269,64 @@ All three name the same file. Anything that looks like a path is one, `./quit.bp
 included, so nothing that was written to be relative to the working directory
 moves. `--out` with no filename after it names the file after the blueprint.
 
+## Laying a file out
+
+```sh
+node project/app/blueprint.js format quit.bp --project D:/path/to/project
+node project/app/blueprint.js format quit.bp --project <dir> --out quit-tidy.bp
+node project/app/blueprint.js format quit.bp --direction vertical
+```
+
+`format` lays out every graph in the file the way the canvas toolbar's "Format
+graph" button does, and writes the positions back into the file - the `@x,y` on
+each node's line, and a frame's `width` / `height`. Nothing else in the file
+changes, comments included. Then `check` and `apply` as usual.
+
+It is the same layout function the button runs, so the rules are the button's:
+execution runs along a row with every card's execution pin on one line; a
+branch's first output continues the row and each later one starts a row of its
+own below everything the first one led to, just right of the card it leaves, so
+it reads true then false and its wire drops beside the true side crossing nothing.
+A loop - For, For Each, While - is read the same way, its body being its first
+output: the body continues the row straight from the loop, and Completed starts a
+row below. A branch's later output is sometimes put directly under its card
+instead, with the rest of the row moved past it, where that untangles more; a
+loop's body never moves aside like that. A card that only computes a value sits
+just before and below the input it feeds, a card's feeders stacked in the order of
+its inputs; a note goes above the piece of graph it was written over; and a frame
+is re-fitted around the cards it held and takes up its whole rectangle - a card it
+does not hold never ends up inside it, not even partly, and two frames never
+overlap unless one holds the other. Where wires still cross, it is because no
+arrangement of those rules avoids it - a value computed before one framed section
+and read after it, say, has to pass that section's own feeders.
+
+The canvas measures its cards; this sizes them from each node's definition - its
+pins, the fields it shows, an Element card's preview - with constants measured off
+the editor's cards. Heights and pin positions match the editor exactly for every
+card the shipped skeleton holds. Widths depend on the text in them, and so on the
+interface language: they are estimated from the widest of the English, Chinese
+and Japanese labels and rounded up, so a card sized here is never narrower than
+the editor draws it, only sometimes wider, and the gaps come out a little larger
+than the button leaves.
+
+One file is drawn in every interface language - the shipped template is laid out
+once and its Chinese and Japanese copies keep its positions - and a card keeps its
+left edge whatever its width, so its output pin moves with the words on it. So
+`format` lays each card out as anything from 200 wide, the narrowest a card is
+drawn, up to its estimate, and where several cards feed one card it keeps each of
+them left of the ones below it by as much as those may turn out narrower: their
+wires then stay apart in every language, and what the report counts is what each
+language's editor shows. The button measures the cards it has and needs no such
+margin, so pressing it leaves those stacks a little tighter.
+
+Pass `--project` whenever there is one. Save nodes grow a pin for every field the
+project's saves carry, and without the project those pins - and those cards'
+heights - are not known.
+
+The report names each layer and what is left on it: crossings, wires drawn under a
+card that is neither of their ends, and backwards wires (only a loop closing makes
+one). `--json` prints the same as data.
+
 ## Writing
 
 ```sh
@@ -325,4 +383,6 @@ The wrapper is `project/app/blueprint.js`; the commands are TypeScript under
 `src/renderer/lib/blueprint-cli/`, because that is where the node registry and
 the graph validator are. `dsl/` holds the format: `parse` (text to AST),
 `compile` (AST to graphs, checked against the registry), `print` (the inverse),
-`layout` (positions for nodes nobody placed).
+`layout` (positions for nodes nobody placed). `format.ts` is the `format`
+command and `cardGeometry.ts` the card sizes it lays out with; the layout itself is
+`blueprintAutoLayout.ts` beside the canvas, shared with the button.

@@ -33,6 +33,7 @@ import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { bindWidgetEventDispatch } from "./widgetEventDispatch";
 import { NodeWrapperMotionDriver, nodeWrapperTransform, type NodeWrapperPose } from "./nodeWrapperMotion";
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
+import { localPointerPoint, readElementPointerPositions } from "./elementPointerPosition";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { offerUIElementHoverSound, playUIElementInteractionSound } from "./interactionSounds";
 import { readUIInteractionSoundAssetId } from "@shared/types/ui-editor/interactionSounds";
@@ -149,6 +150,13 @@ function displayableOpacityKeysForElement(
 }
 
 const NOOP_SUBSCRIBE = () => () => {};
+
+/** A press on an element, as the events that bubble carry it to the elements above. */
+type PointerPress = { hit: Element; clientX: number; clientY: number };
+
+function pointerPressOf(e: { currentTarget: Element; clientX: number; clientY: number }): PointerPress {
+    return { hit: e.currentTarget, clientX: e.clientX, clientY: e.clientY };
+}
 
 /** What a node wrapper keeps about its motion between commits; one object, made once per wrapper. */
 type NodeMotionState = {
@@ -398,6 +406,11 @@ export function EditorNodeWrapper({
             target: EventTarget | null,
             payload?: Record<string, unknown>,
             eventControl?: BehaviorGraphEventControl,
+            /**
+             * The press, for an event that bubbles: the element that was hit and where. Read into a
+             * point per element only once this element has turned out to be the one dispatching.
+             */
+            pressedAt?: PointerPress,
         ) => {
             if (!interactive || !blueprintRuntime || eventControl?.isPropagationStopped() || !isDirectElementEvent(target)) {
                 return false;
@@ -411,7 +424,14 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName) && !isPointerPositionElementEvent(eventName)) {
                 return false;
             }
-            void dispatchInDrawing(eventName, payload, eventControl ? { eventControl } : undefined);
+            const pointerPositions = pressedAt
+                ? readElementPointerPositions(pressedAt.hit, pressedAt.clientX, pressedAt.clientY)
+                : undefined;
+            void dispatchInDrawing(
+                eventName,
+                payload,
+                eventControl || pointerPositions ? { eventControl, pointerPositions } : undefined,
+            );
             return true;
         },
         [blueprintRuntime, dispatchInDrawing, element.type, interactive, isDirectElementEvent],
@@ -481,18 +501,11 @@ export function EditorNodeWrapper({
                 | PointerEvent<HTMLDivElement>
                 | WheelEvent<HTMLDivElement>,
         ): Record<string, number> => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const width = Math.max(1, Math.abs(layout.width));
-            const height = Math.max(1, Math.abs(layout.height));
-            const scaleX = rect.width > 0 ? width / rect.width : 1;
-            const scaleY = rect.height > 0 ? height / rect.height : 1;
-            return {
-                x: (e.clientX - rect.left) * scaleX,
-                y: (e.clientY - rect.top) * scaleY,
-            };
+            return localPointerPoint(e.currentTarget.getBoundingClientRect(), layout.width, layout.height, e.clientX, e.clientY);
         },
         [layout.height, layout.width],
     );
+
 
     /**
      * The element's hover sound, under the conditions its hover look shows in: not while it is
@@ -541,6 +554,7 @@ export function EditorNodeWrapper({
                 e.target,
                 { ...localMousePayload(e), button: e.button },
                 getOrCreateDomEventPropagationControl(e.nativeEvent),
+                pointerPressOf(e),
             );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
@@ -556,6 +570,7 @@ export function EditorNodeWrapper({
                 e.target,
                 { ...localMousePayload(e), button: e.button },
                 getOrCreateDomEventPropagationControl(e.nativeEvent),
+                pointerPressOf(e),
             );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore],
@@ -579,6 +594,7 @@ export function EditorNodeWrapper({
                 e.target,
                 { ...localMousePayload(e), button: e.button },
                 getOrCreateDomEventPropagationControl(e.nativeEvent),
+                pointerPressOf(e),
             );
         },
         [dispatchWidgetEvent, localMousePayload],
@@ -586,7 +602,13 @@ export function EditorNodeWrapper({
 
     const onDoubleClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
+            dispatchWidgetEvent(
+                "mouseDoubleClick",
+                e.target,
+                localMousePayload(e),
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+                pointerPressOf(e),
+            );
         },
         [dispatchWidgetEvent, localMousePayload],
     );
@@ -604,7 +626,13 @@ export function EditorNodeWrapper({
                 e.preventDefault();
                 return;
             }
-            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent))) {
+            if (dispatchWidgetEvent(
+                "rightClick",
+                e.target,
+                localMousePayload(e),
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+                pointerPressOf(e),
+            )) {
                 e.preventDefault();
             }
         },
@@ -625,7 +653,7 @@ export function EditorNodeWrapper({
                 ...localMousePayload(e),
                 deltaX: e.deltaX,
                 deltaY: e.deltaY,
-            }, getOrCreateDomEventPropagationControl(e.nativeEvent));
+            }, getOrCreateDomEventPropagationControl(e.nativeEvent), pointerPressOf(e));
         },
         [dispatchWidgetEvent, localMousePayload],
     );

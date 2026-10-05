@@ -9,12 +9,15 @@
  */
 
 import { createContext, useContext, useSyncExternalStore } from "react";
-import {
-    localizationKeyUnitId,
-    resolveLocalizedUnitText,
-    type GameLocalizationBundle,
-} from "@shared/types/localization";
+import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveAssetVariantMember, type AssetVariantCarrier } from "@shared/types/assetSet";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import {
+    resolveUITextWords,
+    withUITextSitesResolved,
+    type UITextSite,
+    type UITextWordsInput,
+} from "@shared/types/ui-editor/textSource";
 import {
     getDesignTimeLocalizationKeys,
     subscribeDesignTimeLocalizationKeys,
@@ -32,38 +35,19 @@ export const GameLocalizationContext = createContext<GameLocalizationRuntime | n
 
 const noopSubscribe = () => () => undefined;
 
-/** Stable translation-unit id for a widget's localizable text prop. */
-export function uiTextUnitId(elementId: string, prop: string): string {
-    return `ui:${elementId}.${prop}`;
-}
-
-export type LocalizedWidgetTextInput = {
-    elementId: string;
-    /**
-     * Which prop carries the text ("text" for text widgets, "label" for buttons,
-     * "placeholder" for text inputs).
-     */
-    prop: "text" | "label" | "placeholder";
-    /** Authored source-language text (always what design time renders). */
-    sourceText: string;
-    /** Implicit unit opt-in (`ui:<elementId>.<prop>`). */
-    localizable?: boolean;
-    /** Named-key reference; takes precedence over the implicit unit. */
-    localizationKey?: string;
-    /**
-     * Outside a game, draw a named key's source-language text rather than `sourceText`.
-     *
-     * The text widget and the button opt in: their key is one of the sources an author chooses
-     * between, and the canvas has to show what the game will. A text input's placeholder still shows
-     * its own words at design time.
-     */
-    resolveKeyAtDesignTime?: boolean;
-};
+export { uiTextUnitId } from "@shared/types/ui-editor/textSource";
 
 /**
- * Resolve a widget's display text for the current locale. Re-renders when the
- * player's language changes. Outside a provider (editor canvas, previews
- * without localization) the source text is returned untouched.
+ * A widget's words as its renderer has them, and the text site they sit on (`textSites.ts`) - which
+ * prop they are, whether a key replaces them, whether the canvas draws that key.
+ */
+export type LocalizedWidgetTextInput = UITextWordsInput;
+
+/**
+ * Resolve a widget's display text for the current locale (`resolveUITextWords`). Re-renders when the
+ * player's language changes. Outside a provider (editor canvas, previews without localization) the
+ * words handed in are returned - or, on a site that draws its key on the canvas, the key's
+ * source-language text from the registry the editor publishes.
  */
 export function useLocalizedWidgetText(input: LocalizedWidgetTextInput): string {
     const runtime = useContext(GameLocalizationContext);
@@ -73,27 +57,46 @@ export function useLocalizedWidgetText(input: LocalizedWidgetTextInput): string 
         () => "",
     );
     const designTimeKeys = useSyncExternalStore(
-        !runtime && input.resolveKeyAtDesignTime ? subscribeDesignTimeLocalizationKeys : noopSubscribe,
+        !runtime && input.site.canvasDrawsKey ? subscribeDesignTimeLocalizationKeys : noopSubscribe,
         getDesignTimeLocalizationKeys,
         getDesignTimeLocalizationKeys,
     );
-    const keyName = input.localizationKey?.trim();
-    if (!runtime) {
-        // A key the registry does not hold falls back to the widget's own text, as it does in a game.
-        return keyName && input.resolveKeyAtDesignTime
-            ? designTimeKeys?.[keyName] ?? input.sourceText
-            : input.sourceText;
+    return resolveUITextWords(
+        input,
+        runtime ? { kind: "game", bundle: runtime.bundle, locale } : { kind: "canvas", keys: designTimeKeys },
+    );
+}
+
+/**
+ * The element with the words each of `sites` shows in the current locale written into its site's
+ * prop (`withUITextSitesResolved`) - how a plugin's widget is drawn with its declared words: the host
+ * resolves them, in the game and on the canvas alike, and the plugin's renderer reads the prop.
+ * Re-renders when the player's language changes; on the canvas it follows the key registry the editor
+ * publishes, as {@link useLocalizedWidgetText} does.
+ */
+export function useLocalizedWidgetSites(element: UIElement, sites: readonly UITextSite[]): UIElement {
+    const runtime = useContext(GameLocalizationContext);
+    const readLocale = () => (sites.length > 0 ? runtime?.getLocale() ?? "" : "");
+    // The same answer for a render with no DOM (a static render of a page, as the loader's tests do):
+    // there is nothing to hydrate against, and the words are the player's either way.
+    const locale = useSyncExternalStore(
+        sites.length > 0 ? (runtime?.subscribe ?? noopSubscribe) : noopSubscribe,
+        readLocale,
+        readLocale,
+    );
+    const designTimeKeys = useSyncExternalStore(
+        !runtime && sites.length > 0 ? subscribeDesignTimeLocalizationKeys : noopSubscribe,
+        getDesignTimeLocalizationKeys,
+        getDesignTimeLocalizationKeys,
+    );
+    if (sites.length === 0) {
+        return element;
     }
-    if (keyName) {
-        return resolveLocalizedUnitText(runtime.bundle, locale, localizationKeyUnitId(keyName))
-            ?? runtime.bundle.keys?.[keyName]
-            ?? input.sourceText;
-    }
-    if (!input.localizable) {
-        return input.sourceText;
-    }
-    return resolveLocalizedUnitText(runtime.bundle, locale, uiTextUnitId(input.elementId, input.prop))
-        ?? input.sourceText;
+    return withUITextSitesResolved(
+        element,
+        sites,
+        runtime ? { kind: "game", bundle: runtime.bundle, locale } : { kind: "canvas", keys: designTimeKeys },
+    );
 }
 
 /**

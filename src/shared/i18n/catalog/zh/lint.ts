@@ -197,6 +197,11 @@ export const lint = {
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
         },
+        storyVideoControlAfterEnd: {
+            title: "已播放完毕的视频",
+            description: "播放行等待播放结束，其后暂停、继续、跳转或停止该视频的行",
+            message: "{object} 在该行已播放完毕；如需在播放时继续，请关闭其播放行的“等待播放结束”",
+        },
         storyCharacterMissing: {
             title: "不存在的角色",
             description: "该行指定的角色不在本项目中",
@@ -226,7 +231,7 @@ export const lint = {
             messageChoice: "指向的选项已不存在",
             messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
-            messageTextKey: "指向的文本键在项目中未声明",
+            messageTextKey: "指向的翻译键在项目中未声明",
             messageDlc: "指向的 DLC 在项目中不存在",
             messageInputAction: "指向的输入意图在项目中未声明",
         },
@@ -271,11 +276,6 @@ export const lint = {
             messageUnloadedNode: "“{node}”的“{pin}”收到的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
             messageUnloadedNodeBinding: "“{element}”的“{prop}”绑定的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
         },
-        uiUnlocalizedText: {
-            title: "未本地化的文本",
-            description: "项目已有第二种语言，文本仍直接写在控件上",
-            message: "{text} 未绑定本地化键",
-        },
         uiPageUnreachable: {
             title: "无法到达的页面",
             description: "没有任何位置打开或嵌入该页面，它也不是启动页",
@@ -310,6 +310,22 @@ export const lint = {
             title: "条目字段不存在",
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
+        uiComponentParamMissing: {
+            title: "不存在的文字参数",
+            description: "组件内的控件显示的参数，组件没有声明为文字参数",
+            message: "这里显示的参数组件没有声明为文字参数，各放置处在此不显示文字",
+            messageOutside: "这里显示组件参数，但不在组件内，游戏中在此不显示文字",
+        },
+        uiListTextUntranslated: {
+            title: "不会翻译的列表内容",
+            description: "项目已有第二种语言，列表内容中写有文字",
+            message: "{text} 等列表内容在所有语言中按原文显示",
+        },
+        uiLocalizationKeyMissing: {
+            title: "不存在的翻译键",
+            description: "控件的文字来自项目中不存在的键",
+            message: "文字来自键 {key}，该键在项目中不存在",
         },
         uiGestureAnsweredTwice: {
             title: "被响应两次的手势",
@@ -436,6 +452,8 @@ export const lint = {
                 other: "{count} 处",
             },
             messageInLanguage: "{language}中项目字体画不出“{character}”（{occurrences}）",
+            messageInState: "状态「{state}」中项目字体画不出“{character}”（{occurrences}）",
+            messageInLanguageInState: "{language}的状态「{state}」中项目字体画不出“{character}”（{occurrences}）",
             messageMore: "另有 {characters}项目字体画不出",
             moreCharacterCount: {
                 other: "{count} 个字符",

@@ -377,15 +377,15 @@ export const project = {
         },
         bgmVolume: {
             title: "Music volume",
-            description: "The Music bus.",
+            description: "The Music track.",
         },
         soundVolume: {
             title: "SFX volume",
-            description: "The SFX bus.",
+            description: "The SFX track.",
         },
         voiceVolume: {
             title: "Voice volume",
-            description: "The Voice bus.",
+            description: "The Voice track.",
         },
         voiceEndMode: {
             title: "When a voiced line ends",
@@ -440,8 +440,8 @@ export const project = {
         // resolve to the seeded bus for their own shape from now on - which one depends on what is
         // playing, so naming a single track here would be a guess.
         deleteDetail: {
-            one: "{count} reference falls back to its default bus.",
-            other: "{count} references fall back to their default bus.",
+            one: "{count} reference falls back to its default track.",
+            other: "{count} references fall back to their default track.",
         },
         // Children are promoted rather than deleted, and the author is told where they land.
         deleteChildren: {
@@ -450,12 +450,12 @@ export const project = {
         },
         // The player's own volume sliders, which alias onto the three seeded buses.
         slider: {
-            bgm: "BGM Volume",
-            sound: "Sound Volume",
-            voice: "Voice Volume",
+            bgm: "Music volume",
+            sound: "SFX volume",
+            voice: "Voice volume",
             // A bus hanging off master through none of the three has no alias of its own, so the
             // only player control over it is the one that governs everything.
-            global: "Global Volume",
+            global: "Master volume",
         },
     },
     settings: {

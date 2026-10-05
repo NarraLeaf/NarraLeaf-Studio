@@ -280,6 +280,22 @@ describe("StoryService per-file dirty tracking", () => {
         expect(written().filter(path => path.includes(entry.id))).toHaveLength(1);
     });
 
+    it("keeps a story created a moment ago when another service asks for the library", async () => {
+        const { service, files, libraryIndexWrites, reset } = harness;
+        // The library as the disk last saw it: the new story's entry is still only in memory, owed
+        // to the next save. The search index asks for the library on the change its creation emits.
+        files.set("editor/story/index.json", JSON.stringify({ schemaVersion: 1, stories: [], meta: {} }));
+        const entry = service.createStory("Newborn");
+
+        await service.loadLibrary();
+
+        expect(service.listStories().map(story => story.id)).toEqual([entry.id]);
+        reset();
+        await (service as never as { flush: () => Promise<void> }).flush();
+        expect(libraryIndexWrites()).toHaveLength(1);
+        expect(files.get("editor/story/index.json")).toContain(entry.id);
+    });
+
     it("drops the debt of a story that was deleted before the save ran", async () => {
         const { service, reset, written } = harness;
         const doomed = await seedStory(service, "Doomed");

@@ -30,11 +30,12 @@ import {
     type OnNodeDrag,
     type Viewport,
 } from "@xyflow/react";
-import { frameBlueprintGraph } from "./blueprintFraming";
+import { frameBlueprintGraph, frameBlueprintNode } from "./blueprintFraming";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "@/apps/workspace/components/ui/ShortcutContextMenu";
 import { useTranslation } from "@/lib/i18n";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -80,6 +81,7 @@ import {
     applyFlowPositionsToIr,
     BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW,
     blueprintDynamicSelectOptionsByNodeSignature,
+    blueprintDynamicSelectOptionsSignature,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
@@ -102,7 +104,15 @@ import {
     type BlueprintMinimapPreference,
     type BlueprintMinimapSize,
 } from "./blueprintMinimapPreference";
-import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
+import {
+    BLUEPRINT_LAYOUT_LOOP_NODE_TYPES,
+    layoutBlueprintGraph,
+    type BlueprintLayoutCard,
+    type BlueprintLayoutComment,
+    type BlueprintLayoutDirection,
+    type BlueprintLayoutGraph,
+    type BlueprintLayoutPin,
+} from "./blueprintAutoLayout";
 import {
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
@@ -110,7 +120,6 @@ import {
     growBlueprintFrameToHold,
     growBlueprintGroupFramesForDrop,
     pickBlueprintGroupDropTarget,
-    refitBlueprintGroupFrames,
     type BlueprintFrameBox,
     type BlueprintFrameRect,
 } from "./blueprintGroupFrame";
@@ -142,6 +151,31 @@ import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/serv
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
+import { BLUEPRINT_EXEC_EDGE_COLOR } from "@/lib/ui-editor/blueprint-graph-edge-style";
+import { measureEditorSidebarInset } from "@/lib/components/layout/editorSidebarInset";
+import { useHostVisible } from "@/lib/components/layout/hostVisibility";
+import { computeBlueprintRevealViewport } from "./blueprintZoom";
+import {
+    blueprintWireEnds,
+    describeBlueprintWireEnd,
+    formatBlueprintWireEnd,
+    listBlueprintPinConnections,
+    nameBlueprintWire,
+    numberRepeatedNames,
+    pickFarBlueprintWireEnd,
+    readBlueprintPinAt,
+    type BlueprintWireEnd,
+} from "./blueprintWireEnds";
+import {
+    BLUEPRINT_CANVAS_ATTRIBUTE,
+    BlueprintWireEmphasis,
+    type BlueprintWireEmphasisHandle,
+} from "./components/BlueprintWireEmphasis";
+
+/** The node menu's Delete runs what the canvas's Delete key runs (a fixed key: React Flow owns it). */
+const BLUEPRINT_NODE_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    "blueprint.node.delete": "blueprint.delete",
+};
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -176,6 +210,19 @@ const PAN_BUTTONS_HAND_TOOL = [0, 1];
  */
 const MAX_FRAMES_BEFORE_FITTING = 30;
 
+/**
+ * How many of a pin's wires its context menu lists in place before it gathers them into a submenu.
+ * An output can feed a dozen inputs - one element read by every node that acts on it - and a menu
+ * that grew a row per wire would run off the bottom of the screen.
+ */
+const MAX_INLINE_PIN_CONNECTIONS = 5;
+
+/** The colour a wire is drawn in, read from the inline style the projection gives it. */
+function readWireColor(edge: Pick<Edge, "style"> | undefined): string {
+    const stroke = edge?.style?.stroke;
+    return typeof stroke === "string" && stroke ? stroke : BLUEPRINT_EXEC_EDGE_COLOR;
+}
+
 /** A node the way the group and layout geometry sees it: where it is and how big it measured. */
 type BlueprintCanvasBox = BlueprintFrameBox & { isComment: boolean; isFrame: boolean };
 
@@ -205,6 +252,89 @@ function readBlueprintCanvasBoxes(nodes: readonly Node<BlueprintFlowNodeData>[])
         });
     }
     return out;
+}
+
+/**
+ * Where React Flow drew a node's handles, relative to the node. Spelled out rather than imported:
+ * only the id and the vertical extent are read, and those are stable across the 12.x line.
+ */
+type BlueprintHandleBounds =
+    | {
+          source?: readonly { id?: string | null; y: number; height: number }[] | null;
+          target?: readonly { id?: string | null; y: number; height: number }[] | null;
+      }
+    | undefined;
+
+/**
+ * The graph as "Format graph" sees it: every card as it measured, its pins where React Flow drew
+ * them, the comments, and the wires. Unmeasured nodes are left out for the same reason as above.
+ */
+function readBlueprintLayoutGraph(
+    nodes: readonly Node<BlueprintFlowNodeData>[],
+    handleBoundsOf: (id: string) => BlueprintHandleBounds,
+    ir: BlueprintGraphIr,
+): BlueprintLayoutGraph {
+    const cards: BlueprintLayoutCard[] = [];
+    const comments: BlueprintLayoutComment[] = [];
+    // What each frame holds is decided by the same test dragging a group uses, read before anything
+    // moves - afterwards the frames still stand where they were, answering about a graph that is gone.
+    const boxes = readBlueprintCanvasBoxes(nodes);
+    for (const node of nodes) {
+        const width = node.measured?.width ?? 0;
+        const height = node.measured?.height ?? 0;
+        if (node.id === BP_PLACEMENT_PREVIEW_ID || width <= 0 || height <= 0) {
+            continue;
+        }
+        if (node.data.catalog.role === "comment") {
+            const frame = node.data.params.frame === true;
+            const box = { x: node.position.x, y: node.position.y, width, height };
+            comments.push({
+                id: node.id,
+                ...box,
+                frame,
+                ...(frame ? { members: blueprintGroupMemberIds(node.id, box, boxes) } : {}),
+            });
+            continue;
+        }
+        const bounds = handleBoundsOf(node.id);
+        const pins: BlueprintLayoutPin[] = [];
+        const sides = [
+            ["out", bounds?.source ?? []],
+            ["in", bounds?.target ?? []],
+        ] as const;
+        for (const [side, handles] of sides) {
+            for (const handle of handles) {
+                if (!handle.id) {
+                    continue;
+                }
+                const def = node.data.catalog.pins.find(
+                    pin => pin.id === handle.id && pin.kind === (side === "out" ? "output" : "input"),
+                );
+                pins.push({
+                    id: handle.id,
+                    side,
+                    kind: def?.semantic === "exec" ? "exec" : "data",
+                    offset: handle.y + handle.height / 2,
+                });
+            }
+        }
+        cards.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width,
+            height,
+            pins,
+            loop: BLUEPRINT_LAYOUT_LOOP_NODE_TYPES.has(node.data.catalog.type),
+        });
+    }
+    const wires = (ir.edges ?? []).map(edge => ({
+        from: edge.from.nodeId,
+        fromPin: edge.from.port,
+        to: edge.to.nodeId,
+        toPin: edge.to.port,
+    }));
+    return { cards, wires, comments };
 }
 
 /**
@@ -293,11 +423,11 @@ type BlueprintFlowCanvasInnerProps = {
     onSelectNodeIds: (ids: string[]) => void;
     /**
      * A node to bring into view, on top of selecting it — what the diagnostics list asks for when an
-     * error is clicked. Selection alone leaves the node wherever it was, which on a graph bigger
-     * than the viewport is off screen.
+     * error is clicked, and what opening the blueprint at a node asks for. Selection alone leaves
+     * the node wherever it was, which on a graph bigger than the viewport is off screen.
      */
     focusNodeId?: string | null;
-    /** Bumped by the caller to re-centre on the same node; ignored while unchanged. */
+    /** Bumped by the caller to bring the same node into view again; ignored while unchanged. */
     focusNonce?: number;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
     /**
@@ -511,7 +641,7 @@ function BlueprintFlowCanvasInner({
         const ctx = workspace?.context;
         return workspace?.isInitialized && ctx ? ctx.services.get<UIService>(Services.UI) : null;
     }, [workspace]);
-    const { getNodes, screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow();
+    const { getNodes, getEdges, getInternalNode, screenToFlowPosition, getViewport, setViewport, setCenter } = useReactFlow();
     const store = useStoreApi();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -542,6 +672,10 @@ function BlueprintFlowCanvasInner({
     const dynamicSelectOptionsByNodeSig = useMemo(
         () => blueprintDynamicSelectOptionsByNodeSignature(dynamicSelectOptionsByNodeId),
         [dynamicSelectOptionsByNodeId],
+    );
+    const dynamicSelectOptionsSig = useMemo(
+        () => blueprintDynamicSelectOptionsSignature(dynamicSelectOptions),
+        [dynamicSelectOptions],
     );
     const elementPreviewsSig = useMemo(
         () => blueprintElementPreviewsSignature(elementPreviews),
@@ -880,6 +1014,9 @@ function BlueprintFlowCanvasInner({
         elementPreviewsSig: string;
         displayableTargetVariantsSig: string;
         dynamicSelectOptionsByNodeSig: string;
+        dynamicSelectOptionsSig: string;
+        /** The translator the wires were named with; a new one is a language switch. */
+        t: typeof t;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -1041,7 +1178,9 @@ function BlueprintFlowCanvasInner({
             prevStruct.diagnosticsSig !== nodeDiagnosticsSig ||
             prevStruct.elementPreviewsSig !== elementPreviewsSig ||
             prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
-            prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig;
+            prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig ||
+            prevStruct.dynamicSelectOptionsSig !== dynamicSelectOptionsSig ||
+            prevStruct.t !== t;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -1052,26 +1191,28 @@ function BlueprintFlowCanvasInner({
                 elementPreviewsSig,
                 displayableTargetVariantsSig,
                 dynamicSelectOptionsByNodeSig,
+                dynamicSelectOptionsSig,
+                t,
             };
+            const base = blueprintIrToFlowNodes(
+                snap,
+                nodeCatalog,
+                stablePatchNodeParam,
+                blueprintMemberVariables,
+                blueprintPersistentVariables,
+                blueprintSavedVariables,
+                stableAddDynamicInputPin,
+                stableRemoveDynamicInputPin,
+                dynamicSelectOptions,
+                dynamicSelectOptionsByNodeId,
+                nodeDiagnosticsByNodeId,
+                elementPreviews,
+                displayableTargetVariantsByNodeId,
+                onBindElementLiteral,
+                openSaveSchemaEditor,
+                fitGroupFrame,
+            );
             setNodes(prevNodes => {
-                const base = blueprintIrToFlowNodes(
-                    snap,
-                    nodeCatalog,
-                    stablePatchNodeParam,
-                    blueprintMemberVariables,
-                    blueprintPersistentVariables,
-                    blueprintSavedVariables,
-                    stableAddDynamicInputPin,
-                    stableRemoveDynamicInputPin,
-                    dynamicSelectOptions,
-                    dynamicSelectOptionsByNodeId,
-                    nodeDiagnosticsByNodeId,
-                    elementPreviews,
-                    displayableTargetVariantsByNodeId,
-                    onBindElementLiteral,
-                    openSaveSchemaEditor,
-                    fitGroupFrame,
-                );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
                 if (pendingPlacementEntry) {
@@ -1095,7 +1236,15 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext));
+            // Each wire is named from the cards just built, so its accessible name is the one the
+            // hover tooltip would give its ends rather than React Flow's, which reads out node ids.
+            const cards = new Map(base.map(node => [node.id, node.data]));
+            setEdges(
+                blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext).map(edge => ({
+                    ...edge,
+                    ariaLabel: nameBlueprintWire(edge, nodeId => cards.get(nodeId), t),
+                })),
+            );
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
@@ -1119,10 +1268,10 @@ function BlueprintFlowCanvasInner({
             });
         }
 
-        const t = window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
             suppressSelectionEventsRef.current = false;
         }, 0);
-        return () => window.clearTimeout(t);
+        return () => window.clearTimeout(timer);
     }, [
         blueprintMemberVariables,
         blueprintPersistentVariables,
@@ -1140,6 +1289,7 @@ function BlueprintFlowCanvasInner({
         dynamicSelectOptions,
         dynamicSelectOptionsByNodeId,
         dynamicSelectOptionsByNodeSig,
+        dynamicSelectOptionsSig,
         nodeDiagnosticsByNodeId,
         nodeDiagnosticsSig,
         elementPreviews,
@@ -1151,6 +1301,7 @@ function BlueprintFlowCanvasInner({
         fitGroupFrame,
         setEdges,
         setNodes,
+        t,
     ]);
 
     /**
@@ -1164,6 +1315,11 @@ function BlueprintFlowCanvasInner({
     const appliedFocusKeyRef = useRef<string | null>(null);
     const focusPendingRef = useRef(false);
     focusPendingRef.current = focusRequestKey !== null && focusRequestKey !== appliedFocusKeyRef.current;
+    /** The last focus request made of this canvas, which an opening fit still waiting gives way to. */
+    const lastFocusRequestRef = useRef<string | null>(null);
+    if (focusRequestKey) {
+        lastFocusRequestRef.current = focusRequestKey;
+    }
 
     useEffect(() => {
         // Opening a graph to reveal one node in it: fitting the whole graph first would be a jump
@@ -1171,6 +1327,9 @@ function BlueprintFlowCanvasInner({
         if (initialViewport || focusPendingRef.current) {
             return undefined;
         }
+        // The same holds for a node asked for while the fit is still waiting: a blueprint opened at
+        // a node names it a render after the graph it is in, and the fit would land on top of it.
+        const focusRequestAtStart = lastFocusRequestRef.current;
         // The zoom menu's own "fit", so the two agree, and so the graph is framed in the part of the
         // canvas the layer panel leaves rather than partly behind it. Framed once every card has
         // been measured - a card not sized yet would count as a point, and the frame would overshoot -
@@ -1181,6 +1340,9 @@ function BlueprintFlowCanvasInner({
         let framesLeft = MAX_FRAMES_BEFORE_FITTING;
         let lastWidth = Number.NaN;
         const fitWhenMeasured = () => {
+            if (lastFocusRequestRef.current !== focusRequestAtStart) {
+                return;
+            }
             const state = store.getState();
             const measured = [...state.nodeLookup.values()].every(node => node.hidden || node.measured.width !== undefined);
             const settled = state.width === lastWidth;
@@ -1204,33 +1366,52 @@ function BlueprintFlowCanvasInner({
     }, [graphKey, initialViewport, setViewport, store]);
 
     /**
-     * Centre on the requested node, keeping the author's zoom: `setCenter` defaults to `maxZoom`,
-     * which would slam the canvas to full size on every error clicked.
+     * Bring the requested node into view: in the part of the pane the layer panel leaves, at the
+     * author's zoom unless the card would not fit at it (`frameBlueprintNode`). Centring on the whole
+     * pane put a node half behind the panel, and a graph opened at a node used to be fitted whole
+     * instead, which on a wide graph left the node at an edge or off the canvas altogether.
      *
-     * Waits for React Flow to have measured the node. On a graph switch it has not: the effect first
-     * runs against the previous graph's `nodes`, then against freshly built ones that carry no
-     * dimensions yet, and centring on a node of size 0 lands its top-left corner where its middle
-     * belongs — half a card off, which on a wide node reads as "it did not centre". The dimensions
-     * arrive as a node change, which puts this effect back on its feet.
+     * Waits for React Flow to have measured the node, and for the answer to hold still for a frame.
+     * On a graph switch the node has not been measured: the effect first runs against the previous
+     * graph's `nodes`, then against freshly built ones that carry no dimensions yet, and framing a
+     * node of size 0 lands its top-left corner where its middle belongs. The dimensions arrive as a
+     * node change, which puts this effect back on its feet. Holding still covers the rest, the way
+     * the opening fit waits: a tab just opened, or a canvas sliding out from beside the panel,
+     * reports a pane size that is about to change, and the seeded entry nodes share their ids
+     * across graphs, so the card read in the frame of a switch can be the previous graph's. And it
+     * waits for the tab to be on screen: a tab restored behind another one is mounted under
+     * `display: none`, where the layer panel measures no width and the node would be framed as if
+     * the panel were not there.
      */
+    const hostVisible = useHostVisible();
     useEffect(() => {
-        if (!focusRequestKey || !focusNodeId || focusRequestKey === appliedFocusKeyRef.current) {
-            return;
+        if (!focusRequestKey || !focusNodeId || focusRequestKey === appliedFocusKeyRef.current || !hostVisible) {
+            return undefined;
         }
-        const node = nodes.find(entry => entry.id === focusNodeId);
-        const width = node?.measured?.width ?? 0;
-        const height = node?.measured?.height ?? 0;
-        if (!node || width <= 0 || height <= 0) {
-            return;
-        }
-        appliedFocusKeyRef.current = focusRequestKey;
-        void setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-            zoom: getViewport().zoom,
-            duration: 220,
-        });
-    }, [focusRequestKey, focusNodeId, nodes, getViewport, setCenter]);
+        let frame = 0;
+        let framesLeft = MAX_FRAMES_BEFORE_FITTING;
+        let last: { x: number; y: number; zoom: number } | null = null;
+        const revealWhenSettled = () => {
+            const viewport = frameBlueprintNode(store.getState(), focusNodeId, getViewport());
+            const settled =
+                viewport !== null && last !== null && last.x === viewport.x && last.y === viewport.y && last.zoom === viewport.zoom;
+            last = viewport;
+            if (!viewport && framesLeft <= 0) {
+                return;
+            }
+            if (!viewport || (!settled && framesLeft > 0)) {
+                framesLeft -= 1;
+                frame = window.requestAnimationFrame(revealWhenSettled);
+                return;
+            }
+            appliedFocusKeyRef.current = focusRequestKey;
+            void setViewport(viewport, { duration: 220 });
+        };
+        revealWhenSettled();
+        return () => window.cancelAnimationFrame(frame);
+    }, [focusRequestKey, focusNodeId, hostVisible, nodes, getViewport, setViewport, store]);
 
-    /** Clicking the overview goes there, keeping the author's zoom - the same bargain as `setCenter` above. */
+    /** Clicking the overview goes there, keeping the author's zoom - the same bargain the reveal above strikes. */
     const jumpToMinimapPoint = useCallback(
         (_event: ReactMouseEvent, position: { x: number; y: number }) => {
             void setCenter(position.x, position.y, { zoom: getViewport().zoom, duration: 220 });
@@ -1498,51 +1679,34 @@ function BlueprintFlowCanvasInner({
      * Lay the whole graph out again: left to right along the way its wires run, or down the page
      * for an author who would rather read a long chain that way.
      *
-     * Group frames do not take part in the layout - they have no pins, so they would each be an
-     * island of one and end up stacked below the graph. They are re-fitted around wherever their
-     * members landed instead, which is what keeps a group a group. Plain comment notes are left
-     * exactly where the author put them: they annotate a region rather than enclose it, and
-     * resizing somebody's note to fit whatever now happens to sit under it would be worse than
-     * leaving it behind.
+     * The layout is handed every card as it measured, with its pins where React Flow drew them, so
+     * it can line execution pins up along a row and stack a card's feeders in the order of its
+     * inputs. Comments go too: a note is moved to sit above the piece of graph it was written over,
+     * and a frame is re-fitted around the cards it held, which is what keeps a group a group.
+     *
+     * One commit, so one undo puts every card back.
      */
     const formatGraph = useCallback((direction: BlueprintLayoutDirection) => {
         setFormatDirection(direction);
-        const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
-        const cards = boxes.filter(box => !box.isComment);
-        if (cards.length === 0) {
+        const snap = irRef.current;
+        const graph = readBlueprintLayoutGraph(
+            getNodes() as Node<BlueprintFlowNodeData>[],
+            id => getInternalNode(id)?.internals.handleBounds,
+            snap,
+        );
+        if (graph.cards.length === 0) {
             return;
         }
-        const frames = boxes.filter(box => box.isFrame);
-        // Read before anything moves: afterwards the frames still stand where they were, so the
-        // same containment test would be answering about a graph that no longer exists.
-        const membersByFrameId = new Map(
-            frames.map(frame => [frame.id, blueprintGroupMemberIds(frame.id, frame, boxes)] as const),
-        );
-
-        const snap = irRef.current;
-        const positions = layoutBlueprintGraph(
-            cards,
-            (snap.edges ?? []).map(edge => ({ from: edge.from.nodeId, to: edge.to.nodeId })),
-            { direction },
-        );
-        const moved = new Map(
-            cards
-                .filter(card => positions[card.id])
-                .map(card => [
-                    card.id,
-                    { ...positions[card.id]!, width: card.width, height: card.height },
-                ] as const),
-        );
-        const refitted = refitBlueprintGroupFrames(frames, membersByFrameId, moved);
+        const result = layoutBlueprintGraph(graph, { direction });
 
         const next = cloneBlueprintIr(snap);
-        for (const [id, rect] of moved) {
+        for (const [id, point] of Object.entries(result.positions)) {
             const node = next.nodes?.[id];
             if (node) {
-                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+                writeNodeEditorLayout(node, { x: point.x, y: point.y });
             }
         }
-        for (const [id, rect] of Object.entries(refitted)) {
+        for (const [id, rect] of Object.entries(result.frames)) {
             const node = next.nodes?.[id];
             if (node) {
                 node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
@@ -1550,7 +1714,7 @@ function BlueprintFlowCanvasInner({
             }
         }
         commitBlueprintIr(next);
-    }, [commitBlueprintIr, getNodes]);
+    }, [commitBlueprintIr, getInternalNode, getNodes]);
 
     /** Nothing to arrange on an empty graph, or on one that holds only comments. */
     const canFormat = useMemo(
@@ -1799,6 +1963,268 @@ function BlueprintFlowCanvasInner({
         commitPendingPlacementRef.current();
     }, []);
 
+    /**
+     * Following a wire to its other end.
+     *
+     * On a graph wider than the screen one end of a wire is often off it, and nothing on the canvas
+     * said where a wire went. So, in the places that did nothing before: hovering a wire makes it and
+     * the two cards it joins stand out and, after the usual tooltip delay, names the end away from
+     * the pointer; right-clicking it offers to go to either end, the far one first; and the node
+     * menu, opened on a pin, lists that pin's wires the same way. Going there moves the view and
+     * nothing else - the selection, the document and its undo history are left as they were - and
+     * marks the card it arrives at for a moment.
+     *
+     * The emphasis and the tooltip are drawn by `BlueprintWireEmphasis`, reached through a handle so
+     * that a pointer moving along a wire renders that and not this canvas.
+     */
+    const wireEmphasisRef = useRef<BlueprintWireEmphasisHandle | null>(null);
+    const hoveredWireIdRef = useRef<string | null>(null);
+
+    /** Where a pin sits on the graph: its handle's middle, or its card's when the handle was never measured. */
+    const readWireEndPoint = useCallback(
+        (end: BlueprintWireEnd) => {
+            const internal = getInternalNode(end.nodeId);
+            if (!internal) {
+                return null;
+            }
+            const origin = internal.internals.positionAbsolute;
+            const bounds = internal.internals.handleBounds;
+            const handle = (end.side === "output" ? bounds?.source : bounds?.target)?.find(h => h.id === end.pinId);
+            if (handle) {
+                return { x: origin.x + handle.x + handle.width / 2, y: origin.y + handle.y + handle.height / 2 };
+            }
+            return {
+                x: origin.x + (internal.measured.width ?? 0) / 2,
+                y: origin.y + (internal.measured.height ?? 0) / 2,
+            };
+        },
+        [getInternalNode],
+    );
+
+    /** The node and pin at one end, in the words its card uses. */
+    const nameWireEnd = useCallback(
+        (end: BlueprintWireEnd) => {
+            const card = (getNodes() as Node<BlueprintFlowNodeData>[]).find(node => node.id === end.nodeId);
+            return formatBlueprintWireEnd(describeBlueprintWireEnd(card?.data, end, t), t);
+        },
+        [getNodes, t],
+    );
+
+    /** A wire's two ends, the one away from `client` (a point on screen) first. */
+    const orderWireEndsFrom = useCallback(
+        (edge: Edge, client: { x: number; y: number }): [BlueprintWireEnd, BlueprintWireEnd] => {
+            const { source, target } = blueprintWireEnds(edge);
+            const sourcePoint = readWireEndPoint(source);
+            const targetPoint = readWireEndPoint(target);
+            if (!sourcePoint || !targetPoint) {
+                return [target, source];
+            }
+            const far = pickFarBlueprintWireEnd(screenToFlowPosition(client), sourcePoint, targetPoint);
+            return far === "source" ? [source, target] : [target, source];
+        },
+        [readWireEndPoint, screenToFlowPosition],
+    );
+
+    const clearWireHover = useCallback(() => {
+        hoveredWireIdRef.current = null;
+        wireEmphasisRef.current?.hoverWire(null);
+    }, []);
+
+    const showWireHover = useCallback(
+        (event: ReactMouseEvent, edge: Edge) => {
+            // A pointer moving with a button held is drawing - a connection, a pan, a box - and a
+            // ghost card following the pointer is being placed; neither is reading the wires it crosses.
+            if (event.buttons !== 0 || pendingPlacementEntryRef.current) {
+                clearWireHover();
+                return;
+            }
+            const client = { x: event.clientX, y: event.clientY };
+            const [far] = orderWireEndsFrom(edge, client);
+            const { source, target } = blueprintWireEnds(edge);
+            hoveredWireIdRef.current = edge.id;
+            wireEmphasisRef.current?.hoverWire({
+                edgeId: edge.id,
+                source,
+                target,
+                color: readWireColor(edge),
+                tip: t("blueprint.wire.connectedTo", { target: nameWireEnd(far) }),
+                clientX: client.x,
+                clientY: client.y,
+            });
+        },
+        [clearWireHover, nameWireEnd, orderWireEndsFrom, t],
+    );
+
+    const onEdgeMouseLeave = useCallback(
+        (_event: ReactMouseEvent, edge: Edge) => {
+            if (hoveredWireIdRef.current === edge.id) {
+                clearWireHover();
+            }
+        },
+        [clearWireHover],
+    );
+
+    // A wire deleted under the pointer - a double-click does exactly that - never reports the pointer
+    // leaving it, so the emphasis is dropped here once the wire is gone; and a graph switch takes
+    // every wire away at once.
+    useEffect(() => {
+        const hovered = hoveredWireIdRef.current;
+        if (hovered && !edges.some(edge => edge.id === hovered)) {
+            clearWireHover();
+        }
+    }, [clearWireHover, edges]);
+    useEffect(() => clearWireHover, [clearWireHover, graphKey]);
+
+    /**
+     * Bring one end of a wire into view, marked. The author's zoom is kept unless the card would not
+     * fit at it; the selection is not touched, and nothing is written.
+     */
+    const revealWireEnd = useCallback(
+        (end: BlueprintWireEnd, color: string) => {
+            const internal = getInternalNode(end.nodeId);
+            if (!internal) {
+                return;
+            }
+            const state = store.getState();
+            const viewport = computeBlueprintRevealViewport({
+                node: {
+                    x: internal.internals.positionAbsolute.x,
+                    y: internal.internals.positionAbsolute.y,
+                    width: internal.measured.width ?? 0,
+                    height: internal.measured.height ?? 0,
+                },
+                current: getViewport(),
+                container: { width: state.width, height: state.height },
+                range: { min: state.minZoom, max: state.maxZoom },
+                inset: measureEditorSidebarInset(state.domNode),
+            });
+            if (viewport) {
+                void setViewport(viewport, { duration: 220 });
+            }
+            wireEmphasisRef.current?.markArrival({ end, color });
+        },
+        [getInternalNode, getViewport, setViewport, store],
+    );
+
+    /** The open wire menu: where it opened, the wire's two ends (the far one first) and its colour. */
+    const [wireMenu, setWireMenu] = useState<{
+        x: number;
+        y: number;
+        ends: [BlueprintWireEnd, BlueprintWireEnd];
+        color: string;
+    } | null>(null);
+
+    const onEdgeContextMenu = useCallback(
+        (event: ReactMouseEvent, edge: Edge) => {
+            // While a ghost card follows the pointer the right click belongs to placing it, as before.
+            if (pendingPlacementEntryRef.current) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            let client = { x: event.clientX, y: event.clientY };
+            // Opened from the keyboard on a focused wire there is no pointer to measure from, so the
+            // menu opens on the wire itself.
+            const wire = event.currentTarget as Element | null;
+            if (client.x === 0 && client.y === 0 && typeof wire?.getBoundingClientRect === "function") {
+                const box = wire.getBoundingClientRect();
+                client = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+            }
+            setWireMenu({ x: client.x, y: client.y, ends: orderWireEndsFrom(edge, client), color: readWireColor(edge) });
+        },
+        [orderWireEndsFrom],
+    );
+
+    /** "Go to" labels for a list of ends, numbering the ones that would otherwise read alike. */
+    const labelGoToRows = useCallback(
+        (ends: readonly BlueprintWireEnd[]) => {
+            const names = ends.map(nameWireEnd);
+            const numbers = numberRepeatedNames(names);
+            return names.map((target, index) => {
+                const n = numbers[index];
+                return n === null ? t("blueprint.wire.goTo", { target }) : t("blueprint.wire.goToNth", { target, n });
+            });
+        },
+        [nameWireEnd, t],
+    );
+
+    const wireMenuItems = useMemo<ContextMenuDef>(() => {
+        if (!wireMenu) {
+            return [];
+        }
+        const labels = labelGoToRows(wireMenu.ends);
+        return wireMenu.ends.map((end, index) => ({
+            id: `blueprint.wire.goTo.${index}`,
+            label: labels[index]!,
+            onClick: () => {
+                setWireMenu(null);
+                revealWireEnd(end, wireMenu.color);
+            },
+        }));
+    }, [labelGoToRows, revealWireEnd, wireMenu]);
+
+    /**
+     * The rows a pin adds to the node menu: one per wire on it, naming the end at the other side,
+     * left to right as those cards sit on the graph - the way a graph is read and laid out - then top
+     * to bottom. None for a pin with nothing wired to it: a row saying so would be a row that never
+     * does anything.
+     */
+    const buildPinConnectionRows = useCallback(
+        (pin: BlueprintWireEnd | null, close: () => void): ContextMenuDef => {
+            if (!pin) {
+                return [];
+            }
+            const seen = new Set<string>();
+            const ends = listBlueprintPinConnections(irRef.current, pin).filter(end => {
+                const key = JSON.stringify([end.nodeId, end.pinId]);
+                if (seen.has(key)) {
+                    return false;
+                }
+                seen.add(key);
+                return true;
+            });
+            if (ends.length === 0) {
+                return [];
+            }
+            const placeOf = (end: BlueprintWireEnd) =>
+                getInternalNode(end.nodeId)?.internals.positionAbsolute ?? { x: Number.MAX_VALUE, y: Number.MAX_VALUE };
+            ends.sort((a, b) => placeOf(a).x - placeOf(b).x || placeOf(a).y - placeOf(b).y);
+            const flowEdges = getEdges();
+            const colorOf = (end: BlueprintWireEnd) =>
+                readWireColor(
+                    flowEdges.find(edge =>
+                        pin.side === "output"
+                            ? edge.source === pin.nodeId &&
+                              edge.sourceHandle === pin.pinId &&
+                              edge.target === end.nodeId &&
+                              edge.targetHandle === end.pinId
+                            : edge.target === pin.nodeId &&
+                              edge.targetHandle === pin.pinId &&
+                              edge.source === end.nodeId &&
+                              edge.sourceHandle === end.pinId,
+                    ),
+                );
+            const labels = labelGoToRows(ends);
+            const rows = ends.map((end, index) => ({
+                id: `blueprint.pin.goTo.${index}`,
+                label: labels[index]!,
+                onClick: () => {
+                    close();
+                    revealWireEnd(end, colorOf(end));
+                },
+            }));
+            const separator = { separator: true as const, id: "blueprint.pin.sep-connections" };
+            if (rows.length <= MAX_INLINE_PIN_CONNECTIONS) {
+                return [separator, ...rows];
+            }
+            return [
+                separator,
+                { id: "blueprint.pin.goToConnected", label: t("blueprint.wire.goToConnected"), submenu: rows },
+            ];
+        },
+        [getEdges, getInternalNode, labelGoToRows, revealWireEnd, t],
+    );
+
     const breakpointScope = useBlueprintBreakpointScope();
     /**
      * The open node menu, plus the nodes it will act on.
@@ -1815,6 +2241,8 @@ function BlueprintFlowCanvasInner({
             breakpointNodeId: string | null;
             targetIds: string[];
             frameIds: string[];
+            /** The pin the right click landed on, whose wires the menu lists; null anywhere else on a card. */
+            pin: BlueprintWireEnd | null;
         } | null
     >(null);
 
@@ -1888,6 +2316,7 @@ function BlueprintFlowCanvasInner({
                 breakpointNodeId: readBreakpointNodeId(node.id),
                 targetIds,
                 frameIds: readFrameIds(targetIds),
+                pin: readBlueprintPinAt(event.target, node.id),
             });
         },
         [onSelectNodeIds, readBreakpointNodeId, readFrameIds],
@@ -1924,12 +2353,24 @@ function BlueprintFlowCanvasInner({
                         flow.y <= box.y + box.height,
                 )
                 .sort((a, b) => a.width * a.height - b.width * b.height);
+            // The selection's rectangle lies over the cards, so a pin under the pointer is found by
+            // looking beneath it rather than at what the click landed on.
+            const doc = (event.target as Element | null)?.ownerDocument ?? globalThis.document;
+            let pin: BlueprintWireEnd | null = null;
+            for (const element of doc.elementsFromPoint(event.clientX, event.clientY)) {
+                const cardId = element.closest(".react-flow__node")?.getAttribute("data-id");
+                pin = cardId && targetIds.includes(cardId) ? readBlueprintPinAt(element, cardId) : null;
+                if (pin) {
+                    break;
+                }
+            }
             setNodeMenu({
                 x: event.clientX,
                 y: event.clientY,
                 breakpointNodeId: readBreakpointNodeId(under[0]?.id ?? null),
                 targetIds,
                 frameIds: readFrameIds(targetIds),
+                pin,
             });
         },
         [readBreakpointNodeId, readFrameIds, screenToFlowPosition],
@@ -2059,10 +2500,15 @@ function BlueprintFlowCanvasInner({
         // Delete writes the document, so a frozen project greys it and says why. The breakpoint
         // rows are debugger state - readable and settable while frozen - so they are exempt, and
         // the menu stays open on a frozen project instead of being withheld whole the way the
-        // pane's creation menu is.
-        return freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason);
+        // pane's creation menu is. The pin's wires come last, after every row the menu has always
+        // had, so that none of those moves; following a wire writes nothing, so they stay live too.
+        return [
+            ...freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason),
+            ...buildPinConnectionRows(nodeMenu.pin, () => setNodeMenu(null)),
+        ];
     }, [
         breakpointScope,
+        buildPinConnectionRows,
         canFormat,
         createGroupFromIds,
         deleteNodeIds,
@@ -2134,6 +2580,7 @@ function BlueprintFlowCanvasInner({
             style={pendingPlacementEntry ? { cursor: "crosshair" } : undefined}
             onPointerDownCapture={onControlPanPointerDownCapture}
             onContextMenuCapture={onControlPanContextMenuCapture}
+            {...{ [BLUEPRINT_CANVAS_ATTRIBUTE]: flowId }}
         >
             <ReactFlow
                 key={graphKey}
@@ -2151,6 +2598,11 @@ function BlueprintFlowCanvasInner({
                 onEdgesDelete={onEdgesDelete}
                 // Double-clicking an edge deletes it, so it goes with the rest of the write gestures.
                 onEdgeDoubleClick={freeze.gesture(onEdgeDoubleClick)}
+                // Reading where a wire goes writes nothing, so these stay live on a frozen project.
+                onEdgeMouseEnter={showWireHover}
+                onEdgeMouseMove={showWireHover}
+                onEdgeMouseLeave={onEdgeMouseLeave}
+                onEdgeContextMenu={onEdgeContextMenu}
                 onNodesDelete={onNodesDelete}
                 // The pane menu is a creation flow: right-click, pick a type, a ghost follows the
                 // cursor, click places the node. Withheld whole rather than refused at the placement
@@ -2252,13 +2704,23 @@ function BlueprintFlowCanvasInner({
                 paletteContext={paletteContext}
                 onPickEntry={onAddMenuPickEntry}
             />
+            <BlueprintWireEmphasis ref={wireEmphasisRef} canvasId={flowId} />
             <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
-                <ContextMenu
+                <ShortcutContextMenu
+                    shortcuts={BLUEPRINT_NODE_MENU_SHORTCUTS}
                     items={nodeMenuItems}
                     position={{ x: nodeMenu.x, y: nodeMenu.y }}
                     visible
                     onClose={() => setNodeMenu(null)}
+                />
+            ) : null}
+            {wireMenu ? (
+                <ContextMenu
+                    items={wireMenuItems}
+                    position={{ x: wireMenu.x, y: wireMenu.y }}
+                    visible
+                    onClose={() => setWireMenu(null)}
                 />
             ) : null}
             {minimapMenu ? (

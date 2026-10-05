@@ -15,7 +15,7 @@ export const blueprint = {
     tab: {
         title: "ブループリント",
         invalid: "ブループリントのタブが不正",
-        notFound: "ブループリントが見つからない：{id}",
+        notFound: "このプロジェクトにブループリントが見つからない",
     },
     /** ブレークポイント。ノードのコンテキストメニューで置き、開発モードのデバッガーが止まる。 */
     breakpoint: {
@@ -49,6 +49,15 @@ export const blueprint = {
             one: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
             other: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
         },
+    },
+    wire: {
+        nodeDetail: "{node}（{detail}）",
+        end: "{node} · {pin}",
+        connectedTo: "{target} に接続",
+        goTo: "{target} へ移動",
+        goToNth: "{target}（{n}）へ移動",
+        goToConnected: "接続先のノードへ移動",
+        name: "{from} から {to} への線",
     },
     crossProject: {
         pasted: {
@@ -149,7 +158,7 @@ export const blueprint = {
             noRuntime: "ノード「{node}」：型「{type}」に対応する実装がない",
             inputMissing: "「{node}」の「{pin}」に何も接続されていない",
             stepLimit: "「{head}」は待機なしで {steps} ステップ実行し、「{node}」で停止した",
-            stepLimitGlobal: "グローバルブループリントの「{head}」は待機なしで {steps} ステップ実行し、「{node}」で停止した",
+            stepLimitGlobal: "アプリロジックの「{head}」は待機なしで {steps} ステップ実行し、「{node}」で停止した",
             unknownType: "ノード「{node}」：不明な型「{type}」。プラグインが未インストールか無効になっている可能性がある",
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",
@@ -314,6 +323,7 @@ export const blueprint = {
             keys: "キー操作",
             window: "ウィンドウ",
             display: "表示",
+            conditions: "表示条件",
         },
     },
     // ブループリントがぶら下がっている先の名前。ノードがどこにあるかを言う検索結果で使う。
@@ -1238,6 +1248,7 @@ export const blueprint = {
         getVisible: "表示を取得",
         getWrapMode: "折り返しを取得",
         goPage: "ページへ移動",
+        replacePage: "ページを置き換える",
         goBack: "前のページに戻る",
         showLayer: "レイヤーを表示",
         hideLayer: "レイヤーを隠す",
@@ -1430,7 +1441,7 @@ export const blueprint = {
         setVisible: "表示を設定",
         showDialog: "ダイアログを表示",
         skip: "スキップ",
-        skipDelay: "スキップ開始までの時間",
+        skipDelay: "待ちを打ち切る",
         split: "分割",
         startGame: "ゲームを始める",
         startsWith: "この文字で始まる",
@@ -1453,6 +1464,7 @@ export const blueprint = {
         toggle: "反転",
         toggleDialogDisplay: "ダイアログの表示を切り替え",
         toggleSwitch: "スイッチを切り替え",
+        translationKeyText: "翻訳キーのテキスト",
         trim: "前後の空白を取り除く",
         trimEnd: "末尾の空白を取り除く",
         trimStart: "先頭の空白を取り除く",
@@ -1493,6 +1505,7 @@ export const blueprint = {
         getTotalPlaytime: "累計プレイ時間を取得",
     },
     nodeDescription: {
+        getComponentParam: "この置いたものが選んだパラメータに設定した値。設定がなければパラメータの初期値。翻訳キーを使う「テキスト」パラメータではキー名になり、その文字は「翻訳キーのテキスト」で得られる",
         compareEqual: "A と B が型も値も同じとき真。数値の 1 と文字列の \"1\" は等しくない",
         compareNotEqual: "A と B の値か型が異なるとき真。数値の 1 と文字列の \"1\" は異なるものとして扱う",
         compareGreaterThan: "A が B より大きいとき真。両辺を数値として比べ、どちらかが数値として読めないときは偽",
@@ -1506,6 +1519,12 @@ export const blueprint = {
         appBoot: "ゲームを起動するたびに一度、最初の画面が表示された後に実行される。画面はその完了を待たない。このとき「ゲームの準備ができたとき」は実行済み。開発モードでは再読み込みのたびにもう一度実行される",
         gameReady: "ゲームの準備ができたときに実行される。どのストーリーよりも先、最初の画面が表示されるよりも先で、画面はその完了を待つ。「アプリ起動」より先に実行され、ゲームの開始やロードのときにもう一度実行されることがある",
         goBack: "現在のページを閉じ、その下のページに戻る。いちばん下のページでは何もしない",
+        replacePage: "現在のページの代わりにページを開き、現在のページを閉じる。「前のページに戻る」とページが「なし」の「ページへ移動」では、閉じたページに戻らない",
+        isGameOverlay: "このページ、レイヤー、ゲーム UI が進行中のゲームの上に表示されているとき真。アプリロジックでは、ページかモーダルのレイヤーがストーリー画面を覆っているとき真",
+        localizationGetText: "翻訳キーのテキストを、プレイヤーの現在の言語で取得する。その言語に翻訳がないときは原文を取得する。存在しないキーはキー名そのものになる。「翻訳キーのテキスト」は同じ結果で、ブループリント値と関数でも使える",
+        translationKeyText: "翻訳キーの、プレイヤーの現在の言語でのテキスト。その言語に翻訳がないときは原文。存在しないキーはキー名そのものになる。「テキストを取得」と同じ結果で、ブループリント値と関数でも使える。これを表示するブループリント値は、プレイヤーが言語を切り替えると更新される",
+        format: "テンプレートのプレースホルダを値に置き換える。{0}、{1} などは配列の各要素、{name} はオブジェクトの同名のフィールドになる。対応する値がないプレースホルダは空になる。翻訳したテンプレートは「翻訳キーのテキスト」から取れる",
+        formatText: "テキストの {0}、{1} などを値の一覧の各要素に置き換える。「整形」も同じことをし、オブジェクトで {name} も埋められ、ブループリント値と関数でも使える",
     },
     live: {
         nodeClaimed: "{name} がこのノードを編集している",

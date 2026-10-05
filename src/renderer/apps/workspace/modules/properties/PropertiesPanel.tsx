@@ -54,6 +54,7 @@ import {
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
     isLinkedUIComponentElement,
+    isUIElementFlowLayoutChild,
     type UIDocument,
     type UIElement,
 } from "@shared/types/ui-editor/document";
@@ -88,6 +89,7 @@ const LayoutVisibleListItemFieldBinding = createListItemFieldBindingField({
     labelKey: "struct.field.visiblePicker",
 });
 import type {
+    CustomFieldProps,
     FieldDefinition,
     InlineRowItemContext,
     InputGroupTrailingContext,
@@ -351,11 +353,27 @@ function createLayoutInspectorSchema(
     // the origin because a placement draws it from there, and the editor keeps no position for it.
     // Its size is the component's size and stays; a position row would take a number and show 0.
     const isComponentOrigin = elements.length === 1 && isComponentEditorRootElement(elements[0]);
+    /**
+     * Whether the row would take a number and do nothing: a child of a stack, a scroll container or
+     * a list is placed by its parent, and the X and Y it stores are put back to zero on every write.
+     * Inside an entered state the same row writes the state's offset instead, which a placed child
+     * does carry, so there it stays. Hidden when any element in the selection is such a child,
+     * because the row shows the first one's value and writes to all of them.
+     */
+    const positionIsPlacedByParent = (data: UIInspectorData): boolean => {
+        const document = documentService.getDocument();
+        const entered = UIEditorStateService.getInstance().getEnteredState();
+        return data.elements.some(element => {
+            const current = document.elements[element.id] ?? element;
+            return isUIElementFlowLayoutChild(document, current) && !stateScopedMoveTarget(document, entered, element.id);
+        });
+    };
     const fields: FieldDefinition<UIInspectorData>[] = [
         defineField<UIInspectorData, any>({
             id: "layout.position",
             type: "inputGroup",
             label: t("properties.layout.position"),
+            hidden: positionIsPlacedByParent,
             gap: 8,
             wrap: false,
             inputs: [
@@ -722,8 +740,8 @@ function mergeInspectorWithLayoutSchema(
  * revision, and an inline component would be a new type each time - React would remount the field
  * and the text cursor would leave the input on the first keystroke.
  */
-function LinkedComponentParamsSection({ data }: { data: UIInspectorData }) {
-    return <LinkedComponentParamsField element={data.element} documentService={data.documentService} />;
+function LinkedComponentParamsSection({ data, readOnly }: CustomFieldProps<UIInspectorData>) {
+    return <LinkedComponentParamsField data={data} readOnly={readOnly} />;
 }
 
 function createLinkedComponentInspectorSchema(

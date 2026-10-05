@@ -19,11 +19,19 @@ export const build = {
     },
     unavailable: {
         windows: "当前设备无法为 Windows 平台构建",
-        macos: "只有 Mac 才能为 macOS 平台构建",
+        macos: "当前设备无法为 macOS 平台构建",
         linux: "当前设备无法为 Linux 平台构建",
         web: "任何设备都可以为 Web 平台构建",
         android: "任何设备都可以为 Android 平台构建",
         ios: "任何设备都可以为 iOS 平台构建",
+    },
+    formatUnavailable: {
+        windows: "当前设备不可用",
+        macos: "需要在 Mac 上构建",
+        linux: "在 Windows 上不可用",
+        web: "当前设备不可用",
+        android: "当前设备不可用",
+        ios: "当前设备不可用",
     },
     format: {
         zip: "便携 ZIP",
@@ -85,7 +93,7 @@ export const build = {
         appId: "应用 ID",
         copyright: "版权",
         icons: "图标",
-        iconsHint: "点击图标可在项目设置中修改",
+        iconsHint: "点击图标可在「项目 ▸ 应用」中修改",
         iconUnset: "未设置",
         // 项目版本或版权为空时显示什么。这一段现在只回读，空字段得说明自己是空的，
         // 而不是看起来像一个等着输入的控件。
@@ -94,8 +102,8 @@ export const build = {
     },
     content: {
         protection: "资产保护",
-        protectionOn: "打包后的游戏会加密资产与存档",
-        protectionOff: "资产与存档以明文随包发布",
+        protectionOn: "打包后的游戏会加密资产",
+        protectionOff: "资产以明文随包发布",
         plugins: "随包插件",
         pluginsNone: "没有插件会随游戏发布",
         pluginsRescanUnavailable: "当前窗口无法重新扫描插件列表",
@@ -147,6 +155,8 @@ export const build = {
             artifactReadVersioned: "{product} {version}，构建于 {date}",
             artifactVariantStated: "读取自该构建目录",
             artifactVariantUnknown: "该构建未标明变体，请在下方选择",
+            // 项目有密钥之前做出的构建。只说明，不阻止：导出仍然可以进行。
+            artifactNoKey: "该构建不含分发密钥，游戏会忽略为它导出的补丁",
             artifactVariantMismatch: "该构建是 {build}，而此 DLC 依附于 {variant}",
             artifactWholeGame: "补丁将包含整份游戏",
             contentLabel: "内容取自的变体",
@@ -261,10 +271,15 @@ export const build = {
     mirror: {
         official: "官方源",
         change: "修改",
+        downloadFailed:
+            "构建所需的文件下载失败。如果当前网络访问 github.com 很慢或无法访问，可在 设置 › {section} 中为构建下载选择镜像，然后重新构建。",
+        certificateFailed:
+            "无法验证下载地址的证书。这通常是本机的代理、网络加速器或杀毒软件在拦截 HTTPS；关闭它们也可能解决问题，无需使用镜像。",
     },
     preflight: {
         "no-targets": "请至少选择一个平台和格式",
         "unbuildable-platform": "当前设备无法为 {platform} 平台构建",
+        "unbuildable-format": "当前设备无法为 {platform} 平台构建 {format} 格式",
         "version-invalid": "项目版本 {version} 不是合法的语义化版本号，构建会失败",
         "version-missing": "未设置项目版本，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
@@ -296,6 +311,8 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
         "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
+        // 旁边有「创建」按钮，所以句子只说后果，补救交给按钮。
+        "distribution-key-missing": "尚未创建分发密钥；本次构建产出的游戏以后不接受补丁",
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",

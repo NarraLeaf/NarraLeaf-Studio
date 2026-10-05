@@ -3,7 +3,7 @@ import { BookMarked, Replace, Type } from "lucide-react";
 import { AnchoredPanel } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { useDismissWhenHidden } from "@/lib/components/layout";
+import { useFloatingLayer, useHostDocument } from "@/lib/components/layout";
 import { Services } from "@/lib/workspace/services/services";
 import type { DictionaryService } from "@/lib/workspace/services/dictionary/DictionaryService";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -11,8 +11,10 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { openDictionaryPanel } from "@/apps/workspace/modules/dictionary/openDictionaryPanel";
 import { useStoryDocumentScope } from "./storySceneReadOnly";
 import type { DictionaryClickInfo } from "./RichTextInput";
+import { keepStoryKeysInPopover } from "./PausePopover";
 
 const PANEL_WIDTH_PX = 224;
+const MENU_ITEM_SELECTOR = "[role=\"menuitem\"]";
 
 /**
  * What the project dictionary has to say about the words under the pointer, and the one thing to do
@@ -36,9 +38,6 @@ export function DictionaryMarkPopover(props: {
     /** Take the panel down. The caller clears the state that renders it. */
     onClose: () => void;
 }) {
-    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
-    // whatever the author moved to; the caller's own dismissal is what puts it away.
-    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     // Both actions below go through the field's own edit path, so what they write is the text of one
@@ -50,7 +49,27 @@ export function DictionaryMarkPopover(props: {
     // themselves take it. Outside one there is no scope and this is frozen by any freeze at all.
     const freeze = useFreezeGuard(useStoryDocumentScope());
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const doc = useHostDocument();
     const { mark, anchor } = props.target;
+    /** The first row that can be pressed - the correction, unless a freeze has switched it off. */
+    const firstItem = useMemo(() => ({
+        get current(): HTMLElement | null {
+            const panel = panelRef.current;
+            return panel?.querySelector<HTMLElement>(`${MENU_ITEM_SELECTOR}:not(:disabled)`) ?? panel;
+        },
+    }), []);
+    // The menu takes the focus, so the arrows walk its rows and Enter presses one; left in the field,
+    // they moved the caret under the open menu and Enter committed the row. Tab stays inside, as in
+    // every popover over the row being edited (see `PausePopover`). Escape closes this one rung - the
+    // caller puts the caret back - and not the row's own edit mode as well.
+    useFloatingLayer({
+        open: true,
+        onClose: props.onClose,
+        panelRef,
+        scope: "trap",
+        initialFocus: firstItem,
+        itemSelector: MENU_ITEM_SELECTOR,
+    });
 
     const note = useMemo(() => {
         if (!context || !isInitialized) {
@@ -64,20 +83,6 @@ export function DictionaryMarkPopover(props: {
         }
     }, [context, isInitialized, mark.term]);
 
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
-                return;
-            }
-            // One rung per press: this closes the panel and leaves the row being edited. The row's
-            // own Escape leaves edit mode entirely, which is a rung further out.
-            event.stopPropagation();
-            props.onClose();
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
     // Light dismiss, letting the event through to whatever was clicked so leaving the panel keeps
     // the author's place in the sentence.
     useEffect(() => {
@@ -87,9 +92,9 @@ export function DictionaryMarkPopover(props: {
             }
             props.onClose();
         };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
+        doc.addEventListener("mousedown", onDown, true);
+        return () => doc.removeEventListener("mousedown", onDown, true);
+    }, [doc, props]);
 
     const anchorBox = useCallback(
         () => ({ top: anchor.top, bottom: anchor.bottom, left: anchor.left }),
@@ -116,6 +121,8 @@ export function DictionaryMarkPopover(props: {
             aria-label={mark.term}
             className="z-[70] rounded-lg border border-edge bg-surface-overlay py-1 shadow-2xl"
         >
+            {/* `contents`, so the rows stay the panel's own children; it is only here to hear the keys. */}
+            <div className="contents" onKeyDown={keepStoryKeysInPopover}>
             <p className="truncate px-2 pb-1 text-2xs text-fg-subtle" aria-hidden="true">{mark.term}</p>
             {mark.kind === "variant" ? (
                 <button
@@ -163,6 +170,7 @@ export function DictionaryMarkPopover(props: {
                     <BookMarked className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate">{t("story.dictionary.openEntry")}</span>
                 </button>
+            </div>
             </div>
         </AnchoredPanel>
     );

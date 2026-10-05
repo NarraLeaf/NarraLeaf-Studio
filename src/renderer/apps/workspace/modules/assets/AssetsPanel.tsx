@@ -1,12 +1,13 @@
 import { useMemo, useCallback, useState, useRef, useEffect, useLayoutEffect, ComponentType } from "react";
 import { flushSync } from "react-dom";
-import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft, Boxes } from "lucide-react";
+import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Boxes } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ShortcutContextMenu } from "../../components/ui/ShortcutContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
@@ -32,7 +33,7 @@ import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
 import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
-import { AssetsPanelContext, type AssetSetRevealState, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
+import { AssetsPanelContext, type AssetSetRevealState } from './AssetsPanelContext';
 import { ASSET_SET_REVEAL_EVENT, consumeAssetSetReveal, type AssetSetRevealRequest } from "./assetSetReveal";
 import { planAssetSetReveal } from "./state/assetSetRevealPlan";
 import { Services } from "@/lib/workspace/services/services";
@@ -57,6 +58,25 @@ import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetT
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 import { PROJECT_SCRIPTS_SECTION_ID, ProjectScriptsSection } from "./views/ProjectScriptsSection";
+import { useHostVisible } from "@/lib/components/layout";
+import { ASSET_BROWSER_TILE_SIZE, AssetBrowserView, type AssetBrowserViewMode } from "./browser/AssetBrowserView";
+import {
+    groupPath,
+    resolveAssetBrowserLocation,
+    sameAssetBrowserLocation,
+    type AssetBrowserLocation,
+    type AssetBrowserSort,
+} from "./browser/assetBrowserModel";
+
+/** The asset menu's rows that a key also runs, by row id, so each row prints its chord. */
+const ASSET_MENU_SHORTCUTS: Readonly<Record<string, string>> = {
+    copy: "assets.copy",
+    "copy-selected": "assets.copy",
+    cut: "assets.cut",
+    "cut-selected": "assets.cut",
+    paste: "assets.paste",
+    rename: "assets.rename",
+};
 
 export type AssetViewMode = "list" | "icons" | "overview";
 
@@ -92,12 +112,22 @@ interface AssetsPanelPayload {
     defaultViewMode?: AssetViewMode;
     defaultIconSize?: number;
     focusArea?: FocusArea;
-    showHeader?: boolean;
+    /**
+     * Which shape the library is drawn in. `sidebar` (the default) is the tall column's tree, grid and
+     * overview; `browser` is the bottom tray's folder tree beside the contents of one folder.
+     */
+    layout?: "sidebar" | "browser";
 }
 
 interface AssetsPanelState {
     viewMode?: AssetViewMode;
     iconSize?: number;
+    /** The browser's own state, kept apart from the sidebar views' so neither reads the other's. */
+    browserLocation?: AssetBrowserLocation;
+    browserView?: AssetBrowserViewMode;
+    browserTileSize?: number;
+    browserSort?: AssetBrowserSort;
+    browserOpenCategories?: string[];
     /**
      * Which sidebar sections are open. Still named `assetTypeOpenItems` on disk: the ids stored by
      * a build from before sections were categories are filtered out by
@@ -134,6 +164,42 @@ function sanitizeStringIds(ids: string[] | undefined): string[] {
         return [];
     }
     return ids.filter(id => typeof id === "string" && id.length > 0);
+}
+
+/* Persisted browser state is read back from disk and may be from another build: each field either
+   parses or is dropped, never trusted. */
+
+function sanitizeBrowserLocation(value: unknown): AssetBrowserLocation | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const { category, groupId } = value as { category?: unknown; groupId?: unknown };
+    if (typeof category !== "string" || !ASSET_CATEGORY_ORDER.includes(category as AssetCategory)) {
+        return null;
+    }
+    return typeof groupId === "string" && groupId.length > 0
+        ? { category: category as AssetCategory, groupId }
+        : { category: category as AssetCategory };
+}
+
+function sanitizeBrowserView(value: unknown): AssetBrowserViewMode | null {
+    return value === "grid" || value === "details" ? value : null;
+}
+
+function sanitizeBrowserSort(value: unknown): AssetBrowserSort {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const { key, direction } = value as { key?: unknown; direction?: unknown };
+    const keyOk = key === "name" || key === "format" || key === "size" || key === "usage";
+    return keyOk && (direction === "asc" || direction === "desc") ? { key, direction } : null;
+}
+
+function sanitizeBrowserTileSize(value: unknown): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return ASSET_BROWSER_TILE_SIZE.default;
+    }
+    return Math.min(ASSET_BROWSER_TILE_SIZE.max, Math.max(ASSET_BROWSER_TILE_SIZE.min, Math.round(value)));
 }
 
 function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetCategory, AssetGroup[]>): string[] {
@@ -256,14 +322,24 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     } | null>(null);
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
-    const [isSearchActive, setIsSearchActive] = useState(false);
-    const [assetsIconToolbarCenter, setAssetsIconToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
 
     const defaultViewMode = payload?.defaultViewMode ?? "list";
     const defaultIconSize = payload?.defaultIconSize ?? 140;
     const focusArea = payload?.focusArea ?? FocusArea.LeftPanel;
-    const showHeader = payload?.showHeader ?? true;
+    const isBrowser = payload?.layout === "browser";
+    // Whether this panel is the one on screen: a kept-alive panel behind another, or in a collapsed
+    // dock, is not, and the browser only measures the library while someone can read the numbers.
+    const hostVisible = useHostVisible();
     const [viewMode, setViewMode] = useState<AssetViewMode>(defaultViewMode);
+    // The browser's state. Its location is resolved against the library on every render, so a folder
+    // deleted since it was stored lands the author at its category's root.
+    const [storedBrowserLocation, setStoredBrowserLocation] = useState<AssetBrowserLocation | null>(null);
+    const [browserView, setBrowserView] = useState<AssetBrowserViewMode>("grid");
+    const [browserTileSize, setBrowserTileSize] = useState<number>(ASSET_BROWSER_TILE_SIZE.default);
+    const [browserSort, setBrowserSort] = useState<AssetBrowserSort>(null);
+    const [browserOpenCategories, setBrowserOpenCategories] = useState<Set<AssetCategory>>(
+        () => new Set(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS),
+    );
     const [iconSize, setIconSize] = useState<number>(defaultIconSize);
     const [categoryOpenItems, setCategoryOpenItems] = useState<string[]>(DEFAULT_ASSET_CATEGORY_OPEN_ITEMS);
     const [iconGroupPathIds, setIconGroupPathIds] = useState<string[]>([]);
@@ -313,6 +389,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             setExpandedAssetSets(new Set(sanitizeStringIds(saved.expandedAssetSetIds)));
         }
         setIconGroupPathIds(sanitizeStringIds(saved?.iconGroupPathIds));
+        setStoredBrowserLocation(sanitizeBrowserLocation(saved?.browserLocation));
+        setBrowserView(sanitizeBrowserView(saved?.browserView) ?? "grid");
+        setBrowserTileSize(sanitizeBrowserTileSize(saved?.browserTileSize));
+        setBrowserSort(sanitizeBrowserSort(saved?.browserSort));
+        setBrowserOpenCategories(new Set(
+            Array.isArray(saved?.browserOpenCategories)
+                ? saved.browserOpenCategories.filter((id): id is AssetCategory => ASSET_CATEGORY_ORDER.includes(id as AssetCategory))
+                : DEFAULT_ASSET_CATEGORY_OPEN_ITEMS,
+        ));
         setStateReady(true);
     }, [context, panelId]);
 
@@ -326,8 +411,20 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             expandedGroupIds: Array.from(expandedGroups),
             expandedAssetSetIds: Array.from(expandedAssetSets),
             iconGroupPathIds,
+            ...(isBrowser
+                ? {
+                    ...(storedBrowserLocation ? { browserLocation: storedBrowserLocation } : {}),
+                    browserView,
+                    browserTileSize,
+                    browserSort,
+                    browserOpenCategories: Array.from(browserOpenCategories),
+                }
+                : {}),
         });
-    }, [categoryOpenItems, context, expandedAssetSets, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
+    }, [
+        browserOpenCategories, browserSort, browserTileSize, browserView, categoryOpenItems, context, expandedAssetSets,
+        expandedGroups, iconGroupPathIds, iconSize, isBrowser, panelId, stateReady, storedBrowserLocation, viewMode,
+    ]);
 
     useEffect(() => {
         if (!stateReady) return;
@@ -341,7 +438,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     
     // No library is handed in: what a shift range covers is the rows the view below is drawing, and
     // the view publishes those through `publishRowOrder`.
-    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, publishRowOrder } = useMultiSelection({
+    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, handleSelectAll, publishRowOrder } = useMultiSelection({
         onSelectionChange: (selection) => {
             if(selection.size === 1) {
                 setFocusedItemId(Array.from(selection)[0]);
@@ -349,20 +446,37 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     });
 
-    const { searchQuery, activeQuery, setSearchQuery } = useAssetSearch();
+    const { searchQuery, activeQuery, setSearchQuery, clearSearch } = useAssetSearch();
 
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
     // Measuring the library costs a directory walk and a reference-index flush; only pay for it
-    // while something is reading the result — the overview view, or a filter asking a question the
-    // asset records cannot answer on their own.
+    // while something is reading the result — the overview view, a filter asking a question the
+    // asset records cannot answer on their own, or the browser while it is on screen (its tiles,
+    // table and status line print each file's size and how many places use it).
+    // Changes whenever a file in the library does: a record added or removed, or its bytes replaced.
+    // What tells the snapshot to measure the folder again, rather than every move of the index.
+    const libraryKey = useMemo(() => (hasLoaded
+        ? ASSET_CATEGORY_ORDER.flatMap(category => assets[category].map(asset => `${asset.id}:${asset.hash}`)).join("|")
+        : undefined), [assets, hasLoaded]);
     const {
         snapshot,
         failed: snapshotFailed,
         refresh: refreshSnapshot,
         bytesByAssetId,
         referencedAssetIds,
+        referenceCountByAssetId,
         usageUnknownAssetIds,
-    } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
+    } = useAssetLibrarySnapshot(
+        context,
+        (!isBrowser && viewMode === "overview")
+            || filtersNeedLibrarySnapshot(activeFilters)
+            || (isBrowser && hostVisible),
+        libraryKey,
+    );
+    const browserMeasures = useMemo(
+        () => ({ bytesByAssetId, referenceCountByAssetId, usageUnknownAssetIds }),
+        [bytesByAssetId, referenceCountByAssetId, usageUnknownAssetIds],
+    );
 
     // What the library calls a set's values. Read before the filters: the Tags group offers the tags a
     // set writes on its files in these words, and not the set's own bookkeeping at all.
@@ -377,6 +491,51 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * tree opens every group it still shows, and the grid drops the folder walk and goes flat.
      */
     const isNarrowed = activeQuery.length > 0 || activeFilters.length > 0;
+
+    const browserLocation = useMemo(
+        () => resolveAssetBrowserLocation(storedBrowserLocation, groups),
+        [groups, storedBrowserLocation],
+    );
+
+    /**
+     * Go to a place in the browser.
+     *
+     * Ends a search or a filter as it goes: the results are the whole library's and are filed under
+     * no place, so choosing one is leaving them. The tree opens the way down to the place, so the row
+     * that is marked as current is on screen.
+     */
+    const handleBrowserNavigate = useCallback((next: AssetBrowserLocation) => {
+        if (!isNarrowed && sameAssetBrowserLocation(next, browserLocation)) {
+            return;
+        }
+        if (isNarrowed) {
+            clearSearch();
+            setActiveFilters([]);
+        }
+        handleClearSelection();
+        setStoredBrowserLocation(next.groupId ? { category: next.category, groupId: next.groupId } : { category: next.category });
+        setBrowserOpenCategories(previous => (previous.has(next.category) ? previous : new Set(previous).add(next.category)));
+        const ancestors = groupPath(next.groupId, groups[next.category]).slice(0, -1);
+        if (ancestors.length > 0) {
+            setExpandedGroups(previous => {
+                const merged = new Set(previous);
+                ancestors.forEach(group => merged.add(group.id));
+                return merged.size === previous.size ? previous : merged;
+            });
+        }
+    }, [browserLocation, clearSearch, groups, handleClearSelection, isNarrowed]);
+
+    const handleBrowserToggleCategory = useCallback((category: AssetCategory) => {
+        setBrowserOpenCategories(previous => {
+            const next = new Set(previous);
+            if (next.has(category)) {
+                next.delete(category);
+            } else {
+                next.add(category);
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (!hasLoaded) return;
@@ -431,7 +590,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         mediaConvertRequest, handleConvertMedia, finishMediaConvert, cancelMediaConvert
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
-        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
+        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue,
+        // The browser pastes where the author is standing; its results are filed nowhere.
+        pastePlace: isBrowser && !isNarrowed ? browserLocation : null,
     });
 
 
@@ -524,6 +685,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         // The grid shows one folder at a time, so it has to be standing in the right one. Harmless
         // while the tree is showing, which reads folders from `expandedGroups` instead.
         setIconGroupPathIds(plan.groupPathIds);
+        // The browser stands in the folder the set is filed in, out of any search that would hide
+        // it; it steps into the enclosing sets itself, from the request below.
+        if (isBrowser) {
+            const folderId = plan.groupPathIds[plan.groupPathIds.length - 1];
+            clearSearch();
+            setActiveFilters([]);
+            setStoredBrowserLocation(folderId ? { category: plan.category, groupId: folderId } : { category: plan.category });
+            setBrowserOpenCategories(prev => (prev.has(plan.category) ? prev : new Set(prev).add(plan.category)));
+        }
         // The overview is the one view with no row to land on. Nothing else about the author's view
         // is touched - a tree stays a tree, a grid stays a grid.
         setViewMode(prev => (prev === "overview" ? "list" : prev));
@@ -537,7 +707,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             ancestorSetIds: plan.ancestorSetIds,
             nonce: revealNonce.current,
         });
-    }, [findSet, groups, handleAssetSetSelect, hasLoaded, pendingRevealSetId, resolvedAssetSets]);
+    }, [clearSearch, findSet, groups, handleAssetSetSelect, hasLoaded, isBrowser, pendingRevealSetId, resolvedAssetSets]);
 
     /**
      * The mark goes away on its own: it says "here", and a ring that stays says "wrong" - the same
@@ -1002,7 +1172,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return mediaSupport.get(asset.id)?.state === "convertible";
     }, [contextMenuTarget, mediaSupport]);
 
-    const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
+    const { menuState, contextMenu, showContextMenu, showPlaceContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
         handleClearSelection,
         handleCopy: () => handleCopyRef.current(),
@@ -1119,12 +1289,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         };
     }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze, libraryFreeze]);
 
-    useEffect(() => {
-        if (showHeader) {
-            setAssetsIconToolbarCenter(null);
-        }
-    }, [showHeader]);
-
     if (loading && !hasLoaded && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-fg-muted"><RefreshCw className="w-4 h-4 animate-spin" /> <span>{t("assets.loading")}</span></div>;
     }
@@ -1150,8 +1314,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
         isNarrowed,
-        compactToolbar: !showHeader,
-        setAssetsIconToolbarCenter,
         mediaSupport,
         unreadableCategories,
         handleConvertMedia,
@@ -1168,7 +1330,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
                 onClick={setFocusToPanel}
             >
-                {showHeader ? (
+                {!isBrowser && (
                     <div className="px-3 py-2 border-b border-edge space-y-2">
                         <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder={t("assets.searchPlaceholder")} />
                         <div className="flex items-center justify-between">
@@ -1187,106 +1349,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             </div>
                         </div>
                     </div>
-                ) : (
-                    <div
-                        className={
-                            isSearchActive
-                                ? "px-3 py-2 border-b border-edge flex items-center gap-2 overflow-hidden"
-                                : assetsIconToolbarCenter
-                                  ? "px-3 py-2 border-b border-edge grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
-                                  : "px-3 py-2 border-b border-edge flex items-center justify-between gap-2 overflow-hidden"
-                        }
-                    >
-                        <div
-                            className={
-                                isSearchActive
-                                    ? "flex items-center gap-2 flex-1 min-w-0"
-                                    : assetsIconToolbarCenter
-                                      ? "flex items-center gap-2 min-w-0 justify-self-start"
-                                      : "flex items-center gap-2 min-w-0 flex-1"
-                            }
-                        >
-                            {isSearchActive ? (
-                                <>
-                                    <SearchBox
-                                        ref={searchBoxRef}
-                                        value={searchQuery}
-                                        onChange={setSearchQuery}
-                                        className="flex-1 min-w-0"
-                                        placeholder={t("assets.searchPlaceholder")}
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            setIsSearchActive(false);
-                                            setSearchQuery("");
-                                        }}
-                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
-                                        data-tip={t("assets.closeSearch")} aria-label={t("assets.closeSearch")}
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <FilterSystem
-                                        className="flex-shrink-0"
-                                        filters={filterConfigs}
-                                        activeFilters={activeFilters}
-                                        onFiltersChange={setActiveFilters}
-                                        onFilterOpen={handleFilterOpen}
-                                    />
-                                    <button
-                                        onClick={() => setIsSearchActive(true)}
-                                        className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
-                                            searchQuery
-                                                ? "border-primary bg-primary/10 text-primary"
-                                                : "border-edge-strong bg-fill-subtle text-fg-muted hover:bg-fill"
-                                        }`}
-                                        data-tip={t("assets.searchTooltip")} aria-label={t("assets.searchTooltip")}
-                                    >
-                                        <Search className="w-4 h-4" />
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                        {!isSearchActive && assetsIconToolbarCenter && (
-                            <div className="flex items-center justify-center gap-1 min-w-0 max-w-[min(280px,45vw)] px-1 justify-self-center">
-                                <button
-                                    type="button"
-                                    onClick={assetsIconToolbarCenter.onBack}
-                                    className="p-1 rounded-md hover:bg-fill shrink-0"
-                                    data-tip={t("assets.backToParent")} aria-label={t("assets.backToParent")}
-                                >
-                                    <ChevronLeft className="w-4 h-4" />
-                                </button>
-                                <span className="text-sm font-semibold truncate text-center">{assetsIconToolbarCenter.title}</span>
-                            </div>
-                        )}
-                        {!isSearchActive && (
-                            <div
-                                className={
-                                    assetsIconToolbarCenter
-                                        ? "flex items-center gap-2 shrink-0 justify-self-end"
-                                        : "flex items-center gap-2 shrink-0"
-                                }
-                            >
-                                {/* The item count used to sit here. It was redundant (every group in the
-                                    tree below already prints its own count, and the overview page prints
-                                    the total) and it never gave way: `hidden sm:inline` is a VIEWPORT
-                                    query, so a narrow sidebar in a wide window still paid for it. */}
-                                <ViewModeToggle mode={viewMode} onChange={setViewMode} />
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={loading}
-                                    data-tip={t("common.refresh")}
-                                    aria-label={t("common.refresh")}
-                                    className="p-1 rounded-md hover:bg-fill"
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                                </button>
-                            </div>
-                        )}
-                    </div>
                 )}
 
                 <ImportQueueStrip
@@ -1295,46 +1357,89 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onDismiss={dismissImportFailures}
                 />
 
-                <div ref={setListScrollElement} className="flex-1 overflow-y-auto">
-                    {viewMode === "overview" ? (
-                        <AssetOverviewView snapshot={snapshot} failed={snapshotFailed} refresh={refreshSnapshot} />
-                    ) : viewMode === "list" ? (
-                        <AssetsListView
-                            dropTargetId={dropTargetId}
-                            handleRootDrop={handleRootDrop}
-                            handleImport={handleImport}
-                            handleImportRemote={handleImportRemote}
+                {isBrowser ? (
+                    <div className="min-h-0 flex-1">
+                        <AssetBrowserView
+                            location={browserLocation}
+                            onNavigate={handleBrowserNavigate}
+                            view={browserView}
+                            onViewChange={setBrowserView}
+                            tileSize={browserTileSize}
+                            onTileSizeChange={setBrowserTileSize}
+                            sort={browserSort}
+                            onSortChange={setBrowserSort}
+                            openCategories={browserOpenCategories}
+                            onToggleCategory={handleBrowserToggleCategory}
+                            searchQuery={searchQuery}
+                            onSearchQueryChange={setSearchQuery}
+                            activeQuery={activeQuery}
+                            filterConfigs={filterConfigs}
+                            activeFilters={activeFilters}
+                            onFiltersChange={setActiveFilters}
+                            onFilterOpen={handleFilterOpen}
+                            measures={browserMeasures}
+                            handleImport={(category, groupId) => void handleImport(category, groupId)}
+                            handleImportRemote={(category, groupId) => void handleImportRemote(category, groupId)}
                             remoteImportBlockedReason={remoteImportBlockedReason}
-                            handleCreateGroup={handleCreateGroup}
-                            actionLoading={actionLoading}
-                            setDropTargetId={setDropTargetId}
-                            openItems={effectiveOpenItems}
-                            onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
-                            disableAnimation={disableAccordionAnimation}
-                            scrollElement={listScrollElement}
-                            trailingSection={
-                                <ProjectScriptsSection open={effectiveOpenItems.includes(PROJECT_SCRIPTS_SECTION_ID)} />
-                            }
+                            handleCreateGroup={(category, parentGroupId) => void handleCreateGroup(category, parentGroupId)}
+                            handleImportFiles={(category, groupId, files, dataTransfer) => void handleImportToGroup(category, groupId, files, dataTransfer)}
+                            showPlaceContextMenu={showPlaceContextMenu}
+                            onClearSelection={handleClearSelection}
+                            onSelectKeys={keys => handleSelectAll(keys.map(key => (
+                                key.startsWith("group:")
+                                    ? { id: key.slice("group:".length), isGroup: true }
+                                    : { id: key.slice("asset:".length), isGroup: false }
+                            )))}
                         />
-                    ) : (
-                        <AssetsIconView
-                            dropTargetId={dropTargetId}
-                            handleRootDrop={handleRootDrop}
-                            actionLoading={actionLoading}
-                            setDropTargetId={setDropTargetId}
-                            handleImport={handleImport}
-                            handleImportRemote={handleImportRemote}
-                            remoteImportBlockedReason={remoteImportBlockedReason}
-                            handleCreateGroup={handleCreateGroup}
-                            iconSize={iconSize}
-                            onIconSizeChange={setIconSize}
-                            groupPathIds={iconGroupPathIds}
-                            onGroupPathChange={handleIconGroupPathChange}
-                        />
-                    )}
-                </div>
-                
-                <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
+                    </div>
+                ) : (
+                    <div ref={setListScrollElement} className="flex-1 overflow-y-auto">
+                        {viewMode === "overview" ? (
+                            <AssetOverviewView snapshot={snapshot} failed={snapshotFailed} refresh={refreshSnapshot} />
+                        ) : viewMode === "list" ? (
+                            <AssetsListView
+                                dropTargetId={dropTargetId}
+                                handleRootDrop={handleRootDrop}
+                                handleImport={handleImport}
+                                handleImportRemote={handleImportRemote}
+                                remoteImportBlockedReason={remoteImportBlockedReason}
+                                handleCreateGroup={handleCreateGroup}
+                                actionLoading={actionLoading}
+                                setDropTargetId={setDropTargetId}
+                                openItems={effectiveOpenItems}
+                                onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
+                                disableAnimation={disableAccordionAnimation}
+                                scrollElement={listScrollElement}
+                                trailingSection={
+                                    <ProjectScriptsSection open={effectiveOpenItems.includes(PROJECT_SCRIPTS_SECTION_ID)} />
+                                }
+                            />
+                        ) : (
+                            <AssetsIconView
+                                dropTargetId={dropTargetId}
+                                handleRootDrop={handleRootDrop}
+                                actionLoading={actionLoading}
+                                setDropTargetId={setDropTargetId}
+                                handleImport={handleImport}
+                                handleImportRemote={handleImportRemote}
+                                remoteImportBlockedReason={remoteImportBlockedReason}
+                                handleCreateGroup={handleCreateGroup}
+                                iconSize={iconSize}
+                                onIconSizeChange={setIconSize}
+                                groupPathIds={iconGroupPathIds}
+                                onGroupPathChange={handleIconGroupPathChange}
+                            />
+                        )}
+                    </div>
+                )}
+
+                <ShortcutContextMenu
+                    shortcuts={ASSET_MENU_SHORTCUTS}
+                    items={contextMenu}
+                    position={menuState.position}
+                    visible={menuState.visible}
+                    onClose={closeContextMenu}
+                />
                 {/* A second menu rather than a fourth branch in the asset menu: a set shares none of
                     that menu's rows (it holds no bytes to copy, export or replace), and only one of
                     the two can be open at a time. */}

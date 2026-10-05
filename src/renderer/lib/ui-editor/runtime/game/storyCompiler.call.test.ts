@@ -296,8 +296,11 @@ async function actionsOfRow(doc: StoryDocument, blockId: string): Promise<Action
         resolveAssetUrl: async assetId => `nlr://${assetId}`,
     });
     expect(compiled.diagnostics).toEqual([]);
+    // The row's own actions: the ones its statement lists, under `studio:`. What the compiler found
+    // inside them (a jump's steps) is bound to the row as well, under `nl:action:`, and is not the
+    // row's shape.
     return compiled.actionIdBindings
-        .filter(binding => binding.blockId === blockId)
+        .filter(binding => binding.blockId === blockId && binding.staticId.startsWith("studio:"))
         .map(binding => binding.action as unknown as ActionLike);
 }
 

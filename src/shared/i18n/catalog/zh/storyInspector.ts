@@ -1,7 +1,7 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyInspector = {
-    textId: "本地化键名",
+    textId: "单元 ID",
     advanced: "高级",
     advancedParams: "高级参数",
     noVariablesDeclared: "尚未声明变量",
@@ -19,7 +19,7 @@ export const storyInspector = {
     },
     voice: {
         voiced: "已配音",
-        none: "无音轨",
+        none: "未配音",
         stale: "待更新",
         openTable: "打开配音表",
     },
@@ -72,7 +72,7 @@ export const storyInspector = {
     variableScope: {
         scene: "场景",
         saved: "存档",
-        persistent: "持久化",
+        persistent: "持久",
     },
     transformCard: {
         menu: "更多操作",
@@ -369,7 +369,7 @@ export const storyInspector = {
         setZIndex: "设置层级",
     },
     videoOperation: {
-        play: "播放（等待结束）",
+        play: "播放",
         pause: "暂停",
         resume: "继续",
         stop: "停止",
@@ -449,6 +449,10 @@ export const storyInspector = {
         videoName: "视频名称",
         videoAsset: "视频资产",
         seekTime: "跳到",
+        hideOnEnd: "播放结束后隐藏",
+        leave: "退场",
+        waitForEnd: "等待播放结束",
+        skipHint: "玩家可点击或按跳过键提前结束视频",
     },
     nvl: {
         hint: "子行在 NVL 模式下运行；下方的变换在 NVL 图层进入时播放",
@@ -514,8 +518,8 @@ export const storyInspector = {
         conditionContainer: "条件容器，在其下添加条件分支作为子项",
         control: "控制",
         sequence: "顺序",
-        parallel: "全部并行",
-        race: "任一竞速",
+        parallel: "并行",
+        race: "竞速",
         repeat: "重复",
         mode: {
             do: "执行",

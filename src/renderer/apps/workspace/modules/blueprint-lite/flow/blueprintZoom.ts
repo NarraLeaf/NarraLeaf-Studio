@@ -131,6 +131,61 @@ export function computeBlueprintZoomViewport({
     };
 }
 
+export type ComputeBlueprintRevealParams = {
+    /** The node to bring into view, in graph coordinates. */
+    node: FlowRect;
+    /** Where the canvas is now; its zoom is kept when the node fits at it. */
+    current: FlowViewport;
+    /** The pane the graph is drawn in, in screen pixels. */
+    container: { width: number; height: number };
+    range: ZoomRange;
+    padding?: number;
+    /** Screen pixels at the pane's left edge the layer panel covers; see {@link ComputeBlueprintZoomParams}. */
+    inset?: number;
+};
+
+/**
+ * The viewport that puts one node in the middle of what the layer panel leaves of the pane.
+ *
+ * The author's zoom is kept, the same bargain the diagnostics list and the overview strike when they
+ * take the author somewhere: arriving at a different scale from the one they left reads as the
+ * canvas doing something besides going there. Only a node too big to see whole at that zoom brings
+ * it down, to the scale that fits the node with the usual breathing room.
+ */
+export function computeBlueprintRevealViewport({
+    node,
+    current,
+    container,
+    range,
+    padding = BLUEPRINT_FIT_PADDING,
+    inset = 0,
+}: ComputeBlueprintRevealParams): FlowViewport | null {
+    if (
+        !Number.isFinite(container.width) ||
+        !Number.isFinite(container.height) ||
+        container.width <= 0 ||
+        container.height <= 0 ||
+        !Number.isFinite(node.x) ||
+        !Number.isFinite(node.y)
+    ) {
+        return null;
+    }
+    const width = Number.isFinite(node.width) && node.width > 0 ? node.width : 0;
+    const height = Number.isFinite(node.height) && node.height > 0 ? node.height : 0;
+    const left = usableBlueprintInset(container.width, inset);
+    const freeWidth = container.width - left;
+    const fits = Math.min(
+        width > 0 ? freeWidth / ((1 + padding) * width) : Infinity,
+        height > 0 ? container.height / ((1 + padding) * height) : Infinity,
+    );
+    const zoom = clampBlueprintZoom(Math.min(current.zoom, fits), range);
+    return {
+        zoom,
+        x: left + freeWidth / 2 - (node.x + width / 2) * zoom,
+        y: container.height / 2 - (node.y + height / 2) * zoom,
+    };
+}
+
 /** The most of the pane a covering panel may claim before framing stops making room for it. */
 const MAX_INSET_SHARE = 0.6;
 

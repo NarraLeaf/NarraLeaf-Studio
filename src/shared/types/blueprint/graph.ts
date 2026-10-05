@@ -199,7 +199,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * Resolve which event-head node type(s) may run for a widget private event slot id.
- * Unknown slots fall back to all registered dispatch heads (forward-compatible).
+ * A slot the widget does not declare resolves to none. A declared event that names no head falls
+ * back to every dispatch head; no built-in event does that, and a plugin's is refused one at
+ * registration (`sanitizeContributedWidgetLogicApi`).
  */
 export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetElementType?: string): readonly string[] {
     const eventDef = getWidgetLogicEvent(widgetElementType, slotId);
@@ -978,6 +980,15 @@ export function readBlueprintFnSignatureSnapshot(
 }
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 /**
+ * Open a page in place of the one on top of the stack - Go Page for a page nobody comes back to.
+ *
+ * A splash or a disclaimer that hands the game to its title page cannot use Go Page: the page stack
+ * would keep it underneath, and `Go Page (None)`, which empties the stack down to its root, would then
+ * land every "back to title" on the splash again. This node opens the page the same way and then
+ * drops the page it replaced, so the page it opens takes that page's place in the stack.
+ */
+export const BLUEPRINT_NODE_TYPE_PAGE_REPLACE = "blueprint.page.replace" as const;
+/**
  * Pop the page opened last and reveal whatever it covered - the other half of Go Page.
  *
  * Every page a game opens over a running story (save, load, config, backlog) needs a way out, and
@@ -1387,7 +1398,7 @@ export const BLUEPRINT_NETWORK_PARAM_METHOD = "networkMethod";
 /** Methods that carry a request body; the `body` pin is ignored on the others. */
 export const BLUEPRINT_NETWORK_METHODS_WITH_BODY: readonly BlueprintNetworkMethod[] = ["POST", "PUT", "PATCH"];
 
-// Localization nodes. Every getter here is latent and publishes its result through
+// Localization nodes. Every getter here but one is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,
 // in `resolveSelfOutput` in `graphParamResolvers.ts`.
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE = "blueprint.localization.getCurrentLanguage" as const;
@@ -1396,6 +1407,11 @@ export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT = "blueprint.localization
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization.hasText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
+/**
+ * The pure one: `Get Text` without execution pins, which is what lets a Blueprint Value or a function
+ * show a translated word. Computed on read in `graphParamResolvers.ts` rather than published.
+ */
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT = "blueprint.localization.keyText" as const;
 
 // Voice nodes. Dub language is a separate player choice from subtitle language, hence a family of
 // its own rather than more localization nodes. Same rule as above: every getter is latent, so each

@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -31,9 +32,10 @@ import {
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { beginOrExplainInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -44,12 +46,13 @@ import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/c
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
 } from "@/lib/ui-editor/runtime/localization/designTimeKeys";
 import type { UIElement } from "@shared/types/ui-editor/document";
-import { buttonLabelPatch, getButtonProps } from "./helpers";
+import { BUTTON_SITE, buttonLabelPatch, getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
     debugUIDoubleClick,
@@ -58,7 +61,6 @@ import {
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
-const BUTTON_LABEL_PROP_PATH = "label";
 
 /**
  * The words the canvas shows for a button - its key's, when it is read from one - and what an
@@ -66,7 +68,7 @@ const BUTTON_LABEL_PROP_PATH = "label";
  */
 function designTimeLabelOf(element: UIElement): string {
     const props = getButtonProps(element);
-    return designTimeTextOf(props.localizationKey, props.label);
+    return designTimeTextOf(BUTTON_SITE, props.localizationKey, props.label);
 }
 
 function commitButtonLabelEditValue(documentService: UIDocumentService, elementId: string, nextLabel: string): void {
@@ -77,12 +79,15 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextLabel)) {
         return;
     }
-    if (docEl?.valueBindings?.[BUTTON_LABEL_PROP_PATH]?.kind === "blueprintValue") {
-        documentService.clearElementBlueprintValueBinding(elementId, BUTTON_LABEL_PROP_PATH);
-    }
+    // Typed over a key the project does not have - drawn as its name - the words become the button's
+    // own and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getButtonProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel },
+        {
+            ...(docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 
@@ -187,9 +192,11 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             }
             e.preventDefault();
             e.stopPropagation();
-            beginInlineTextEdit(stateService, surface.id, element.id);
+            if (editHost) {
+                beginOrExplainInlineTextEdit(editHost, surface.id, element.id);
+            }
         },
-        [element.id, isEditing, stateService, surface.id],
+        [editHost, element.id, isEditing, stateService, surface.id],
     );
 
     useLayoutEffect(() => {
@@ -283,13 +290,14 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     // Localized display label. At design time the source language's: the button's own label, or its
     // key's when it is read from one - the canvas shows what the game shows.
     const displayLabel = useLocalizedWidgetText({
+        site: BUTTON_SITE,
         elementId: element.id,
-        prop: "label",
         sourceText: p.label,
-        localizable: p.localizable,
         localizationKey: p.localizationKey,
-        resolveKeyAtDesignTime: true,
+        origin: uiTextRuntimeOriginOf(element),
+        unitId: uiTextRuntimeUnitOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayLabel, uiTextRuntimeOriginOf(element) === "bound");
     const showLabel = displayLabel.trim().length > 0;
 
     // The label's marks, on the one rule a text label's follow: runs are drawn only while they still

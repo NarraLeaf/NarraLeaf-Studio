@@ -25,6 +25,7 @@ export const dialogs = {
     createGroup: {
         title: "グループを作成",
         prompt: "{type}グループの名前を入力してください",
+        promptIn: "「{parent}」内のグループの名前を入力してください",
         placeholder: "グループ名を入力…",
         empty: "グループ名は空にできない",
     },
