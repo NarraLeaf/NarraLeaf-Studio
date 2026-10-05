@@ -1540,6 +1540,8 @@ export const lint = {
         failBuildOnWarning: "Warnings and errors",
         optionMaxChars: "Maximum width",
         optionCountMode: "Counting",
+        optionMaxMegabytes: "Largest file (MB)",
+        optionMaxCharacters: "Characters listed",
         // Short because they have to be: these are the options of a select in a sidebar panel,
         // inset under its rule, and a sentence-long label is one that gets ellipsed to nothing.
         // The pair carries the meaning - the unit is columns, and the question is what a wide

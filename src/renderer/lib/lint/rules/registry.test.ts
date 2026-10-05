@@ -190,6 +190,32 @@ describe("lint rule registry", () => {
         });
     }
 
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
+        it(`labels every rule option and every choice of one in ${locale}`, () => {
+            // The settings page renders an option's row from `lint.settings.option<Key>` and falls
+            // back to the bare key, so a missing label shows `maxMegabytes` to the author.
+            const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+            const missing: string[] = [];
+            for (const rule of LINT_RULES) {
+                for (const [key, spec] of Object.entries(rule.options ?? {})) {
+                    const label = `lint.settings.option${capitalize(key)}`;
+                    if (!keys.get(label)) {
+                        missing.push(label);
+                    }
+                    if (spec.kind === "enum") {
+                        for (const choice of spec.values) {
+                            const choiceKey = `lint.settings.${key}${capitalize(choice)}`;
+                            if (!keys.get(choiceKey)) {
+                                missing.push(choiceKey);
+                            }
+                        }
+                    }
+                }
+            }
+            expect(missing).toEqual([]);
+        });
+    }
+
     it("declares option specs only where they are called for", () => {
         const withOptions = LINT_RULES.filter(rule => rule.options).map(rule => rule.id);
         expect(withOptions).toEqual(["assets/oversized", "text/overlong", "typography/glyph-coverage"]);

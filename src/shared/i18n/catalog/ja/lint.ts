@@ -1435,6 +1435,8 @@ export const lint = {
         failBuildOnWarning: "警告とエラー",
         optionMaxChars: "最大幅",
         optionCountMode: "数え方",
+        optionMaxMegabytes: "1 ファイルの上限（MB）",
+        optionMaxCharacters: "個別に挙げる文字数",
         // 短いのは必然。サイドバーのパネルでルールの下に入れ子で並ぶセレクトの選択肢なので、
         // 一文の長さのラベルは省略されて何も残らない。単位は桁で、問いは全角文字を何桁と数えるか。
         countModeEastAsianWidth: "全角は 2 桁",

@@ -1286,6 +1286,8 @@ export const lint = {
         failBuildOnWarning: "警告及错误",
         optionMaxChars: "最大宽度",
         optionCountMode: "计数方式",
+        optionMaxMegabytes: "单个文件上限（MB）",
+        optionMaxCharacters: "逐个列出的字符数",
         countModeEastAsianWidth: "宽字符计 2 列",
         countModeCodePoints: "所有字符计 1 列",
     },
