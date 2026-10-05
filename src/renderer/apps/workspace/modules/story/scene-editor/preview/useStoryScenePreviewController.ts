@@ -26,10 +26,8 @@ import { resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
 import { resolveChosenOptionStop, resolveNextPreviewStop, type StoryPreviewStepOptions } from "./storyPreviewStep";
 import { STORY_CONSOLE_CHANNEL_ID } from "./storyPreviewConsole";
 import { needsRunningGame } from "@/lib/ui-editor/runtime/app/runtimeRefusals";
+import { RECOMPILE_DEBOUNCE_MS, storyPreviewRebuildDelay, type StoryPreviewRebuildInput } from "./storyPreviewRebuildSchedule";
 
-const RECOMPILE_DEBOUNCE_MS = 300;
-/** Pure row switches (same document, new target) rebuild sooner - they are the hot path. */
-const ROW_SWITCH_DEBOUNCE_MS = 150;
 /** Pre-posed state mounts within a few frames; anything longer means the marker never fired. */
 const STATE_SETTLE_TIMEOUT_MS = 5_000;
 const MAX_ISSUES = 20;
@@ -162,8 +160,8 @@ export function useStoryScenePreviewController(input: {
     const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const blobResolverRef = useRef<WorkspaceBlobUrlResolver | null>(null);
-    /** Last rebuild input; a change in target alone is a row switch and debounces shorter. */
-    const lastRunInputRef = useRef<{ document: StoryDocument; sceneId: string; targetId: string | null } | null>(null);
+    /** Last rebuild input; what changed since decides how long the rebuild waits. */
+    const lastRunInputRef = useRef<StoryPreviewRebuildInput | null>(null);
 
     const consoleService = useMemo(
         () => context?.services.get<ConsoleService>(Services.Console) ?? null,
@@ -685,25 +683,23 @@ export function useStoryScenePreviewController(input: {
             return;
         }
         const previousInput = lastRunInputRef.current;
-        const rowSwitchOnly = previousInput !== null
-            && document !== null && sceneId !== null
-            && previousInput.document === document
-            && previousInput.sceneId === sceneId
-            && previousInput.targetId !== resolvedTargetId;
-        if (document && sceneId) {
-            lastRunInputRef.current = { document, sceneId, targetId: resolvedTargetId };
+        const nextInput: StoryPreviewRebuildInput | null = document && sceneId
+            ? { document, sceneId, targetId: resolvedTargetId, gameUi: host.gameUi }
+            : null;
+        if (nextInput) {
+            lastRunInputRef.current = nextInput;
         }
         debounceTimerRef.current = setTimeout(() => {
             debounceTimerRef.current = null;
             void startRunRef.current();
-        }, rowSwitchOnly ? ROW_SWITCH_DEBOUNCE_MS : RECOMPILE_DEBOUNCE_MS);
+        }, nextInput ? storyPreviewRebuildDelay(previousInput, nextInput) : RECOMPILE_DEBOUNCE_MS);
         return () => {
             if (debounceTimerRef.current !== null) {
                 clearTimeout(debounceTimerRef.current);
                 debounceTimerRef.current = null;
             }
         };
-    }, [open, active, host.ready, document, sceneId, resolvedTargetId, disposeAllRuns, refreshStageLayers, setPhase]);
+    }, [open, active, host.ready, host.gameUi, document, sceneId, resolvedTargetId, disposeAllRuns, refreshStageLayers, setPhase]);
 
     // Full teardown on unmount.
     useEffect(() => () => {

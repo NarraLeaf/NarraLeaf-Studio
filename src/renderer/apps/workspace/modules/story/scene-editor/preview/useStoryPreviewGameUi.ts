@@ -51,6 +51,7 @@ import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaServ
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
 import type { TranslationKey } from "@shared/i18n";
+import { useGameUiEditBursts } from "./useGameUiEditBursts";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
 /**
@@ -80,6 +81,12 @@ export type StoryPreviewGame = {
 export type StoryPreviewGameUiHost = {
     /** False until the blueprint runtime core has mounted for the synthesized bundle. */
     ready: boolean;
+    /**
+     * The Game UI the preview draws, as an identity: it changes each time the Game UI has been
+     * rebuilt from newer documents and is ready to be drawn, and a preview showing the old one
+     * should rebuild. Null until the first one is ready.
+     */
+    gameUi: object | null;
     designSize: { width: number; height: number };
     characters: ReturnType<typeof mapCharacterStoreEntriesToSummaries>;
     blueprintDocument: DevModeBundle["ui"]["localBlueprints"] | undefined;
@@ -101,8 +108,9 @@ export type StoryPreviewGameUiHost = {
  * services, a blueprint runtime core (IPC-free), and per-session Game UI slot host options with
  * real LiveGame callbacks and explicit no-op stubs for navigation/saves/quit.
  *
- * The bundle snapshots the uidoc/blueprints when `enabled` flips on - Game UI edits made while the
- * preview is open apply the next time the preview reopens.
+ * The bundle is built from the uidoc and blueprints when `enabled` flips on, and built again after
+ * every edit to either while it stays on (see `GAME_UI_REFRESH_DEBOUNCE_MS`), so an author editing the
+ * dialogue box sees it change on the preview's stage.
  */
 export function useStoryPreviewGameUi(input: {
     context: WorkspaceContext | null;
@@ -186,7 +194,11 @@ export function useStoryPreviewGameUi(input: {
     const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
     resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
 
-    // Snapshot the uidoc/blueprints into a synthetic bundle when the preview opens.
+    const gameUiEdits = useGameUiEditBursts(context, enabled);
+
+    // Build the uidoc/blueprints into a synthetic bundle when the preview opens, and again after each
+    // settled burst of Game UI edits. A new revision is what makes the runtime core below start over
+    // on the new documents.
     const bundle = useMemo((): DevModeBundle | null => {
         if (!context || !enabled) {
             return null;
@@ -199,7 +211,7 @@ export function useStoryPreviewGameUi(input: {
         const registry = context.services.get<VariableRegistryService>(Services.VariableRegistry).getRegistry();
         return {
             bundleId: PREVIEW_BUNDLE_ID,
-            revision: 1,
+            revision: 1 + gameUiEdits,
             timestamp: new Date().toISOString(),
             ui: {
                 uidoc: uiDocumentService.getDocument(),
@@ -210,7 +222,7 @@ export function useStoryPreviewGameUi(input: {
                 saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),
             },
         };
-    }, [context, enabled]);
+    }, [context, enabled, gameUiEdits]);
 
     const handleDebugEvent = useCallback((event: BlueprintDebugEvent) => {
         if (event.type === "execution.error") {
@@ -472,6 +484,10 @@ export function useStoryPreviewGameUi(input: {
 
     return {
         ready: Boolean(bundle && core),
+        // A new core is published only once the author's scripts for the newest bundle have loaded,
+        // so a new core - not a new bundle - is the moment the preview can be rebuilt on the edited
+        // documents.
+        gameUi: core,
         designSize,
         characters,
         blueprintDocument,
