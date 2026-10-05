@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
 import type { UITextSource } from "@shared/types/ui-editor/textSource";
 import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldControlClass";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
@@ -29,7 +29,7 @@ export function TextSourceSegments({
     disabled?: boolean;
     /** Offered when the site takes a Blueprint Value; `unavailable` says why it cannot be chosen now. */
     blueprint?: { unavailable: string | null };
-}) {
+}): ReactElement {
     const { t } = useTranslation();
     return (
         // Words without icons: up to three worded segments have to share the inspector's column in
@@ -89,7 +89,7 @@ export type WordsSourceFieldProps = {
  * it; leaving a key writes the key's words as the words written directly. Either way, switching where
  * the words come from does not change what they say.
  */
-export function WordsSourceField({ value, onChange, multiline, disabled, draftResetKey }: WordsSourceFieldProps) {
+export function WordsSourceField({ value, onChange, multiline, disabled, draftResetKey }: WordsSourceFieldProps): ReactElement {
     const { t } = useTranslation();
     const keys = useSyncExternalStore(
         subscribeDesignTimeLocalizationKeys,
