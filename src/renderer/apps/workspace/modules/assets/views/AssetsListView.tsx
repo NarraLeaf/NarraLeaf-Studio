@@ -350,11 +350,16 @@ function CategoryRows({ category, rows, scrollElement }: {
      */
     const revealNonce = assetSetReveal?.nonce ?? null;
     const revealSetId = assetSetReveal?.setId ?? null;
+    const revealAssetId = assetSetReveal?.assetId ?? null;
     useEffect(() => {
-        if (revealNonce === null || !revealSetId) {
+        if (revealNonce === null || (!revealSetId && !revealAssetId)) {
             return;
         }
-        const index = rows.findIndex(row => row.kind === "set" && row.entry.set.id === revealSetId);
+        // A file is drawn as its own row, or - inside the set that answers with it - as that value's.
+        const index = revealSetId
+            ? rows.findIndex(row => row.kind === "set" && row.entry.set.id === revealSetId)
+            : rows.findIndex(row => (row.kind === "asset" && row.asset.id === revealAssetId)
+                || (row.kind === "setValue" && row.assetId === revealAssetId));
         if (index >= 0) {
             virtualizer.scrollToIndex(index, { align: "center" });
         }
@@ -812,10 +817,12 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     /** The set value this row answers, when it is drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers, assetSetReveal } = useAssetsPanelContext();
     const { t } = useTranslation();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
+    // The row a jump just landed on. The list scrolls it into view by index; this says which it is.
+    const revealed = assetSetReveal?.assetId === asset.id;
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
     // Who else has this record open in a live session, or null. Read from one subscription for the
@@ -831,9 +838,12 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     return (
         <div
             draggable={movable}
+            data-asset-row={asset.id}
+            data-revealed={revealed ? "" : undefined}
             data-tip={arriving === undefined ? undefined : t("assets.live.transferring", { percent: Math.round(arriving * 100) })}
             className={cn(
                 "flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill",
+                revealed && ASSET_SET_REVEAL_RING,
                 // The band the sweep draws is inside this row and under its text: positioned so it
                 // can be, isolated so "under" means under the row rather than under the panel.
                 arriving !== undefined && "relative isolate",

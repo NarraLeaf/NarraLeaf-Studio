@@ -1,4 +1,13 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
+import { cn } from "@/lib/utils/cn";
+
+/**
+ * The part of the open sub-page a jump asked for, while its mark lasts.
+ *
+ * Provided by the Project panel, read by the part that carries the matching {@link SettingsGroup}
+ * `part` id - which is the only thing a deep link into a sub-page needs from the page itself.
+ */
+export const ProjectPartRevealContext = createContext<string | null>(null);
 
 /**
  * One titled part of a project sub-page.
@@ -27,6 +36,7 @@ export function SettingsGroup({
     description,
     trailing,
     helpTopic,
+    part,
     children,
 }: {
     title: string;
@@ -36,12 +46,24 @@ export function SettingsGroup({
     trailing?: ReactNode;
     /** Tags the whole part for `F1`. */
     helpTopic?: string;
+    /**
+     * The part's address for a deep link (`projectPage` jump targets): a part with one is scrolled
+     * into view and marked when a jump names it.
+     */
+    part?: string;
     children: ReactNode;
 }) {
+    const revealedPart = useContext(ProjectPartRevealContext);
+    const revealed = part !== undefined && revealedPart === part;
     return (
         <section
-            className="grid gap-2.5 border-t border-edge pt-3 first:border-t-0 first:pt-0 [&>*]:min-w-0"
+            className={cn(
+                "grid gap-2.5 border-t border-edge pt-3 first:border-t-0 first:pt-0 [&>*]:min-w-0",
+                revealed && "rounded-md ring-1 ring-primary",
+            )}
             data-help-topic={helpTopic}
+            data-project-part={part}
+            data-revealed={revealed ? "" : undefined}
         >
             <div className="group/help min-w-0">
                 <div className="flex min-w-0 items-center justify-between gap-2">

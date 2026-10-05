@@ -1,5 +1,7 @@
 /**
  * "Show me that asset set" — the half of a jump to a set that making the panel visible does not cover.
+ * Also "show me that file", for the files no preview tab opens: the row in the library is then the
+ * place a jump lands, and it has the same distance to cover.
  *
  * A window event rather than a call, for the reason `searchFocusRequest` gives about the caret: the
  * two sides never meet. The jump is dispatched from wherever the author was reading — a story row, a
@@ -16,12 +18,22 @@
  */
 export const ASSET_SET_REVEAL_EVENT = "narraleaf-studio:asset-set-reveal";
 
+/** What a reveal is for: a set's row, or a file's. */
+export type AssetRevealSubject = { kind: "set"; id: string } | { kind: "asset"; id: string };
+
 export type AssetSetRevealRequest = {
     panelId: string;
-    setId: string;
+    subject: AssetRevealSubject;
 };
 
 let pending: AssetSetRevealRequest | null = null;
+
+function dispatchReveal(request: AssetSetRevealRequest): void {
+    pending = request;
+    requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent<AssetSetRevealRequest>(ASSET_SET_REVEAL_EVENT, { detail: request }));
+    });
+}
 
 /**
  * Ask an assets panel to put a set on screen. Call after making that panel visible.
@@ -31,20 +43,20 @@ let pending: AssetSetRevealRequest | null = null;
  * can open a folder.
  */
 export function requestAssetSetReveal(panelId: string, setId: string): void {
-    pending = { panelId, setId };
-    requestAnimationFrame(() => {
-        window.dispatchEvent(new CustomEvent<AssetSetRevealRequest>(ASSET_SET_REVEAL_EVENT, {
-            detail: { panelId, setId },
-        }));
-    });
+    dispatchReveal({ panelId, subject: { kind: "set", id: setId } });
 }
 
-/** The set this panel was asked to show, once, for it to check when it mounts. */
-export function consumeAssetSetReveal(panelId: string): string | null {
+/** Ask an assets panel to put one file's row on screen, selected. Call after making it visible. */
+export function requestAssetReveal(panelId: string, assetId: string): void {
+    dispatchReveal({ panelId, subject: { kind: "asset", id: assetId } });
+}
+
+/** What this panel was asked to show, once, for it to check when it mounts. */
+export function consumeAssetSetReveal(panelId: string): AssetRevealSubject | null {
     if (!pending || pending.panelId !== panelId) {
         return null;
     }
-    const { setId } = pending;
+    const { subject } = pending;
     pending = null;
-    return setId;
+    return subject;
 }

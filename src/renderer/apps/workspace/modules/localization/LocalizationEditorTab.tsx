@@ -29,6 +29,7 @@ import { useWorkspace } from "../../context";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
 import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
+import { useTableRowReveal } from "@/apps/workspace/components/ui/useTableRowReveal";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -56,7 +57,7 @@ import { listLocalizationKeyUses } from "@/lib/workspace/services/localization/l
 import { removeLocalizationKeyKeepingWords } from "@/lib/workspace/services/localization/localizationKeyRemoval";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
-import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
+import { characterTranslationUnitId, isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
@@ -620,6 +621,32 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
     }, [findActiveIndex, virtualizer]);
 
     /**
+     * A deep link names a row; the table shows one source at a time, so the first half of landing on
+     * it is standing in the source it is listed under. A character's name heads every story's rows,
+     * so a table already showing a story stays on it.
+     */
+    const revealRequest = payload?.reveal;
+    const revealToken = revealRequest?.token ?? null;
+    useEffect(() => {
+        if (!revealRequest) {
+            return;
+        }
+        if (revealRequest.storyId) {
+            setSourceValue(revealRequest.storyId);
+            return;
+        }
+        if (revealRequest.unitId.startsWith(characterTranslationUnitId(""))) {
+            setSourceValue(current => (current && current !== UI_SOURCE_VALUE
+                ? current
+                : storyService?.getDefaultStoryId() ?? storyService?.listStories()[0]?.id ?? current));
+            return;
+        }
+        setSourceValue(UI_SOURCE_VALUE);
+        // The token is the request; the rest of the payload is read from the render it arrived in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealToken]);
+
+    /**
      * A filter change is a different page, so the scroll position from the old one does not survive it.
      *
      * The list shrinks under a scroller whose retained `scrollTop` can then sit entirely below the
@@ -632,6 +659,32 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         }
         setFocusedItemIndex(null);
     }, [sourceValue, mode, filter, reviewFilter]);
+
+    /**
+     * The second half of a deep link: the row brought on screen and marked, once it has been read and
+     * whatever filter was hiding it has been cleared. After the scroll reset above, so a reveal that
+     * changed the source or the filter is not scrolled back to the top in the same render.
+     */
+    const revealIndexOf = useCallback(
+        (unitId: string) => flatItems.findIndex(entry => entry.kind === "row" && entry.row.unitId === unitId),
+        [flatItems],
+    );
+    const revealInTable = useCallback((unitId: string) => rows.some(row => row.unitId === unitId), [rows]);
+    const revealShowAll = useCallback(() => {
+        setFilter("all");
+        setReviewFilter("all");
+    }, []);
+    const revealScrollTo = useCallback(
+        (index: number) => virtualizer.scrollToIndex(index, { align: "center" }),
+        [virtualizer],
+    );
+    const { markedUnitId } = useTableRowReveal({
+        request: revealRequest,
+        indexOf: revealIndexOf,
+        inTable: revealInTable,
+        showAll: revealShowAll,
+        scrollToIndex: revealScrollTo,
+    });
 
     /** Which windowed item the caret is in, read off the wrapper the virtualiser already indexes. */
     const handleFocusCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
@@ -967,11 +1020,14 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                     key={item.key}
                                     ref={virtualizer.measureElement}
                                     data-index={item.index}
+                                    data-revealed={row && row.unitId === markedUnitId ? "" : undefined}
                                     className={cn(
                                         "absolute left-0 top-0 w-full",
                                         // The row the find bar is on. Inset, because a ring drawn
                                         // outside a windowed item overlaps the one above it.
                                         find.activeIndex === item.index && "ring-1 ring-inset ring-primary/60",
+                                        // The row a deep link landed on, for as long as the mark lasts.
+                                        row && row.unitId === markedUnitId && "ring-1 ring-inset ring-primary",
                                     )}
                                     style={{ transform: `translateY(${item.start}px)` }}
                                 >
