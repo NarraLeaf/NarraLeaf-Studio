@@ -76,7 +76,18 @@ import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
 import { HistoryService } from "../history/HistoryService";
+import type { HistoryLabel } from "../history/historyModel";
 import { HistoryEntryTag, projectHistoryScope } from "../history/historyScopes";
+import type { UIGraphService } from "./UIGraphService";
+import {
+    captureUILibraryRecords,
+    insertUILibraryRecords,
+    isEmptyUILibraryRecords,
+    removeUILibraryBlueprints,
+    removeUILibraryRecords,
+    restoreUILibraryBlueprints,
+    type UILibraryRecords,
+} from "./uiLibraryRecords";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -725,6 +736,23 @@ export function resolveImportedSurfacePlacement(
         : { kind: "appSurface" };
 }
 
+/**
+ * What the Edit menu calls the step an import leaves: the page it added, or how many, and the
+ * definitions only when no page came - a template's components arrive to serve its pages.
+ */
+function describeImportStep(surfaces: readonly UISurface[], components: readonly UIComponentDefinition[]): HistoryLabel {
+    if (surfaces.length === 1) {
+        return { key: "uiEditor.history.importSurface" as TranslationKey, params: { name: surfaces[0].name } };
+    }
+    if (surfaces.length > 1) {
+        return { key: "uiEditor.history.importSurfaces" as TranslationKey, params: { count: surfaces.length } };
+    }
+    if (components.length === 1) {
+        return { key: "uiEditor.history.importComponent" as TranslationKey, params: { name: components[0].name } };
+    }
+    return { key: "uiEditor.history.importComponents" as TranslationKey, params: { count: components.length } };
+}
+
 /** One template's fetched documents plus a resolved placement, ready to import.
  * `assetIdMap` maps the template's original asset ids to the ids they were
  * ingested under in this project; empty/undefined for asset-free templates. */
@@ -745,6 +773,13 @@ export type ImportTemplateBundleInput = {
      * take those translations.
      */
     translations?: CarriedTranslations;
+    /**
+     * Whether the import is one step on the project's undo stack, which takes back every page and
+     * definition it added. On unless a caller's own flow goes on to change more than the import did
+     * - the starter title page also moves the entry page and removes the blank one, and a step that
+     * took back only its middle would leave the project with neither page.
+     */
+    history?: boolean;
 };
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
@@ -1984,6 +2019,116 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return { surfaceId: buildUIComponentEditorSurfaceId(componentId), mergeKey };
     }
 
+    private getGraphService(): UIGraphService | null {
+        try {
+            return this.getContext().services.get<UIGraphService>(Services.UIGraph);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * One step on the project's undo stack, for an operation on the library as a whole - adding,
+     * copying, deleting or importing pages and definitions.
+     *
+     * The project's stack rather than any editor's, for the reason {@link reorderSurfaces} gives:
+     * these are made from the rail, and that is the stack Ctrl+Z and the Edit menu reach from there
+     * (`resolveWorkspaceUndoScope`). A definition's own stack holds edits *inside* it, and a deleted
+     * definition has no tab to press Ctrl+Z in.
+     *
+     * Each step is a command over whole records, not a snapshot of the library: whichever direction
+     * runs reads the records as they stand at that moment and writes them back exactly, and nothing
+     * else in the library is touched. Tagged, so a live session drops these steps with the interface
+     * editors' stacks (`LiveSessionService`): taking back an addition after a session would remove
+     * whatever the room built inside it.
+     */
+    private pushLibraryStep(label: HistoryLabel, step: { undo: () => void; redo: () => void }): void {
+        let history: HistoryService;
+        try {
+            history = this.getContext().services.get<HistoryService>(Services.History);
+        } catch {
+            return;
+        }
+        history.pushCommand(projectHistoryScope(), { label, ...step, tag: HistoryEntryTag.UILibrary });
+    }
+
+    /**
+     * Take pages and definitions out of the project, and return them as they stood.
+     *
+     * Empty when nothing left this copy of the document - ids it does not hold, or an operation sink
+     * that took the gesture: inside a live session the removal arrives as an effect later, the
+     * lifecycle sweep collects the blueprints then, and undo is the session's.
+     */
+    private takeLibraryRecords(ids: { surfaceIds?: readonly string[]; componentIds?: readonly string[] }): UILibraryRecords {
+        const graph = this.getGraphService();
+        const records = captureUILibraryRecords(this.getDocument(), graph?.getDocument().blueprintDocument ?? null, ids);
+        if (isEmptyUILibraryRecords(records)) {
+            return records;
+        }
+        this.mutateDocument(document => removeUILibraryRecords(document, records), { history: false });
+        const document = this.getDocument();
+        const stillHere =
+            records.surfaces.some(record => document.surfaces.some(surface => surface.id === record.surface.id))
+            || records.components.some(record => (document.components ?? []).some(component => component.id === record.component.id));
+        if (stillHere) {
+            return { surfaces: [], components: [] };
+        }
+        // The sweep that followed the write has already collected them where it is wired; this makes
+        // the two documents agree where it is not, and writes nothing when there is nothing left.
+        const left = [...records.surfaces, ...records.components].some(record =>
+            Object.keys(record.blueprint.ownerRecords).some(key => graph?.getDocument().blueprintDocument.ownerRecords[key]));
+        if (graph && left) {
+            graph.applyGraphMutation(next => {
+                removeUILibraryBlueprints(next.blueprintDocument, records);
+                assertValidBlueprintDocument(next.blueprintDocument);
+            });
+        }
+        return records;
+    }
+
+    /**
+     * Put records {@link takeLibraryRecords} returned back where they stood.
+     *
+     * Blueprints first: the sweep that follows the document write gives a widget with no blueprint a
+     * fresh, empty one, and it must find each record's own already in place.
+     */
+    private putLibraryRecords(records: UILibraryRecords): void {
+        if (isEmptyUILibraryRecords(records)) {
+            return;
+        }
+        this.getGraphService()?.applyGraphMutation(document => {
+            restoreUILibraryBlueprints(document.blueprintDocument, records);
+            assertValidBlueprintDocument(document.blueprintDocument);
+        });
+        this.mutateDocument(document => insertUILibraryRecords(document, records), { history: false });
+    }
+
+    /**
+     * Leave the step that takes back pages and definitions an operation just added.
+     *
+     * Nothing is recorded when none of them is in this copy of the document, which is what an
+     * operation sink taking the gesture looks like (the reasoning {@link reorderSurfaces} gives).
+     */
+    private recordLibraryAddition(
+        ids: { surfaceIds: readonly string[]; componentIds: readonly string[] },
+        label: HistoryLabel,
+    ): void {
+        const document = this.getDocument();
+        const arrived =
+            ids.surfaceIds.some(id => document.surfaces.some(surface => surface.id === id))
+            || ids.componentIds.some(id => (document.components ?? []).some(component => component.id === id));
+        if (!arrived) {
+            return;
+        }
+        let held: UILibraryRecords = { surfaces: [], components: [] };
+        this.pushLibraryStep(label, {
+            undo: () => {
+                held = this.takeLibraryRecords(ids);
+            },
+            redo: () => this.putLibraryRecords(held),
+        });
+    }
+
     private getElementSurfaceId(elementId: string): string | null {
         const document = this.getDocument();
         let currentId: string | null = elementId;
@@ -2976,6 +3121,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             input.translations,
             mapCopiedUIComponentDefaultUnits(sourceDocument.components ?? [], componentIdMap),
         );
+        if (input.history !== false) {
+            // One step for everything the bundle added: its pages and its definitions, with their
+            // blueprints. Files the caller brought into the asset library first, and the translations
+            // filed above, stay in the project - undoing leaves them unused, and redoing finds them.
+            this.recordLibraryAddition(
+                {
+                    surfaceIds: importedSurfaces.map(surface => surface.id),
+                    componentIds: importedComponents.map(component => component.id),
+                },
+                describeImportStep(importedSurfaces, importedComponents),
+            );
+        }
         return { importedSurfaces, skippedSlots, importedComponents };
     }
 
@@ -3408,9 +3565,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             document.components = [...(document.components ?? []), component];
         }, { history: false });
+        this.recordLibraryAddition(
+            { surfaceIds: [], componentIds: [component.id] },
+            { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+        );
         return component;
     }
 
+    /**
+     * A new definition made of copies of elements on a page, with the logic they carry.
+     *
+     * The page is not changed, so the step that takes this back is the library's - the project's
+     * stack, the one {@link createEmptyComponent} uses - rather than the page's.
+     */
     public createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null {
         const document = this.getDocument();
         const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
@@ -3601,6 +3768,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
             });
         }
+        this.recordLibraryAddition(
+            { surfaceIds: [], componentIds: [component.id] },
+            { key: "uiEditor.history.createComponent" as TranslationKey, params: { name: component.name } },
+        );
         return component;
     }
 
@@ -3718,17 +3889,67 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Remove definitions from the library, as one step on the project's undo stack.
+     *
+     * Placements of them on pages are left as they are, and draw as missing until the definition is
+     * back or they are replaced. Undo puts each definition back at its place in the library with its
+     * widgets' blueprints and the item shapes its lists name, and every placement draws it again.
+     */
     public deleteComponents(componentIds: string[]): void {
-        const ids = new Set(componentIds);
-        if (ids.size === 0) {
+        const ids = [...new Set(componentIds)];
+        if (ids.length === 0) {
             return;
         }
-        this.mutateDocument(document => {
-            document.components = (document.components ?? []).filter(component => !ids.has(component.id));
-        }, { history: false });
+        let held = this.takeLibraryRecords({ componentIds: ids });
+        if (isEmptyUILibraryRecords(held)) {
+            return;
+        }
+        const label: HistoryLabel = held.components.length === 1
+            ? { key: "uiEditor.history.deleteComponent" as TranslationKey, params: { name: held.components[0].component.name } }
+            : { key: "uiEditor.history.deleteComponents" as TranslationKey, params: { count: held.components.length } };
+        this.pushLibraryStep(label, {
+            undo: () => this.putLibraryRecords(held),
+            redo: () => {
+                held = this.takeLibraryRecords({ componentIds: ids });
+            },
+        });
     }
 
+    /** One copy of a definition; see {@link duplicateComponents}. */
     public duplicateComponent(componentId: string): UIComponentDefinition | null {
+        return this.duplicateComponents([componentId])[0] ?? null;
+    }
+
+    /**
+     * A copy of each definition, added to the end of the library, as one step on the project's undo
+     * stack. The copies' translations are written in the background and are not part of the step:
+     * undoing leaves them unused, and redoing finds them again (`carryCopiedTranslations`).
+     */
+    public duplicateComponents(componentIds: readonly string[]): UIComponentDefinition[] {
+        const copies: UIComponentDefinition[] = [];
+        // The step is named after what was copied, not after the copy: "duplicate component Save slot".
+        const sourceNames: string[] = [];
+        for (const componentId of componentIds) {
+            const name = this.getComponent(componentId)?.name;
+            const copy = this.copyComponent(componentId);
+            if (copy && name !== undefined) {
+                copies.push(copy);
+                sourceNames.push(name);
+            }
+        }
+        if (copies.length > 0) {
+            this.recordLibraryAddition(
+                { surfaceIds: [], componentIds: copies.map(copy => copy.id) },
+                copies.length === 1
+                    ? { key: "uiEditor.history.duplicateComponent" as TranslationKey, params: { name: sourceNames[0] } }
+                    : { key: "uiEditor.history.duplicateComponents" as TranslationKey, params: { count: copies.length } },
+            );
+        }
+        return copies;
+    }
+
+    private copyComponent(componentId: string): UIComponentDefinition | null {
         const source = this.getComponent(componentId);
         if (!source) {
             return null;

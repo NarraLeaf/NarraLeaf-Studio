@@ -68,6 +68,15 @@ export const uiEditor = {
     history: {
         moveSurface: "移动界面 {name}",
         setEntryPage: "设置入口页面 {name}",
+        createComponent: "新建组件 {name}",
+        duplicateComponent: "创建组件 {name} 的副本",
+        duplicateComponents: "创建 {count} 个组件的副本",
+        deleteComponent: "删除组件 {name}",
+        deleteComponents: "删除 {count} 个组件",
+        importSurface: "添加界面 {name}",
+        importSurfaces: "添加 {count} 个界面",
+        importComponent: "添加组件 {name}",
+        importComponents: "添加 {count} 个组件",
     },
     inputActions: {
         title: "输入意图",

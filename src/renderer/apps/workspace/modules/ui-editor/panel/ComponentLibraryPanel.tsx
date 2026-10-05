@@ -256,13 +256,9 @@ export function ComponentLibraryPanel({
         }
     }, [documentService, inputDialog]);
 
+    // Every ticked card in one call, so copying a selection is one undo step rather than one a card.
     const handleDuplicate = useCallback((componentIds: string[]) => {
-        if (!documentService) {
-            return;
-        }
-        for (const componentId of componentIds) {
-            documentService.duplicateComponent(componentId);
-        }
+        documentService?.duplicateComponents(componentIds);
     }, [documentService]);
 
     const handleDelete = useCallback(async (componentIds: string[]) => {
