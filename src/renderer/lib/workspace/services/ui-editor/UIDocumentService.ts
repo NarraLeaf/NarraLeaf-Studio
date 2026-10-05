@@ -1395,6 +1395,39 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * {@link setListItemStructFields} for a list inside a component definition, one step in the
+     * definition's own history.
+     *
+     * The library's rules are the document's, not the page's: a shape another list names - on a page
+     * or in any definition - is forked rather than reshaped (`applyUIStructFieldsForOwner` walks the
+     * definitions too), and the pruning that follows counts what definitions name.
+     */
+    public setComponentListItemStructFields(componentId: string, elementId: string, fields: readonly UIStructField[]): void {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const currentStructId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+            const applied = applyUIStructFieldsForOwner({
+                document,
+                ownerElementId: elementId,
+                currentStructId: typeof currentStructId === "string" ? currentStructId : null,
+                fields,
+                generateId: () => uuidService.generate(),
+            });
+            element.props = {
+                ...(element.props ?? {}),
+                itemStructId: applied.structId,
+            };
+            component.updatedAt = new Date().toISOString();
+            document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+        }, { history: this.componentHistory(componentId) });
+    }
+
     /** What the gestures of this project mean, keyed by id. */
     public getInputActions(): Record<string, UIInputActionDef> {
         return this.getDocument().actions ?? {};
