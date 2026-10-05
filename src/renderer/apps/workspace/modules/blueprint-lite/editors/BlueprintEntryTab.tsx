@@ -49,7 +49,15 @@ import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemCont
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
-import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE,
+    BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    analyzeBlueprintStructTypes,
+    buildBlueprintStructTypeContext,
+    pinBlueprintFieldReaderStruct,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphStructTypeInference";
 import {
     BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
     listBlueprintInputActionOptions,
@@ -124,8 +132,12 @@ import type {
     BlueprintMagicElementRefPaletteEntry,
     BlueprintNodeEditorCatalogEntry,
 } from "@/lib/ui-editor/blueprint-nodes/types";
-import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN,
+    blueprintPinLiteralOptionsSource,
+} from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_PARAM_FIELD,
     BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
@@ -139,6 +151,7 @@ import {
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import {
@@ -706,6 +719,13 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         anchorElementId(bp.owner) !== null && payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
+    /** The shapes this graph's pins are typed with: the document's lists, and the row in scope. */
+    const structTypeContext = useMemo(
+        () => buildBlueprintStructTypeContext({ uiDocument: blueprintDocumentService.getDocument(), widgetElement }),
+        // `uiDocumentRevision` stands in for the document read through the service.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [blueprintDocumentService, uiDocumentRevision, widgetElement],
+    );
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
         return t ? widgetModuleRegistry.get(t)?.logicApi?.events : undefined;
@@ -1143,6 +1163,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.preset) {
+                node.params = { ...(node.params ?? {}), ...entry.preset.params };
+            }
             if (entry.magicElementRef) {
                 node.params = {
                     ...(node.params ?? {}),
@@ -1235,6 +1258,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.preset) {
+                node.params = { ...(node.params ?? {}), ...entry.preset.params };
+            }
             if (entry.magicElementRef) {
                 node.params = {
                     ...(node.params ?? {}),
@@ -1262,6 +1288,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                               targetHandle: connect.existingHandleId,
                           };
                 draft.edges = applyBlueprintIrConnection(draft, wiring);
+                pinBlueprintFieldReaderStruct(draft, wiring, structTypeContext);
                 if (entry.magicElementRef) {
                     draft.edges = applyBlueprintIrConnection(draft, {
                         source: entry.magicElementRef.sourceNodeId,
@@ -1278,7 +1305,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             return id;
         },
-        [editor.graphView, localBp, payload.blueprintId, uuid],
+        [editor.graphView, localBp, payload.blueprintId, structTypeContext, uuid],
     );
 
     const onBindElementLiteral = useCallback(
@@ -1812,6 +1839,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
 
+        // The fields each struct-typed node can name, from the same pass the canvas types its pins with.
+        const structTypes = analyzeBlueprintStructTypes(activeIr, structTypeContext);
+
         /**
          * Which list one field picker is asking about.
          *
@@ -1846,6 +1876,31 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         unnamedLabel: t("blueprint.options.unnamedInputAction"),
                         missingLabel: () => t("blueprint.options.missingInputAction"),
                     }),
+                };
+                continue;
+            }
+            if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+                const picked = String(node.params?.[BLUEPRINT_NODE_PARAM_FIELD] ?? "").trim();
+                const options: BlueprintInspectorParamSelectOption[] = (structTypes.get(node.id)?.struct?.fields ?? []).map(field => ({
+                    value: field.id,
+                    label: uiStructFieldLabel(field),
+                }));
+                // The field this node names and its shape no longer has. Kept in the list for the
+                // reason a deleted character is: an empty picker reads as never having been set.
+                if (picked && !options.some(option => option.value === picked)) {
+                    options.push({ value: picked, label: t("blueprint.options.missingField", { field: picked }) });
+                }
+                out[node.id] = { [BLUEPRINT_STRUCT_FIELD_OPTIONS_SOURCE]: options };
+                continue;
+            }
+            const keyPin = def?.elementTypeFlow?.keyPin;
+            const keyedStruct = keyPin ? structTypes.get(node.id)?.struct : null;
+            if (keyPin && keyedStruct) {
+                out[node.id] = {
+                    [blueprintPinLiteralOptionsSource(keyPin)]: keyedStruct.fields.map(field => ({
+                        value: field.key,
+                        label: uiStructFieldLabel(field),
+                    })),
                 };
                 continue;
             }
@@ -1911,6 +1966,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.graphView,
         ir,
         revision,
+        structTypeContext,
         t,
         uiDocumentRevision,
         widgetElement,
@@ -2350,6 +2406,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
                         onCreateGroupFrame={onCreateGroupFrame}
+                        structTypeContext={structTypeContext}
                     />
                 </div>
             </div>

@@ -14,9 +14,12 @@ import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/B
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
+    blueprintPinLiteralOptionsSource,
     type BlueprintInspectorParamDef,
     type BlueprintInspectorParamSelectOption,
 } from "@/lib/ui-editor/blueprint-nodes/types";
+import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import { formatBlueprintValueTypeLabel } from "@/lib/ui-editor/blueprint-nodes/structTypeLabels";
 import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
@@ -38,6 +41,7 @@ import {
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
     normalizeBlueprintKeyboardEventKeyName,
+    BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
@@ -506,7 +510,7 @@ function pinLabelOnly(pin: CatalogPin, t: UseTranslation["t"]): string {
 function pinCaption(pin: CatalogPin, semantic: "exec" | "data", t: UseTranslation["t"]): string {
     const name = pinLabelOnly(pin, t);
     if (semantic === "data" && pin.valueType && pin.valueType !== "any") {
-        return `${name} · ${pin.valueType}`;
+        return `${name} · ${formatBlueprintValueTypeLabel(pin.valueType, t)}`;
     }
     return name;
 }
@@ -654,12 +658,15 @@ function PinInlineLiteralInput({
     params,
     onPatchNodeParam,
     className,
+    options,
 }: {
     pin: CatalogPin;
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
     className?: string;
+    /** The values this text pin names one of, when they are known: drawn as a picker of them. */
+    options?: readonly BlueprintInspectorParamSelectOption[];
 }) {
     const vt = pin.valueType;
     const raw = pin.id in params ? params[pin.id] : undefined;
@@ -682,6 +689,32 @@ function PinInlineLiteralInput({
 
     if (vt === "boolean") {
         return <PinInlineBooleanSelect pin={pin} nodeId={nodeId} raw={raw} onPatchNodeParam={onPatchNodeParam} />;
+    }
+
+    if (vt === "string" && options?.length) {
+        const current = raw !== undefined && raw !== null ? String(raw) : "";
+        // A value the set does not hold stays on the list, so the picker shows what is stored rather
+        // than falling back to blank; the node's diagnostic says why it matches nothing.
+        const listed = current && !options.some(option => option.value === current)
+            ? [...options, { value: current, label: current }]
+            : options;
+        return (
+            <div
+                className="nodrag min-w-0 flex-1"
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
+            >
+                <Select
+                    size="sm"
+                    fullWidth
+                    options={listed.map(option => ({ value: String(option.value), label: option.label }))}
+                    value={current}
+                    onChange={value => onPatchNodeParam(nodeId, pin.id, value || undefined)}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            </div>
+        );
     }
 
     if (vt === "string") {
@@ -774,6 +807,8 @@ function InputPinRow({
     dynamicTypeParamKey,
     dynamicTypeValues,
     dynamicTypeOptions,
+    literalOptions,
+    readsRow,
 }: {
     pin: CatalogPin;
     semantic: "exec" | "data";
@@ -789,8 +824,15 @@ function InputPinRow({
     dynamicTypeParamKey?: string;
     dynamicTypeValues?: Record<string, string>;
     dynamicTypeOptions?: readonly string[];
+    /** See `PinInlineLiteralInput`'s `options`. */
+    literalOptions?: readonly BlueprintInspectorParamSelectOption[];
+    /** The pin is unwired and the node reads the list row in its place; said where the type would be. */
+    readsRow?: boolean;
 }) {
     const { t } = useTranslation();
+    const caption = readsRow
+        ? `${pinLabelOnly(pin, t)} · ${t("blueprint.pin.readsRow")}`
+        : pinCaption(pin, semantic, t);
     const typeEditor =
         removable && dynamicTypeParamKey && dynamicTypeOptions?.length && onPatchNodeParam ? (
             <DynamicPinTypeSelect
@@ -878,6 +920,7 @@ function InputPinRow({
                         params={params}
                         onPatchNodeParam={onPatchNodeParam}
                         className={`${CARD_INPUT} min-h-[20px] min-w-0 flex-1 py-0.5`}
+                        options={literalOptions}
                     />
                     <Button
                         type="button"
@@ -914,9 +957,9 @@ function InputPinRow({
         ) : (
             <span
                 className={`min-w-0 shrink truncate text-2xs leading-tight ${labelClass}`}
-                data-tip={pinCaption(pin, semantic, t)}
+                data-tip={caption}
             >
-                {pinCaption(pin, semantic, t)}
+                {caption}
             </span>
         );
     const pinRowIdentity = { [BLUEPRINT_PIN_ATTRIBUTE]: pin.id, [BLUEPRINT_PIN_SIDE_ATTRIBUTE]: "input" };
@@ -2738,6 +2781,12 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 dynamicTypeParamKey={catalog.dynamicInputPinTypeParamKey}
                 dynamicTypeValues={dynamicTypeValues}
                 dynamicTypeOptions={catalog.dynamicInputPinTypeOptions}
+                literalOptions={dynamicSelectOptions?.[blueprintPinLiteralOptionsSource(pin.id)]}
+                readsRow={
+                    pin.id === BLUEPRINT_FIELD_READER_INPUT_PIN &&
+                    !wired.has(pin.id) &&
+                    params[BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW] === true
+                }
             />
         )),
         ...(showAddInInputColumn ? [addPinButton] : []),
