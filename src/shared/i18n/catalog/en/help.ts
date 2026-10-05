@@ -177,6 +177,9 @@ export const help = {
                 + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
                 + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
                 + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- In picture-in-picture, the live preview stays on screen over the other editors and shows the scene "
+                + "of the scene editor used last.\n"
+                + "- Edits to the Game UI appear in the live preview as they are made.\n"
                 + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
