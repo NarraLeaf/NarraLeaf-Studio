@@ -5717,7 +5717,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     dialogueAdvance: dialogueAdvances,
                 };
             },
-            onError: err => host.log("error", normalizeError(err)),
+            onError: (err: unknown) => host.log("error", normalizeError(err)),
         };
         const stopKeys = listenForGameKeys(window, dispatch);
         const stopPads = listenForGamepads(dispatch);
