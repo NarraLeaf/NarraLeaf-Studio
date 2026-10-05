@@ -20,6 +20,61 @@ describe("WidgetRuntimeStateStore", () => {
         expect(store.getSnapshot().hoverTargetId).toBe("container");
     });
 
+    it("hovers exactly the drawings around what is now under the pointer, in one announcement", () => {
+        const store = new WidgetRuntimeStateStore();
+        const page = { id: "page" } as unknown as Node;
+        const button = { id: "button" } as unknown as Node;
+        const art = { id: "art" } as unknown as Node;
+        store.registerPointerTarget("container", node => node === button || node === art);
+        store.registerPointerTarget("button", node => node === button);
+        store.registerPointerTarget("art", node => node === art);
+        store.setHoverTarget("container");
+        store.setHoverTarget("button");
+        let announcements = 0;
+        store.subscribe(() => {
+            announcements += 1;
+        });
+
+        store.retargetHover(art);
+
+        expect([...store.getSnapshot().hoverTargetIds].sort()).toEqual(["art", "container"]);
+        expect(announcements).toBe(1);
+
+        store.retargetHover(art);
+        expect(announcements).toBe(1);
+
+        store.retargetHover(page);
+        expect(store.getSnapshot().hoverTargetIds.size).toBe(0);
+
+        store.retargetHover(button);
+        store.retargetHover(null);
+        expect(store.getSnapshot().hoverTargetIds.size).toBe(0);
+    });
+
+    it("leaves hover alone for elements nobody has said they draw", () => {
+        const store = new WidgetRuntimeStateStore();
+        store.setHoverTarget("written-elsewhere");
+
+        store.retargetHover(null);
+
+        expect(store.getSignalsForElement("written-elsewhere", false).hovered).toBe(true);
+    });
+
+    it("counts an element drawn twice as under the pointer while either drawing is", () => {
+        const store = new WidgetRuntimeStateStore();
+        const first = { id: "first" } as unknown as Node;
+        const second = { id: "second" } as unknown as Node;
+        store.registerPointerTarget("row", node => node === first);
+        const releaseSecond = store.registerPointerTarget("row", node => node === second);
+
+        store.retargetHover(second);
+        expect(store.getSignalsForElement("row", false).hovered).toBe(true);
+
+        releaseSecond();
+        store.retargetHover(second);
+        expect(store.getSignalsForElement("row", false).hovered).toBe(false);
+    });
+
     it("notifies dedicated runtime patch subscribers without changing widget interaction state", () => {
         const store = new WidgetRuntimeStateStore();
         let calls = 0;

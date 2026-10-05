@@ -6,6 +6,7 @@ import { Share2, Unlink } from "lucide-react";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
+import { useHoverFollowsCanvas } from "./useHoverFollowsCanvas";
 import { useTranslation } from "@/lib/i18n";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -318,6 +319,8 @@ export function UIEditorInteractionLayer({
             root.removeEventListener("focusout", focusOut, true);
         };
     }, [containerRef, widgetRuntimeStore]);
+
+    useHoverFollowsCanvas(containerRef, widgetRuntimeStore, viewport, documentRevision);
 
     // Resolve DOM nodes after commit: querySelector during render cannot see widgets inserted in the same commit.
     const [selectedTargets, setSelectedTargets] = useState<HTMLElement[]>([]);
