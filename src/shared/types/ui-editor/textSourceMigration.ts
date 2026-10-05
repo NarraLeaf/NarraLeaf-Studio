@@ -35,7 +35,7 @@ import { localizationKeyUnitId } from "../localization";
 import { getUIComponentLink, type UIDocument, type UIElement } from "./document";
 import { findUIElementSurfaceId } from "./frame";
 import { normalizeUITextRuns, resolveUITextRuns } from "./textRuns";
-import { readUITextSite, uiTextSiteOf, uiTextUnitId, type UITextSite } from "./textSource";
+import { readUITextSite, uiTextSiteOf, uiTextSitesOf, uiTextUnitId, type UITextSite } from "./textSource";
 
 /** The interface document version this step produces. */
 export const UI_TEXT_SOURCES_SCHEMA_VERSION = 13;
@@ -469,10 +469,11 @@ export function readUITextCarriedKeys(value: unknown): UITextCarriedKeys | undef
 export function listUITextKeysNamed(table: Readonly<Record<string, UIElement>>): string[] {
     const names = new Set<string>();
     for (const element of Object.values(table)) {
-        const site = uiTextSiteOf(element.type);
-        const key = site?.keyProp ? readUITextSite(element, site).key : "";
-        if (key) {
-            names.add(key);
+        for (const site of uiTextSitesOf(element.type)) {
+            const key = site.keyProp ? readUITextSite(element, site).key : "";
+            if (key) {
+                names.add(key);
+            }
         }
         for (const paramKey of Object.values(getUIComponentLink(element)?.paramKeys ?? {})) {
             names.add(paramKey);
@@ -565,21 +566,26 @@ export function settleIncomingUITextSources(
             }
             continue;
         }
-        if (!site) {
+        // Every site of the widget: Studio's own have one, a plugin's has one per prop its manifest
+        // declares as words.
+        const sites = uiTextSitesOf(element.type);
+        if (sites.length === 0) {
             continue;
         }
         let next = element;
         if ((element.props as Record<string, unknown> | undefined)?.[LEGACY_UI_TEXT_UNIT_PROP] !== undefined) {
             next = withoutProps(next, [LEGACY_UI_TEXT_UNIT_PROP]);
         }
-        const keyName = site.role === "words" ? readUITextSite(element, site).key : "";
-        if (keyName && input.hasKey(keyName)) {
-            next = withoutProps(next, [site.textProp, site.marksProp]);
-        } else if (keyName) {
-            const own = readUITextSite(element, site).text;
-            const words = input.carried?.[keyName]?.words ?? (own || keyName);
-            next = uiTextSiteWithOwnWords(next, site, words);
-            converted.push({ elementId: id, prop: site.textProp, keyName });
+        for (const textSite of sites) {
+            const keyName = textSite.role === "words" ? readUITextSite(next, textSite).key : "";
+            if (keyName && input.hasKey(keyName)) {
+                next = withoutProps(next, [textSite.textProp, textSite.marksProp]);
+            } else if (keyName) {
+                const own = readUITextSite(next, textSite).text;
+                const words = input.carried?.[keyName]?.words ?? (own || keyName);
+                next = uiTextSiteWithOwnWords(next, textSite, words);
+                converted.push({ elementId: id, prop: textSite.textProp, keyName });
+            }
         }
         if (next !== element) {
             replace(id, next);

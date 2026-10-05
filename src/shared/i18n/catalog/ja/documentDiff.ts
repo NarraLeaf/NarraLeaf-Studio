@@ -89,7 +89,7 @@ export const documentDiff = {
         characters: "キャラクター",
         dictionaryTerms: "辞書の項目",
         transformPresets: "変換プリセット",
-        localizationKeys: "ローカライズのキー",
+        localizationKeys: "翻訳キー",
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
         saveFields: "セーブ項目",
@@ -251,9 +251,9 @@ export const documentDiff = {
      * その行の目印になるから。
      */
     localizationKeys: {
-        added: "名前付き文字列を追加",
-        removed: "名前付き文字列を削除",
-        changed: "名前付き文字列を変更",
+        added: "翻訳キーを追加",
+        removed: "翻訳キーを削除",
+        changed: "翻訳キーを変更",
     },
     /**
      * インターフェースのドキュメント。サーフェスと、その上の要素。

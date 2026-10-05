@@ -47,6 +47,9 @@ import {
     type ContributedWidgetDeclaration,
 } from "@shared/types/ui-editor/contributedWidgets";
 import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { uiTextSitesFromPluginDeclaration, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { qualifyGameMenuWords } from "@shared/types/gameMenu";
+import { useLocalizedWidgetSites } from "../localization/GameLocalizationContext";
 import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
@@ -108,10 +111,20 @@ const runtimeWidgetRenderers = new Map<string, {
     renderer: ElementRendererDefinition;
     /** What the def declared, already held to the plugin's own heads. */
     logicApi: WidgetLogicApi | undefined;
+    /** The props the plugin's manifest declares as words (`contributes.widgetText`). */
+    textSites: readonly UITextSite[];
 }>();
 
-function declarationOf(type: string, entry: { ownerPluginId: string; logicApi: WidgetLogicApi | undefined }): ContributedWidgetDeclaration {
-    return { type, ownerPluginId: entry.ownerPluginId, logicApi: entry.logicApi };
+function declarationOf(
+    type: string,
+    entry: { ownerPluginId: string; logicApi: WidgetLogicApi | undefined; textSites: readonly UITextSite[] },
+): ContributedWidgetDeclaration {
+    return {
+        type,
+        ownerPluginId: entry.ownerPluginId,
+        logicApi: entry.logicApi,
+        ...(entry.textSites.length > 0 ? { textSites: entry.textSites } : {}),
+    };
 }
 
 /**
@@ -120,6 +133,7 @@ function declarationOf(type: string, entry: { ownerPluginId: string; logicApi: W
  * The game's half of what the workspace does from its widget module registry: the dispatcher, the
  * element wrapper and the Init lifecycle read a widget's events through `getWidgetLogicApi`, and a
  * game has no widget module to read a plugin's from - only the def its runtime entry registered.
+ * Which props are words comes from the manifest, the one declaration the studio entry reads too.
  * Children are not answered here: the game draws whatever children an element has, and the
  * question of where an author may put one is the editor's.
  */
@@ -237,6 +251,7 @@ function bindWidgetRenderer(
     type: string,
     render: RuntimeWidgetRendererDef["render"],
     game: RuntimePluginGame,
+    textSites: readonly UITextSite[] = [],
 ): ElementRendererDefinition {
     return {
         type,
@@ -246,21 +261,28 @@ function bindWidgetRenderer(
         render: (props: ElementRendererProps) => React.createElement(
             WidgetRenderBoundary,
             { type },
-            React.createElement(PluginWidgetRenderer, { render, props, game }),
+            React.createElement(PluginWidgetRenderer, { render, props, game, textSites }),
         ),
     };
 }
 
+/**
+ * Draws one plugin widget in a game. The props its manifest declares as words are handed over already
+ * in the player's language (`useLocalizedWidgetSites`), and redrawn when the player changes it.
+ */
 function PluginWidgetRenderer({
     render,
     props,
     game,
+    textSites,
 }: {
     render: RuntimeWidgetRendererDef["render"];
     props: ElementRendererProps;
     game: RuntimePluginGame;
+    textSites: readonly UITextSite[];
 }): React.ReactElement | null {
-    return render(narrowWidgetRendererProps(props, game));
+    const element = useLocalizedWidgetSites(props.element, textSites);
+    return render(narrowWidgetRendererProps(element === props.element ? props : { ...props, element }, game));
 }
 
 function narrowWidgetRendererProps(
@@ -377,10 +399,15 @@ function createRuntimePluginApp(
         for (const problem of scriptEventsOfContributedLogicApi(sanitized.logicApi).problems) {
             log("warning", `widget ${type}, event "${problem.eventId}": ${problem.message}.`);
         }
+        // From the manifest, which the packed descriptor carries, rather than from the def: the studio
+        // entry's widget is edited by the same declaration, so the two cannot disagree. A manifest
+        // packed by an older Studio has none, and the widget is drawn with its props as they are.
+        const textSites = uiTextSitesFromPluginDeclaration(type, descriptor.manifest.contributes.widgetText?.[type]);
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,
-            renderer: bindWidgetRenderer(type, def.render, game),
+            renderer: bindWidgetRenderer(type, def.render, game, textSites),
             logicApi: sanitized.logicApi,
+            textSites,
         });
         notifyContributedWidgetsChanged();
     };
@@ -669,6 +696,8 @@ function buildCapabilityDomains(
                 },
                 onChange: listener => backend.onChange(listener),
                 text: key => backend.text(key),
+                // The plugin's own id, never one it names: it reads back only the words it offered.
+                words: (id, text) => backend.words(pluginId, id, text),
             };
         }
     }
@@ -704,7 +733,9 @@ function buildCapabilityDomains(
             // on the web export, where it simply has nowhere to put one.
             unavailable("menu");
         } else {
-            domains.menu = { set: spec => backend.set(spec) };
+            // A label's own words are named by the plugin's id for them; qualified here with this
+            // plugin, so the bar reads back only words this plugin offered.
+            domains.menu = { set: spec => backend.set(qualifyGameMenuWords(spec, pluginId)) };
         }
     }
 

@@ -84,7 +84,7 @@ export const widgets = {
         translationKey: "翻訳キー",
         none: "なし",
         createKey: "新しいキーを作る…",
-        createKeyTitle: "新しいローカライズのキー",
+        createKeyTitle: "新しい翻訳キー",
         keyName: "キー名",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "英数字と、その間に置くドット、アンダースコア、ハイフン",

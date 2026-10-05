@@ -16,7 +16,7 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, isUIComponentTextParam } from "@shared/types/ui-editor/document";
-import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { printValue } from "../../blueprint-cli/dsl/values";
 import { PARAM_KEY_SUFFIX, propAssignmentKey } from "./parse";
 
@@ -178,12 +178,13 @@ export function printElementTree(
     for (const [key, value] of Object.entries(element.style ?? {})) {
         lines.push(`${inner}style.${key} = ${printValue(value)}`);
     }
-    const site = uiTextSiteOf(element.type);
+    // Every prop that names a key: a plugin's widget can read several of its words from keys.
+    const keyProps = new Set(uiTextSitesOf(element.type).map(site => site.keyProp).filter(Boolean));
     for (const [key, value] of Object.entries(element.props ?? {})) {
         // The element's own `animation` record is written further down, and only the prefix keeps a
         // Page widget's `animation` prop - the same shape of record - from reading back as it.
         lines.push(`${inner}${propAssignmentKey(key)} = ${printValue(value)}`);
-        if (site?.keyProp === key && typeof value === "string" && value.trim() && options.keyWords) {
+        if (keyProps.has(key) && typeof value === "string" && value.trim() && options.keyWords) {
             const words = options.keyWords.get(value.trim());
             lines.push(words === undefined
                 ? `${inner}# words: ${value.trim()} (the project has no such key, so the widget shows its name)`

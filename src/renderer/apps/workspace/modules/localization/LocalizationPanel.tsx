@@ -28,7 +28,7 @@ import { translationDocumentFreezeScope } from "./localizationLiveSession";
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
-import { useTranslation } from "@/lib/i18n";
+import { i18nStore, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import {
     LocalizationService,
@@ -45,6 +45,7 @@ import {
     type TranslatableUnitContext,
     type TranslationExportScope,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -243,13 +244,18 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             const uiDocument = uiDocumentService?.getDocument();
             if (uiDocument && uiDocumentService) {
                 const writers = readProjectTextWriters(uiDocumentService.getContext().services);
-                for (const row of extractUiTranslationRows(uiDocument, writers)) {
+                for (const row of extractUiTranslationRows(uiDocument, writers, { locale: i18nStore.getLocale() })) {
                     collected.push({
                         unitId: row.unitId,
                         sourceText: row.sourceText,
                         context: row.groupName ? `${row.groupName} · ${row.elementName}` : row.elementName,
                     });
                 }
+            }
+            // The words plugins offer - a menu row's label, a gallery entry's name - beside the
+            // interface's own, under the plugin that holds them.
+            for (const row of listPluginWordsRows()) {
+                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.context });
             }
             let keysDocument = localizationService.getKeysIfLoaded();
             if (!keysDocument) {
@@ -278,6 +284,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         const unsubscribeDocument = storyService.onDocumentChanged(() => void recompute());
         const unsubscribeKeys = localizationService.onKeysChanged(() => void recompute());
         const unsubscribeCharacters = characterService?.subscribe(() => void recompute());
+        const unsubscribePluginWords = subscribePluginWords(() => void recompute());
         // Blueprints decide where a key is used as much as widgets do.
         const unsubscribeGraphs = subscribeToBlueprints(uiDocumentService, () => void recompute());
         return () => {
@@ -286,6 +293,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             unsubscribeDocument();
             unsubscribeKeys();
             unsubscribeCharacters?.();
+            unsubscribePluginWords();
             unsubscribeGraphs();
         };
     }, [storyService, localizationService, characterService, uiDocumentService, uiDocumentRevision]);

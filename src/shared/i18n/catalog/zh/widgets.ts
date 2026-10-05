@@ -83,7 +83,7 @@ export const widgets = {
         translationKey: "翻译键",
         none: "无",
         createKey: "新建键…",
-        createKeyTitle: "新建本地化键",
+        createKeyTitle: "新建翻译键",
         keyName: "键名",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "可包含字母、数字，以及位于其间的点 / 下划线 / 连字符",

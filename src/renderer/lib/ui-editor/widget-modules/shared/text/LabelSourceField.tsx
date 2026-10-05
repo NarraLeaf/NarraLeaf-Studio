@@ -11,7 +11,6 @@ import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { FIELD_INPUT_CLASS } from "@/apps/workspace/modules/properties/fieldControlClass";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
-import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { useTranslation } from "@/lib/i18n";
@@ -33,6 +32,7 @@ import {
 import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 import { LABEL_TEXT_AREA_CLASS, TextRunMarksEditor } from "./TextRunMarks";
 import { TextWritersList, useElementTextWriters } from "./TextWritersList";
+import { TextSourceSegments } from "./WordsSourceField";
 
 /** What a widget tells the source field about where its words live. */
 export type LabelSourceFieldConfig = {
@@ -48,6 +48,11 @@ export type LabelSourceFieldConfig = {
     label: MarkedLabelProps;
     /** The words are one line: the boxes are single-line and carry no marks (a placeholder). */
     singleLine?: boolean;
+    /**
+     * The words carry no marks over several lines: the box is a plain multi-line one rather than the
+     * marks editor (a plugin widget's prop, which its renderer is handed as a string).
+     */
+    withoutMarks?: boolean;
 };
 
 function liveElementOf(data: UIInspectorData): UIElement {
@@ -56,8 +61,9 @@ function liveElementOf(data: UIInspectorData): UIElement {
 
 /**
  * A widget's words, and where they come from: the element's own, a translation key, or a Blueprint
- * Value - chosen in one field, one at a time. The text widget's text, the button's label and the
- * text input's placeholder (which offers no Blueprint Value) are all this field.
+ * Value - chosen in one field, one at a time. The text widget's text, the button's label, the
+ * text input's placeholder (which offers no Blueprint Value) and every prop a plugin's widget declares
+ * as words (`pluginTextSection.tsx`, no Blueprint Value either) are all this field.
  *
  * The choice is not stored; it is read off the element in the order the game resolves the words
  * (`uiTextSourceOf`). Choosing writes that order's answer: a key is set, or cleared, or a binding made.
@@ -231,6 +237,22 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
                     )
                 }
             />
+        ) : config.withoutMarks ? (
+            <DraftTextInput
+                multiline
+                className={LABEL_TEXT_AREA_CLASS}
+                value={ownWords(live)}
+                rows={4}
+                readOnly={readOnly}
+                draftResetKey={live.id}
+                readCommittedValue={() => ownWords(liveElementOf(data))}
+                onCommit={next =>
+                    data.documentService.updateElementProps(
+                        live.id,
+                        plainTextEditPatch(config.label, liveElementOf(data), next),
+                    )
+                }
+            />
         ) : (
             <TextRunMarksEditor
                 documentService={data.documentService}
@@ -277,42 +299,11 @@ export function createLabelSourceField(config: LabelSourceFieldConfig) {
             <div className="space-y-2">
                 {paramRow}
                 {fieldRow}
-                {/* Words without icons: up to three worded segments have to share the inspector's column
-                    in every interface language, and "Translation key" with an icon beside it wraps. */}
-                <IconButtonSegGroup
-                    mode="single"
-                    density="compact"
-                    segmentWidth="content"
+                <TextSourceSegments
                     value={shown}
+                    onChange={choose}
                     disabled={readOnly}
-                    onChange={next => {
-                        if (typeof next === "string") {
-                            choose(next as UITextSource);
-                        }
-                    }}
-                    options={[
-                        {
-                            id: "literal",
-                            icon: null,
-                            label: t("widgets.localization.direct"),
-                        },
-                        {
-                            id: "key",
-                            icon: null,
-                            label: t("widgets.localization.translationKey"),
-                        },
-                        ...(config.blueprint
-                            ? [{
-                                id: "blueprint",
-                                icon: null,
-                                label: t("widgetChrome.blueprint.blueprintValue"),
-                                disabled: shown !== "blueprint" && blueprintState.createUnavailable !== null,
-                                tip: shown !== "blueprint" && blueprintState.createUnavailable
-                                    ? blueprintState.createUnavailable
-                                    : undefined,
-                            }]
-                            : []),
-                    ]}
+                    blueprint={config.blueprint ? { unavailable: blueprintState.createUnavailable } : undefined}
                 />
                 {shown === "literal" && sampleCause === "written" ? sampleBlock("widgets.sampleText.hintWritten") : null}
                 {shown === "literal" && sampleCause !== "written" ? ownWordsEditor : null}

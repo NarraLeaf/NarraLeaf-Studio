@@ -1,7 +1,7 @@
 import type { TranslationKey } from "@shared/i18n";
 import { getUIComponentLink, type UIComponentDefinition, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { listUIPlacementTextValues } from "@shared/types/ui-editor/componentTextParams";
-import { readUITextSite, resolveUITextWords, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { readUITextSite, resolveUITextWords, uiTextSiteLabel, uiTextSiteOf, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
 import type { UITextWriterIndex } from "@shared/types/ui-editor/textWriters";
 import { i18nStore, translate } from "@/lib/i18n";
@@ -36,7 +36,8 @@ export interface UITextExtractionInput {
  * the component with the widget selected.
  *
  * The words are the ones the canvas draws in the source language, read through the shared site table
- * and resolver (`uiTextSiteOf`, `resolveUITextWords`): a widget's own words, a translation key's
+ * and resolver (`uiTextSitesOf`, `resolveUITextWords`): a widget's own words - each prop a plugin's
+ * widget declares as words among them - a translation key's
  * source words where the widget names one, and the words a component placement gives each text
  * parameter some widget inside the definition shows (`listUIPlacementTextValues`). A placement carries
  * none of its definition's words, so its own copy is not read, as nowhere else reads it.
@@ -74,28 +75,32 @@ export function extractUITextEntries(document: UIDocument, input: UITextExtracti
                 target,
             });
         }
-        const site = uiTextSiteOf(element.type);
-        if (!site || getUIComponentLink(element)) {
+        if (getUIComponentLink(element)) {
             return;
         }
-        const reading = readUITextSite(element, site);
-        const words = resolveUITextWords(
-            { site, elementId: element.id, sourceText: reading.text, localizationKey: reading.key },
-            { kind: "canvas", keys: input.keys },
-        );
-        if (!words.trim()) {
-            return;
+        const sites = uiTextSitesOf(element.type);
+        for (const site of sites) {
+            const reading = readUITextSite(element, site);
+            const words = resolveUITextWords(
+                { site, elementId: element.id, sourceText: reading.text, localizationKey: reading.key },
+                { kind: "canvas", keys: input.keys },
+            );
+            if (!words.trim()) {
+                continue;
+            }
+            const sample = site.role === "sample" || uiTextSampleCauseOf(element, site, input.writers.get(element.id)) !== null;
+            // A plugin widget with several words names which of them matched.
+            const widget = sites.length > 1
+                ? `${nameOf(element)} › ${uiTextSiteLabel(site, i18nStore.getLocale())}`
+                : nameOf(element);
+            entries.push({
+                id: `uitext:${element.id}.${site.textProp}`,
+                group: "uiText",
+                text: words,
+                detail: sample ? `${ownerName} › ${widget} · ${input.labels.sample}` : `${ownerName} › ${widget}`,
+                target,
+            });
         }
-        const sample = site.role === "sample" || uiTextSampleCauseOf(element, site, input.writers.get(element.id)) !== null;
-        entries.push({
-            id: `uitext:${element.id}.${site.textProp}`,
-            group: "uiText",
-            text: words,
-            detail: sample
-                ? `${ownerName} › ${nameOf(element)} · ${input.labels.sample}`
-                : `${ownerName} › ${nameOf(element)}`,
-            target,
-        });
     };
 
     for (const surface of document.surfaces ?? []) {

@@ -8,6 +8,8 @@ import {
     collectVoiceUnitVariantIds,
     computeGalleryStats,
     createVariantId,
+    galleryWords,
+    localizeGalleryStore,
     isArtworkUnlocked,
     normalizeGalleryCatalog,
     normalizeGalleryStore,
@@ -724,5 +726,41 @@ describe("what an automatic signal collects", () => {
         expect(collectSceneVariantIds(items, "   ")).toEqual([]);
         expect(collectAudioAssetVariantIds(items, "")).toEqual([]);
         expect(collectVoiceUnitVariantIds(items, "text-missing")).toEqual([]);
+    });
+});
+
+describe("the words the author writes, for translation", () => {
+    const data = normalizeGalleryStore({
+        version: 4,
+        groups: [{ id: "g1", name: "Chapter one" }],
+        items: [{
+            id: "art.a",
+            name: "Corridor",
+            kind: "cg",
+            description: "At dusk",
+            groupId: "g1",
+            hidden: true,
+            variants: [{ id: "art.a.v.1", name: "Dusk", imageAssetId: "asset" }],
+        }],
+        settings: { lockedNameMask: "Locked" },
+    });
+
+    it("lists every name, description and the locked title under ids that survive a rename", () => {
+        expect(galleryWords(data)).toEqual([
+            { id: "group.g1.name", text: "Chapter one" },
+            { id: "entry.art.a.name", text: "Corridor", context: "Chapter one" },
+            { id: "entry.art.a.description", text: "At dusk", context: "Corridor" },
+            { id: "member.art.a.v.1.name", text: "Dusk", context: "Corridor" },
+            { id: "lockedNameMask", text: "Locked" },
+        ]);
+    });
+
+    it("translates the words and nothing else", () => {
+        const localized = localizeGalleryStore(data, (id, text) => `[${id}] ${text}`);
+        expect(localized.items[0]?.name).toBe("[entry.art.a.name] Corridor");
+        expect(localized.items[0]?.variants[0]).toMatchObject({ id: "art.a.v.1", name: "[member.art.a.v.1.name] Dusk", imageAssetId: "asset" });
+        expect(localized.groups[0]?.name).toBe("[group.g1.name] Chapter one");
+        expect(localized.settings.lockedNameMask).toBe("[lockedNameMask] Locked");
+        expect(localized.items[0]?.hidden).toBe(true);
     });
 });

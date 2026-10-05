@@ -97,6 +97,11 @@ export type RuntimePluginLocaleBackend = {
      * translator to find. `null` when the key is not one the project declared.
      */
     text(key: string): string | null;
+    /**
+     * One of `pluginId`'s own words (`plugin:<pluginId>/<id>`) in the language the game is running in,
+     * or `text` when that language has no translation of it.
+     */
+    words(pluginId: string, id: string, text: string): string;
 };
 
 /**

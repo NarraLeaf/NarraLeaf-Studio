@@ -977,6 +977,23 @@ export function blueprintLabelKey(text: string): TranslationKey | undefined {
     return PORT_LABEL_KEYS[text];
 }
 
+/**
+ * Words a palette category was once shown as, which the node search still answers to.
+ *
+ * The palette search matches the category's shown name, so authors learn to type it; renaming a
+ * category in the interface would otherwise turn a search that worked into one that finds nothing.
+ * Kept in every language, as the story command line keeps a renamed parameter word as an alias.
+ */
+const CATEGORY_FORMER_LABELS: Readonly<Record<string, readonly string[]>> = {
+    // zh named the backlog 回顾 until the term table settled on 记录.
+    "Backlog": ["回顾"],
+};
+
+/** The words a palette category was once shown as (see {@link CATEGORY_FORMER_LABELS}). */
+export function blueprintCategoryFormerLabels(category: string): readonly string[] {
+    return CATEGORY_FORMER_LABELS[category] ?? [];
+}
+
 /** Localize a palette category name, falling back to the original English text when unmapped. */
 export function resolveBlueprintCategoryLabel(category: string, t: Translate): string {
     const key = CATEGORY_KEYS[category];

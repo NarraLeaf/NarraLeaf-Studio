@@ -15,6 +15,8 @@
  */
 
 import { resolveLocalizationKeyWords, resolveLocalizedUnitText, type GameLocalizationBundle } from "../localization";
+import type { PluginWidgetTextContribution } from "../plugins";
+import { getContributedWidget } from "./contributedWidgets";
 import type { UIElement, UIElementValueBinding } from "./document";
 import { UI_TEXT_SITES, type UITextSite } from "./textSites";
 import { resolveByWidgetType } from "./widgetInheritance";
@@ -33,6 +35,60 @@ const SITE_BY_TYPE: Readonly<Record<string, UITextSite>> = Object.fromEntries(
  */
 export function uiTextSiteOf(type: string | null | undefined): UITextSite | undefined {
     return resolveByWidgetType(SITE_BY_TYPE, type);
+}
+
+/**
+ * Every text site of a widget type: Studio's own widget's one site (`uiTextSiteOf`), or the ones a
+ * loaded plugin's widget declares in its manifest (`uiTextSitesFromPluginDeclaration`). Empty for a
+ * widget that shows no authored words, and for a plugin widget whose plugin is not loaded.
+ *
+ * What every reader that walks an element's words asks - the translation table and its exports, the
+ * interface lint, the glyph check, the key-use list, removing a key and settling a paste. The
+ * questions only Studio's own widgets have an answer to (whether a double-click types in place,
+ * whether a value binding writes the words, which blueprint nodes write them) go on asking
+ * `uiTextSiteOf`: a plugin site answers no to each of them.
+ */
+export function uiTextSitesOf(type: string | null | undefined): readonly UITextSite[] {
+    const own = uiTextSiteOf(type);
+    if (own) {
+        return [own];
+    }
+    return getContributedWidget(type)?.textSites ?? [];
+}
+
+/**
+ * The text sites a plugin's widget declares, from its manifest's `contributes.widgetText` entries.
+ *
+ * Each is a site a player reads, whose key the canvas draws as it draws a text's, that nothing types
+ * on the canvas (only Studio's own renderers do that) and that no value binding writes (the plugin
+ * hands its renderer the words, and a binding has nowhere to reach them). The key prop is the one the
+ * manifest validator settled (`<prop>LocalizationKey` unless declared).
+ */
+export function uiTextSitesFromPluginDeclaration(
+    widgetType: string,
+    entries: readonly PluginWidgetTextContribution[] | undefined,
+): UITextSite[] {
+    return (entries ?? []).map(entry => ({
+        widgetType,
+        textProp: entry.prop,
+        role: "words",
+        keyProp: entry.keyProp ?? `${entry.prop}LocalizationKey`,
+        canvasDrawsKey: true,
+        typedOnCanvas: false,
+        valueBinding: "none",
+        ...(entry.label ? { label: entry.label } : {}),
+        ...(entry.localized ? { localizedLabel: entry.localized } : {}),
+        ...(entry.multiline ? { multiline: true } : {}),
+    }));
+}
+
+/**
+ * What a site's words are called, in an editor locale: a plugin site's declared label (exact locale
+ * first, as plugin names are matched), else its prop. Studio's own widgets name their one site
+ * themselves, so this is for the places that name a plugin's words beside its widget.
+ */
+export function uiTextSiteLabel(site: UITextSite, locale: string): string {
+    return site.localizedLabel?.[locale] ?? site.label ?? site.textProp;
 }
 
 /** The site a widget declares for itself, for a module that knows its own type. Throws for none. */
@@ -224,6 +280,36 @@ export type UITextWordsInput = {
 export type UITextWordsHost =
     | { kind: "game"; bundle: GameLocalizationBundle; locale: string }
     | { kind: "canvas"; keys: Readonly<Record<string, string>> | null };
+
+/**
+ * The element with the words each of `sites` shows written into the site's prop - what a plugin's
+ * widget is handed to draw, so it shows a key's words, or its own words translated, without resolving
+ * anything itself. The same element (by reference) when no site's words change.
+ *
+ * A plugin site carries no runtime origin: no blueprint node writes into a plugin's widget, and no
+ * value binding reaches it.
+ */
+export function withUITextSitesResolved(
+    element: UIElement,
+    sites: readonly UITextSite[],
+    host: UITextWordsHost,
+): UIElement {
+    let props: Record<string, unknown> | null = null;
+    for (const site of sites) {
+        const reading = readUITextSite(element, site);
+        const words = resolveUITextWords({
+            site,
+            elementId: element.id,
+            sourceText: reading.text,
+            ...(reading.key ? { localizationKey: reading.key } : {}),
+        }, host);
+        if (words !== (element.props as Record<string, unknown> | undefined)?.[site.textProp]) {
+            props ??= { ...(element.props ?? {}) };
+            props[site.textProp] = words;
+        }
+    }
+    return props ? { ...element, props } : element;
+}
 
 /**
  * The words a site shows.

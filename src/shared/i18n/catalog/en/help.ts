@@ -119,7 +119,7 @@ export const help = {
             body:
                 "The Search panel and the search box in the title bar search the whole project: the names of "
                 + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, interface "
-                + "text, UI text keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
+                + "text, translation keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
                 + "- Interface text is searched in the project's source language. Selecting it opens the page or "

@@ -58,6 +58,8 @@ export type {
     PluginManifestEntries,
     PluginManifestLocalized,
     PluginManifestLocalizedText,
+    PluginContributes,
+    PluginWidgetTextContribution,
     PluginInstallRecord,
     PluginListItem,
     WorkspacePluginDescriptor,
@@ -564,15 +566,47 @@ export type PluginInterfaceService = {
 };
 
 /**
- * The project's own localization keys, read-only.
+ * One of the words a plugin puts in front of a player, offered for translation.
  *
- * A plugin that puts words in front of a player writes them as keys through this list rather than
- * as literals, so they travel with everything else the project translates. Empty before the keys
- * document has loaded, which is a moment rather than a state - subscribe through
- * `services.workspace.registerReloader` if a panel has to re-read it.
+ * `id` is the plugin's own (letters, digits, and `.` `_` `-` between them) and has to stay the same
+ * while the words are the same thing - a translation is kept against it, so an id made from the words
+ * themselves would lose every translation the moment the author corrected a letter. The translation
+ * unit is `plugin:<pluginId>/<id>`, scoped to the plugin by the host.
+ */
+export type PluginWordsEntry = {
+    id: string;
+    /** The words, in the project's source language. */
+    text: string;
+    /** Where a player meets them, for a translator: "File › Save". The plugin's name when absent. */
+    context?: string;
+};
+
+/** A plugin's words as they are now, and a way for the host to hear that they changed. */
+export type PluginWordsSource = {
+    list(): readonly PluginWordsEntry[];
+    subscribe?(listener: () => void): () => void;
+};
+
+/**
+ * The project's own localization keys, read-only, and a place to offer the plugin's own words.
+ *
+ * A plugin that puts words in front of a player either names a key from this list - one of the
+ * project's shared words - or writes them directly and offers them with `registerWords`, so they
+ * travel with everything else the project translates. Empty before the keys document has loaded,
+ * which is a moment rather than a state - subscribe through `services.workspace.registerReloader` if
+ * a panel has to re-read it.
  */
 export type PluginLocalizationService = {
     listKeys(): PluginLocalizationKeyEntry[];
+    /**
+     * Offer the plugin's own words to the project's translation table and exports.
+     *
+     * Each listed entry with a letter in it gets a row under the plugin's name; the runtime entry
+     * reads a word back in the player's language with `app.game.locale.words(id, text)`. List what
+     * the author wrote directly; words read from a key are translated as the key and need no entry.
+     * Call `subscribe`'s listener whenever the list would answer differently.
+     */
+    registerWords(source: PluginWordsSource): PluginCleanup;
 };
 
 export type PluginServices = {

@@ -23,6 +23,7 @@ import {
     readUITextSite,
     uiTextHasWords,
     uiTextSiteOf,
+    uiTextSitesOf,
     uiTextUnitBindingOf,
     uiTextUnitId,
     type UITextSite,
@@ -194,15 +195,16 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The site of an element's words a player reads, when it has one - read from the shared table
- * (`textSites.ts`), the one `useLocalizedWidgetText` resolves at run time. That is what makes the
- * answers here checkable: a prop the table did not list would be translated by the runtime and
- * missed here, and a prop it listed by mistake would be reported while nothing can translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
- * replaces with the story's, so no player reads them and nothing here looks at them.
+ * The sites of an element's words a player reads - read from the shared table (`textSites.ts`), the
+ * one `useLocalizedWidgetText` resolves at run time, and for a plugin's widget from the props its
+ * manifest declares (`uiTextSitesOf`), the ones its drawing resolves. That is what makes the answers
+ * here checkable: a prop the table did not list would be translated by the runtime and missed here,
+ * and a prop it listed by mistake would be reported while nothing can translate it. A `sample` site
+ * (the dialogue line, the NVL line) holds stand-in words the game replaces with the story's, so no
+ * player reads them and nothing here looks at them.
  */
-function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
-    const site = uiTextSiteOf(element.type);
-    return site?.role === "words" ? site : undefined;
+function playerWordsSitesOf(element: UIElement): UITextSite[] {
+    return uiTextSitesOf(element.type).filter(site => site.role === "words");
 }
 
 
@@ -309,21 +311,20 @@ export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
             }
             sites.push({ surface, element, unitId: value.unitId, text: value.text, faces });
         }
-        const site = playerWordsSiteOf(element);
-        if (!site) {
-            continue;
+        const faces = listWidgetTextFaces(element);
+        for (const site of playerWordsSitesOf(element)) {
+            const text = readUITextSite(element, site).text;
+            if (!text.trim()) {
+                continue;
+            }
+            sites.push({
+                surface,
+                element,
+                unitId: uiTextUnitId(element.id, site.textProp),
+                text,
+                faces,
+            });
         }
-        const text = readUITextSite(element, site).text;
-        if (!text.trim()) {
-            continue;
-        }
-        sites.push({
-            surface,
-            element,
-            unitId: uiTextUnitId(element.id, site.textProp),
-            text,
-            faces: listWidgetTextFaces(element),
-        });
     }
     return sites;
 }
@@ -368,16 +369,17 @@ export function listInterfaceTextUnitSites(document: UIDocument, writers: UIText
                 sites.push({ element, location, target, literal: value.text, binding });
             }
         }
-        const site = playerWordsSiteOf(element);
-        if (!site || getUIComponentLink(element)) {
+        if (getUIComponentLink(element)) {
             return;
         }
-        const binding = uiTextUnitBindingOf(element, site);
-        if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site, writers.get(element.id))) {
-            return;
-        }
-        if (binding) {
-            sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
+        for (const site of playerWordsSitesOf(element)) {
+            const binding = uiTextUnitBindingOf(element, site);
+            if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site, writers.get(element.id))) {
+                continue;
+            }
+            if (binding) {
+                sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
+            }
         }
     };
     for (const { surface, element } of listSurfaceElements(document)) {
@@ -1014,8 +1016,9 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
         if (!element) {
             return;
         }
-        const site = playerWordsSiteOf(element);
-        const binding = site ? element.valueBindings?.[site.textProp] : undefined;
+        // A row field binds a site Studio offers a binding on; a plugin widget offers none.
+        const site = uiTextSiteOf(element.type);
+        const binding = site?.role === "words" ? element.valueBindings?.[site.textProp] : undefined;
         if (binding?.kind === "listItemField") {
             const field = findUIStructField(struct, binding.fieldId);
             if (field) {

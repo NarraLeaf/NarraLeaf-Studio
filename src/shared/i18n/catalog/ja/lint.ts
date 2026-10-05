@@ -235,7 +235,7 @@ export const lint = {
             messageChoice: "指している選択肢が存在しない",
             messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
-            messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+            messageTextKey: "指している翻訳キーはプロジェクトで宣言されていない",
             messageDlc: "指している DLC はプロジェクトに存在しない",
             messageInputAction: "指している入力アクションはプロジェクトで宣言されていない",
         },
@@ -327,7 +327,7 @@ export const lint = {
             message: "{text} などリストの内容はどの言語でも書かれたまま表示される",
         },
         uiLocalizationKeyMissing: {
-            title: "存在しないローカライズキー",
+            title: "存在しない翻訳キー",
             description: "プロジェクトにないキーから文字を読むウィジェット",
             message: "文字を {key} から読むが、このキーはプロジェクトにない",
         },

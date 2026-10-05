@@ -7,7 +7,7 @@
  * after the component (`ui:<componentId>.param.<paramId>`). A copy - pasted, duplicated, part of a
  * duplicated page or component - is a new element under a new id, so its words would arrive with no
  * translation in any language. These are the units to carry and where they land: read from the elements through the
- * shared site table (`uiTextSiteOf`), so a site the table does not list is never carried, and a widget
+ * shared site table (`uiTextSitesOf`, a plugin widget's declared props included), so a site the table does not list is never carried, and a widget
  * whose words come from a key - which has no unit of its own - carries nothing.
  *
  * Pure. Comments in English per project convention.
@@ -21,7 +21,7 @@ import {
     type UIElement,
 } from "./document";
 import { uiComponentParamUnitId } from "./componentTextParams";
-import { readUITextSite, uiTextSiteOf, uiTextUnitId } from "./textSource";
+import { readUITextSite, uiTextSitesOf, uiTextUnitId } from "./textSource";
 
 /** A unit an element's own words are translated through, and the prop it is filed under. */
 export type UITextOwnUnit = {
@@ -48,9 +48,10 @@ export function listUITextOwnUnits(table: Readonly<Record<string, UIElement>>): 
             }
             continue;
         }
-        const site = uiTextSiteOf(element.type);
-        if (site?.role === "words" && !readUITextSite(element, site).key) {
-            out.push({ elementId: element.id, prop: site.textProp, unitId: uiTextUnitId(element.id, site.textProp) });
+        for (const site of uiTextSitesOf(element.type)) {
+            if (site.role === "words" && !readUITextSite(element, site).key) {
+                out.push({ elementId: element.id, prop: site.textProp, unitId: uiTextUnitId(element.id, site.textProp) });
+            }
         }
     }
     return out;

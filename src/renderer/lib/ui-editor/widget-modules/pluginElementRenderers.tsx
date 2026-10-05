@@ -4,8 +4,11 @@ import type {
     ElementRendererProps,
     ElementRendererRegistry,
 } from "../runtime/ElementRendererRegistry";
+import { useLocalizedWidgetSites } from "../runtime/localization/GameLocalizationContext";
 import { WidgetRenderBoundary } from "../runtime/WidgetRenderBoundary";
 import { widgetModuleRegistry } from "./registryInstance";
+
+const NO_TEXT_SITES: readonly never[] = [];
 
 /**
  * How a plugin's widget reaches the drawing.
@@ -40,13 +43,17 @@ const applied = new WeakMap<ElementRendererRegistry, Set<string>>();
  *
  * The module is resolved on every drawing rather than captured, so reloading a plugin swaps the
  * code the next time the surface renders instead of leaving the previous build drawing.
+ *
+ * The props the widget declares as words reach it already resolved (`useLocalizedWidgetSites`): a
+ * key's source words on the canvas, as a text's are drawn, so the plugin never looks a key up.
  */
 function PluginWidgetHost({ type, props }: { type: string; props: ElementRendererProps }): React.ReactElement | null {
     const module = widgetModuleRegistry.get(type);
+    const element = useLocalizedWidgetSites(props.element, module?.textSites ?? NO_TEXT_SITES);
     if (!module) {
         return null;
     }
-    return <>{module.render(props)}</>;
+    return <>{module.render(element === props.element ? props : { ...props, element })}</>;
 }
 
 function createPluginRendererDefinition(type: string): ElementRendererDefinition {

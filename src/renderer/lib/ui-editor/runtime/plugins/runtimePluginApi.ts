@@ -430,6 +430,13 @@ export type RuntimePluginLocale = {
      * added after the plugin was installed. `null` when the project declares no such key.
      */
     text(key: string): string | null;
+    /**
+     * Words this plugin wrote directly and offered for translation from its studio entry
+     * (`app.services.localization.registerWords`), in the language the game is running in: the
+     * translation of the unit `id` names along the language's fallback chain, else `text` - the words
+     * as written, which the plugin passes because the game carries translations and not source words.
+     */
+    words(id: string, text: string): string;
 };
 
 /**

@@ -108,7 +108,7 @@ export const documentDiff = {
         characters: "Characters",
         dictionaryTerms: "Dictionary terms",
         transformPresets: "Transform presets",
-        localizationKeys: "Localization keys",
+        localizationKeys: "Translation keys",
         projectLanguages: "Languages",
         projectPlugins: "Plugins",
         saveFields: "Save fields",
@@ -279,9 +279,9 @@ export const documentDiff = {
      * in the project whose keys somebody typed - is what identifies the row.
      */
     localizationKeys: {
-        added: "Named string added",
-        removed: "Named string removed",
-        changed: "Named string changed",
+        added: "Translation key added",
+        removed: "Translation key removed",
+        changed: "Translation key changed",
     },
     /**
      * Tier 1, the interface document: Surfaces and the elements on them.

@@ -18,6 +18,8 @@
  * Comments in English per project convention.
  */
 
+import { isValidPluginWordsId, pluginWordsUnitId } from "./localization";
+
 /**
  * Lists whose members only the running game knows.
  *
@@ -35,10 +37,16 @@
  * is resolved when the bar is drawn rather than when it is declared, which is what makes the words
  * follow a language change and what keeps a plugin from having to publish its menu again to get
  * them. `text` is what shows when there is no key, or when the key is not in this build.
+ *
+ * Words written directly (no key) are translated too when `words` names them: the id under which the
+ * publishing plugin offered `text` for translation (`app.services.localization.registerWords`). The
+ * plugin writes its own id; the host qualifies it with the plugin (`qualifyGameMenuWords`) before the
+ * game reads it, so the running game sees the full unit id and a plugin can only name its own words.
  */
 export type GameMenuLabel = {
     readonly key?: string | null;
     readonly text: string;
+    readonly words?: string | null;
 };
 
 export const GAME_MENU_DYNAMIC_SOURCES = ["textLanguage", "voiceLanguage", "windowScale"] as const;
@@ -200,9 +208,34 @@ function normalizeSpecLabel(value: unknown): GameMenuLabel | null {
     const record = value as Record<string, unknown>;
     const key = typeof record.key === "string" && record.key.trim() ? record.key.trim() : null;
     const text = normalizeLabel(record.text);
+    const words = typeof record.words === "string" && record.words.trim() ? record.words.trim() : null;
     // A key with no fallback is still a usable row - the key is the answer and the fallback is the
     // net - but a row with neither says nothing at all.
-    return key || text ? { key, text } : null;
+    return key || text ? { key, text, ...(words ? { words } : {}) } : null;
+}
+
+/**
+ * The spec with every label's `words` qualified as the publishing plugin's unit
+ * (`plugin:<pluginId>/<id>`), and dropped where it is not an id a plugin can offer. Run by the host
+ * where a plugin hands over its menu, never by a plugin.
+ */
+export function qualifyGameMenuWords(spec: GameMenuSpec, pluginId: string): GameMenuSpec {
+    const label = (value: GameMenuLabel): GameMenuLabel => {
+        const { words, ...rest } = value;
+        return typeof words === "string" && isValidPluginWordsId(words)
+            ? { ...rest, words: pluginWordsUnitId(pluginId, words) }
+            : rest;
+    };
+    const items = (list: readonly GameMenuItemSpec[]): GameMenuItemSpec[] => list.map(item => {
+        if (item.kind === "submenu") {
+            return { ...item, label: label(item.label), items: items(item.items) };
+        }
+        if (item.kind === "action") {
+            return { ...item, label: label(item.label) };
+        }
+        return item;
+    });
+    return { menus: (spec?.menus ?? []).map(menu => ({ ...menu, label: label(menu.label), items: items(menu.items) })) };
 }
 
 function normalizeLabel(value: unknown): string {

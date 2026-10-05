@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import type { UITextSite } from "@shared/types/ui-editor/textSites";
 import type { UIHostAdapter } from "../runtime/types";
 import type { UIWidgetEventDispatch } from "../runtime/widgetEventDispatch";
 import type { FieldDefinition, PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
@@ -255,6 +256,14 @@ export interface UIWidgetModule {
      * `extra.partSlot` names one of these.
      */
     readonly partSlots?: readonly string[];
+
+    /**
+     * The props that hold words a player reads, for a plugin's widget only: the sites its manifest
+     * declares (`contributes.widgetText`), settled on registration. Studio's own widgets are rows in
+     * the shared site table (`textSites.ts`), and a plugin's answer reaches the same readers through
+     * `contributedWidgets.ts` (`uiTextSitesOf`).
+     */
+    readonly textSites?: readonly UITextSite[];
 
     /** Human-readable display name */
     readonly displayName: string;

@@ -46,6 +46,7 @@ import {
     type LocalizationUnitState,
     type StoryTranslationRow,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -129,7 +130,7 @@ function isPendingReview(state: LocalizationUnitState): boolean {
 
 export function LocalizationEditorTab({ tabId, payload, active }: EditorComponentProps<LocalizationEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
-    const { t } = useTranslation();
+    const { t, locale: editorLocale } = useTranslation();
     const locale = payload?.locale ?? "";
 
     const localizationService = useMemo(
@@ -289,7 +290,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                 }
                 const uiDocument = uiDocumentService?.getDocument();
                 const uiRows: TableRow[] = uiDocument && uiDocumentService
-                    ? extractUiTranslationRows(uiDocument, readProjectTextWriters(uiDocumentService.getContext().services)).map(row => ({
+                    ? extractUiTranslationRows(uiDocument, readProjectTextWriters(uiDocumentService.getContext().services), { locale: editorLocale }).map(row => ({
                         unitId: row.unitId,
                         sourceText: row.sourceText,
                         interpolationCount: 0,
@@ -311,14 +312,26 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                         keyName: row.keyName,
                     }))
                     : [];
-                setRows([...uiRows, ...keyRows]);
+                // A plugin's words - a menu row's label, a gallery entry's name - grouped under the
+                // plugin, between the interface's widgets and the named keys.
+                const pluginRows: TableRow[] = listPluginWordsRows().map(row => ({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    interpolationCount: 0,
+                    groupKey: `plugin:${row.pluginId}`,
+                    groupName: row.pluginName,
+                    speaker: row.context,
+                }));
+                setRows([...uiRows, ...pluginRows, ...keyRows]);
             };
             read();
             void localizationService.loadKeys().then(read).catch(() => undefined);
             const unsubscribe = localizationService.onKeysChanged(read);
+            const unsubscribePluginWords = subscribePluginWords(read);
             return () => {
                 disposed = true;
                 unsubscribe();
+                unsubscribePluginWords();
             };
         }
         if (!storyService) {
@@ -377,7 +390,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             disposed = true;
             unsubscribe();
         };
-    }, [storyService, localizationService, uiDocumentService, sourceValue, speakerNameFor, characters, uiDocumentRevision, t]);
+    }, [storyService, localizationService, uiDocumentService, sourceValue, speakerNameFor, characters, uiDocumentRevision, t, editorLocale]);
 
     // Translation document for this locale. Read again when the language comes back to the list,
     // since what is on disk then is what the table shows.

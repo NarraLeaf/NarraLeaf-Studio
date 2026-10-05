@@ -2,16 +2,16 @@
   "manifestVersion": 2,
   "id": "narraleaf.menu-bar",
   "name": "Menu Bar",
-  "version": "1.0.0",
-  "description": "Author the desktop game's menu bar - File, Game, View, Language, Help - and bind each row to a built-in action or a function in the global blueprint.",
+  "version": "1.1.0",
+  "description": "Author the desktop game's menu bar - File, Game, View, Language, Help - and bind each row to a built-in action or a function in App logic.",
   "localized": {
     "zh": {
       "name": "菜单栏",
-      "description": "制作桌面版游戏的菜单栏，例如文件、游戏、显示、语言与帮助菜单，并将每个菜单项绑定到内置操作或全局蓝图中的函数"
+      "description": "制作桌面版游戏的菜单栏，例如文件、游戏、显示、语言与帮助菜单，并将每个菜单项绑定到内置操作或应用逻辑中的函数"
     },
     "ja": {
       "name": "メニューバー",
-      "description": "ファイル、ゲーム、表示、言語、ヘルプなど、デスクトップ版ゲームのメニューバーを作成し、各メニュー項目を組み込みの操作またはグローバルブループリントの関数に割り当てる"
+      "description": "ファイル、ゲーム、表示、言語、ヘルプなど、デスクトップ版ゲームのメニューバーを作成し、各メニュー項目を組み込みの操作またはアプリロジックの関数に割り当てる"
     }
   },
   "publisher": "NarraLeaf Studio",

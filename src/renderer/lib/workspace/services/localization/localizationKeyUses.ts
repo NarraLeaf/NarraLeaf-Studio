@@ -11,7 +11,7 @@ import { anchorComponentId, anchorSurfaceId } from "@shared/blueprint/ownerShape
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { getUIComponentLink, getUIComponentParams } from "@shared/types/ui-editor/document";
-import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { readUITextSite, uiTextSitesOf } from "@shared/types/ui-editor/textSource";
 import { listBlueprintGraphSites } from "@/lib/lint/blueprintSites";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "@/lib/lint/rules/blueprint";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -73,14 +73,25 @@ export function indexLocalizationKeyUses(input: LocalizationKeyUsesInput): Reado
         }
     };
     const nameOf = (element: UIElement) => element.name?.trim() || input.widgetName(element);
-    /** The key a widget reads its own words from, when it reads them from one. */
-    const keyOf = (element: UIElement): string => {
-        const site = uiTextSiteOf(element.type);
-        return site?.keyProp && site.role === "words" && !getUIComponentLink(element) ? readUITextSite(element, site).key : "";
+    /**
+     * The keys a widget reads its own words from, each once: Studio's own widgets have one site, a
+     * plugin's widget can read several of its words from keys.
+     */
+    const keysOf = (element: UIElement): string[] => {
+        if (getUIComponentLink(element)) {
+            return [];
+        }
+        const keys = new Set<string>();
+        for (const site of uiTextSitesOf(element.type)) {
+            const key = site.keyProp && site.role === "words" ? readUITextSite(element, site).key : "";
+            if (key) {
+                keys.add(key);
+            }
+        }
+        return [...keys];
     };
     const read = (element: UIElement, ownerName: string): void => {
-        const keyName = keyOf(element);
-        if (keyName) {
+        for (const keyName of keysOf(element)) {
             const uses = usesOf(keyName);
             uses.elements.push({ ownerName, elementName: nameOf(element) });
             addPlace(uses, ownerName);

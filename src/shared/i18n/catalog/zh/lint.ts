@@ -231,7 +231,7 @@ export const lint = {
             messageChoice: "指向的选项已不存在",
             messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
-            messageTextKey: "指向的文本键在项目中未声明",
+            messageTextKey: "指向的翻译键在项目中未声明",
             messageDlc: "指向的 DLC 在项目中不存在",
             messageInputAction: "指向的输入意图在项目中未声明",
         },
@@ -323,7 +323,7 @@ export const lint = {
             message: "{text} 等列表内容在所有语言中按原文显示",
         },
         uiLocalizationKeyMissing: {
-            title: "不存在的本地化键",
+            title: "不存在的翻译键",
             description: "控件的文字来自项目中不存在的键",
             message: "文字来自键 {key}，该键在项目中不存在",
         },

@@ -1,9 +1,9 @@
 /**
  * The plugin's own message bundle - the words the author reads, in the editor's language.
  *
- * Nothing here reaches a player: the rows an author writes carry project localization keys and
- * are resolved against the project's own tables (see `document.ts`). What is translated here is
- * the panel around them.
+ * Nothing here reaches a player: what the rows an author writes say is the author's - written directly
+ * and translated through the project's translation table, or read from one of its translation keys
+ * (see `document.ts`). What is translated here is the panel around them.
  *
  * Action names are the blueprint catalogue's node names rather than new wording - an author
  * picking "Show Layer" here and reading `Show Layer` on a node is looking at one thing, and a
@@ -54,9 +54,6 @@ export const MENU_BAR_MESSAGES = {
             removeMenu: "Delete menu",
             incomplete: "Incomplete; not shown to the player",
             labelText: "Display name",
-            labelKey: "Localization key",
-            labelKeyNone: "No key",
-            noKeys: "No localization keys in this project",
             kindAction: "Menu item",
             kindDynamic: "Generated list",
             kindSubmenu: "Submenu",
@@ -70,7 +67,7 @@ export const MENU_BAR_MESSAGES = {
             pageNone: "Select a page",
             fn: "Function",
             fnNone: "Select a function",
-            fnEmpty: "No functions declared in the global blueprint",
+            fnEmpty: "No functions declared in App logic",
             fnArgs: "Arguments",
             modal: "Block the game below",
             dismissible: "Close on outside click",
@@ -131,9 +128,6 @@ export const MENU_BAR_MESSAGES = {
             removeMenu: "删除菜单",
             incomplete: "未配置完成，不显示给玩家",
             labelText: "显示名称",
-            labelKey: "本地化键",
-            labelKeyNone: "不使用本地化键",
-            noKeys: "本项目未声明本地化键",
             kindAction: "菜单项",
             kindDynamic: "自动列表",
             kindSubmenu: "子菜单",
@@ -147,7 +141,7 @@ export const MENU_BAR_MESSAGES = {
             pageNone: "选择页面",
             fn: "函数",
             fnNone: "选择函数",
-            fnEmpty: "全局蓝图未声明函数",
+            fnEmpty: "应用逻辑未声明函数",
             fnArgs: "参数",
             modal: "阻止操作下层游戏",
             dismissible: "点击外部区域关闭",
@@ -208,9 +202,6 @@ export const MENU_BAR_MESSAGES = {
             removeMenu: "メニューを削除",
             incomplete: "設定が未完了。プレイヤーには表示されない",
             labelText: "表示名",
-            labelKey: "ローカライズキー",
-            labelKeyNone: "ローカライズキーを使わない",
-            noKeys: "このプロジェクトにローカライズキーはない",
             kindAction: "メニュー項目",
             kindDynamic: "自動リスト",
             kindSubmenu: "サブメニュー",
@@ -224,7 +215,7 @@ export const MENU_BAR_MESSAGES = {
             pageNone: "ページを選ぶ",
             fn: "関数",
             fnNone: "関数を選ぶ",
-            fnEmpty: "グローバルブループリントに関数の宣言はない",
+            fnEmpty: "アプリロジックに関数の宣言はない",
             fnArgs: "引数",
             modal: "下のゲームを操作させない",
             dismissible: "外側のクリックで閉じる",

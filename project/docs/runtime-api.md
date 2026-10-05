@@ -166,14 +166,18 @@ if (menu) {
 }
 ```
 
-内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签走项目本地化键。
+内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签用项目的翻译键，或者直接写、经 studio 入口的 `registerWords` 进译表。
+
+标签（`GameMenuLabel`）是 `{ key, text, words? }`：有 `key` 时显示键在当前语言下的字（键不在这份构建里时显示 `text`）；没有 `key` 时显示 `text`，
+写了 `words` 就按这个 id 取 `text` 的译文——`words` 是插件在 studio 入口 `app.services.localization.registerWords` 里给这段字的 id，宿主在交给游戏前把它限定成本插件的单元（`plugin:<插件 ID>/<id>`），每次重画都重新取，所以玩家切换语言时菜单跟着变。
 
 ### game.locale
 
 游戏当前语言，以及项目自己的文案。
 
 - `current` / `onChange(listener)`：玩家正在读的语言，与切换通知。
-- `text(key)`：按项目的本地化键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；项目没声明这个键时返回 `null`。**给玩家看的字一律走这里**，插件自带一份译文是翻译流程唯一看不到的那份。
+- `text(key)`：按项目的翻译键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；项目没声明这个键时返回 `null`。**给玩家看的字一律走这里或下一条**，插件自带一份译文是翻译流程唯一看不到的那份。
+- `words(id, text)`：本插件在 studio 入口用 `app.services.localization.registerWords` 交给译表的字，在当前语言下的样子：单元 `plugin:<插件 ID>/<id>` 的译文（沿语言的 fallback 链），没有译文时原样返回 `text`。游戏只带译文不带源文，所以源文由插件自己传进来（就是它发布的数据里那段字）。只读得到本插件自己的单元。
 
 ### game.diagnostics
 

@@ -75,7 +75,7 @@ export const workspace = {
         table: {
             storyLabel: "原文",
             sourceUi: "画面のテキスト",
-            sourceKeys: "名前付きのキー",
+            sourceKeys: "翻訳キー",
             modeTranslate: "翻訳",
             modeReview: "確認",
             filterAll: "すべて",
@@ -511,7 +511,7 @@ export const workspace = {
         livePendingOne: "1 件の変更がホストの応答を待っている",
         livePendingMany: "{count} 件の変更がホストの応答を待っている",
         // セッションが何を取り上げるかを一度にまとめて示す。コントロールごとに気付かせない。
-        liveFrozenWhat: "セッション中はストーリー・キャスト・翻訳と音声・アセットライブラリ全体（ファイルそのものを含む）、そしてプロジェクト自身の表（辞書・オーディオトラック・アセットセット・変数・名前付き文字列・ビルドバリアント・DLC・パレット）が保存される。このプロジェクトの他の内容は最新の状態のまま読み取り専用になる",
+        liveFrozenWhat: "セッション中はストーリー・キャスト・翻訳と音声・アセットライブラリ全体（ファイルそのものを含む）、そしてプロジェクト自身の表（辞書・オーディオトラック・アセットセット・変数・翻訳キー・ビルドバリアント・DLC・パレット）が保存される。このプロジェクトの他の内容は最新の状態のまま読み取り専用になる",
         liveUnavailableHere: "ライブセッション中は使用できない",
         // 他の人が書いている行を一箇所にまとめる。行ごとに印を探さずに読める。
         liveClaimsLabel: "編集中の行",
@@ -1506,7 +1506,7 @@ export const workspace = {
                 storyText: "ストーリーの文",
                 uiText: "画面のテキスト",
                 variable: "変数",
-                uiTextKey: "UI のテキストキー",
+                uiTextKey: "翻訳キー",
                 blueprintNode: "ブループリントのノード",
             },
             // 同じ結果をまとめている行の末尾に付くバッジ。

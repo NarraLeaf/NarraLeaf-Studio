@@ -40,7 +40,7 @@ import {
     type UITextCarriedKeys,
     type UITextMigrationChange,
 } from "@shared/types/ui-editor/textSourceMigration";
-import { readUITextSite, uiTextSiteOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
+import { readUITextSite, uiTextSitesOf, uiTextUnitId } from "@shared/types/ui-editor/textSource";
 import { findUIComponentHoldingElement } from "@shared/types/ui-editor/componentTextParams";
 import { mapCopiedUIComponentDefaultUnits, mapCopiedUITextUnits } from "@shared/types/ui-editor/textUnitCopies";
 import type { LocalizationUnit } from "@shared/types/localization";
@@ -1150,15 +1150,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                             };
                         }
                     }
-                    const site = uiTextSiteOf(element.type);
-                    if (!site?.keyProp || site.role !== "words" || isLinkedUIComponentElement(element)) {
+                    if (isLinkedUIComponentElement(element)) {
                         continue;
                     }
-                    if (readUITextSite(element, site).key !== keyName) {
-                        continue;
+                    // Every site that reads the key: a plugin's widget can read several of its words
+                    // from one.
+                    for (const site of uiTextSitesOf(element.type)) {
+                        if (!site.keyProp || site.role !== "words" || readUITextSite(element, site).key !== keyName) {
+                            continue;
+                        }
+                        element.props = uiTextSiteWithOwnWords(element, site, words).props;
+                        converted.push({ elementId: element.id, prop: site.textProp });
                     }
-                    element.props = uiTextSiteWithOwnWords(element, site, words).props;
-                    converted.push({ elementId: element.id, prop: site.textProp });
                 }
             };
             visit(document.elements);

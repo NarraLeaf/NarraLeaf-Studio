@@ -4889,6 +4889,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                 );
                 return translated ?? config.keys?.[key] ?? null;
             },
+            // A label's own words, through the unit its plugin offered them under; the same tables
+            // and chain as a key.
+            localizedUnitText: (unitId, locale) => {
+                const config = hostApi.localization.getConfig();
+                if (!config) {
+                    return null;
+                }
+                return resolveLocalizedUnitText(
+                    { sourceLocale: config.sourceLocale, locales: config.locales, tables: config.tables ?? {} },
+                    locale,
+                    unitId,
+                );
+            },
             listTextLanguages: () => hostApi.localization.getConfig()?.locales ?? [],
             getTextLanguage: () => hostApi.localization.getLocale(),
             // The bridge's own setter, so a language picked from the menu takes exactly the path one

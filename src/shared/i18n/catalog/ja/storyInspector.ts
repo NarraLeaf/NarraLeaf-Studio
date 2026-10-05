@@ -2,9 +2,9 @@ import type { LocaleNamespace } from "../types";
 
 /** `storyInspector` 日本語。ストーリーのシーンエディタで、アクションの種類ごとに出るインスペクタ。 */
 export const storyInspector = {
-    // この行の翻訳／ボイスの単位 id を隠している開閉部。id 自体は uuid なので、
-    // ラベルはそれが何であるかではなく、何のためのものかを言う。
-    textId: "ローカライズのキー",
+    // この行の翻訳／ボイスの単位 id を隠している開閉部。翻訳と収録台本の書き出しで
+    // この id が載る `unit_id` 列の名前を使う。翻訳キーとは別のもの。
+    textId: "ユニット ID",
     advanced: "詳細",
     advancedParams: "詳細なパラメータ",
     noVariablesDeclared: "宣言された変数がない",

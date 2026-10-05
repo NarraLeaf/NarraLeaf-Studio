@@ -46,7 +46,6 @@ import type { MenuBarPath, MenuBarStore } from "./store";
 
 type SurfaceEntry = { id: string; name: string };
 type FnEntry = { fnRef: string; name: string; params: { pinId: string; name: string; valueType: string }[] };
-type KeyEntry = { name: string; sourceText: string };
 
 /** Where a dragged row would land: which list, and which of that list's n+1 gaps. */
 type DropTarget = { listKey: string; gapIndex: number };
@@ -219,7 +218,6 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
 
     const surfaces = useMemo(() => app.services.interface.listSurfaces(), [app]);
     const fns = useMemo(() => app.services.interface.listGlobalFns(), [app]);
-    const keys = useMemo(() => app.services.localization.listKeys(), [app]);
 
     const openMenu = data.menus.find(menu => menu.id === openMenuId) ?? null;
 
@@ -339,7 +337,6 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                                     frozen={frozen}
                                     surfaces={surfaces}
                                     fns={fns}
-                                    keys={keys}
                                     openRowKey={openRowKey}
                                     onOpenRow={setOpenRowKey}
                                     drag={drag}
@@ -583,7 +580,6 @@ function MenuSection({
     frozen,
     surfaces,
     fns,
-    keys,
     openRowKey,
     onOpenRow,
     drag,
@@ -596,7 +592,6 @@ function MenuSection({
     frozen: boolean;
     surfaces: SurfaceEntry[];
     fns: FnEntry[];
-    keys: KeyEntry[];
     openRowKey: string | null;
     onOpenRow: (key: string | null) => void;
     drag: DragHandlers;
@@ -635,7 +630,6 @@ function MenuSection({
                     frozen={frozen}
                     surfaces={surfaces}
                     fns={fns}
-                    keys={keys}
                     openRowKey={openRowKey}
                     onOpenRow={onOpenRow}
                     drag={drag}
@@ -643,10 +637,10 @@ function MenuSection({
 
                 <div className="mt-1 border-t border-edge pt-1">
                     <LabelFields
+                        id={menu.id}
                         label={menu.label}
                         tr={tr}
                         frozen={frozen}
-                        keys={keys}
                         onChange={label => store.setLabel([menu.id], label)}
                     />
                     <RemoveButton
@@ -671,7 +665,6 @@ function RowList({
     frozen,
     surfaces,
     fns,
-    keys,
     openRowKey,
     onOpenRow,
     drag,
@@ -684,7 +677,6 @@ function RowList({
     frozen: boolean;
     surfaces: SurfaceEntry[];
     fns: FnEntry[];
-    keys: KeyEntry[];
     openRowKey: string | null;
     onOpenRow: (key: string | null) => void;
     drag: DragHandlers;
@@ -719,7 +711,6 @@ function RowList({
                         frozen={frozen}
                         surfaces={surfaces}
                         fns={fns}
-                        keys={keys}
                         openRowKey={openRowKey}
                         onOpenRow={onOpenRow}
                         drag={drag}
@@ -742,7 +733,6 @@ function RowSection({
     frozen,
     surfaces,
     fns,
-    keys,
     openRowKey,
     onOpenRow,
     drag,
@@ -757,7 +747,6 @@ function RowSection({
     frozen: boolean;
     surfaces: SurfaceEntry[];
     fns: FnEntry[];
-    keys: KeyEntry[];
     openRowKey: string | null;
     onOpenRow: (key: string | null) => void;
     drag: DragHandlers;
@@ -789,10 +778,10 @@ function RowSection({
                 <Rail depth={2}>
                 {(item.kind === "action" || item.kind === "submenu") && (
                     <LabelFields
+                        id={path.join("/")}
                         label={item.label}
                         tr={tr}
                         frozen={frozen}
-                        keys={keys}
                         onChange={label => store.setLabel(path, label)}
                     />
                 )}
@@ -844,7 +833,6 @@ function RowSection({
                             frozen={frozen}
                             surfaces={surfaces}
                             fns={fns}
-                            keys={keys}
                             openRowKey={openRowKey}
                             onOpenRow={onOpenRow}
                             drag={drag}
@@ -896,55 +884,35 @@ function RemoveButton({
     );
 }
 
+/**
+ * What a menu or a row says: written directly or read from one of the project's translation keys, in
+ * the field Studio's own text and button labels use (`ui.WordsField`). Words written directly are
+ * offered for translation from the studio entry, so they reach the translation table like any words
+ * on the game's interface.
+ */
 function LabelFields({
+    id,
     label,
     tr,
     frozen,
-    keys,
     onChange,
 }: {
+    id: string;
     label: MenuBarLabel;
     tr: PluginTranslator;
     frozen: boolean;
-    keys: KeyEntry[];
     onChange: (label: MenuBarLabel) => void;
 }) {
     return (
-        <>
-            <ui.Panel.Row
-                label={tr.t("labelText")}
-                control={(
-                    <ui.Input
-                        size="sm"
-                        // Narrow enough that the field's own label still fits beside it two rails in.
-                        className="w-32"
-                        value={label.text}
-                        disabled={frozen}
-                        onChange={event => onChange({ ...label, text: event.target.value })}
-                    />
-                )}
+        <div className="py-1.5">
+            <div className="mb-1 text-sm text-fg">{tr.t("labelText")}</div>
+            <ui.WordsField
+                value={{ text: label.text, key: label.key }}
+                disabled={frozen}
+                draftResetKey={id}
+                onChange={next => onChange({ key: next.key, text: next.text })}
             />
-            <ui.Panel.Row
-                label={tr.t("labelKey")}
-                control={(
-                    <ui.Select
-                        size="sm"
-                        value={label.key ?? ""}
-                        disabled={frozen}
-                        placeholder={keys.length === 0 ? tr.t("noKeys") : tr.t("labelKeyNone")}
-                        options={[
-                            { value: "", label: tr.t("labelKeyNone") },
-                            ...keys.map(key => ({
-                                value: key.name,
-                                label: key.name,
-                                secondaryLabel: key.sourceText,
-                            })),
-                        ]}
-                        onChange={value => onChange({ ...label, key: String(value) || null })}
-                    />
-                )}
-            />
-        </>
+        </div>
     );
 }
 

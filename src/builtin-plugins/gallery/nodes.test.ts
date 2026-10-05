@@ -499,3 +499,68 @@ describe("palette shape", () => {
         }
     });
 });
+
+describe("the words the author wrote, in the player's language", () => {
+    const CATALOG = {
+        version: 4,
+        groups: [{ id: "g1", name: "第一章" }],
+        items: [
+            {
+                id: "art.a",
+                name: "放学后的走廊",
+                kind: "cg",
+                description: "黄昏的走廊",
+                groupId: "g1",
+                variants: [{ id: "art.a.v.1", name: "黄昏", imageAssetId: "asset-a" }],
+            },
+            { id: "art.b", name: "空无一人的教室", kind: "cg", variants: [{ id: "art.b.v.1", name: "午后", imageAssetId: "asset-b" }] },
+        ],
+        settings: { lockedNameMask: "未解锁" },
+    };
+    const TRANSLATIONS: Record<string, string> = {
+        "entry.art.a.name": "The corridor after school",
+        "entry.art.a.description": "The corridor at dusk",
+        "member.art.a.v.1.name": "Dusk",
+        "group.g1.name": "Chapter one",
+        lockedNameMask: "Locked",
+        // A locked entry's name is never handed out, translated or not.
+        "entry.art.b.name": "The empty classroom",
+    };
+
+    function ctxInEnglish(params: Record<string, unknown> = {}) {
+        return {
+            params,
+            resolveInput: () => undefined,
+            game: {
+                log: () => undefined,
+                store: {
+                    get: async (key: string) => persistence[key] ?? null,
+                    set: async (key: string, value: unknown) => {
+                        persistence[key] = value;
+                    },
+                },
+                locale: { current: "en", onChange: () => () => undefined, text: () => null, words: (id: string, text: string) => TRANSLATIONS[id] ?? text },
+            },
+        } as never;
+    }
+
+    it("hands out names, descriptions, group names and the locked title translated in a game", async () => {
+        persistence[RUNTIME_UNLOCKED_KEY] = ["art.a.v.1"];
+        const nodes = nodesFor(CATALOG);
+        const entries = await nodes.get(`${P}.getEntries`)!.execute(ctxInEnglish()) as { outputValues: { entries: { name: string; description: string; groupName: string }[] } };
+        expect(entries.outputValues.entries.map(entry => [entry.name, entry.description, entry.groupName])).toEqual([
+            ["The corridor after school", "The corridor at dusk", "Chapter one"],
+            ["Locked", "", ""],
+        ]);
+        const variants = await nodes.get(`${P}.getVariants`)!.execute(ctxInEnglish({ galleryItemId: "art.a" })) as { outputValues: { entries: { name: string }[] } };
+        expect(variants.outputValues.entries.map(variant => variant.name)).toEqual(["Dusk"]);
+        const groups = await nodes.get(`${P}.getGroups`)!.execute(ctxInEnglish()) as { outputValues: { groups: { name: string }[] } };
+        expect(groups.outputValues.groups.map(group => group.name)).toEqual(["Chapter one"]);
+    });
+
+    it("reads the words as written where the game has no locale, as in the editor", async () => {
+        persistence[RUNTIME_UNLOCKED_KEY] = ["art.a.v.1"];
+        const entries = await run(CATALOG, `${P}.getEntries`) as { outputValues: { entries: { name: string }[] } };
+        expect(entries.outputValues.entries.map(entry => entry.name)).toEqual(["放学后的走廊", "未解锁"]);
+    });
+});

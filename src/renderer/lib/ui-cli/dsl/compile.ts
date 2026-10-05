@@ -19,7 +19,7 @@ import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
-import { uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { uiTextSiteOf, uiTextSitesOf, type UITextSite } from "@shared/types/ui-editor/textSource";
 import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import {
     CONTRIBUTED_WIDGET_PART_SLOT_KEY,
@@ -439,10 +439,11 @@ class CompileContext {
             const declared = new Set(detail.props.map(prop => prop.key));
             // Where the words come from is stated by props a new widget leaves unset - its key and its
             // marks - and the text-site table names them for each widget.
-            const site = uiTextSiteOf(node.type);
-            for (const sourceProp of [site?.keyProp, site?.marksProp]) {
-                if (sourceProp) {
-                    declared.add(sourceProp);
+            for (const site of uiTextSitesOf(node.type)) {
+                for (const sourceProp of [site.keyProp, site.marksProp]) {
+                    if (sourceProp) {
+                        declared.add(sourceProp);
+                    }
                 }
             }
             for (const key of Object.keys(props)) {
@@ -553,8 +554,19 @@ class CompileContext {
      * the widget would show the key's name.
      */
     private checkWordsTwoSources(node: UiElementNode, label: string, props: Record<string, unknown>): void {
-        const site = uiTextSiteOf(node.type);
-        if (!site?.keyProp || site.role !== "words" || !this.textKeys) {
+        // Every site of the widget: a plugin's widget declares one per prop that holds words.
+        for (const site of uiTextSitesOf(node.type)) {
+            this.checkSiteWordsTwoSources(node, label, props, site);
+        }
+    }
+
+    private checkSiteWordsTwoSources(
+        node: UiElementNode,
+        label: string,
+        props: Record<string, unknown>,
+        site: UITextSite,
+    ): void {
+        if (!site.keyProp || site.role !== "words" || !this.textKeys) {
             return;
         }
         const key = typeof props[site.keyProp] === "string" ? (props[site.keyProp] as string).trim() : "";

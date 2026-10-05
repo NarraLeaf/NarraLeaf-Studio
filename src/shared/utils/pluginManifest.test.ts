@@ -122,6 +122,79 @@ describe("validatePluginManifest", () => {
         });
     });
 
+    describe("contributes.widgetText", () => {
+        const withWidgetText = (widgetText: unknown, widgets: string[] = ["acme.sample-plugin.badge"]) =>
+            validatePluginManifest({
+                manifestVersion: 2,
+                id: "acme.sample-plugin",
+                name: "Sample Plugin",
+                version: "1.0.0",
+                entries: { studio: "main.js", runtime: "runtime.js" },
+                contributes: { widgets, widgetText },
+            });
+
+        it("defaults to no text props, so a plugin written before the declaration reads as it did", () => {
+            const result = validatePluginManifest({
+                manifestVersion: 2,
+                id: "acme.sample-plugin",
+                name: "Sample Plugin",
+                version: "1.0.0",
+                entries: { runtime: "runtime.js" },
+                contributes: { widgets: ["acme.sample-plugin.badge"] },
+            });
+            expect(result).toMatchObject({ ok: true, manifest: { contributes: { widgetText: {} } } });
+        });
+
+        it("normalizes each prop and fills in where its key is kept", () => {
+            const result = withWidgetText({
+                "acme.sample-plugin.badge": [
+                    { prop: "caption", keyProp: "captionKey", label: "Caption", localized: { zh: "说明" } },
+                    { prop: "hint", multiline: true },
+                ],
+            });
+            expect(result).toMatchObject({
+                ok: true,
+                manifest: {
+                    contributes: {
+                        widgetText: {
+                            "acme.sample-plugin.badge": [
+                                { prop: "caption", keyProp: "captionKey", label: "Caption", localized: { zh: "说明" } },
+                                { prop: "hint", keyProp: "hintLocalizationKey", multiline: true },
+                            ],
+                        },
+                    },
+                },
+            });
+        });
+
+        it("derives no install permission", () => {
+            const result = withWidgetText({ "acme.sample-plugin.badge": [{ prop: "caption" }] });
+            expect(result.ok && result.manifest.permissions).toEqual([]);
+        });
+
+        it.each([
+            ["a widget the plugin does not declare", { "acme.sample-plugin.other": [{ prop: "caption" }] }, "not declared in contributes.widgets"],
+            ["an empty list", { "acme.sample-plugin.badge": [] }, "non-empty array"],
+            ["a prop that is not an identifier", { "acme.sample-plugin.badge": [{ prop: "a b" }] }, "invalid prop"],
+            ["a prop the drawing writes itself", { "acme.sample-plugin.badge": [{ prop: "runtimeTextOrigin" }] }, "invalid prop"],
+            ["a key prop that is not an identifier", { "acme.sample-plugin.badge": [{ prop: "caption", keyProp: "" }] }, "invalid keyProp"],
+            ["a key kept in the words' own prop", { "acme.sample-plugin.badge": [{ prop: "caption", keyProp: "caption" }] }, "keeps its key in itself"],
+            ["the same prop twice", { "acme.sample-plugin.badge": [{ prop: "caption" }, { prop: "caption" }] }, "more than once"],
+            [
+                "a key prop that is another prop's words",
+                { "acme.sample-plugin.badge": [{ prop: "caption", keyProp: "hint" }, { prop: "hint" }] },
+                "more than once",
+            ],
+            ["a label that is not a string", { "acme.sample-plugin.badge": [{ prop: "caption", label: 3 }] }, "label must be a string"],
+            ["an invalid locale code", { "acme.sample-plugin.badge": [{ prop: "caption", localized: { "zh_CN": "说明" } }] }, "invalid locale code"],
+            ["an empty localized label", { "acme.sample-plugin.badge": [{ prop: "caption", localized: { zh: " " } }] }, "non-empty string"],
+            ["a multiline that is not a boolean", { "acme.sample-plugin.badge": [{ prop: "caption", multiline: "yes" }] }, "true or false"],
+            ["not an object", ["acme.sample-plugin.badge"], "object keyed by widget type"],
+        ])("refuses %s", (_, widgetText, message) => {
+            expect(withWidgetText(widgetText)).toMatchObject({ ok: false, error: expect.stringContaining(message) });
+        });
+    });
+
     it("normalizes contributed runtime data namespaces", () => {
         const result = validatePluginManifest({
             manifestVersion: 2,
