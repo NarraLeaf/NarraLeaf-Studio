@@ -1251,8 +1251,13 @@ interface IHistoryService extends IService {
 interface IUIEditorHistoryService extends IService {
     getLimit(): number;
     setLimit(limit: number): void;
+    /**
+     * One page's slice of the two interface documents - or, for a component editor's
+     * `component-editor:<id>` surface, one definition's. Opaque outside the service: it is only
+     * ever handed back to {@link record}.
+     */
     captureSnapshot(surfaceId: string): {
-        document: UIDocument;
+        document: unknown;
         blueprint: unknown;
     };
     record(options: {

@@ -191,36 +191,50 @@ export class ComponentDocumentServiceAdapter {
         return this.base.getComponent(componentId);
     }
 
-    public updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void {
-        if (this.isVirtualRoot(elementId)) {
-            return;
+    public updateElementLayout(
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
+        const patch = this.writableLayoutPatch(elementId, layoutPatch);
+        if (patch) {
+            this.base.updateComponentElementLayout(this.componentId, elementId, patch, options);
         }
-        let patch = layoutPatch;
-        if (this.isComponentRoot(elementId)) {
-            // The root is drawn at the frame's origin (see `buildDocument`), so a position written to
-            // it would change the stored definition and nothing anyone can see. Its size is the
-            // component's size, and goes through.
-            const { x: _x, y: _y, ...rest } = layoutPatch;
-            if (Object.keys(rest).length === 0) {
-                return;
-            }
-            patch = rest;
-        }
-        this.base.updateComponentElementLayout(this.componentId, elementId, patch);
     }
 
     /**
-     * `options` is accepted for the base service's signature and has nothing to act on: a
-     * definition's layout edits are written without an undo step (`updateComponentElementLayout`),
-     * so there is no step for a merge key to fold into.
+     * Every element's patch in one write, so one gesture is one undo step in the definition's history
+     * - a drag of three elements, or a run of arrow-key nudges folded by `mergeKey`.
      */
     public updateElementLayouts(
         layoutPatches: Record<string, Partial<UILayout>>,
-        _options: { mergeKey?: string } = {},
+        options: { mergeKey?: string } = {},
     ): void {
+        const writable: Record<string, Partial<UILayout>> = {};
         for (const [elementId, layoutPatch] of Object.entries(layoutPatches)) {
-            this.updateElementLayout(elementId, layoutPatch);
+            const patch = this.writableLayoutPatch(elementId, layoutPatch);
+            if (patch) {
+                writable[elementId] = patch;
+            }
         }
+        if (Object.keys(writable).length > 0) {
+            this.base.updateComponentElementLayouts(this.componentId, writable, options);
+        }
+    }
+
+    /** What of a layout patch is stored for this element, or null when nothing is. */
+    private writableLayoutPatch(elementId: string, layoutPatch: Partial<UILayout>): Partial<UILayout> | null {
+        if (this.isVirtualRoot(elementId)) {
+            return null;
+        }
+        if (!this.isComponentRoot(elementId)) {
+            return layoutPatch;
+        }
+        // The root is drawn at the frame's origin (see `buildDocument`), so a position written to it
+        // would change the stored definition and nothing anyone can see. Its size is the component's
+        // size, and goes through.
+        const { x: _x, y: _y, ...rest } = layoutPatch;
+        return Object.keys(rest).length > 0 ? rest : null;
     }
 
     public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
@@ -237,11 +251,15 @@ export class ComponentDocumentServiceAdapter {
         this.base.updateComponentElementExtra(this.componentId, elementId, extraPatch);
     }
 
-    public updateElementAnimation(elementId: string, animation: UIPageAnimationSettings | null): void {
+    public updateElementAnimation(
+        elementId: string,
+        animation: UIPageAnimationSettings | null,
+        options: { mergeKey?: string } = {},
+    ): void {
         if (this.isVirtualRoot(elementId)) {
             return;
         }
-        this.base.updateComponentElementAnimation(this.componentId, elementId, animation);
+        this.base.updateComponentElementAnimation(this.componentId, elementId, animation, options);
     }
 
     public renameElement(elementId: string, name: string): void {
@@ -387,8 +405,12 @@ export class ComponentDocumentServiceAdapter {
         return this.base.pasteComponentClipboardPayload(this.componentId, actualParentId, beforeChildId, payload);
     }
 
+    /**
+     * Everything `action` writes as one step in the definition's history: the drag commit (layouts
+     * and image flips together), a widget inspector's compound edit.
+     */
     public runSurfaceHistoryTransaction(_surfaceId: string, action: () => void): void {
-        action();
+        this.base.runSurfaceHistoryTransaction(this.surfaceId, action);
     }
 
     /**

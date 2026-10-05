@@ -29,9 +29,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
+import { UIEditorHistoryService, uiEditorHistoryScope } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
-import { uiSurfaceHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -586,14 +585,15 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
      * project stack whatever the author had open.
      *
      * Keyed on `active` rather than on focus: an edit made in the property inspector belongs to the
-     * surface being shown, and by then focus is on the panel rather than on the canvas.
+     * surface being shown, and by then focus is on the panel rather than on the canvas. A component
+     * tab claims its definition's stack, which is the one its edits land in (`uiEditorHistoryScope`).
      */
     useEffect(() => {
         if (!historyService || !surfaceId || !active || !context) {
             return undefined;
         }
         const history = context.services.get<HistoryService>(Services.History);
-        const scopeId = uiSurfaceHistoryScope(surfaceId);
+        const scopeId = uiEditorHistoryScope(surfaceId);
         history.setActiveScope(scopeId);
         return () => {
             if (history.getActiveScopeId() === scopeId) {
