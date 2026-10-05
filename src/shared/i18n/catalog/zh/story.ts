@@ -910,6 +910,7 @@ export const story = {
         cutPointTitle: "{name} 的剧情在此行结束；其他变体均不含此行",
         cutPointInactive: "变体已删除",
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
+        problem: "{message}（{rule}）",
         tempSpeaker: "仅名称",
         createCharacter: "创建角色「{name}」",
         // 上面那一项变灰时的悬停提示，也用在粘贴向导的「新建角色」上：同一件事的两个入口。

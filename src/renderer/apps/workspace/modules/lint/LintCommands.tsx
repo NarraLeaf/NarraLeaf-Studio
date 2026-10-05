@@ -6,6 +6,7 @@ import type { LintService } from "@/lib/workspace/services/core/LintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { useWorkspace } from "../../context";
 import { LINT_PROJECT_COMMAND_ID, PROBLEMS_PANEL_ID } from "./lintIds";
+import { publishRowProblems, setProblemsPanelOpener } from "./rowProblems";
 
 /**
  * The project check's two standing duties in a workspace window: keeping the findings current while
@@ -30,7 +31,19 @@ export function LintCommands() {
         if (!context || !isInitialized) {
             return;
         }
-        return context.services.get<LintService>(Services.Lint).startLive();
+        const lintService = context.services.get<LintService>(Services.Lint);
+        // The scene editor's row marks read the same report the panel lists, through a store of
+        // their own so a new report re-renders only the rows whose findings changed.
+        publishRowProblems(lintService.getLastReport());
+        const offReport = lintService.onReportChanged(publishRowProblems);
+        setProblemsPanelOpener(() => context.services.get<UIService>(Services.UI).panels.show(PROBLEMS_PANEL_ID));
+        const releaseLive = lintService.startLive();
+        return () => {
+            releaseLive();
+            offReport();
+            setProblemsPanelOpener(null);
+            publishRowProblems(null);
+        };
     }, [context, isInitialized]);
 
     useEffect(() => {
