@@ -378,3 +378,130 @@ describe("compressProjectMedia", () => {
         expect(encoder.invocations).toHaveLength(0);
     });
 });
+
+/** Ids for a library of several files, in the order they are written to it. */
+const LIBRARY = [
+    "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a50",
+    "2c3d4e5f-6071-4829-9bac-1d2e3f4a5b61",
+    "3d4e5f60-7182-493a-acbd-2e3f4a5b6c72",
+    "4e5f6071-8293-4a4b-bdce-3f4a5b6c7d83",
+];
+
+/**
+ * An ffmpeg that takes a while over each file and counts how many of it were running at once.
+ *
+ * `delayFor` decides how long each file takes, which is how a test makes the first file finish last.
+ */
+function timedEncoder(delayFor: (sourcePath: string) => number = () => 20) {
+    let running = 0;
+    let runningVideo = 0;
+    const peak = { all: 0, video: 0 };
+    const spawnProcess = (_binary: string, args: string[]): TranscodeChildProcess => {
+        const handlers: Record<string, Array<(...rest: never[]) => void>> = {};
+        const outputPath = args[args.length - 1];
+        const sourcePath = args[args.indexOf("-i") + 1];
+        const video = args.some(arg => arg.startsWith("libvpx"));
+        running += 1;
+        peak.all = Math.max(peak.all, running);
+        if (video) {
+            runningVideo += 1;
+            peak.video = Math.max(peak.video, runningVideo);
+        }
+        void (async () => {
+            await new Promise(resolve => setTimeout(resolve, delayFor(sourcePath)));
+            const source = await fs.stat(sourcePath);
+            await fs.writeFile(outputPath, Buffer.alloc(Math.round(source.size * 0.2), 1));
+            running -= 1;
+            if (video) {
+                runningVideo -= 1;
+            }
+            for (const listener of handlers.close ?? []) {
+                (listener as (code: number | null, signal: string | null) => void)(0, null);
+            }
+        })();
+        return {
+            stdout: { on: () => undefined },
+            stderr: { on: () => undefined },
+            on(event: string, listener: (...rest: never[]) => void) {
+                (handlers[event] ??= []).push(listener);
+                return undefined;
+            },
+            kill: () => true,
+        };
+    };
+    return { spawnProcess, peak };
+}
+
+/** The library above, each file with bytes of its own so that none share a cache entry. */
+function distinctLibrary(): Record<string, { bytes: Buffer }> {
+    return Object.fromEntries(LIBRARY.map((id, index) => [id, { bytes: wavBytes(400_000 + index * 2) }]));
+}
+
+describe("compressProjectMedia, several files at once", () => {
+    it("encodes sound files side by side", async () => {
+        await writeLibrary("audio", distinctLibrary());
+        const encoder = timedEncoder();
+        const result = await run({ lanes: 4, encodeOptions: { spawnProcess: encoder.spawnProcess } });
+
+        expect(result.converted).toBe(LIBRARY.length);
+        expect(encoder.peak.all).toBeGreaterThan(1);
+    });
+
+    it("never runs two video encodes at once, because each already uses every core", async () => {
+        await writeLibrary("video", distinctLibrary());
+        const encoder = timedEncoder();
+        const result = await run({
+            lanes: 4,
+            config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressVideo: true },
+            probeRun: fakeProbe([{ index: 0, codec_type: "video", codec_name: "h264", width: 1920, height: 1080 }]),
+            encodeOptions: { spawnProcess: encoder.spawnProcess },
+        });
+
+        expect(result.converted).toBe(LIBRARY.length);
+        expect(encoder.peak.video).toBe(1);
+    });
+
+    it("encodes two entries with the same bytes once, and ships that encode for both", async () => {
+        // An import made twice is one cache entry. Side by side, both would miss the cache and the
+        // slower would find the faster one's file in its way and record the sound as one that cannot
+        // be compressed - so one of the two would ship uncompressed.
+        await writeLibrary("audio", { [LIBRARY[0]]: { bytes: wavBytes() }, [LIBRARY[1]]: { bytes: wavBytes() } });
+        const encoder = timedEncoder();
+        const result = await run({ lanes: 4, encodeOptions: { spawnProcess: encoder.spawnProcess } });
+
+        expect(result).toMatchObject({ converted: 2, reused: 1, keptOriginal: 0 });
+        expect(result.media[LIBRARY[0]].path).toBe(result.media[LIBRARY[1]].path);
+        expect(log).not.toHaveBeenCalled();
+    });
+
+    it("hands the compile its files in library order, whichever finishes first", async () => {
+        await writeLibrary("audio", distinctLibrary());
+        // The first file in the library is the slowest to encode, so it finishes last.
+        const first = contentPath(LIBRARY[0]);
+        const encoder = timedEncoder(sourcePath => (sourcePath === first ? 80 : 5));
+        const result = await run({ lanes: 4, encodeOptions: { spawnProcess: encoder.spawnProcess } });
+
+        expect(Object.keys(result.media)).toEqual(LIBRARY);
+    });
+
+    it("looks for a missing encoder once, however many files reach it together", async () => {
+        await writeLibrary("audio", distinctLibrary());
+        await fs.rm(path.join(binDir, "ffmpeg.exe"));
+        const result = await run({ lanes: 4 });
+
+        expect(result).toMatchObject({ converted: 0, media: {} });
+        expect(log.mock.calls.filter(([level]) => level === "warning")).toHaveLength(1);
+    });
+
+    it("gives the same answer one file at a time as several at once", async () => {
+        await writeLibrary("audio", distinctLibrary());
+        const serial = await run({ lanes: 1, cacheDir: path.join(cacheDir, "serial") });
+        const parallel = await run({ lanes: 4, cacheDir: path.join(cacheDir, "parallel") });
+
+        const shape = (result: typeof serial) => ({
+            ...result,
+            media: Object.fromEntries(Object.entries(result.media).map(([id, media]) => [id, { ...media, path: path.basename(media.path) }])),
+        });
+        expect(shape(parallel)).toEqual(shape(serial));
+    });
+});
