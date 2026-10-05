@@ -17,7 +17,8 @@ import {
 import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
-import { PanelsTopLeft } from "lucide-react";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { Network, PanelsTopLeft } from "lucide-react";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -28,6 +29,9 @@ import { isEntrySurface, resolveEntrySurfaceId } from "@shared/types/ui-editor/e
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
 import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/freezeGuard";
+import { SectionStack, StackSection } from "../../components/ui/SectionStack";
+import { useRailSections } from "./panel/useRailSections";
+import { UI_RAIL_FILL_SECTION, UI_RAIL_SECTIONS, type UIRailSection } from "./panel/railSections";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { useStarterTitlePage } from "./panel/templates/useStarterTitlePage";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
@@ -150,6 +154,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const [templateStoreOpen, setTemplateStoreOpen] = useState(false);
     const blueprintRevision = useBlueprintDocumentRevision();
     const starterTitlePage = useStarterTitlePage();
+    const rail = useRailSections();
+    const { setOpen: setRailSectionOpen } = rail;
+    const handleRailSectionOpenChange = useCallback(
+        (sectionId: string, open: boolean) => setRailSectionOpen(sectionId as UIRailSection, open),
+        [setRailSectionOpen],
+    );
+    const setComponentLibraryOpen = useCallback(
+        (open: boolean) => setRailSectionOpen("componentLibrary", open),
+        [setRailSectionOpen],
+    );
+    const setInputActionsOpen = useCallback(
+        (open: boolean) => setRailSectionOpen("inputActions", open),
+        [setRailSectionOpen],
+    );
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context) return null;
@@ -701,44 +719,80 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         };
     }, [documentService, freeze, handleSurfaceClick, kind, starterTitlePage, t]);
 
+    const blueprintOverviewLabel = t("blueprint.overview.title");
+
     return (
-        // One continuous sunken tray: filters, the create button, the surface list
-        // and the component library share the same recessed background, with cards
-        // and the button floating raised on it — no color seam between sections.
-        <div className="h-full flex flex-col bg-surface-sunken">
-            <SurfaceFilters
-                kind={kind}
-                onKindChange={setKind}
-                onOpenBlueprintOverview={context ? () => openBlueprintWallTab(context) : undefined}
-            />
-            <SurfaceActions
-                onCreate={handleCreateSurface}
-                createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
-                createDisabled={!documentService || !currentKindOption}
-                onOpenTemplateStore={() => setTemplateStoreOpen(true)}
-                templateLabel={t("uiEditor.templateStore.open")}
-                templateDisabled={!documentService}
-                onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
-                pasteLabel={t("uiEditor.panel.pasteSurface")}
-            />
-            <SurfaceList
-                surfaces={filteredSurfaces}
-                entrySurfaceId={entrySurfaceId}
-                globalBlueprintCard={globalBlueprintCard}
-                renderSurfacePreview={renderSurfacePreview}
-                getSurfaceContentRevision={getSurfaceContentRevision}
-                onSurfaceClick={handleSurfaceClick}
-                onOpenMenu={handleOpenMenu}
-                onReorder={documentService && !freeze.frozen ? handleReorderSurfaces : undefined}
-                starterTile={starterTile}
-            />
-            <ComponentLibraryPanel
-                documentService={documentService}
-                runtimeBridge={runtimeBridge}
-                uiService={uiService}
-                onOpenComponent={handleOpenComponent}
-            />
-            <InputActionLibraryPanel documentService={documentService} uiService={uiService} />
+        // Three sections that share the panel's height and draw a header each, so where one ends and
+        // the next begins is never in doubt: the interfaces, the component library and the input
+        // actions. The panel itself never scrolls - every section scrolls its own list - and the
+        // interface list takes up the slack, being what the rail is for. See `SectionStack`.
+        <>
+            <SectionStack
+                sections={UI_RAIL_SECTIONS}
+                fillId={UI_RAIL_FILL_SECTION}
+                open={rail.open}
+                onOpenChange={handleRailSectionOpenChange}
+                sizes={rail.sizes}
+                onSizesChange={rail.setSizes}
+            >
+                <StackSection
+                    sectionId="surfaces"
+                    title={t("uiEditor.panel.interfaces")}
+                    actions={
+                        // Small, in the header: the overview is a way of reading the project rather
+                        // than something to do in it, and it is grouped by exactly the two kinds the
+                        // switch below chooses between.
+                        context ? (
+                            <ToolbarButton
+                                size="xs"
+                                onClick={() => openBlueprintWallTab(context)}
+                                data-tip={blueprintOverviewLabel}
+                                aria-label={blueprintOverviewLabel}
+                                data-blueprint-overview-open=""
+                            >
+                                <Network className="h-3.5 w-3.5" />
+                            </ToolbarButton>
+                        ) : undefined
+                    }
+                >
+                    <SurfaceFilters kind={kind} onKindChange={setKind} />
+                    <SurfaceActions
+                        onCreate={handleCreateSurface}
+                        createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
+                        createDisabled={!documentService || !currentKindOption}
+                        onOpenTemplateStore={() => setTemplateStoreOpen(true)}
+                        templateLabel={t("uiEditor.templateStore.open")}
+                        templateDisabled={!documentService}
+                        onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
+                        pasteLabel={t("uiEditor.panel.pasteSurface")}
+                    />
+                    <SurfaceList
+                        surfaces={filteredSurfaces}
+                        entrySurfaceId={entrySurfaceId}
+                        globalBlueprintCard={globalBlueprintCard}
+                        renderSurfacePreview={renderSurfacePreview}
+                        getSurfaceContentRevision={getSurfaceContentRevision}
+                        onSurfaceClick={handleSurfaceClick}
+                        onOpenMenu={handleOpenMenu}
+                        onReorder={documentService && !freeze.frozen ? handleReorderSurfaces : undefined}
+                        starterTile={starterTile}
+                    />
+                </StackSection>
+                <ComponentLibraryPanel
+                    documentService={documentService}
+                    runtimeBridge={runtimeBridge}
+                    uiService={uiService}
+                    onOpenComponent={handleOpenComponent}
+                    open={rail.open.componentLibrary}
+                    onOpenChange={setComponentLibraryOpen}
+                />
+                <InputActionLibraryPanel
+                    documentService={documentService}
+                    uiService={uiService}
+                    open={rail.open.inputActions}
+                    onOpenChange={setInputActionsOpen}
+                />
+            </SectionStack>
             <ContextMenu
                 items={menuItems}
                 position={menuState.position}
@@ -755,6 +809,6 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onApplied={handleOpenSurface}
                 onNotify={(message, level) => uiService?.showNotification(message, level)}
             />
-        </div>
+        </>
     );
 }

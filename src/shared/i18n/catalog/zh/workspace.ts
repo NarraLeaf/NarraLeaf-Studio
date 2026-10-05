@@ -538,6 +538,7 @@ export const workspace = {
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
         resizeSplit: "调整分屏比例",
+        resizeSections: "调整分区高度",
         noActiveEditor: "没有活动的编辑器",
         closePanel: "关闭面板",
         closeTab: "关闭 {name}",

@@ -174,7 +174,10 @@ export const help = {
                 + "Typing writes a line. Typing a slash at the start of a row selects a command instead.\n"
                 + "\n"
                 + "- The right panel edits the selected row.\n"
-                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.",
+                + "- Rows can be moved, duplicated, indented and deleted from the keyboard.\n"
+                + "- The live preview shows the stage at the selected row. Clicking it selects the next row the "
+                + "game waits at: a line or a menu. On a menu, clicking an option selects the first line of that option.\n"
+                + "- The ▶ on a row, Play from this row, runs the scene in Dev Mode starting at that row.",
         },
         storyCommands: {
             title: "Commands",
@@ -620,7 +623,9 @@ export const help = {
                 + "\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
-                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.",
+                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
+                + "- On a game UI surface, Game UI reference in the canvas toolbar shows the other game UI faintly, "
+                + "in the place and stacking order the game draws it. The reference cannot be selected or edited.",
         },
         uiComponents: {
             title: "Reusable parts",

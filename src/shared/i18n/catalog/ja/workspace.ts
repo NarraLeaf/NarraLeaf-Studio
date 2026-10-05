@@ -561,6 +561,7 @@ export const workspace = {
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",
         resizeSplit: "分割の幅を変える",
+        resizeSections: "セクションの高さを変える",
         noActiveEditor: "エディタが開いていない",
         closePanel: "パネルを閉じる",
         closeTab: "{name} を閉じる",

@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import {
     EDITOR_SURFACE_LOW_OPACITY_OUTLINE,
-    getEditorSurfaceAreaBackgroundColor,
     shouldShowEditorSurfaceLowOpacityOutline,
 } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { ZOOMED_TRANSPARENCY_BACKDROP } from "@/styles/transparencyBackdrop";
@@ -14,6 +13,14 @@ import { ZOOMED_TRANSPARENCY_BACKDROP } from "@/styles/transparencyBackdrop";
  */
 const EDITOR_SURFACE_OVERFLOW: CSSProperties = { overflow: "visible" };
 
+/**
+ * What the editing canvas adds to a surface's own frame.
+ *
+ * No fill: the frame paints the surface's own background and nothing else (`BrandedSurfaceFrame`
+ * writes it over any colour handed in here), so a transparent Game UI surface shows the canvas behind
+ * it - and with it any other Game UI drawn under it as a reference. A transparent surface is marked by
+ * its outline instead.
+ */
 export function getEditorSurfaceStyle(surface: UISurface | null | undefined, isComponentEdit: boolean): CSSProperties | undefined {
     if (!surface) {
         return undefined;
@@ -24,11 +31,7 @@ export function getEditorSurfaceStyle(surface: UISurface | null | undefined, isC
         // through: the page it is put on. The squares say so, and mark where the component ends.
         return { ...ZOOMED_TRANSPARENCY_BACKDROP, ...EDITOR_SURFACE_OVERFLOW };
     }
-    const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
     const style: CSSProperties = { ...EDITOR_SURFACE_OVERFLOW };
-    if (backgroundColor) {
-        style.backgroundColor = backgroundColor;
-    }
     if (shouldShowEditorSurfaceLowOpacityOutline(surface)) {
         style.outline = EDITOR_SURFACE_LOW_OPACITY_OUTLINE;
         style.outlineOffset = "0px";
