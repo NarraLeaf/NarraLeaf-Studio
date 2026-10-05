@@ -1352,7 +1352,10 @@ function InspectorParamOnCard({
                     fullWidth
                     size="sm"
                     options={selectComponentOptions}
-                    value={typeof raw === "string" ? raw : ""}
+                    // Options are strings, and a stored value need not be: a Boolean card holds
+                    // `true`, not `"true"`, when Studio seeded it or a file wrote it. Matched by its
+                    // spelling, or the card shows "-" for a value the graph is using.
+                    value={typeof raw === "string" ? raw : typeof raw === "boolean" || typeof raw === "number" ? String(raw) : ""}
                     onChange={value => {
                         const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);

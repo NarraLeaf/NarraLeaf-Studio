@@ -5,6 +5,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -28,6 +29,19 @@ function renderSaveGameCapturePin(screenshot: unknown): string {
                     },
                     onPatchNodeParam: vi.fn(),
                 },
+            } as any)}
+        />,
+    );
+}
+
+function renderBooleanLiteral(value: unknown): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: { catalog, nodeId: "flag", params: { value }, onPatchNodeParam: vi.fn() },
             } as any)}
         />,
     );
@@ -128,6 +142,15 @@ describe("BlueprintFlowNode", () => {
         expect(markup).toContain('aria-label="Animation target value"');
         expect(markup).toContain('value="1"');
         expect(markup).not.toContain('value="100"');
+    });
+
+    it("shows a Boolean card's stored value whether it was stored as a word or as a boolean", () => {
+        // Studio seeds a new condition graph with `value: false`, and a written file says `true`; the
+        // dropdown's options are the words, so it read "-" for a value the graph was using.
+        expect(renderBooleanLiteral(true)).toContain("True");
+        expect(renderBooleanLiteral(false)).toContain("False");
+        expect(renderBooleanLiteral("true")).toContain("True");
+        expect(renderBooleanLiteral(undefined)).not.toContain("True");
     });
 
     it("renders the Save Game Capture pin as an on-card true/false dropdown", () => {
