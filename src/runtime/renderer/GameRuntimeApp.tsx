@@ -26,6 +26,7 @@ import { describeAssetResolutionFailure } from "@/lib/ui-editor/runtime/assetRes
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
+import { GAME_STAGE_BASE_CLASS_NAME } from "@/lib/ui-editor/runtime/app/gameStageBase";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
@@ -1053,7 +1054,7 @@ function GameRuntimeSession() {
                 onRenderScaleChange={setRenderScale}
                 fit={stageViewport.fit}
                 cropAnchor={stageViewport.cropAnchor}
-                outerClassName="bg-black text-white"
+                outerClassName={GAME_STAGE_BASE_CLASS_NAME}
                 // Viewport units, not 100%: the runtime's #root has no fixed height, so height:100%
                 // would collapse to content height and shrink the stage (breaking downsampling).
                 outerStyle={{ width: "100vw", height: "100vh" }}
