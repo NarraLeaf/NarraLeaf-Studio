@@ -2187,6 +2187,17 @@ function resolveElementTextNodeOutput(
     return undefined;
 }
 
+/**
+ * A widget's size as the Vector2D its pins declare: `x` is the width and `y` the height.
+ *
+ * The host reports `{ width, height }`, and handed on as it was, a Vector2D reader such as Break
+ * Vector2D read neither key and answered 0 by 0. The two named keys stay alongside, so a graph that
+ * read the size by name through Get JSON Field before this keeps reading the same numbers.
+ */
+function displayableSizeValue(size: { width: number; height: number }): Record<string, number> {
+    return { x: size.width, y: size.height, width: size.width, height: size.height };
+}
+
 function resolveElementDisplayableNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2223,7 +2234,7 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE && portId === "size") {
         trackElementDependency(runtime, ref, "layout.width");
         trackElementDependency(runtime, ref, "layout.height");
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         trackElementDependency(runtime, ref, "layout.x");
@@ -2268,7 +2279,7 @@ function resolveElementDisplayableNodeOutput(
             case "size":
                 trackElementDependency(runtime, ref, "layout.width");
                 trackElementDependency(runtime, ref, "layout.height");
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 trackElementDependency(runtime, ref, "layout.x");
                 trackElementDependency(runtime, ref, "layout.y");
@@ -2336,7 +2347,7 @@ function resolveSelfDisplayableNodeOutput(
         return props.position;
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE && portId === "size") {
-        return props.size;
+        return displayableSizeValue(props.size);
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         return props.bounds;
@@ -2373,7 +2384,7 @@ function resolveSelfDisplayableNodeOutput(
             case "position":
                 return props.position;
             case "size":
-                return props.size;
+                return displayableSizeValue(props.size);
             case "bounds":
                 return props.bounds;
             case "x":

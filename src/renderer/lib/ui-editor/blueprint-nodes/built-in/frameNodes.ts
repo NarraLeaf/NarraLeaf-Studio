@@ -31,7 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_PAGE_REPLACE,
 } from "@shared/types/blueprint/graph";
-import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
@@ -406,7 +406,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 id: "scales",
                 kind: "output",
                 semantic: "data",
-                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                valueType: blueprintArrayValueType("float"),
                 label: "Scales",
             },
         ],

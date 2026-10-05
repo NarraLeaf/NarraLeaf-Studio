@@ -20,6 +20,18 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_MATH_ADD,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_STRING_SPLIT,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -33,6 +45,7 @@ import {
     withInferredBlueprintStructTypes,
 } from "./graphStructTypeInference";
 import { validateBlueprintGraphIr } from "./graphValidation";
+import { blueprintValueTypeForVariable, withInferredBlueprintVariableValueTypeParam } from "./graphVariableTypeInference";
 
 beforeAll(() => {
     registerCoreBlueprintNodes();
@@ -346,5 +359,143 @@ describe("what the canvas says about fields", () => {
             ["read.value -> log.value"],
         );
         expect(codes(ir, null)).not.toContain("node.input_missing@read");
+    });
+});
+
+describe("types a node's own select picks", () => {
+    it("types Get Property by the property it reads", () => {
+        const of = (property: string) =>
+            pinType(graph({ get: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, params: { property } } }, []), "get", "value", "output");
+        expect(of("position")).toBe("Vector2D");
+        expect(of("size")).toBe("Vector2D");
+        expect(of("bounds")).toBe("Rect");
+        expect(of("opacity")).toBe("float");
+        expect(of("visible")).toBe("boolean");
+        expect(of("nonsense")).toBe("any");
+    });
+
+    it("types Set Property's value without giving the card a second editor for it", () => {
+        const typed = withInferredBlueprintStructTypes(
+            graph({ set: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY, params: { property: "opacity" } } }, []),
+            buildBlueprintStructTypeContext({}),
+        );
+        const pin = blueprintNodeRegistry
+            .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY, typed.nodes!.set!.params)
+            .pins.find(candidate => candidate.id === "value");
+        expect(pin?.valueType).toBe("float");
+        expect(pin?.allowInlineLiteral).toBeFalsy();
+    });
+
+    it("types a preference's change by the preference, and leaves any preference's change json", () => {
+        const one = graph(
+            { head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED, params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY]: "bgmVolume" } } },
+            [],
+        );
+        expect(pinType(one, "head", "value", "output")).toBe("float");
+        expect(pinType(one, "head", "previousValue", "output")).toBe("float");
+        const any = graph({ head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED } }, []);
+        expect(pinType(any, "head", "value", "output")).toBe("json");
+    });
+
+    it("wires a typed preference into a number, and still into the json it went to before", () => {
+        const ir = graph(
+            {
+                head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED, params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY]: "bgmVolume" } },
+            },
+            [],
+        );
+        const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({}));
+        const wire = (targetType: string, targetPort: string) =>
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+                sourcePort: "value",
+                sourceParams: typed.nodes!.head!.params,
+                targetType,
+                targetPort,
+                targetParams: {},
+            });
+        expect(wire(BLUEPRINT_NODE_TYPE_MATH_ADD, "a")).toBe(true);
+        expect(wire(BLUEPRINT_NODE_TYPE_DATA_JSON_GET, "json")).toBe(true);
+    });
+});
+
+describe("saved variables", () => {
+    const SAVED = [{ id: "affection", valueType: "number" }, { id: "metAlice", valueType: "boolean" }];
+
+    it("types Get and Set Saved Var by the variable's declaration, a number as a float", () => {
+        const ir = graph(
+            {
+                get: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "affection" } },
+                flag: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "metAlice" } },
+                unknown: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "gone" } },
+            },
+            [],
+        );
+        const typed = withInferredBlueprintStructTypes(ir, buildBlueprintStructTypeContext({ savedVariables: SAVED }));
+        const out = (nodeId: string) =>
+            blueprintNodeRegistry
+                .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_SAVED_GET, typed.nodes![nodeId]!.params)
+                .pins.find(pin => pin.id === "value")?.valueType;
+        expect(out("get")).toBe("float");
+        expect(out("flag")).toBe("boolean");
+        expect(out("unknown")).toBe("any");
+    });
+
+    it("does not make a story condition that returns a number variable an error it was not before", () => {
+        const ir = graph(
+            {
+                get: { type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "affection" } },
+                ret: { type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            ["get.value -> ret.value"],
+        );
+        const findings = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "main",
+            blueprintOwner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+            validSavedVariableIds: new Set(["affection"]),
+            savedVariables: SAVED,
+        });
+        expect(findings.map(finding => finding.code)).not.toContain("condition.return_not_boolean");
+    });
+
+    it("reads a persistent number variable as a float", () => {
+        expect(blueprintValueTypeForVariable("number")).toBe("float");
+        expect(blueprintValueTypeForVariable("boolean")).toBe("boolean");
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                sourcePort: "value",
+                sourceParams: withInferredBlueprintVariableValueTypeParam(
+                    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                    { persistentVariableId: "volume" },
+                    { persistentVariables: [{ value: "volume", valueType: "number" }] },
+                ),
+                targetType: BLUEPRINT_NODE_TYPE_MATH_ADD,
+                targetPort: "a",
+                targetParams: {},
+            }),
+        ).toBe(true);
+    });
+});
+
+describe("arrays of plain values, and looping over typed arrays", () => {
+    it("hands out strings from Split, and one string from Array Get on it", () => {
+        const ir = graph(
+            { split: { type: BLUEPRINT_NODE_TYPE_STRING_SPLIT }, get: { type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET } },
+            ["split.result -> get.array"],
+        );
+        expect(pinType(ir, "split", "result", "output")).toBe("array<string>");
+        expect(pinType(ir, "get", "item", "output")).toBe("string");
+    });
+
+    it("gives For Each's item the type of what it loops over", () => {
+        const ir = graph(
+            { endings: { type: BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS }, each: { type: BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH } },
+            ["endings.endings -> each.items"],
+        );
+        expect(pinType(ir, "each", "item", "output")).toBe("struct:nl.ending");
+        expect(pinType(graph({ each: { type: BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH } }, []), "each", "item", "output")).toBe("json");
     });
 });

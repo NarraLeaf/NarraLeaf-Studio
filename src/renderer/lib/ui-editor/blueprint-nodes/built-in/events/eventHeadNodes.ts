@@ -62,6 +62,7 @@ import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
 import { inputActionParam } from "../inputActionNodes";
+import { GAME_PREFERENCE_VALUE_TYPES } from "../gameNodes";
 
 const eventHeadExecute: BlueprintNodeDef["execute"] = () => ({ nextPort: "then" });
 
@@ -220,7 +221,8 @@ const PIN_ELEMENT: BlueprintNodePinDef = {
     label: "Element",
 };
 // Game preference value type varies per key (boolean / number / string), so the
-// change heads expose the value as a generic json pin, matching broadcast `data`.
+// change heads declare the value as a generic json pin, matching broadcast `data`;
+// On Preference Changed narrows it to the picked key's type in the editor.
 const PIN_PREFERENCE_VALUE: BlueprintNodePinDef = {
     id: "value",
     kind: "output",
@@ -376,6 +378,7 @@ function preferenceEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    paramPinTypes?: BlueprintNodeDef["paramPinTypes"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
@@ -391,6 +394,7 @@ function preferenceEventHead(input: {
         scope: { ownerKinds: ["globalMain", "surfaceMain"] },
         pins: input.pins,
         inspectorParams: input.inspectorParams,
+        ...(input.paramPinTypes ? { paramPinTypes: input.paramPinTypes } : {}),
         execute: eventHeadExecute,
     };
 }
@@ -784,6 +788,13 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
                 options: GAME_PREFERENCE_HEAD_OPTIONS,
             },
         ],
+        // The value is the preference's own type once one is picked; Any Preference Changed has no
+        // one key to type it by and stays json.
+        paramPinTypes: {
+            param: BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
+            pins: [PIN_PREFERENCE_VALUE.id, PIN_PREFERENCE_PREVIOUS_VALUE.id],
+            types: GAME_PREFERENCE_VALUE_TYPES,
+        },
     }),
     preferenceEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,

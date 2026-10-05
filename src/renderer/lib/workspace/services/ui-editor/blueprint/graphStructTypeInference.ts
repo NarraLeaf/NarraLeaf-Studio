@@ -1,7 +1,7 @@
 /**
- * The struct types a graph's wires carry, worked out by following them.
+ * The types a graph's pins carry that their declarations leave open, worked out in the editor.
  *
- * Two kinds of node take their types from somewhere else, and this is the one place either is
+ * Four kinds of node take their types from somewhere else, and this is the one place any of them is
  * answered:
  *
  *  - **The array nodes** (`elementTypeFlow` on their definitions) hand back the items they were
@@ -11,6 +11,9 @@
  *  - **Get Field** reads one field of a struct. Which struct is a persisted param once the node has
  *    been pointed at one (see `effectivePins.ts`); before that, it is whatever is wired in, or - left
  *    unwired inside a list row - the row's own shape.
+ *  - **Nodes typed by their own select** (`paramPinTypes`): Get Property set to Position answers a
+ *    Vector2D, On Preference Changed for the music volume a number.
+ *  - **Get / Set Saved Var**, typed by the variable's declaration in the project's variable table.
  *
  * The answers are stamped onto a copy of each node's params under
  * `BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES`, so every consumer that already reads pins through the
@@ -32,6 +35,8 @@ import {
     BLUEPRINT_NODE_PARAM_INFERRED_PIN_TYPES,
     BLUEPRINT_NODE_PARAM_INFERRED_READS_ROW,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SAVED_SET,
 } from "@shared/types/blueprint/graph";
 import { blueprintArrayElementType, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -48,6 +53,8 @@ import {
 } from "@shared/types/ui-editor/struct";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { BLUEPRINT_FIELD_READER_INPUT_PIN } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
+import { blueprintValueTypeForVariable } from "./graphVariableTypeInference";
 
 export type BlueprintStructTypeInferenceContext = {
     /**
@@ -59,6 +66,8 @@ export type BlueprintStructTypeInferenceContext = {
     rowAvailable?: boolean;
     /** The shape of that row, when its list declares one. */
     rowStruct?: UIStructDef | null;
+    /** A saved variable's declared type as a pin type, by variable id; unknown ids answer nothing. */
+    savedVariableType?: (variableId: string) => string | undefined;
 };
 
 /**
@@ -101,12 +110,17 @@ function defaultResolveStruct(structId: string): UIStructDef | null {
     return resolveUIStruct(null, structId);
 }
 
+function isSavedVariableNodeType(type: string): boolean {
+    return type === BLUEPRINT_NODE_TYPE_SAVED_GET || type === BLUEPRINT_NODE_TYPE_SAVED_SET;
+}
+
 /** True for the node types this pass has an opinion about. */
 export function isBlueprintStructTypedNodeType(type: string): boolean {
-    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD || isSavedVariableNodeType(type)) {
         return true;
     }
-    return Boolean(blueprintNodeRegistry.get(type)?.elementTypeFlow);
+    const def = blueprintNodeRegistry.get(type);
+    return Boolean(def?.elementTypeFlow || def?.paramPinTypes);
 }
 
 function withPinTypeStamp(
@@ -232,6 +246,41 @@ export function analyzeBlueprintStructTypes(
         return { pinTypes, struct, structId, keyWired };
     };
 
+    const analyzeParamTypedNode = (
+        node: BlueprintGraphNode,
+        spec: NonNullable<BlueprintNodeDef["paramPinTypes"]>,
+    ): BlueprintNodeStructTypes => {
+        const option = readParamString(node.params, spec.param);
+        const valueType = option !== undefined && Object.hasOwn(spec.types, option) ? spec.types[option] : undefined;
+        if (!valueType) {
+            return EMPTY_INFO;
+        }
+        return {
+            pinTypes: Object.fromEntries(spec.pins.map(pinId => [pinId, valueType])),
+            ...structFor(valueType),
+        };
+    };
+
+    const analyzeSavedVariableNode = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
+        const variableId = readParamString(node.params, "savedVariableId");
+        const valueType = variableId ? ctx.savedVariableType?.(variableId) : undefined;
+        return valueType ? { pinTypes: { value: valueType }, struct: null, structId: null } : EMPTY_INFO;
+    };
+
+    const analyze = (node: BlueprintGraphNode): BlueprintNodeStructTypes => {
+        if (node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD) {
+            return analyzeFieldReader(node);
+        }
+        if (isSavedVariableNodeType(node.type)) {
+            return analyzeSavedVariableNode(node);
+        }
+        const def = blueprintNodeRegistry.get(node.type);
+        if (def?.elementTypeFlow) {
+            return analyzeArrayNode(node);
+        }
+        return def?.paramPinTypes ? analyzeParamTypedNode(node, def.paramPinTypes) : EMPTY_INFO;
+    };
+
     function infoFor(node: BlueprintGraphNode): BlueprintNodeStructTypes {
         const cached = done.get(node.id);
         if (cached) {
@@ -241,7 +290,7 @@ export function analyzeBlueprintStructTypes(
             return EMPTY_INFO;
         }
         visiting.add(node.id);
-        const info = node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD ? analyzeFieldReader(node) : analyzeArrayNode(node);
+        const info = analyze(node);
         visiting.delete(node.id);
         done.set(node.id, info);
         return info;
@@ -305,8 +354,13 @@ export function buildBlueprintStructTypeContext(input: {
     /** The blueprint's owner. Given, whether a row is in scope is the palette's own answer. */
     owner?: BlueprintOwnerRef;
     isComponentDefinitionGraph?: boolean;
+    /** The project's saved variables; their declared types type Get / Set Saved Var. */
+    savedVariables?: readonly { id: string; valueType?: string }[];
 }): BlueprintStructTypeInferenceContext {
     const document = input.uiDocument ?? null;
+    const savedTypes = new Map(
+        (input.savedVariables ?? []).map(variable => [variable.id, blueprintValueTypeForVariable(variable.valueType)]),
+    );
     const resolveStruct = (structId: string) => resolveUIStruct(document, structId);
     const row = document && input.widgetElement ? resolveListRowContext(document, input.widgetElement) : null;
     return {
@@ -324,6 +378,7 @@ export function buildBlueprintStructTypeContext(input: {
               })
             : document ? row !== null : true,
         rowStruct: row?.structId ? resolveStruct(row.structId) : null,
+        savedVariableType: variableId => savedTypes.get(variableId),
     };
 }
 

@@ -274,18 +274,27 @@ function readInferredPinTypes(params: Record<string, unknown> | undefined): Reco
     return out;
 }
 
-function withInferredPinTypes(pins: BlueprintNodePinDef[], params: Record<string, unknown> | undefined): BlueprintNodePinDef[] {
+function withInferredPinTypes(
+    def: BlueprintNodeDef,
+    pins: BlueprintNodePinDef[],
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinDef[] {
     const inferred = readInferredPinTypes(params);
     if (Object.keys(inferred).length === 0) {
         return pins;
     }
+    // A pin the card already edits through a param of the same key (Set Property's value) keeps
+    // that one editor rather than gaining a second beside it.
+    const editedOnCard = new Set((def.inspectorParams ?? []).map(spec => spec.key));
     return pins.map(pin => {
         const valueType = pin.semantic === "data" ? inferred[pin.id] : undefined;
         if (!valueType || valueType === pin.valueType) {
             return pin;
         }
         const literal =
-            pin.kind === "input" && (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType);
+            pin.kind === "input" &&
+            !editedOnCard.has(pin.id) &&
+            (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType);
         return { ...pin, valueType, ...(literal ? { allowInlineLiteral: true } : {}) };
     });
 }
@@ -326,7 +335,7 @@ export function resolveEffectiveBlueprintNodePins(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {
-    return withInferredPinTypes(withFieldReaderInputType(def, resolveDeclaredBlueprintNodePins(def, params), params), params);
+    return withInferredPinTypes(def, withFieldReaderInputType(def, resolveDeclaredBlueprintNodePins(def, params), params), params);
 }
 
 function resolveDeclaredBlueprintNodePins(

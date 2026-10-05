@@ -520,6 +520,8 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["for", "each", "loop", "array", "json"],
         graphKinds: ["event", "macro"],
         isPure: false,
+        // Each item is one of the items handed in: looping over endings, `Item` is an ending.
+        elementTypeFlow: { input: "items", outputs: { item: "item" } },
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "loop", kind: "output", semantic: "exec", label: "Loop" },

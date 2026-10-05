@@ -31,7 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
 } from "@shared/types/blueprint/graph";
-import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { BLUEPRINT_VALUE_TYPE_ARRAY, blueprintArrayValueType } from "@shared/types/blueprint/valueTypes";
 import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
@@ -239,7 +239,12 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         assetNames: "forward",
         displayName: "Array Range",
         keywords: ["array", "range", "sequence", "numbers", "count", "collection"],
-        pins: [intIn("start", "Start"), intIn("count", "Count"), intIn("step", "Step"), arrayOut("result", "Array")],
+        pins: [
+            intIn("start", "Start"),
+            intIn("count", "Count"),
+            intIn("step", "Step"),
+            outPin("result", "Array", blueprintArrayValueType("integer")),
+        ],
     }),
     collectionNode({
         // Keyed by a property name rather than by a comparator graph. A comparator is a function
@@ -289,7 +294,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         assetNames: "forward",
         displayName: "Object Keys",
         keywords: ["object", "keys", "fields", "collection"],
-        pins: [jsonIn("object", "Object"), arrayOut("result", "Keys")],
+        pins: [jsonIn("object", "Object"), outPin("result", "Keys", blueprintArrayValueType("string"))],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
