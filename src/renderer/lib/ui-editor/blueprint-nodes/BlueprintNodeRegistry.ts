@@ -163,7 +163,11 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         // Time nodes compute from their inputs and touch nothing, and a save slot's date is a
         // label - which is a Blueprint Value. Leaving them out would put the whole family on the
         // wrong side of the one surface it was built for.
-        def.category === "Time"
+        def.category === "Time" ||
+        // Only the pure member gets this far - the rest of the family is latent. A translated word
+        // is the commonest thing a bound label has to show, and reading it records the player's
+        // language, so the binding follows a language switch (see `GAME_LOCALE_STATE_KEY`).
+        def.category === "Localization"
     );
 }
 

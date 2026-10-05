@@ -23,7 +23,10 @@ import type { Game, LiveGame, Scene } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
+    isKeysOnlyLocalization,
+    isValidPluginWordsId,
     localizationKeyUnitId,
+    pluginWordsUnitId,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import type { GameMenuSpec } from "@shared/types/gameMenu";
@@ -733,9 +736,24 @@ export class RuntimePluginHostController {
         return translated ?? bundle.keys?.[name] ?? null;
     }
 
+    /** One of a plugin's own words in the player's language, or the words as written. */
+    private readPluginWords(pluginId: string, id: string, text: string): string {
+        const bundle = this.attachment?.bundle.localization;
+        const words = typeof text === "string" ? text : "";
+        if (!bundle || typeof id !== "string" || !isValidPluginWordsId(id)) {
+            return words;
+        }
+        return resolveLocalizedUnitText(
+            { sourceLocale: bundle.sourceLocale, locales: bundle.locales, tables: bundle.tables ?? {} },
+            this.readLocale(),
+            pluginWordsUnitId(pluginId, id),
+        ) ?? words;
+    }
+
     private readLocale(): string {
         const attachment = this.attachment;
-        if (!attachment) {
+        // A project without a source language ships its keys and no language to read them in.
+        if (!attachment || (attachment.bundle.localization && isKeysOnlyLocalization(attachment.bundle.localization))) {
             return "";
         }
         const stored = attachment.scope.persistenceGet(LOCALE_STORAGE_KEY);
@@ -834,6 +852,7 @@ export class RuntimePluginHostController {
                     };
                 },
                 text: key => this.readLocalizedText(key),
+                words: (pluginId, id, text) => this.readPluginWords(pluginId, id, text),
             },
         };
 

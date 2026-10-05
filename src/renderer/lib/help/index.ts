@@ -20,8 +20,11 @@ export type { HelpBlock } from "./helpBody";
 export { currentTopic, popTopic, previousTopic, pushTopic, startTrail } from "./helpTrail";
 export type { HelpTrail } from "./helpTrail";
 export {
+    ALL_HELP_TOPICS,
     filterHelpTopics,
     getHelpTopic,
+    LINT_RULE_HELP_TOPICS,
+    lintRuleHelpTopicId,
     HELP_SECTIONS,
     HELP_TOPIC_IDS,
     HELP_TOPICS,
@@ -31,4 +34,4 @@ export {
     helpTopicsBySection,
     isHelpTopicId,
 } from "./helpTopics";
-export type { HelpSectionId, HelpTopic, HelpTopicId } from "./helpTopics";
+export type { HelpSectionId, HelpTopic, HelpTopicId, LintRuleHelpTopicId, StaticHelpTopicId } from "./helpTopics";

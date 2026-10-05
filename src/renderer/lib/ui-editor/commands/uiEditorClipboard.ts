@@ -1,3 +1,5 @@
+import { readUITextCarriedKeys, type UITextCarriedKeys } from "@shared/types/ui-editor/textSourceMigration";
+import { readCarriedTranslations, type CarriedTranslations } from "@/lib/workspace/services/localization/carriedTranslations";
 import type { AssetTransferManifestEntry } from "@shared/types/assetTransfer";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement, UIElementId } from "@shared/types/ui-editor/document";
@@ -49,6 +51,20 @@ export type UIEditorClipboardPayload = {
     source?: UIEditorClipboardSource;
     /** Absent when the copied selection references no importable file. */
     assets?: UIEditorClipboardAssets;
+    /**
+     * The words and translations of the translation keys the copied widgets name, filled when the copy
+     * is published for other windows. A project that lacks one of the keys receives its words on the
+     * widgets instead (`settleIncomingUITextSources`); absent on an in-window copy, whose project
+     * has every key it names.
+     */
+    textKeys?: UITextCarriedKeys;
+    /**
+     * What every language of the copying project says about the words the copied widgets write
+     * directly, by unit id under the originals' ids (`listUITextOwnUnits`). Filled when the copy is
+     * published; the paste writes them under the copies' ids. A paste without them - an in-window copy
+     * not yet published, a duplicate - reads the originals' translations from the project itself.
+     */
+    translations?: CarriedTranslations;
     sourceSurfaceId: string;
     /** Top-level roots in the copied selection (original ids). */
     topLevelElementIds: UIElementId[];
@@ -112,12 +128,16 @@ export function readUiEditorClipboardPayload(json: string): UIEditorClipboardPay
     const sourceSurfaceId = typeof candidate.sourceSurfaceId === "string" ? candidate.sourceSurfaceId : "";
     const source = readSource(candidate.source);
     const assets = readAssets(candidate.assets);
+    const textKeys = readUITextCarriedKeys(candidate.textKeys);
+    const translations = readCarriedTranslations(candidate.translations);
     return {
         v: UI_EDITOR_CLIPBOARD_VERSION,
         kind: UI_EDITOR_CLIPBOARD_KIND,
         ...(typeof candidate.copyId === "string" && candidate.copyId ? { copyId: candidate.copyId } : {}),
         ...(source ? { source } : {}),
         ...(assets ? { assets } : {}),
+        ...(textKeys ? { textKeys } : {}),
+        ...(translations ? { translations } : {}),
         sourceSurfaceId,
         topLevelElementIds,
         elements,

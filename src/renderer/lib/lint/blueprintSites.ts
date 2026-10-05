@@ -92,6 +92,20 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
 }
 
 /**
+ * A graph layer itself, with no node to focus: what a finding about a layer that holds nothing opens.
+ * The editor brings the layer up, which is where the first node of it would go.
+ */
+export function blueprintGraphJumpTarget(site: BlueprintGraphSite): SearchJumpTarget {
+    return {
+        kind: "blueprint",
+        blueprintId: site.blueprintId,
+        ownerKey: site.ownerKey,
+        ...(site.graphKind === "event" ? { focusEventId: site.graphId } : {}),
+        ...(site.graphKind === "function" ? { focusFunctionId: site.graphId } : {}),
+    };
+}
+
+/**
  * The deep link that opens a site's graph with one node focused.
  *
  * Always produced, never withheld: a finding is worth reporting even when it cannot be navigated to,

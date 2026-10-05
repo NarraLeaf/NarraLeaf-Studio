@@ -56,6 +56,7 @@ async function writePlugin(id: string, externalLinks: string[]): Promise<Runtime
             reservedSaveIds: [],
             runtimeData: [],
             network: [],
+            widgetText: {},
             locales: [],
             runtimeCapabilities: [],
             sidecars: [],

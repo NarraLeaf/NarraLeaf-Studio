@@ -25,7 +25,9 @@ import { readRuntimeLocale } from "@/lib/ui-editor/runtime/localization/runtimeL
  *
  * A blueprint that has already assigned a picture or started a clip does not re-run when the
  * language changes, the same way a line of dialogue already on screen does not; the next run
- * resolves in the new language.
+ * resolves in the new language. A value binding is the exception, because it is not a run but a
+ * standing answer: the data-pin caller records the language as read (`GAME_LOCALE_STATE_KEY`), and
+ * the binding resolves again when it changes.
  */
 export function resolveNodeStoredAssetSet(
     node: { assetVariants?: AssetVariantMap } | undefined,

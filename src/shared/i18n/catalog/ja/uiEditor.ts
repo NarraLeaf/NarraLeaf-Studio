@@ -39,8 +39,8 @@ export const uiEditor = {
         createGameUi: "ゲーム UI を作成",
         globalSubtitle: "グローバル",
         blueprintType: "ブループリント",
-        openGlobalBlueprint: "グローバルブループリントを開く",
-        globalBlueprintUnavailable: "グローバルブループリントを使えない",
+        openGlobalBlueprint: "アプリロジックを開く",
+        globalBlueprintUnavailable: "アプリロジックを使えない",
         openSurface: "{label} を開く",
         renameSurface: "{label} の名前を変更",
         duplicateSurface: "{label} を複製",
@@ -167,6 +167,7 @@ export const uiEditor = {
         widgetRenderFailed: "ウィジェットの描画に失敗",
         wordsFromRowField: "この文字はリスト行の項目「{field}」から来る",
         wordsFromBlueprintValue: "この文字はブループリント値「{name}」で決まる",
+        wordsFromComponentParam: "この文字はコンポーネントのパラメータ「{param}」から来る。値は置いたものごとに設定する",
     },
     editor: {
         componentNotFound: "コンポーネントが見つからない",

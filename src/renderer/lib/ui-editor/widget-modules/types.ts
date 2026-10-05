@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import type { UITextSite } from "@shared/types/ui-editor/textSites";
 import type { UIHostAdapter } from "../runtime/types";
 import type { UIWidgetEventDispatch } from "../runtime/widgetEventDispatch";
 import type { FieldDefinition, PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
@@ -9,6 +10,7 @@ import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { LucideIcon } from "lucide-react";
+import type { TranslationKey } from "@shared/i18n";
 
 // ─── Element Renderer ───────────────────────────────────────────────────────
 
@@ -190,6 +192,14 @@ export type LayoutSizeFieldContext = {
     primaryId: string;
 };
 
+/**
+ * The language a new widget's player-facing words are written in: `t` reads a Studio catalogue key in
+ * that language (`widgetDefaultWordsFor`).
+ */
+export type UIWidgetDefaultWords = {
+    t: (key: TranslationKey) => string;
+};
+
 export type DefaultChildElementContext = {
     element: UIElement;
     generateId: () => string;
@@ -247,6 +257,14 @@ export interface UIWidgetModule {
      */
     readonly partSlots?: readonly string[];
 
+    /**
+     * The props that hold words a player reads, for a plugin's widget only: the sites its manifest
+     * declares (`contributes.widgetText`), settled on registration. Studio's own widgets are rows in
+     * the shared site table (`textSites.ts`), and a plugin's answer reaches the same readers through
+     * `contributedWidgets.ts` (`uiTextSitesOf`).
+     */
+    readonly textSites?: readonly UITextSite[];
+
     /** Human-readable display name */
     readonly displayName: string;
 
@@ -256,8 +274,12 @@ export interface UIWidgetModule {
     /**
      * Creates the default partial element when the user inserts this widget.
      * The returned object is merged with system defaults (id, parentId, etc.).
+     *
+     * `words` gives the words a player reads - a text's or a button's placeholder words, a list's
+     * preview rows - in the language the project's game is written in; names and everything else an
+     * author reads stay in the interface's language. Omitted, it is the interface's language too.
      */
-    createDefaultElement(): Partial<UIElement>;
+    createDefaultElement(words?: UIWidgetDefaultWords): Partial<UIElement>;
 
     /**
      * Creates structural child elements that must be present immediately after inserting the widget.

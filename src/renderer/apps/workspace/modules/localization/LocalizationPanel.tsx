@@ -27,7 +27,7 @@ import { translationDocumentFreezeScope } from "./localizationLiveSession";
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
-import { useTranslation } from "@/lib/i18n";
+import { i18nStore, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import {
     LocalizationService,
@@ -44,10 +44,16 @@ import {
     type TranslatableUnitContext,
     type TranslationExportScope,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows, subscribePluginWords } from "@/lib/workspace/services/localization/pluginWords";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { describeLocalizationKeyContext, indexLocalizationKeyUses } from "@/lib/workspace/services/localization/localizationKeyUses";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -85,6 +91,24 @@ import {
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
+
+/** The project's blueprints, or none while their store is still coming up. */
+function readBlueprintDocument(uiDocumentService: UIDocumentService | null): BlueprintDocument | null {
+    try {
+        return uiDocumentService?.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Call `onChange` whenever a blueprint changes; a no-op unsubscribe when there is no graph store yet. */
+function subscribeToBlueprints(uiDocumentService: UIDocumentService | null, onChange: () => void): () => void {
+    try {
+        return uiDocumentService?.getContext().services.get<UIGraphService>(Services.UIGraph).onGraphsChanged(onChange) ?? (() => undefined);
+    } catch {
+        return () => undefined;
+    }
+}
 
 /** Which language row's "more" menu is open, and where to place it. */
 type LocaleMenuState = {
@@ -176,7 +200,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     }, [localizationService]);
 
     // Every translatable unit of the project: character names, scene names and
-    // story lines (narrative order), opted-in UI widget texts, and named keys —
+    // story lines (narrative order), widgets' own words, and named keys —
     // with translator-facing context (feeds both progress and CSV export).
     useEffect(() => {
         if (!storyService || !localizationService) {
@@ -218,7 +242,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             }
             const uiDocument = uiDocumentService?.getDocument();
             if (uiDocument) {
-                for (const row of extractUiTranslationRows(uiDocument)) {
+                for (const row of extractUiTranslationRows(uiDocument, { locale: i18nStore.getLocale() })) {
                     collected.push({
                         unitId: row.unitId,
                         sourceText: row.sourceText,
@@ -226,12 +250,28 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                     });
                 }
             }
+            // The words plugins offer - a menu row's label, a gallery entry's name - beside the
+            // interface's own, under the plugin that holds them.
+            for (const row of listPluginWordsRows()) {
+                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.context });
+            }
             let keysDocument = localizationService.getKeysIfLoaded();
             if (!keysDocument) {
                 keysDocument = await localizationService.loadKeys().catch(() => undefined);
             }
+            // A key's row says where the key is used - the pages and components showing its words or
+            // reading it in a blueprint - since its name alone tells a translator nothing about them.
+            const keyUses = indexLocalizationKeyUses({
+                uiDocument: uiDocument ?? null,
+                blueprintDocument: readBlueprintDocument(uiDocumentService),
+                widgetName: element => widgetModuleRegistry.get(element.type)?.displayName || element.type,
+            });
             for (const row of extractKeyTranslationRows(keysDocument ?? { schemaVersion: 1, keys: {} })) {
-                collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.keyName });
+                collected.push({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    context: describeLocalizationKeyContext(row.keyName, keyUses.get(row.keyName)),
+                });
             }
             if (!disposed) {
                 setRows(collected);
@@ -242,12 +282,17 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         const unsubscribeDocument = storyService.onDocumentChanged(() => void recompute());
         const unsubscribeKeys = localizationService.onKeysChanged(() => void recompute());
         const unsubscribeCharacters = characterService?.subscribe(() => void recompute());
+        const unsubscribePluginWords = subscribePluginWords(() => void recompute());
+        // Blueprints decide where a key is used as much as widgets do.
+        const unsubscribeGraphs = subscribeToBlueprints(uiDocumentService, () => void recompute());
         return () => {
             disposed = true;
             unsubscribeLibrary();
             unsubscribeDocument();
             unsubscribeKeys();
             unsubscribeCharacters?.();
+            unsubscribePluginWords();
+            unsubscribeGraphs();
         };
     }, [storyService, localizationService, characterService, uiDocumentService, uiDocumentRevision]);
 

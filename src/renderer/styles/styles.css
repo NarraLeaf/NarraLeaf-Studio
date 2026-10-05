@@ -990,6 +990,20 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Blueprint: the selected wire.
+ *
+ * `!important` because a wire paints its colour inline - exec or data, from `blueprintEdgeStyle` -
+ * and the inline stroke beats React Flow's own selected style, so a selected wire looked like every
+ * other one while Delete was aimed at it. The foreground colour rather than the accent: the accent
+ * is a teal close to the exec wires' cyan, so a selected exec wire would barely change and a
+ * selected data wire would read as an exec one. The pins at both ends keep the type colour.
+ */
+.narraleaf-blueprint-flow .react-flow__edge.selected .react-flow__edge-path {
+    stroke: rgb(var(--nl-fg)) !important;
+    stroke-width: 2.5px !important;
+}
+
+/*
  * Scene flow: the selected line.
  *
  * `!important` because the line paints its stroke inline — it carries the conditional dash pattern,

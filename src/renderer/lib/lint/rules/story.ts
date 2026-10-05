@@ -1,4 +1,5 @@
 import { collectCutPoints } from "@shared/story/appTagFold";
+import { createLintBreather } from "../breather";
 import {
     reachableSceneIds,
     blueprintDocumentGraphCarriers,
@@ -87,6 +88,27 @@ export function* eachScene(ctx: LintContext): Generator<SceneCursor> {
 /** The blocks the runtime will actually see: a disabled row takes its whole subtree with it. */
 export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
+}
+
+/** A live `/quit` row and the page it names - trimmed, and empty when it names none. */
+export type QuitRow = SceneCursor & { block: StoryBlock; surfaceId: string };
+
+/**
+ * Every live `/quit` row in the project, with the page it ends the playthrough on.
+ *
+ * One reading for the two rules that ask: `story/quit-page-missing` about the row, and
+ * `ui/page-unreachable` about the page - a page a quit row lands on is a page a player reaches.
+ */
+export function listQuitRows(ctx: LintContext): QuitRow[] {
+    const rows: QuitRow[] = [];
+    for (const cursor of eachScene(ctx)) {
+        for (const block of liveBlocks(cursor.scene)) {
+            if (block.kind === "control" && block.payload.control === "quit") {
+                rows.push({ ...cursor, block, surfaceId: block.payload.surfaceId.trim() });
+            }
+        }
+    }
+    return rows;
 }
 
 /** Direct children that are still live. The parent is assumed live, so no ancestor walk is needed. */
@@ -490,10 +512,13 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     if (target === null || declared.has(target)) {
                         continue;
                     }
+                    // A row the menu has just inserted names no label yet. "Jumps to , which this scene
+                    // never declares" read as a sentence with a word missing; it gets its own.
+                    const blank = target.trim() === "";
                     findings.push({
                         ruleId: "story/goto-missing",
-                        messageKey: "lint.rule.storyGotoMissing.message",
-                        messageParams: { label: target },
+                        messageKey: blank ? "lint.rule.storyGotoMissing.messageEmpty" : "lint.rule.storyGotoMissing.message",
+                        ...(blank ? {} : { messageParams: { label: target } }),
                         location: storyLocation(entry, scene, block.id),
                         target: blockTarget(entry, scene, block.id),
                     });
@@ -1047,25 +1072,20 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             const surfaces = ctx.uiDocument
                 ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
                 : null;
-            for (const { entry, scene } of eachScene(ctx)) {
-                for (const block of liveBlocks(scene)) {
-                    if (block.kind !== "control" || block.payload.control !== "quit") {
-                        continue;
-                    }
-                    const surfaceId = block.payload.surfaceId.trim();
-                    if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
-                        continue;
-                    }
-                    findings.push({
-                        ruleId: "story/quit-page-missing",
-                        messageKey: surfaceId
-                            ? "lint.rule.storyQuitPageMissing.deleted"
-                            : "lint.rule.storyQuitPageMissing.message",
-                        ...(surfaceId ? { messageParams: { page: surfaceId } } : {}),
-                        location: storyLocation(entry, scene, block.id),
-                        target: blockTarget(entry, scene, block.id),
-                    });
+            for (const { entry, scene, block, surfaceId } of listQuitRows(ctx)) {
+                if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                    continue;
                 }
+                findings.push({
+                    ruleId: "story/quit-page-missing",
+                    // The deleted page is not named: all the row still holds is its id, and an id is
+                    // not something an author can look up.
+                    messageKey: surfaceId
+                        ? "lint.rule.storyQuitPageMissing.deleted"
+                        : "lint.rule.storyQuitPageMissing.message",
+                    location: storyLocation(entry, scene, block.id),
+                    target: blockTarget(entry, scene, block.id),
+                });
             }
             return findings;
         },
@@ -1389,8 +1409,15 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         category: "story",
         defaultSeverity: "warning",
         slug: "storyBackgroundUnchanged",
-        run(ctx) {
+        /**
+         * Asynchronous so it can take breathers: each snapshot below is a walk of the scene, and a
+         * 20,000-row project measured 114 of them at about 15ms each - a second and a half in one
+         * piece, every time the project checks ran after a pause in editing. Between walks the rule
+         * gives the window a turn whenever a slice has run out (see `breather.ts`).
+         */
+        async run(ctx) {
             const findings: LintFinding[] = [];
+            const breather = createLintBreather();
             for (const { entry, scene } of eachScene(ctx)) {
                 /**
                  * Every background that could be on screen anywhere in this scene, as the walk goes
@@ -1427,6 +1454,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     if (!couldAlreadyBeShowing || transitionVisibleMs(block.payload.transition) <= 0) {
                         continue;
                     }
+                    await breather.breathe();
                     // No cast: this rule reads the background and nothing else, and a character's
                     // entrance defaults cannot reach a background prop.
                     const snapshot = computeStoryStageSnapshot({

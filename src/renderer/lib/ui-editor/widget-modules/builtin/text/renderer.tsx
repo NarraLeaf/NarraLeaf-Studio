@@ -15,12 +15,14 @@ import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { uiTextRuntimeOriginOf, uiTextRuntimeUnitOf } from "@shared/types/ui-editor/textSource";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
+    designTimeDanglingKeyOf,
     designTimeKeyOf,
     designTimeTextOf,
     writeDesignTimeLocalizationKeySourceText,
@@ -50,6 +52,7 @@ import {
     resolveTextVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
+    useRecordDrawnBoundWords,
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
@@ -92,9 +95,15 @@ function commitTextEditValue(documentService: UIDocumentService, elementId: stri
     if (key && writeDesignTimeLocalizationKeySourceText(key, nextText)) {
         return;
     }
+    // Typed over a key the project does not have - drawn as its name - the words become the text's own
+    // and the key goes: what was typed is what shows.
+    const dangling = docEl ? designTimeDanglingKeyOf(getTextProps(docEl).localizationKey) : null;
     documentService.updateElementProps(
         elementId,
-        docEl ? textValuePatch(docEl, nextText) : { text: nextText },
+        {
+            ...(docEl ? textValuePatch(docEl, nextText) : { text: nextText }),
+            ...(dangling ? { localizationKey: undefined } : {}),
+        },
     );
 }
 
@@ -248,9 +257,11 @@ export function TextRenderer({
         site: TEXT_SITE,
         elementId: element.id,
         sourceText: p.text,
-        localizable: flatProps.localizable,
         localizationKey: flatProps.localizationKey,
+        origin: uiTextRuntimeOriginOf(element),
+        unitId: uiTextRuntimeUnitOf(element),
     });
+    useRecordDrawnBoundWords(element.id, displayText, uiTextRuntimeOriginOf(element) === "bound");
 
     // Runs are drawn only while they still spell what is on screen: a translated line, a `text`
     // driven by a value blueprint and a list row's own field all arrive here as a different string,

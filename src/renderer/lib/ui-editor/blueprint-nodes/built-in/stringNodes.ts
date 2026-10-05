@@ -44,6 +44,7 @@ import {
     type BlueprintNodePinDef,
 } from "../types";
 import type { BlueprintAssetNameFlow } from "../types";
+import type { TranslationKey } from "@shared/i18n";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 
@@ -93,11 +94,14 @@ function stringNode(input: {
     dynamic?: BlueprintNodeDef["dynamicInputPins"];
     /** See `BlueprintNodeDeclaration.assetNames`. */
     assetNames?: BlueprintAssetNameFlow;
+    /** See `BlueprintNodeDef.description`. */
+    description?: TranslationKey;
 }): BlueprintNodeDef {
     return {
         type: input.type,
         ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
+        ...(input.description ? { description: input.description } : {}),
         category: "Data",
         keywords: input.keywords,
         graphKinds: [...GRAPH_KINDS],
@@ -134,7 +138,8 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_STRING_FORMAT,
         assetNames: "assembled",
         displayName: "Format",
-        keywords: ["format", "template", "placeholder", "string"],
+        description: "blueprint.nodeDescription.format",
+        keywords: ["format", "template", "placeholder", "string", "localization", "translation"],
         pins: [stringIn("template", "Template"), jsonIn("values", "Values"), out("result", "Result", "string")],
     }),
     stringNode({

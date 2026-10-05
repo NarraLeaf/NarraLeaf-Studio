@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils/cn";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import {
     resolveBlueprintCategoryLabel,
+    blueprintCategoryFormerLabels,
     resolveBlueprintNodeTitle,
 } from "../blueprintNodeI18n";
 import { useCategoryRowScroll } from "./useCategoryRowScroll";
@@ -211,6 +212,7 @@ export function BlueprintAddNodeMenu({
         return () => (folded ??= prepareBlueprintAddNodeEntries(entries, {
             title: displayName => resolveBlueprintNodeTitle(displayName, t),
             category: category => resolveBlueprintCategoryLabel(category, t),
+            categoryAliases: blueprintCategoryFormerLabels,
         }));
     }, [entries, t]);
 

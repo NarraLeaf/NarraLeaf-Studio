@@ -1,7 +1,7 @@
 import type { LocaleNamespace } from "../types";
 
 export const storyInspector = {
-    textId: "本地化键名",
+    textId: "单元 ID",
     advanced: "高级",
     advancedParams: "高级参数",
     noVariablesDeclared: "尚未声明变量",

@@ -23,6 +23,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
 import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
+import { useTableRowReveal } from "@/apps/workspace/components/ui/useTableRowReveal";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -625,6 +626,71 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         }
     }, [findActiveIndex, virtualizer]);
 
+    /**
+     * A deep link names a line; the table lists one story at a time, so the first half of landing on
+     * it is standing in the story it belongs to. A link that does not say which story (a take found
+     * from the asset it plays, which knows only its line's id) is looked up story by story.
+     */
+    const revealRequest = payload?.reveal;
+    const revealToken = revealRequest?.token ?? null;
+    useEffect(() => {
+        if (!revealRequest || !storyService || !voiceService) {
+            return;
+        }
+        if (revealRequest.storyId) {
+            setStoryId(revealRequest.storyId);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            for (const entry of storyService.listStories()) {
+                try {
+                    const document = await storyService.loadStory(entry.id);
+                    if (voiceService.extractRows(document).some(row => row.unitId === revealRequest.unitId)) {
+                        if (!cancelled) {
+                            setStoryId(entry.id);
+                        }
+                        return;
+                    }
+                } catch {
+                    // A story that will not open holds no row this table could show.
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // The token is the request; the rest of the payload is read from the render it arrived in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealToken, storyService, voiceService]);
+
+    /**
+     * The second half: the row brought on screen and marked once it has been read, with whatever was
+     * hiding it cleared. An unlinked line is not a row at all in the audition pass, so that is left
+     * for the assign view as well as the filter being opened.
+     */
+    const revealIndexOf = useCallback(
+        (unitId: string) => flatItems.findIndex(entry => entry.kind === "row" && entry.row.unitId === unitId),
+        [flatItems],
+    );
+    const revealInTable = useCallback((unitId: string) => rows.some(row => row.unitId === unitId), [rows]);
+    const revealShowAll = useCallback(() => {
+        setMode("assign");
+        setFilter("all");
+        setAuditionFilter("all");
+    }, []);
+    const revealScrollTo = useCallback(
+        (index: number) => virtualizer.scrollToIndex(index, { align: "center" }),
+        [virtualizer],
+    );
+    const { markedUnitId } = useTableRowReveal({
+        request: revealRequest,
+        indexOf: revealIndexOf,
+        inTable: revealInTable,
+        showAll: revealShowAll,
+        scrollToIndex: revealScrollTo,
+    });
+
     const rowStrings = useMemo(() => ({
         assign: t("workspace.voice.table.assign"),
         replace: t("workspace.voice.table.replace"),
@@ -797,11 +863,14 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                             key={item.key}
                             ref={virtualizer.measureElement}
                             data-index={item.index}
+                            data-revealed={row && row.unitId === markedUnitId ? "" : undefined}
                             className={cn(
                                 "absolute left-0 top-0 w-full",
                                 // The row the find bar is on. Inset, because a ring drawn outside a
                                 // windowed item overlaps the one above it.
                                 find.activeIndex === item.index && "ring-1 ring-inset ring-primary/60",
+                                // The row a deep link landed on, for as long as the mark lasts.
+                                row && row.unitId === markedUnitId && "ring-1 ring-inset ring-primary",
                             )}
                             style={{ transform: `translateY(${item.start}px)` }}
                         >

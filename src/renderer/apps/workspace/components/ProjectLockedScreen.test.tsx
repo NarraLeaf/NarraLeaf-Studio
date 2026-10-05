@@ -61,7 +61,15 @@ afterEach(cleanup);
 
 describe("ProjectLockedScreen", () => {
     it("names the machine holding the project and when it took it", () => {
-        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+        // A lock taken earlier today is named by its time alone, one taken before midnight by date and
+        // time; pin the clock to midday so "45 minutes ago" is always the same day, wherever the run is.
+        const noon = new Date(2026, 9, 4, 12, 0, 0);
+        vi.setSystemTime(noon);
+        try {
+            render(<ProjectLockedScreen holder={{ ...ELSEWHERE, startedAt: new Date(noon.getTime() - 45 * 60 * 1000).toISOString() }} onRetry={() => undefined} />);
+        } finally {
+            vi.useRealTimers();
+        }
 
         const sentence = screen.getByText(/workspace\.shell\.projectLockedElsewhere/);
         expect(sentence.textContent).toContain("host=studio-two");

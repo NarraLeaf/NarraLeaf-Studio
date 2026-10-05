@@ -722,9 +722,10 @@ declare module "@narraleaf/script" {
     	 * which is what keeps the drawing of a plain label exactly what it was.
     	 */
     	rich?: UITextRun[];
-    	/** Game-localization opt-in: registers the implicit translation unit \`ui:<elementId>.text\`. */
-    	localizable?: boolean;
-    	/** Named localization key reference; takes precedence over the implicit unit. */
+    	/**
+    	 * Named localization key reference. A keyed text holds no words of its own: the key's are shown,
+    	 * and the element's own words, when it has them, are translated through \`ui:<elementId>.text\`.
+    	 */
     	localizationKey?: string;
     	fontSize: number;
     	color: string;

@@ -90,6 +90,13 @@ Math分类具有：
 Text分类具有：
 - 当前 `nl.text` 自己的 Text 节点
 
+## Localization
+
+Localization 分类具有：
+- 游戏语言节点：`Get Current Language`、`Set Language`、`Get Available Languages`
+- 翻译键节点：`Get Text`、`Translation Key Text`、`Has Text`；其中 `Translation Key Text` 是纯节点，可用于 Blueprint Value 与 `function` 图
+- 已不在创建浮窗中提供、已有图里照常运行的 `Format Text`；格式化统一用 Data 分类的 `Format`
+
 ## Element
 
 Element 分类具有：

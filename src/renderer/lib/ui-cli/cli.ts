@@ -332,7 +332,10 @@ function commandSurfaces(args: Args, io: CliIo): number {
         lines.push("");
     }
     for (const component of document.components ?? []) {
-        const params = (component.params ?? []).map(param => `${param.id}="${param.defaultValue}"`).join(" ");
+        // A text parameter is marked, since it is the one a `bind ... = param` may show.
+        const params = (component.params ?? [])
+            .map(param => `${param.id}${param.type === "text" ? ":text" : ""}="${param.defaultValue}"`)
+            .join(" ");
         const pool = component.elements ?? {};
         const wholeComponent = matches(component.name, component.id);
         const elements = collectTree(pool, component.rootElementId)
@@ -398,6 +401,7 @@ function commandShow(args: Args, io: CliIo): number {
         componentIds,
         includeSharedTables: !surfaceName && !componentName,
         blueprintsByElement: blueprints.byElement,
+        keyWords: readTextKeys(projectDir)?.keys,
     });
 
     const out = args.flags.out;

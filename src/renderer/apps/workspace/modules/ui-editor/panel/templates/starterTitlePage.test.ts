@@ -36,9 +36,11 @@ import {
     brandColorsToAdopt,
     hasNoInterfaceYet,
     liftStarterTitlePage,
+    templateTextKeys,
     type LiftedTitlePage,
     type StarterStartTarget,
 } from "./starterTitlePage";
+import { settleIncomingUITextSources } from "@shared/types/ui-editor/textSourceMigration";
 
 const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton");
 
@@ -173,15 +175,25 @@ describe.each(LANGUAGES)("the starter title page, in $name", language => {
         }
     });
 
-    it("keeps its words on the widgets, in the project's language, translatable like typed text", () => {
+    it("arrives in a project without the template's keys holding their words, in the project's language", () => {
+        // A project offered the page has no interface yet, and none of the template's keys: the import
+        // settles each keyed widget into one that holds the key's words (`settleIncomingUITextSources`).
         const { lifted } = lift();
-        for (const element of Object.values(lifted.payload.document.elements)) {
+        const keys = templateTextKeys(readJson(landed(language.variant, "editor/localization/keys.json")));
+        const { table, converted } = settleIncomingUITextSources(lifted.payload.document.elements, {
+            hasKey: () => false,
+            carried: keys,
+        });
+        expect(converted.length).toBeGreaterThan(0);
+        for (const element of Object.values(table)) {
             const props = (element.props ?? {}) as Record<string, unknown>;
             expect(props.localizationKey).toBeUndefined();
             if (element.type === "nl.button") {
-                expect(props.localizable).toBe(true);
                 expect(String(props.label ?? "").trim()).not.toBe("");
             }
+        }
+        for (const site of converted) {
+            expect((table[site.elementId].props as Record<string, unknown>)[site.prop]).toBe(keys[site.keyName].words);
         }
     });
 

@@ -306,6 +306,28 @@ export function characterTranslationUnitId(characterId: string): string {
     return `char:${characterId}`;
 }
 
+/**
+ * Prefix of the unit space a plugin's words live in: what an author writes in a plugin's own editor
+ * (a menu row's label, a gallery entry's name) and the plugin offers for translation.
+ */
+export const PLUGIN_WORDS_UNIT_PREFIX = "plugin:";
+
+/** A plugin's id for one of its words: the key-name charset, a little longer, since it nests ids. */
+const PLUGIN_WORDS_ID_PATTERN = /^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$/;
+
+export function isValidPluginWordsId(id: unknown): id is string {
+    return typeof id === "string" && id.length <= 240 && PLUGIN_WORDS_ID_PATTERN.test(id);
+}
+
+/**
+ * Translation-unit id of one of a plugin's words: `plugin:<pluginId>/<id>`, the id being the plugin's
+ * own. Scoped by the plugin so two plugins - and a plugin and Studio's own units - can never name the
+ * same unit, and so a plugin reads back only the words it offered.
+ */
+export function pluginWordsUnitId(pluginId: string, id: string): string {
+    return `${PLUGIN_WORDS_UNIT_PREFIX}${pluginId}/${id}`;
+}
+
 /** Prefix of the scene-name unit space. Exported so id parsing has one spelling. */
 export const SCENE_UNIT_PREFIX = "scene:";
 
@@ -411,6 +433,40 @@ export function resolveLocalizedUnitText(
         }
     }
     return null;
+}
+
+/**
+ * A named key's words in `locale`: its translation along the language's fallback chain, else its
+ * source words, else - for a key the bundle does not carry - the key's name, so a dangling key is seen
+ * where it is used rather than drawn as nothing.
+ *
+ * The one answer every reader of a key gives in a running game: a keyed widget, the latent `Get Text`
+ * and the pure `Translation Key Text`. A project without a source language ships a bundle that holds
+ * its keys and nothing else, so its keys read as their source words like any other project's.
+ */
+export function resolveLocalizationKeyWords(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables" | "keys">,
+    locale: LocaleCode,
+    keyName: string,
+): string {
+    return resolveLocalizedUnitText(bundle, locale, localizationKeyUnitId(keyName))
+        ?? (bundle.keys && Object.prototype.hasOwnProperty.call(bundle.keys, keyName) ? bundle.keys[keyName] : keyName);
+}
+
+/**
+ * The payload of a project without a source language: its keys, and no languages or translations.
+ *
+ * A key is first of all shared words - the same word said once wherever it is used - and that holds
+ * whether or not the project is translated. Story lines, scene and character names have nothing to
+ * read here and render as written, as they would with no payload at all.
+ */
+export function keysOnlyLocalization(keys: Readonly<Record<string, string>> | undefined): GameLocalizationBundle {
+    return { sourceLocale: "", locales: [], tables: {}, keys: { ...(keys ?? {}) } };
+}
+
+/** Whether a payload is {@link keysOnlyLocalization}'s: keys, and no language to translate into. */
+export function isKeysOnlyLocalization(bundle: Pick<GameLocalizationBundle, "sourceLocale">): boolean {
+    return !bundle.sourceLocale;
 }
 
 /**

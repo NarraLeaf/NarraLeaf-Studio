@@ -844,12 +844,20 @@ async function patchTargetText(
     return { nextPort: "next" };
 }
 
+/**
+ * Every property the node sets, from its pins, with the ones left empty kept as they are.
+ *
+ * The words are set only when the pin gives some. Words a node writes are shown as written, ahead of a
+ * key, a translation and a binding (`withUITextRuntimeWords`), so filling the pin from the words
+ * already held would freeze a keyed or bound widget's words in the language they happened to be in.
+ */
 function buildAllPropertiesPatch(
     ctx: Parameters<BlueprintNodeDef["execute"]>[0],
     current: BlueprintTextProperties,
-): BlueprintTextProperties {
+): BlueprintTextPropertiesPatch {
+    const text = readPin(ctx, "text");
     return {
-        text: toStringValue(readPin(ctx, "text"), current.text),
+        ...(text == null ? {} : { text: String(text) }),
         fontAssetId: toFontAssetId(readPin(ctx, "fontAssetId"), current.fontAssetId),
         fontSize: Math.max(1, toFiniteNumber(readPin(ctx, "fontSize"), current.fontSize)),
         fontWeight: toEnumValue(readPin(ctx, "fontWeight"), FONT_WEIGHT_VALUES, current.fontWeight),

@@ -76,6 +76,8 @@ export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry)
 export type BlueprintAddNodeLocalizer = {
     title: (displayName: string) => string;
     category: (category: string) => string;
+    /** Words the category was once shown as, which a search still answers to. */
+    categoryAliases?: (category: string) => readonly string[];
 };
 
 /**
@@ -211,6 +213,7 @@ function searchFieldsFor(
         ...(localizedCategory && localizedCategory !== entry.category
             ? [{ text: localizedCategory, weight: FIELD_WEIGHTS.category }]
             : []),
+        ...(localizer?.categoryAliases?.(entry.category) ?? []).map(alias => ({ text: alias, weight: FIELD_WEIGHTS.category })),
         ...(entry.keywords ?? []).map(keyword => ({ text: keyword, weight: FIELD_WEIGHTS.keyword })),
     ];
 }

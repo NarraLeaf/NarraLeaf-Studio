@@ -508,12 +508,13 @@ describe("TextRenderer read from a translation key", () => {
         expect(canvas.container.querySelector("p")!.textContent).toBe("Skip pause");
     });
 
-    it("types over a key the registry does not hold onto the element, which is what the canvas draws", () => {
+    it("types over a key the registry does not hold onto the element, and lets the key go", () => {
         const document = keyedDocument();
         document.elements.text.props!.localizationKey = "config.gone";
         const services = createServices(document);
         const canvas = renderText(document, canvasHostAdapter(services));
-        expect(canvas.container.querySelector("p")!.textContent).toBe("Skip delay");
+        // Drawn as the key's name, as the game draws it.
+        expect(canvas.container.querySelector("p")!.textContent).toBe("config.gone");
 
         act(() => {
             beginInlineTextEdit(services.stateService as never, SURFACE.id, "text");
@@ -525,8 +526,9 @@ describe("TextRenderer read from a translation key", () => {
             fireEvent.blur(textarea);
         });
 
-        // No key is minted for the missing name: the words land where they are drawn from.
+        // No key is minted for the missing name: the words become the text's own, and the key goes.
         expect(written).toEqual([]);
         expect(document.elements.text.props?.text).toBe("Skip later");
+        expect(document.elements.text.props?.localizationKey).toBeUndefined();
     });
 });

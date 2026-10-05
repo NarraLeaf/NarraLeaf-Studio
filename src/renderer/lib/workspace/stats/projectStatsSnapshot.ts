@@ -21,6 +21,7 @@ import {
     extractUiTranslationRows,
     type TranslatableUnitRef,
 } from "@/lib/workspace/services/localization/localizationModel";
+import { listPluginWordsRows } from "@/lib/workspace/services/localization/pluginWords";
 import { countBlockWords } from "@/lib/workspace/stats/storyTextStats";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
@@ -427,6 +428,9 @@ async function collectTranslatableRows(
     }
     const uiDocument = ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
     for (const row of extractUiTranslationRows(uiDocument)) {
+        rows.push({ unitId: row.unitId, sourceText: row.sourceText });
+    }
+    for (const row of listPluginWordsRows()) {
         rows.push({ unitId: row.unitId, sourceText: row.sourceText });
     }
     const keysDocument =

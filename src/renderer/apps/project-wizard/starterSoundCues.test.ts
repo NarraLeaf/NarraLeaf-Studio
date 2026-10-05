@@ -21,6 +21,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DATA_MEMO,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
@@ -344,9 +345,9 @@ describe("the sounds the starter template makes", () => {
                 Object.values(event.graph.nodes).filter(node => isCueCall(node)),
             ),
         );
-        // The recollection and CG rows, and the confirm dialog's two answers: the sounds that depend
-        // on something.
-        expect(cues).toHaveLength(4);
+        // The recollection and CG rows, the confirm dialog's two answers, and Escape on the confirm
+        // dialog: the sounds that depend on something, and the one a key makes.
+        expect(cues).toHaveLength(5);
     });
 
     it("plays every clip on a sound that names one the template ships", () => {
@@ -446,5 +447,18 @@ describe("the sounds the starter template makes", () => {
         assertCue(next(graph, branch.id, "false"), "ui-confirm");
         assertCue(next(graph, branch.id, "true"), "ui-back");
         expect(subtree(list.id).filter(element => soundOf(element, "click") !== null)).toEqual([]);
+    });
+
+    it("the confirm dialog backs out on Escape in the voice of its ways out", () => {
+        // Escape is a key, so no element's sound can answer it: the page's own blueprint plays the
+        // cue Cancel plays before it closes.
+        const confirm = document.surfaces.find(surface => surface.name === "Confirm")!;
+        const blueprint = blueprints.find(
+            candidate => candidate.owner.kind === "surfaceMain" && candidate.owner.surfaceId === confirm.id,
+        )!;
+        const graphs = Object.values(blueprint.graphs.events).map(event => event.graph);
+        expect(graphs).toHaveLength(1);
+        const head = only(graphs[0]!, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+        assertCue(next(graphs[0]!, head.id, "then"), "ui-back");
     });
 });

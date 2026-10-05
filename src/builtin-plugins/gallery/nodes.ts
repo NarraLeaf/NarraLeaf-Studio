@@ -36,6 +36,7 @@ import type { PluginBlueprintNodeDef } from "narraleaf-studio/plugin";
 import {
     artworkUnlockIds,
     computeGalleryStats,
+    localizeGalleryStore,
     findArtwork,
     isArtworkUnlocked,
     normalizeGalleryStore,
@@ -412,7 +413,16 @@ export function createGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): 
 }
 
 function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): PluginBlueprintNodeDef[] {
-    const store = (): GalleryStoreData => normalizeGalleryStore(readCatalog());
+    /**
+     * The catalog, with the words the author wrote in the player's language when the node runs in a
+     * game (`localizeGalleryStore`). In the editor there is no `locale` on the game object and the
+     * words read as written, which is the project's source language.
+     */
+    const store = (ctx: ExecuteCtx): GalleryStoreData => {
+        const data = normalizeGalleryStore(readCatalog());
+        const locale = ctx.game.locale;
+        return locale ? localizeGalleryStore(data, (id, text) => locale.words(id, text)) : data;
+    };
 
     /** Unlock reads are always catalog-aware; see readUnlockedVariantIds. */
     const readUnlocked = async (ctx: ExecuteCtx, artworks: GalleryArtwork[]): Promise<Set<string>> => {
@@ -421,7 +431,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
     };
 
     const setVariantsLocked = async (ctx: ExecuteCtx, mode: "add" | "remove") => {
-        const data = store();
+        const data = store(ctx);
         const artwork = requireArtwork(ctx, data.items);
         const targets = resolveTargetIds(ctx, artwork);
         const backing = unlockStore(ctx);
@@ -480,7 +490,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // further gallery node. Kind picks the EXTRA column: CG grid,
             // recollection list, music player, voice list.
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const unlocked = await readUnlocked(ctx, data.items);
                 const entries = projectGalleryEntries(data, unlocked, {
                     groupId: resolveGroupId(ctx),
@@ -519,7 +529,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // The differential strip of a CG viewer: same row shape as Get
             // Gallery, scoped to one artwork.
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const artwork = requireArtwork(ctx, data.items);
                 const unlocked = await readUnlocked(ctx, data.items);
                 const entries = projectGalleryVariants(data, artwork, unlocked, {
@@ -546,8 +556,8 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             pins: [execIn, execNext, { ...entriesOut, id: "groups", label: "Groups" }, countOut],
             // Feeds a category tab bar; each row's `id` goes back into Get
             // Gallery's Group Id pin.
-            execute: () => {
-                const groups = store().groups.map((group, index) => ({
+            execute: ctx => {
+                const groups = store(ctx).groups.map((group, index) => ({
                     index,
                     id: group.id,
                     name: group.name,
@@ -584,7 +594,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             ],
             inspectorParams: [kindParam(), groupParam()],
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const unlocked = await readUnlocked(ctx, data.items);
                 const stats = computeGalleryStats(data, unlocked, {
                     groupId: resolveGroupId(ctx),
@@ -639,7 +649,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // The "you cleared the game, here is everything" reward, and the
             // fastest way to eyeball a gallery screen while building it.
             execute: async ctx => {
-                await replaceUnlocked(ctx, store().items.flatMap(artworkUnlockIds));
+                await replaceUnlocked(ctx, store(ctx).items.flatMap(artworkUnlockIds));
                 return { nextPort: "next" };
             },
         },
@@ -676,7 +686,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // common case for graying out a gallery grid cell.
             inspectorParams: [artworkParam(), variantParam("Any variant")],
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const artwork = requireArtwork(ctx, data.items);
                 const unlocked = await readUnlocked(ctx, data.items);
                 const variantId = resolveVariantId(ctx);
@@ -722,7 +732,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             ],
             inspectorParams: [artworkParam()],
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const artwork = requireArtwork(ctx, data.items);
                 const variant = artwork.variants[readIndex(ctx.resolveInput?.(PIN_INDEX))];
                 if (!variant) {
@@ -767,7 +777,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             // can render placeholder slots for what the player has not found.
             execute: ctx => ({
                 nextPort: "next",
-                outputValues: { count: requireArtwork(ctx, store().items).variants.length },
+                outputValues: { count: requireArtwork(ctx, store(ctx).items).variants.length },
             }),
         },
         {
@@ -796,7 +806,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             ],
             inspectorParams: [artworkParam()],
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const artwork = requireArtwork(ctx, data.items);
                 const cover = resolveCoverVariant(artwork);
                 const unlocked = await readUnlocked(ctx, data.items);
@@ -820,9 +830,9 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
             hideInPalette: true,
             isPure: false,
             pins: [execIn, execNext, countOut],
-            execute: () => ({
+            execute: ctx => ({
                 nextPort: "next",
-                outputValues: { count: store().items.length },
+                outputValues: { count: store(ctx).items.length },
             }),
         },
         {
@@ -845,7 +855,7 @@ function declareGalleryBlueprintNodes(readCatalog: GalleryCatalogReader): Plugin
                 { id: "variantCount", kind: "output", semantic: "data", valueType: "integer", label: "Variant Count" },
             ],
             execute: async ctx => {
-                const data = store();
+                const data = store(ctx);
                 const artwork = data.items[readIndex(ctx.resolveInput?.(PIN_INDEX))];
                 if (!artwork) {
                     return {

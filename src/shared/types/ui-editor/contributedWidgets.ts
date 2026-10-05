@@ -1,3 +1,4 @@
+import type { UITextSite } from "./textSites";
 import type { WidgetLogicApi } from "./widgetLogic";
 
 /**
@@ -5,7 +6,8 @@ import type { WidgetLogicApi } from "./widgetLogic";
  *
  * The questions every seam asks of a widget type - which events it raises and which heads start on
  * them (`widgetLogic.ts`), whether it may hold children and which of them are parts it built for
- * itself (`document.ts`) - are answered from tables
+ * itself (`document.ts`), which of its props are words a player reads (`textSource.ts`) - are answered
+ * from tables
  * written in `shared`, because the workspace, the Dev Mode window and a built game all have to ask
  * them and only `shared` is in all three. A plugin's widget is not in those tables and cannot be:
  * it is registered at run time, and in a different registry in each realm. Before this module every
@@ -42,6 +44,11 @@ export type ContributedWidgetDeclaration = {
      * so a declaration that has slots never also says `acceptsChildren`.
      */
     readonly partSlots?: readonly string[];
+    /**
+     * The props that hold words a player reads, from the plugin's manifest (`contributes.widgetText`)
+     * through `uiTextSitesFromPluginDeclaration`. Absent or empty for a widget that declares none.
+     */
+    readonly textSites?: readonly UITextSite[];
 };
 
 export type ContributedWidgetSource = {

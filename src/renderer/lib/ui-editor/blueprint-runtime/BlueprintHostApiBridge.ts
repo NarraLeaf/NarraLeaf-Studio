@@ -70,6 +70,8 @@ import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { readUITextSite, resolveUITextWords, uiTextSiteOf, type UITextWordsHost } from "@shared/types/ui-editor/textSource";
+import { readRuntimeLocale } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import {
     buildUIWidgetAddress,
     readUIWidgetAddress,
@@ -1548,15 +1550,28 @@ function withWidgetPropOverride(
     return props ? { ...element, props: { ...(element.props ?? {}), ...props } } : element;
 }
 
+/**
+ * Whether a drawing's words on `prop` were written at run time: its patch holds the prop. Such words
+ * are shown as written, ahead of a key, a translation and a binding (`withUITextRuntimeWords`).
+ */
+function wordsWrittenAt(overrides: WidgetPatchReader, address: string, prop: string): boolean {
+    const props = overrides.get(address)?.props;
+    return props !== undefined && Object.prototype.hasOwnProperty.call(props, prop);
+}
+
+/** What a drawing shows on its text site, given the words it holds; see the host API's `wordsOnScreen`. */
+type WordsOnScreen = (address: string, drawn: UIElement, held: string) => string;
+
 function readTextProperties(
     document: UIDocument,
     overrides: WidgetPatchReader,
     address: string,
+    wordsOnScreen?: WordsOnScreen,
 ): BlueprintTextProperties {
     const el = withWidgetPropOverride(assertTextElement(document, address), overrides, address);
     const p = getTextProps(el);
     return {
-        text: p.text,
+        text: wordsOnScreen ? wordsOnScreen(address, el, p.text) : p.text,
         fontAssetId: p.fontAssetId,
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
@@ -1885,11 +1900,13 @@ function readButtonProperties(
     document: UIDocument,
     overrides: WidgetPatchReader,
     address: string,
+    wordsOnScreen?: WordsOnScreen,
 ): BlueprintButtonProperties {
-    const p = getButtonProps(withWidgetPropOverride(assertButtonElement(document, address), overrides, address));
+    const drawn = withWidgetPropOverride(assertButtonElement(document, address), overrides, address);
+    const p = getButtonProps(drawn);
     const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
     return {
-        label: p.label,
+        label: wordsOnScreen ? wordsOnScreen(address, drawn, p.label) : p.label,
         cursor: readButtonDefaultCursor(p.appearance, fallbackCursor),
     };
 }
@@ -2749,6 +2766,39 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
     const runtimePatches: WidgetPatchReader = {
         get: address => (ownPatches ? ownPatches.get(address) : readWidgetPatches?.()?.[address]),
     };
+
+    /**
+     * What a drawing shows on its text site now, in the language the game is read in - the answer
+     * `Get Text` and `Get Label` give, so a graph that reads a widget reads what the player sees.
+     *
+     * Words written at run time are what they are. Words a value binding gave are read back from the
+     * drawing, which is the only place the binding's answer is kept; before the widget has drawn
+     * one, the words it holds stand in. Anything else is resolved exactly as the widget resolves it
+     * (`resolveUITextWords`): the key's words, or the element's own through its own unit.
+     */
+    const wordsOnScreen: WordsOnScreen = (address, drawn, held) => {
+        const site = uiTextSiteOf(drawn.type);
+        if (!site || wordsWrittenAt(runtimePatches, address, site.textProp)) {
+            return held;
+        }
+        const reading = readUITextSite(drawn, site);
+        if (!reading.key && reading.binding) {
+            return widgetRuntimeStore.getDrawnBoundWords(scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, address))
+                ?? held;
+        }
+        const config = options.localizationConfig;
+        const host: UITextWordsHost = config
+            ? {
+                kind: "game",
+                bundle: { ...config, tables: config.tables ?? {} },
+                locale: readRuntimeLocale().locale ?? config.sourceLocale,
+            }
+            : { kind: "canvas", keys: null };
+        return resolveUITextWords(
+            { site, elementId: readUIWidgetAddressElementId(address), sourceText: held, localizationKey: reading.key },
+            host,
+        );
+    };
     let flushScheduled = false;
 
     /**
@@ -3326,7 +3376,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getTextProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readTextProperties(document, runtimePatches, elementId);
+                    return readTextProperties(document, runtimePatches, elementId, wordsOnScreen);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3338,7 +3388,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const current = readTextProperties(document, runtimePatches, elementId);
                     const el = assertTextElement(document, elementId);
                     const normalized = normalizeTextPatch(current, patch);
-                    if (!textPatchChanges(current, normalized)) {
+                    // Words given for the first time are written even when they equal the ones held:
+                    // from now on they are shown as written, in every language, ahead of a key and a
+                    // binding - which is a change whether or not the string is.
+                    const firstWords = patchHas(normalized, "text") && !wordsWrittenAt(runtimePatches, elementId, "text");
+                    if (!firstWords && !textPatchChanges(current, normalized)) {
                         return;
                     }
                     changeWidgetProps(elementId, el, drawn => ({ ...normalized, ...textAppearanceChange(drawn, normalized) }));
@@ -3351,7 +3405,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getButtonProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readButtonProperties(document, runtimePatches, elementId);
+                    return readButtonProperties(document, runtimePatches, elementId, wordsOnScreen);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3372,7 +3426,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
 
                     const changed = changeWidgetProps(elementId, el, drawn => {
                         const changes: Record<string, unknown> = {};
-                        if (hasLabelPatch && nextLabel !== current.label) {
+                        // A label given for the first time is written even when it equals the one
+                        // held - see `setTextProperties`.
+                        if (hasLabelPatch && (nextLabel !== current.label || !wordsWrittenAt(runtimePatches, elementId, "label"))) {
                             changes.label = nextLabel;
                         }
                         if (hasCursorPatch && nextCursor !== current.cursor) {

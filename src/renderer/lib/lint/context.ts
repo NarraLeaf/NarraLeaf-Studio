@@ -98,6 +98,12 @@ export type LintIo = {
      * and video on a real VN - and then dropped every buffer on the floor.
      */
     exists(assetId: string): Promise<boolean>;
+    /**
+     * How many bytes the asset's content file holds, or null when there is no single file to
+     * measure: a remote asset never fetched, a model bundle (a directory), a file that cannot be
+     * read. The library records no size of its own, so this is the only way to know one.
+     */
+    byteSize(assetId: string): Promise<number | null>;
     /** null when the content file cannot be read at all. */
     readBytes(assetId: string): Promise<Uint8Array | null>;
     probeImage(assetId: string): Promise<LintImageProbe>;

@@ -20,6 +20,7 @@ export const placeholders = {
         voice: "ボイス",
         assets: "アセット",
         console: "コンソール",
+        problems: "問題",
         storyMotion: "ストーリーモーション",
         dashboard: "ダッシュボード",
         audioPreview: "音声プレビュー",

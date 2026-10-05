@@ -1065,6 +1065,8 @@ export const story = {
         cutPointTitle: "The {name} build ends at this line. No other build contains this line.",
         cutPointInactive: "variant deleted",
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
+        // One finding of the project checks, on the hover of a row's mark: what is wrong, then which rule said so.
+        problem: "{message} ({rule})",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
         // On the rung above while it is greyed, and on the paste wizard's "New character" target,

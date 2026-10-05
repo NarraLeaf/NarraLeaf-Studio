@@ -82,6 +82,27 @@ function narrationBlock(id: string, textId: string, value: string, childrenIds: 
     };
 }
 
+/**
+ * The actions one of the scene's statements stands for. The compiler hands a scene each statement
+ * already turned into its actions (so they can be named), and a chain or a list of either is read
+ * the way the engine reads it.
+ */
+function statementActions(statement: any): any[] {
+    if (Array.isArray(statement)) {
+        return statement.flatMap(statementActions);
+    }
+    if (typeof statement?.getActions === "function") {
+        return DevTools.chainToActions(statement).flat(Number.POSITIVE_INFINITY).flatMap(statementActions);
+    }
+    return statement ? [statement] : [];
+}
+
+/** What the scene's menu holds - its prompt and its choices - read off the menu's action. */
+function menuOnScene(scene: unknown): any {
+    const menu = ((scene as any).actions as unknown[]).flatMap(statementActions).find(action => action?.type === "menu:action");
+    return menu?.contentNode?.getContent();
+}
+
 function collectActionTree(action: any, story: unknown, seen = new Set<any>()): any[] {
     if (!action || seen.has(action)) {
         return [];
@@ -1453,9 +1474,7 @@ describe("compileStudioStoryToNlr", () => {
         // fresh scene entry reads 100 rather than null (`Scene.local.init` resets on every entry).
         // `locked`/`started` declare no default and must not be seeded.
         const statements = ((compiled.scene as any).actions ?? []) as unknown[];
-        const statementTypes = statements.map(statement => DevTools.chainToActions(statement as any)
-            .flat(Number.POSITIVE_INFINITY)
-            .map((action: any) => action?.type as string));
+        const statementTypes = statements.map(statement => statementActions(statement).map((action: any) => action?.type as string));
         const seedStatements = statementTypes.filter(types => types.includes("persistent:set"));
         expect(seedStatements).toHaveLength(1);
         // Head of the scene, but no longer index 0: the visited record's `script:action` is seeded
@@ -2203,11 +2222,9 @@ describe("compileStudioStoryToNlr localization", () => {
         });
         expect(compiled.diagnostics).toEqual([]);
 
-        // The Menu chain is stored as a raw element on the scene until NLR
-        // constructs the scene root, so introspect it directly.
-        const menuElement = ((compiled.scene as any).actions as any[])
-            .flat(9)
-            .find(item => item?.choices);
+        // The scene holds the menu's action, built from the Menu chain by the compiler so it can be
+        // named; what the chain held is the action's content.
+        const menuElement = menuOnScene(compiled.scene);
         expect(menuElement, "menu element on scene actions").toBeTruthy();
         const promptWords = menuElement.prompt?.text as any[];
         expect(renderDynamicResult(promptWords[0].text({}))).toBe("What now?");
@@ -2496,9 +2513,7 @@ describe("compileStudioStoryToNlr voice", () => {
         });
         expect(compiled.diagnostics).toEqual([]);
 
-        const menuElement = ((compiled.scene as any).actions as any[])
-            .flat(9)
-            .find(item => item?.choices);
+        const menuElement = menuOnScene(compiled.scene);
         const choices = menuElement.choices as any[];
         expect(choices[0].prompt.getMetadata?.()).toEqual({ voiceId: "text-option" });
         // The words survive the wrapper: a voiced option is the same shape as an unvoiced one, which
@@ -5503,9 +5518,12 @@ describe("a layered character a row-precise launch pre-poses", () => {
         compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>,
         blockId: string,
     ): ({ defaults?: string[]; slots?: unknown } | null | undefined)[] {
-        return compiled.actionIdBindings
+        // Once per action: what a row's own actions contain is bound to the row too, so the same
+        // action is reached from more than one binding.
+        const actions = new Set(compiled.actionIdBindings
             .filter(binding => binding.blockId === blockId)
-            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .flatMap(binding => collectActionTree(binding.action, compiled.story)));
+        return [...actions]
             .filter(action => action?.type === "image:setAppearance")
             .map(action => action.callee?.config?.src);
     }

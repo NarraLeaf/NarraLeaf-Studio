@@ -153,6 +153,22 @@ Studio 自己的下载分两类，不要混：
 输入框。存的仍旧是同一个键上的普通字符串，「空 = 官方源」这条约定没变（见 `resolveDownloadSource`），
 所以这四个键的下游一律不受影响。
 
+具名的镜像只在 Studio 说得出为什么能用时才列：`plugins.registryUrl` 的社区镜像，以及三个构建镜像
+（`src/shared/constants/buildMirrors.ts`：npmmirror 的 Electron 和 electron-builder-binaries、
+ziglang.org 社区镜像列表里按 `<mirror><version>/<archive>` 布局提供文件的那一个）。构建工具和 Zig
+的下载都对着源码里写死的摘要校验，镜像只能决定下不下得到；Electron 的校验文件来自同一个镜像，
+所以只列 npmmirror。`uiTemplates.registryUrl` 没有具名镜像：模板文件跟着索引所在目录走，目前没有
+哪个镜像提供整个仓库。默认值一律仍是官方源。
+
+`build.electronBuilderBinariesMirror` 要同时到达两处：Studio 自己的下载（winCodeSign 预取、
+AppImage 工具包）直接读配置；electron-builder 自己下载 7-Zip、NSIS 时只认环境变量，所以构建
+worker 在打包循环外用 `withBinariesMirrorEnv` 把设置写成那四个 `*_BINARIES_MIRROR` 变量。
+设置为空时什么都不改，主机原有的环境变量照旧生效。
+
+构建因下载失败而结束时（`got` 的错误、`fetch failed`、证书校验失败），控制台在报错下面多打一行，
+指向「设置 › 网络」；证书校验失败再加一行，说明多半是本机的代理、加速器或杀毒软件在拦截 HTTPS。
+判定在 `managers/build/downloadFailureHint.ts`。
+
 **具名镜像只给 `plugins.registryUrl`。** 另外三个只提供「官方源／不使用镜像」加自填，各有各的理由：
 
 - 两个构建镜像没有 Studio 能担保的对应物，而**按名字列出来就等于背书**。

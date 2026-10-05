@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument } from "@shared/types/story";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
@@ -23,7 +24,7 @@ import type { LintContext, LintLocalizationContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
 import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
-import { UI_LINT_RULES } from "./ui";
+import { listInterfaceTextUnitSites, UI_LINT_RULES } from "./ui";
 
 /**
  * The `ui` category.
@@ -96,7 +97,7 @@ function localization(targetLocales: string[]): LintLocalizationContext {
 }
 
 // ---------------------------------------------------------------------------
-// ui/unlocalized-text
+// The words a player reads, and the unit each is translated through
 // ---------------------------------------------------------------------------
 
 /** A text widget carrying `text`, plus whatever binding props the case is about. */
@@ -104,47 +105,31 @@ function textWidget(props: Record<string, unknown>): UIElement {
     return element({ id: "label", type: "nl.text", name: "Greeting", props });
 }
 
-function unlocalizedContext(document: UIDocument, locales = ["zh"]): LintContext {
-    return createTestLintContext({ uiDocument: document, localization: localization(locales) });
+/** The units a document's words are read through, as `unitId` or `key:<name>`. */
+function unitsOf(document: UIDocument): string[] {
+    return listInterfaceTextUnitSites(document).map(site =>
+        site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId,
+    );
 }
 
-describe("ui/unlocalized-text", () => {
-    it("reports a literal on a page of a project that has a second language", async () => {
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(onePage(textWidget({ text: "Start Game" }))));
-
-        expect(findings).toHaveLength(1);
-        expect(findings[0]).toMatchObject({
-            ruleId: "ui/unlocalized-text",
-            messageKey: "lint.rule.uiUnlocalizedText.message",
-            messageParams: { text: "Start Game" },
-            location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, surfaceName: "Main Page", elementName: "Greeting" },
-            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
-        });
+describe("listInterfaceTextUnitSites", () => {
+    it("reads a widget's own words through its own unit, with no switch to opt them in", () => {
+        // Since v13 the element's own words are translated whenever the project has a second
+        // language, as a scene's name or a character's is; there is nothing to forget to turn on.
+        expect(unitsOf(onePage(textWidget({ text: "Start Game" })))).toEqual(["ui:label.text"]);
     });
 
-    it("says nothing in a single-language project", async () => {
-        // The case that decides whether this rule survives contact with a real project: writing the
-        // words on the widget is not a defect until there is a second language to write them in.
-        const document = onePage(textWidget({ text: "Start Game" }));
-
-        expect(await run("ui/unlocalized-text", createTestLintContext({ uiDocument: document }))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(document, []))).toEqual([]);
-        // A "target" list that names only the source locale is not a second language either.
-        expect(await run("ui/unlocalized-text", unlocalizedContext(document, ["en"]))).toEqual([]);
+    it("reads a keyed widget through its key", () => {
+        expect(unitsOf(onePage(textWidget({ localizationKey: "menu.start" })))).toEqual(["key:menu.start"]);
     });
 
-    it("says nothing about text that is bound either way", async () => {
-        const byKey = onePage(textWidget({ text: "Start Game", localizationKey: "menu.start" }));
-        const byImplicitUnit = onePage(textWidget({ text: "Start Game", localizable: true }));
-
-        expect(await run("ui/unlocalized-text", unlocalizedContext(byKey))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(byImplicitUnit))).toEqual([]);
+    it("leaves out words with no letter in them", () => {
+        for (const text of ["", "   ", "1,250", "12:30", "…", "→", "100%"]) {
+            expect(unitsOf(onePage(textWidget({ text }))), `${JSON.stringify(text)} was listed`).toEqual([]);
+        }
     });
 
-    it("says nothing about a placeholder whose words come from a value binding", async () => {
-        // A backlog row's line, a choice row's text, an auto-save row's quote: the binding writes the
-        // prop before the widget draws it, so the literal is never read - and a key or the implicit
-        // unit put there would be resolved after the binding and replace the bound words.
+    it("leaves out sample words: a value binding or a row field decides what the game shows there", () => {
         const rowField = onePage(textWidget({ text: "Speaker" }));
         rowField.elements.label.valueBindings = { text: { kind: "listItemField", fieldId: "character" } };
         const valueBlueprint = onePage(
@@ -154,45 +139,29 @@ describe("ui/unlocalized-text", () => {
             label: { kind: "blueprintValue", blueprintId: "bp-label", valueType: "string" },
         };
 
-        expect(await run("ui/unlocalized-text", unlocalizedContext(rowField))).toEqual([]);
-        expect(await run("ui/unlocalized-text", unlocalizedContext(valueBlueprint))).toEqual([]);
+        expect(unitsOf(rowField)).toEqual([]);
+        expect(unitsOf(valueBlueprint)).toEqual([]);
     });
 
-    it("still reports a literal when only some other prop of the widget is bound", async () => {
+    it("still reads words when only some other prop of the widget is bound", () => {
         // Binding whether a row shows the text is not binding what it says.
         const document = onePage(textWidget({ text: "Locked" }));
         document.elements.label.valueBindings = { "layout.visible": { kind: "listItemField", fieldId: "locked" } };
-
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
-
-        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Locked"]);
+        expect(unitsOf(document)).toEqual(["ui:label.text"]);
     });
 
-    it("says nothing about strings with no words in them", async () => {
-        for (const text of ["", "   ", "1,250", "12:30", "…", "→", "100%"]) {
-            expect(
-                await run("ui/unlocalized-text", unlocalizedContext(onePage(textWidget({ text })))),
-                `${JSON.stringify(text)} was reported`,
-            ).toEqual([]);
-        }
-    });
-
-    it("reads a button's label and a text field's placeholder, each by its own binding prop", async () => {
+    it("reads a button's label and a text field's placeholder, each by its own site", () => {
         const document = onePage(
             element({ id: "start", type: "nl.button", name: "Start", props: { label: "Play" } }),
             element({ id: "name", type: "nl.textInput", name: "Name", props: { placeholder: "Your name" } }),
-            // A text input has no implicit-unit flag on its props, so only its named key binds it.
             element({
                 id: "bound",
                 type: "nl.textInput",
                 name: "Bound",
-                props: { placeholder: "Your name", placeholderLocalizationKey: "form.name" },
+                props: { placeholderLocalizationKey: "form.name" },
             }),
         );
-
-        const findings = await run("ui/unlocalized-text", unlocalizedContext(document));
-
-        expect(findings.map(finding => finding.messageParams?.text)).toEqual(["Play", "Your name"]);
+        expect(unitsOf(document)).toEqual(["ui:start.label", "ui:name.placeholder", "key:form.name"]);
     });
 });
 
@@ -270,6 +239,73 @@ describe("ui/page-unreachable", () => {
         expect((await run("ui/page-unreachable", ctx)).map(finding => finding.location)).toEqual([
             expect.objectContaining({ surfaceId: "settings" }),
         ]);
+    });
+
+    it("says nothing about a page a story's /quit row ends the playthrough on", async () => {
+        // The quit page is opened by the story, not by any graph or widget, and it is the page every
+        // ending lands on - reporting it was a warning on the one page a finished game always shows.
+        const quitStory = {
+            id: "s1",
+            name: "Main",
+            document: {
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: "s1",
+                name: "Main",
+                chapters: [],
+                scenes: {
+                    sc1: {
+                        id: "sc1",
+                        name: "Ending",
+                        runtimeName: "Ending",
+                        rootBlockIds: ["q1"],
+                        blocks: {
+                            q1: { id: "q1", kind: "control", parentId: null, childrenIds: [], payload: { control: "quit", surfaceId: "settings" } },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument,
+        };
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                stories: [quitStory],
+            })),
+        ).toEqual([]);
+        // And stays quiet while the stories were not all read: the quit row may be in the missing one.
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({
+                uiDocument: twoPages(),
+                blueprintDocument: NO_GRAPHS,
+                storiesComplete: false,
+            })),
+        ).toEqual([]);
+    });
+
+    it("says nothing about a page a component placement names in its params", async () => {
+        // One nav entry placed once per destination: the Go Page inside the definition names nothing,
+        // and the page is named by the placement instead.
+        const document = uiDocument({
+            surfaces: [
+                { id: MAIN_APP_SURFACE_ID, name: "Main Page", rootElementId: "root-main" },
+                { id: "settings", name: "Settings", rootElementId: "root-settings" },
+            ],
+            elements: [
+                element({ id: "root-main", type: "nl.root", childrenIds: ["nav"] }),
+                element({
+                    id: "nav",
+                    type: "nl.container",
+                    extra: { componentLink: { componentId: "nav-entry", linked: true, params: { page: "settings" } } },
+                } as Partial<UIElement> & { id: string; type: string }),
+                element({ id: "root-settings", type: "nl.root" }),
+            ],
+            components: [{ id: "nav-entry", name: "Nav entry", rootElementId: "nav-root", elements: {} }] as unknown as UIDocument["components"],
+        });
+
+        expect(
+            await run("ui/page-unreachable", createTestLintContext({ uiDocument: document, blueprintDocument: NO_GRAPHS })),
+        ).toEqual([]);
     });
 
     it("says nothing about a page a Page widget embeds", async () => {
@@ -363,8 +399,17 @@ describe("ui/empty-behavior", () => {
             ruleId: "ui/empty-behavior",
             messageKey: "lint.rule.uiEmptyBehavior.message",
             location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start", elementName: "Start" },
-            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
+            // The click selects the button the row names, not just the page it is on.
+            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID, elementId: "start" },
         });
+    });
+
+    it("says nothing at all when the blueprints could not be read", async () => {
+        // A null document is a failed read, not a project with no graphs: answered as the second, it
+        // reported every button in the project as doing nothing.
+        expect(
+            await run("ui/empty-behavior", createTestLintContext({ uiDocument: onePage(button()), blueprintDocument: null })),
+        ).toEqual([]);
     });
 
     it("says nothing about a button whose own blueprint starts on a click", async () => {
@@ -650,7 +695,7 @@ describe("ui/frame-target-missing", () => {
             elementId: "window",
             elementName: "Window",
         });
-        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id" });
+        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id", elementId: "window" });
     });
 });
 
@@ -868,6 +913,96 @@ describe("ui/list-item-field-missing", () => {
             createTestLintContext({ uiDocument: listPage("f-title", null) }),
         );
         expect(findings).toHaveLength(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// A component's text parameters: ui/component-param-missing, and the units lint reads
+// ---------------------------------------------------------------------------
+
+describe("a component's text parameters", () => {
+    function navDocument(params: NonNullable<UIDocument["components"]>[number]["params"], placementLinks: Record<string, unknown>[]) {
+        const placements = placementLinks.map((link, index) => element({
+            id: `p${index + 1}`,
+            type: "nl.container",
+            name: `Nav ${index + 1}`,
+            parentId: "root",
+            extra: { componentLink: { componentId: "nav", linked: true, ...link } },
+        }));
+        return uiDocument({
+            surfaces: [{ id: "page", name: "Title", rootElementId: "root" }],
+            elements: [element({ id: "root", type: "nl.root", childrenIds: placements.map(item => item.id) }), ...placements],
+            components: [
+                {
+                    id: "nav",
+                    name: "Nav item",
+                    rootElementId: "nav-root",
+                    params,
+                    elements: {
+                        "nav-root": element({ id: "nav-root", type: "nl.container", childrenIds: ["nav-label"] }),
+                        "nav-label": element({
+                            id: "nav-label",
+                            type: "nl.text",
+                            name: "Label",
+                            parentId: "nav-root",
+                            props: { text: "Sample" },
+                            valueBindings: { text: { kind: "componentParam", paramId: "label" } },
+                        }),
+                    },
+                },
+            ],
+        });
+    }
+
+    it("says nothing when the bound parameter is a declared text parameter", async () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "" }], []);
+        expect(await run("ui/component-param-missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("reports a widget showing a parameter that is gone, or that is a string parameter", async () => {
+        for (const params of [[], [{ id: "label", name: "Label", type: "string" as const, defaultValue: "" }]]) {
+            const findings = await run(
+                "ui/component-param-missing",
+                createTestLintContext({ uiDocument: navDocument(params, []) }),
+            );
+            expect(findings).toHaveLength(1);
+            expect(findings[0]?.location).toMatchObject({ kind: "component", componentId: "nav", elementId: "nav-label" });
+        }
+    });
+
+    it("reports a widget on a page bound to a parameter, which no placement gives words", async () => {
+        const stray = element({
+            id: "stray",
+            type: "nl.text",
+            parentId: "root",
+            props: { text: "Sample" },
+            valueBindings: { text: { kind: "componentParam", paramId: "label" } },
+        });
+        const findings = await run("ui/component-param-missing", createTestLintContext({ uiDocument: onePage(stray) }));
+        expect(findings.map(finding => finding.messageKey)).toEqual(["lint.rule.uiComponentParamMissing.messageOutside"]);
+    });
+
+    it("reads each placement's words through its own unit and a keyed value through its key", () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "Item" }], [
+            { params: { label: "Start" } },
+            { paramKeys: { label: "nav.title" } },
+            {},
+        ]);
+        const sites = listInterfaceTextUnitSites(document);
+        expect(sites.map(site => [site.element.id, site.binding.kind === "key" ? `key:${site.binding.keyName}` : site.binding.unitId])).toEqual([
+            ["p1", "ui:p1.param.label"],
+            ["p2", "key:nav.title"],
+            ["p3", "ui:nav.param.label"],
+        ]);
+    });
+
+    it("reports a key a placement names that the project does not have", async () => {
+        const document = navDocument([{ id: "label", name: "Label", type: "text", defaultValue: "" }], [{ paramKeys: { label: "nav.gone" } }]);
+        const findings = await run(
+            "ui/localization-key-missing",
+            createTestLintContext({ uiDocument: document, localizationKeys: new Map([["nav.title", "Title"]]) }),
+        );
+        expect(findings.map(finding => finding.messageParams?.key)).toEqual(["nav.gone"]);
     });
 });
 

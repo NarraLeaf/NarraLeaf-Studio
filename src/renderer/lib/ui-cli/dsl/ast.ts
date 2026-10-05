@@ -25,13 +25,17 @@ export type UiBindingLine = {
     propPath: string;
     source:
         | { kind: "blueprintValue"; blueprintId: string; valueType?: string }
-        | { kind: "listItemField"; fieldId: string };
+        | { kind: "listItemField"; fieldId: string }
+        | { kind: "componentParam"; paramId: string };
 };
 
 export type UiComponentLinkLine = {
     line: number;
     componentId: string;
+    /** Values written directly, by param id: `<paramId>=<value>`. */
     params: Record<string, string>;
+    /** Keys a text parameter's value is read from, by param id: `<paramId>.key=<key>`. */
+    paramKeys: Record<string, string>;
 };
 
 export type UiElementNode = {
@@ -66,7 +70,7 @@ export type UiComponentStatement = {
     line: number;
     name: string;
     id?: string;
-    params: { line: number; id: string; name: string; defaultValue: string }[];
+    params: { line: number; id: string; name: string; type: "string" | "text"; defaultValue: string }[];
     previewMeta?: { width: number; height: number };
     root: UiElementNode | null;
 };

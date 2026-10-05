@@ -108,7 +108,6 @@ export const ButtonLabelSourceField = createLabelSourceField({
     site: BUTTON_SITE,
     blueprint: BUTTON_LABEL_BLUEPRINT_VALUE_CONFIG,
     label: BUTTON_MARKED_LABEL,
-    localizeLabel: "widgets.button.localizeLabel",
 });
 
 export function createButtonInspector(ctx: InspectorContext) {

@@ -1395,6 +1395,10 @@ interface ILintService extends IService {
     isRunning(): boolean;
     getLastReport(): LintReport | null;
     onReportChanged(handler: (report: LintReport | null) => void): () => void;
+    /** Keep the findings current while the project is edited; returns the release. */
+    startLive(): () => void;
+    getState(): { requestedRunning: boolean; live: boolean; pending: boolean };
+    onStateChanged(handler: (state: { requestedRunning: boolean; live: boolean; pending: boolean }) => void): () => void;
 }
 
 /**

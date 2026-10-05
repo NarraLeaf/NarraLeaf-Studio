@@ -73,6 +73,11 @@ export type ProjectTemplateInterfaceContent = {
     uiGraphs: unknown;
     /** `editor/brand.json`, or null when the template keeps the default palette. */
     brand: unknown;
+    /**
+     * `editor/localization/keys.json`, or null when the template names no key: the words its widgets
+     * read from a key, which a project lacking the key receives on the widgets instead.
+     */
+    localizationKeys: unknown;
     /** `assets/assets.metadata.<type>.json`, keyed by the type segment of the file name. */
     assetRecords: Record<string, unknown>;
 };

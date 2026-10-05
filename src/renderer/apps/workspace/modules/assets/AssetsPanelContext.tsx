@@ -17,8 +17,14 @@ import type { AssetClaims, AssetTransfers } from './assetLiveSession';
  * opening them in place - which sets to step into first.
  */
 export interface AssetSetRevealState {
-    setId: string;
-    /** The sets the grid steps into before the target is a tile in it. Outermost first, target excluded. */
+    /** The set being revealed, or null when the reveal is for a file. */
+    setId: string | null;
+    /** The file being revealed, when it is one: a file no preview tab opens lands on its row here. */
+    assetId?: string;
+    /**
+     * The sets the grid steps into before the target is a tile in it. Outermost first; a set's own
+     * reveal leaves the set out, a file's ends with the set that holds it.
+     */
     ancestorSetIds: readonly string[];
     /** Bumped per request, so asking for the same set twice marks it twice. */
     nonce: number;

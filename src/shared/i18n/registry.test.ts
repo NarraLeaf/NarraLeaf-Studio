@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator } from "./translator";
-import { getLocaleMeta, getRegisteredLocales, isRegisteredLocale, normalizeLocale, resolvePreferredLocale } from "./locales";
+import { getLocaleMeta, getRegisteredLocales, isRegisteredLocale, matchCatalogLocale, normalizeLocale, resolvePreferredLocale } from "./locales";
 import { setLocaleContributions } from "./registry";
 
 // A key the en catalog defines (built-in-satisfied in every built-in locale).
@@ -148,5 +148,13 @@ describe("the language a machine that never chose one is shown", () => {
 
     it("still shows Chinese to a Traditional reader when no Traditional pack is installed", () => {
         expect(resolvePreferredLocale(["zh-TW"])).toBe("zh");
+    });
+
+    it("says when no catalogue serves a language, where the default would otherwise answer", () => {
+        expect(matchCatalogLocale(["fr-FR"])).toBeNull();
+        expect(resolvePreferredLocale(["fr-FR"])).toBe("en");
+        expect(matchCatalogLocale(["zh-CN"])).toBe("zh");
+        contribute("ko-x-formal", "ko-KR");
+        expect(matchCatalogLocale(["ko"])).toBe("ko-x-formal");
     });
 });

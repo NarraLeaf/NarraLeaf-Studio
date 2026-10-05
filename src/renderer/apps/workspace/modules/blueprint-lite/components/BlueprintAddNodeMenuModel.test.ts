@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
+import { createTranslator } from "@shared/i18n";
+import { blueprintCategoryFormerLabels, resolveBlueprintCategoryLabel } from "../blueprintNodeI18n";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
     blueprintAddNodeEntryKey,
@@ -218,6 +220,33 @@ describe("BlueprintAddNodeMenuModel", () => {
         }
     });
 
+    it("still finds a category by a word it was once shown as", () => {
+        const backlog = [
+            ...entries,
+            entry({
+                type: "nl.backlog.get",
+                displayName: "Get Backlog",
+                category: "Backlog",
+                keywords: [],
+                isPure: false,
+                inputs: 0,
+                outputs: 1,
+            }),
+        ];
+        const localizer = {
+            title: (displayName: string) => displayName,
+            category: (category: string) => resolveBlueprintCategoryLabel(category, translateAs("zh")),
+            categoryAliases: blueprintCategoryFormerLabels,
+        };
+
+        expect(resolveBlueprintCategoryLabel("Backlog", translateAs("zh"))).toBe("记录");
+        for (const query of ["记录", "回顾"]) {
+            expect(
+                filterBlueprintAddNodeEntries(backlog, "all", query, localizer).map(item => item.type),
+            ).toEqual(["nl.backlog.get"]);
+        }
+    });
+
     it("still matches the original English text when a localizer is provided", () => {
         const localizer = {
             title: (displayName: string) =>
@@ -292,4 +321,8 @@ function entry(input: {
             })),
         ],
     };
+}
+
+function translateAs(locale: "en" | "zh" | "ja") {
+    return createTranslator(locale).t;
 }

@@ -89,7 +89,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         contentNotApplied: "未应用：{files}",
         pageDidNotStart: "游戏无法启动：部分游戏文件缺失或已损坏。重新安装游戏或许可以解决。",
         previewTitle: "{name} · 预览",
-        previewAsShippedTitle: "{name} · 按出货方式预览",
+        previewAsShippedTitle: "{name} · 生产预览",
     },
     ja: {
         hangMessage: "ゲームが応答しない",
@@ -104,7 +104,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         contentNotApplied: "適用されなかった：{files}",
         pageDidNotStart: "ゲームを起動できない：一部のファイルが見つからないか破損している。ゲームを再インストールすると直る場合がある。",
         previewTitle: "{name} · プレビュー",
-        previewAsShippedTitle: "{name} · 出荷どおりのプレビュー",
+        previewAsShippedTitle: "{name} · 配布どおりのプレビュー",
     },
 };
 

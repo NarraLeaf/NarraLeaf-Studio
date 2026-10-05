@@ -69,14 +69,22 @@ export const widgets = {
         hint: "仅在编辑器中显示，游戏中显示故事的当前对白",
         bindingNoEffect: "此绑定在{slot}栏中不生效",
         removeBinding: "移除",
+        hintBlueprintValue: "仅在编辑器中显示，游戏中显示蓝图值的结果",
+        hintComponentParam: "仅在编辑组件时显示，各放置处显示为该参数设置的值",
+    },
+    textWriters: {
+        title: "游戏中由以下蓝图写入",
+        entry: "{blueprint} › {node}",
+        count: "×{count}",
+        defaultValue: "默认值",
+        defaultValueHint: "下列蓝图写入前，游戏中显示该文字",
     },
     localization: {
         direct: "直接写",
         translationKey: "翻译键",
-        noSourceLanguage: "项目未设置源语言",
         none: "无",
         createKey: "新建键…",
-        createKeyTitle: "新建本地化键",
+        createKeyTitle: "新建翻译键",
         keyName: "键名",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "可包含字母、数字，以及位于其间的点 / 下划线 / 连字符",
@@ -185,11 +193,9 @@ export const widgets = {
         sectionColor: "颜色",
         sectionBehavior: "行为",
         interactionDisabled: "禁用交互",
-        localizeLabel: "本地化标签",
     },
     text: {
         title: "文本",
-        localizeText: "本地化文本",
     },
     /**
      * 标签文字上的标记，作用于上方文本框里选中的字。按钮本身沿用故事那边的键：

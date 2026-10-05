@@ -1,5 +1,6 @@
 import type { LintContext } from "./context";
 import { LINT_RULES } from "./rules";
+import { yieldToEventLoop } from "./breather";
 import { annotateStoryLocation, createStoryRowLocator } from "./storyLocator";
 import {
     LINT_CATEGORY_ORDER,
@@ -23,7 +24,10 @@ import {
  *  - **Sequential, with a yield between rules.** Running the rules concurrently would finish sooner
  *    and freeze the window while it did - a whole-project sweep on a real VN is seconds of
  *    synchronous work. Yielding between rules is what keeps the progress bar moving and the cancel
- *    button clickable, which matters more than the wall clock.
+ *    button clickable, which matters more than the wall clock. The yield is a message-channel task,
+ *    never a timer: a timer in a covered window is throttled to once a second, then once a minute,
+ *    and a sweep that took 0.4s in front of the author took 215s behind another window (measured,
+ *    67 rules). See `breather.ts`, which a long rule also uses inside itself.
  *  - **A throwing rule does not abort the sweep.** One bad rule taking down the report would make
  *    lint useless exactly when the project is in the broken state lint is for. The failure becomes
  *    an `error` finding against the project, so it is visible rather than swallowed.
@@ -57,6 +61,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
     const entries: LintReportEntry[] = [];
     const rulesRun: LintRuleId[] = [];
     const skipped: LintRuleId[] = [];
+    const durations: Partial<Record<LintRuleId, number>> = {};
 
     // Resolved up front so `skipped` is complete even if the sweep is cancelled halfway: a rule the
     // project turned off is skipped whether or not we ever reached it.
@@ -87,8 +92,12 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
 
         rulesRun.push(rule.id);
         let findings: LintFinding[];
+        const ruleStartedAt = now();
         try {
-            findings = await rule.run(ctx, resolveRuleOptions(rule));
+            // The project's own values for the rule's options, from Project ▸ Linting. Missing this
+            // argument once meant every sweep ran on the declared defaults while the settings page
+            // showed - and stored - whatever the author had chosen.
+            findings = await rule.run(ctx, resolveRuleOptions(rule, ctx.config.options?.[rule.id]));
         } catch (error) {
             console.error(`[lint] rule ${rule.id} failed`, error);
             findings = [
@@ -104,6 +113,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
             for (const finding of findings) {
                 entries.push({ ...finding, severity: "error" });
             }
+            durations[rule.id] = now() - ruleStartedAt;
             done += 1;
             options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
             continue;
@@ -112,6 +122,7 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         for (const finding of findings) {
             entries.push({ ...annotateStoryLocation(finding, locate), severity });
         }
+        durations[rule.id] = now() - ruleStartedAt;
         done += 1;
         options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
     }
@@ -125,7 +136,13 @@ export async function runLintRules(ctx: LintContext, options: LintRunOptions = {
         counts: countBySeverity(entries),
         rulesRun,
         skipped,
+        durations,
     };
+}
+
+/** Milliseconds, as finely as the realm offers - a rule over a small project is well under one. */
+function now(): number {
+    return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 /** `config.severities[id]` when the project set one, the rule's own default otherwise. */
@@ -247,32 +264,3 @@ export function locationSortKey(location: LintLocation): string {
     }
 }
 
-/**
- * Give the event loop one turn between rules - **without a timer**.
- *
- * `setTimeout(0)` is the obvious spelling and it is the wrong one here. Chromium throttles timers in
- * a page that is not visible: one wake-up per second, and after the page has been hidden for five
- * minutes, one per *minute*. A window is "hidden" whenever another window covers it, which is the
- * normal state of the workspace while a build runs - the author starts one and looks at something
- * else. The rules themselves cost about a millisecond each, so a sweep that takes 0.4s in front of
- * the author took 215s behind another window (measured, 67 rules: ~1000ms between rules for the
- * first five minutes, then 60000ms), and a build gated on it looked like a build that never
- * started. Message-channel tasks are not on that throttled queue.
- *
- * The fallback is for realms without `MessageChannel` (some test environments); those are not the
- * ones with a throttled timer, so it costs nothing there.
- */
-function yieldToEventLoop(): Promise<void> {
-    if (typeof MessageChannel !== "function") {
-        return new Promise(resolve => setTimeout(resolve, 0));
-    }
-    return new Promise(resolve => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => {
-            channel.port1.close();
-            channel.port2.close();
-            resolve();
-        };
-        channel.port2.postMessage(undefined);
-    });
-}

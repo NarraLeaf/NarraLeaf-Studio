@@ -5,6 +5,7 @@ import { characterSource } from "./sources/characterSource";
 import { localizationKeySource } from "./sources/localizationKeySource";
 import { storySource } from "./sources/storySource";
 import { surfaceSource } from "./sources/surfaceSource";
+import { uiTextSource } from "./sources/uiTextSource";
 
 /**
  * Everything that is searchable in a project. This array is the whole answer to that question -
@@ -25,4 +26,5 @@ export const SEARCH_SOURCES: readonly SearchSource<any>[] = [
     assetSource,
     characterSource,
     surfaceSource,
+    uiTextSource,
 ];

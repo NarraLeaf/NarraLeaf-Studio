@@ -36,8 +36,8 @@ export const uiEditor = {
         createGameUi: "新建游戏 UI",
         globalSubtitle: "全局",
         blueprintType: "蓝图",
-        openGlobalBlueprint: "打开全局蓝图",
-        globalBlueprintUnavailable: "全局蓝图不可用",
+        openGlobalBlueprint: "打开应用逻辑",
+        globalBlueprintUnavailable: "应用逻辑不可用",
         openSurface: "打开 {label}",
         renameSurface: "重命名 {label}",
         duplicateSurface: "创建 {label} 副本",
@@ -165,6 +165,7 @@ export const uiEditor = {
         widgetRenderFailed: "控件绘制失败",
         wordsFromRowField: "此文字来自列表行字段“{field}”",
         wordsFromBlueprintValue: "此文字由蓝图值“{name}”决定",
+        wordsFromComponentParam: "此文字来自组件参数“{param}”，在各放置处设置",
     },
     editor: {
         componentNotFound: "未找到组件",

@@ -19,6 +19,7 @@ import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { GameLocalizationConfigSnapshot } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { GAME_LOCALE_STATE_KEY } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
 import { saveSchemaPinId } from "../effectivePins";
 
@@ -84,13 +85,17 @@ const GRAPH: UIGraph = {
     ],
 } as UIGraph;
 
-async function readPlace(input: Parameters<typeof createHostAdapter>[0]): Promise<unknown> {
+async function readPlace(
+    input: Parameters<typeof createHostAdapter>[0],
+    trackState?: (key: string) => void,
+): Promise<unknown> {
     const locals: Record<string, unknown> = {};
     await executeGraph({
         graph: GRAPH,
         entry: GRAPH.entries.main,
         hostAdapter: createHostAdapter(input),
         blueprintLocals: locals,
+        valueExecution: trackState ? { trackState } : undefined,
     });
     return locals.out;
 }
@@ -128,6 +133,20 @@ describe("Get Save Metadata with a scene reference", () => {
     it("reads a reference to a scene this build dropped as the stored string", async () => {
         setActiveSaveSchemaFields(FIELDS);
         expect(await readPlace({ metadata: { place: "scene:s-gone" }, locale: "zh-CN" })).toBe("scene:s-gone");
+    });
+
+    it("records the language as read for a value binding that shows the place through a Fn", async () => {
+        setActiveSaveSchemaFields(FIELDS);
+        const reads: string[] = [];
+        await readPlace({ metadata: { place: `scene:${SCENE_ID}` }, locale: "zh-CN" }, key => reads.push(key));
+        expect(reads).toContain(GAME_LOCALE_STATE_KEY);
+
+        const withoutLanguages: string[] = [];
+        await readPlace(
+            { metadata: { place: `scene:${SCENE_ID}` }, locale: "", localization: null },
+            key => withoutLanguages.push(key),
+        );
+        expect(withoutLanguages).not.toContain(GAME_LOCALE_STATE_KEY);
     });
 
     it("leaves the value alone in a project that has no languages at all", async () => {
