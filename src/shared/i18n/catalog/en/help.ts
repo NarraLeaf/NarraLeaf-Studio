@@ -621,16 +621,16 @@ export const help = {
                 "The UI editor builds the game's own screens: the main menu, save and load, the dialogue box. "
                 + "Widgets are placed on a surface, and a blueprint decides what they do.\n"
                 + "\n"
-                + "- With Grid on in the snap settings, a moved element's top-left corner and a resized edge land on "
-                + "the grid, which starts at the surface's top-left corner. The grid size is set in the same menu "
-                + "and kept per project.\n"
-                + "- Snap to grid moves each selected element's top-left corner to the nearest grid point, with grid "
-                + "snapping on or off.\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
                 + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
                 + "- On a game UI surface, Game UI reference in the canvas toolbar shows the other game UI faintly, "
-                + "in the place and stacking order the game draws it. The reference cannot be selected or edited.",
+                + "in the place and stacking order the game draws it. The reference cannot be selected or edited.\n"
+                + "- With Grid on in the snap settings, a moved element's top-left corner and a resized edge land on "
+                + "the grid, which starts at the surface's top-left corner. The grid size is set in the same menu "
+                + "and kept per project.\n"
+                + "- Snap to grid moves each selected element's top-left corner to the nearest grid point, with grid "
+                + "snapping on or off.",
         },
         uiComponents: {
             title: "Reusable parts",
