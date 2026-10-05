@@ -34,6 +34,7 @@ export const uiEditor = {
         nvl: "全画面のノベルモードの履歴",
     },
     panel: {
+        interfaces: "インターフェース",
         interfaceType: "インターフェースの種類",
         createPage: "ページを作成",
         createGameUi: "ゲーム UI を作成",
