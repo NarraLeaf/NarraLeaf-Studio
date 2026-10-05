@@ -10,6 +10,13 @@ vi.mock("electron", () => ({
     net: { request: vi.fn() },
 }));
 
+// The baseline is read in the compile worker, a utility process this test has no Electron for. The
+// worker runs `summarizePayload` and nothing else, so running it here is the same read.
+vi.mock("../../build/readBuildPayloadInWorker", () => ({
+    readBuildPayloadInWorker: async (_app: unknown, target: string, options: { digests: boolean }) =>
+        (await import("../../build/patchPayload")).summarizePayload(target, options),
+}));
+
 const { GameBuildErrorCode } = await import("@shared/types/gameBuild");
 const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
 
@@ -32,7 +39,7 @@ type AppWindowLike = Parameters<InstanceType<typeof GameBuildReadPatchBaselineHa
  * which folders this window may open one from.
  *
  * Every folder here is a *real* payload the reader can read. That is deliberate and it is what makes
- * the refusals mean anything: if the guard goes, the handler reaches `openPayload` and answers, so a
+ * the refusals mean anything: if the guard goes, the handler reaches the reader and answers, so a
  * test that asserts the refusal fails on the answer rather than on some unrelated error. A fixture
  * that could not be read either way would pass with or without the check.
  */
@@ -191,7 +198,7 @@ describe("GameBuildReadPatchBaselineHandler", () => {
      * `unpicked` is readable, so without the check this answers with its pack. It matters more than
      * a leaked product name: opening a payload that looks sealed loads `bindings.node` out of the
      * folder, and loading a `.node` is `dlopen` - a renderer that may name any folder may run native
-     * code in the main process.
+     * code in a Studio process.
      */
     it("refuses a readable baseline this window was never granted", async () => {
         const window = makeWindow();

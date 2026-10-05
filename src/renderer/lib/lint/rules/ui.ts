@@ -12,7 +12,8 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD,
 } from "@shared/types/blueprint/graph";
 import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
-import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, getUIComponentParams, isUIComponentTextParam } from "@shared/types/ui-editor/document";
+import { isAppearanceModel, type AppearanceValueRow } from "@shared/types/ui-editor/appearance";
 import {
     isOperableWidgetType,
     resolveSurfaceActionBindings,
@@ -20,7 +21,9 @@ import {
 } from "@shared/types/ui-editor/inputAction";
 import {
     readUITextSite,
+    uiTextHasWords,
     uiTextSiteOf,
+    uiTextSitesOf,
     uiTextUnitBindingOf,
     uiTextUnitId,
     type UITextSite,
@@ -37,6 +40,12 @@ import { isListLikeWidgetType, isUIListItemTemplateChild } from "@shared/types/u
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
+import { uiTextSampleCauseOf } from "@shared/types/ui-editor/textSample";
+import {
+    listUIPlacementTextValues,
+    uiComponentTextValueUnitBinding,
+    uiTextComponentParamOf,
+} from "@shared/types/ui-editor/componentTextParams";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -47,6 +56,7 @@ import { listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSi
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
+import { listQuitRows } from "./story";
 
 /**
  * `ui` - pages and widgets that do not do what the canvas suggests they do.
@@ -106,8 +116,13 @@ export function surfaceLocation(surface: UISurface, element?: UIElement): LintLo
     };
 }
 
-export function surfaceTarget(surface: UISurface): SearchJumpTarget {
-    return { kind: "uiSurface", surfaceId: surface.id };
+/**
+ * What opening a finding on a page opens: the page, with the widget the finding is about selected
+ * when there is one - the same widget its location names, so the row the report draws and the
+ * selection the click makes cannot disagree.
+ */
+export function surfaceTarget(surface: UISurface, element?: UIElement): SearchJumpTarget {
+    return { kind: "uiSurface", surfaceId: surface.id, ...(element ? { elementId: element.id } : {}) };
 }
 
 /** A widget inside a component definition, filed under the definition by its name. */
@@ -122,8 +137,9 @@ function componentLocation(component: UIComponentDefinition, element?: UIElement
     };
 }
 
-function componentTarget(component: UIComponentDefinition): SearchJumpTarget {
-    return { kind: "uiComponent", componentId: component.id };
+/** A widget inside a component definition: the definition's editor, with the widget selected. */
+export function componentTarget(component: UIComponentDefinition, element?: UIElement): SearchJumpTarget {
+    return { kind: "uiComponent", componentId: component.id, ...(element ? { elementId: element.id } : {}) };
 }
 
 /** Where a Page widget's finding is filed and what opening it opens, or null for a host that is gone. */
@@ -134,12 +150,12 @@ function frameSiteLocation(
     if (site.host.kind === "surface") {
         const surfaceId = site.host.surfaceId;
         const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
-        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface) } : null;
+        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface, site.element) } : null;
     }
     const componentId = site.host.componentId;
     const component = (document.components ?? []).find(candidate => candidate.id === componentId);
     return component
-        ? { location: componentLocation(component, site.element), target: componentTarget(component) }
+        ? { location: componentLocation(component, site.element), target: componentTarget(component, site.element) }
         : null;
 }
 
@@ -181,24 +197,35 @@ function readStringProp(props: Record<string, unknown>, key: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// ui/unlocalized-text
+// Interface words and their translation units
 // ---------------------------------------------------------------------------
 
 /**
- * The site of an element's words a player reads, when it has one - read from the shared table
- * (`textSites.ts`), the one `useLocalizedWidgetText` resolves at run time. That is what makes the
- * answers here checkable: a prop the table did not list would be translated by the runtime and
- * reported as unlocalized here, and a prop it listed by mistake would be reported while nothing can
- * translate it. A `sample` site (the dialogue line, the NVL line) holds stand-in words the game
- * replaces with the story's, so no player reads them and nothing here looks at them.
+ * The sites of an element's words a player reads - read from the shared table (`textSites.ts`), the
+ * one `useLocalizedWidgetText` resolves at run time, and for a plugin's widget from the props its
+ * manifest declares (`uiTextSitesOf`), the ones its drawing resolves. That is what makes the answers
+ * here checkable: a prop the table did not list would be translated by the runtime and missed here,
+ * and a prop it listed by mistake would be reported while nothing can translate it. A `sample` site
+ * (the dialogue line, the NVL line) holds stand-in words the game replaces with the story's, so no
+ * player reads them and nothing here looks at them.
  */
-function playerWordsSiteOf(element: UIElement): UITextSite | undefined {
-    const site = uiTextSiteOf(element.type);
-    return site?.role === "words" ? site : undefined;
+function playerWordsSitesOf(element: UIElement): UITextSite[] {
+    return uiTextSitesOf(element.type).filter(site => site.role === "words");
 }
 
 
-/** The literal a widget shows a player, with the unit that translates it and the face it chose. */
+/** A face a widget's words can be drawn in, and the state that shows them in it. */
+export type SurfaceTextFace = {
+    /** The widget's own typeface in this face. Absent means it follows the project. */
+    fontAssetId?: string;
+    /**
+     * The name of the widget's state (an appearance variant) that draws the words in this face.
+     * Absent for the state the widget rests in.
+     */
+    state?: string;
+};
+
+/** The literal a widget shows a player, with the unit that translates it and the faces it is drawn in. */
 export type SurfaceTextSite = {
     surface: UISurface;
     element: UIElement;
@@ -206,9 +233,52 @@ export type SurfaceTextSite = {
     unitId: string;
     /** The author's own words, which is what renders when nothing translated them. */
     text: string;
-    /** The widget's own typeface, when it named one. Absent means it follows the project. */
-    fontAssetId?: string;
+    /** Every face the words can be drawn in, the resting one first (`listWidgetTextFaces`). Never empty. */
+    faces: SurfaceTextFace[];
 };
+
+/** Whether an appearance row applies whatever state the widget is in. */
+function isUnconditionalRow(row: AppearanceValueRow): boolean {
+    return !row.conditions || Object.keys(row.conditions).length === 0;
+}
+
+/**
+ * Every face a widget's words can be drawn in: the one it rests in first, then each the widget's
+ * other states (appearance variants) switch to, each typeface once.
+ *
+ * A state draws the font its `fontAssetId` rows give - every row, since each applies in some
+ * condition (hovered, pressed, selected) - and the widget's own font wherever no row applies, the way
+ * the appearance resolver composes it. A widget with no appearance model draws its own font. A face
+ * a state shares with the resting one is the resting one's.
+ */
+export function listWidgetTextFaces(element: UIElement): SurfaceTextFace[] {
+    const props = elementProps(element);
+    const own = readStringProp(props, "fontAssetId").trim();
+    const faces: SurfaceTextFace[] = [];
+    const add = (fontAssetId: string, state: string | undefined): void => {
+        if (faces.some(face => (face.fontAssetId ?? "") === fontAssetId)) {
+            return;
+        }
+        faces.push({ ...(fontAssetId ? { fontAssetId } : {}), ...(state ? { state } : {}) });
+    };
+    const appearance = props.appearance;
+    if (!isAppearanceModel(appearance) || appearance.variants.length === 0) {
+        add(own, undefined);
+        return faces;
+    }
+    const resting = appearance.variants.find(variant => variant.id === appearance.defaultVariantId) ?? appearance.variants[0];
+    for (const variant of [resting, ...appearance.variants.filter(candidate => candidate !== resting)]) {
+        const state = variant === resting ? undefined : variant.name.trim() || undefined;
+        const rows = variant.propertyGroups.find(group => group.key === "fontAssetId")?.rows ?? [];
+        for (const row of rows) {
+            add(typeof row.value === "string" ? row.value.trim() : "", state);
+        }
+        if (!rows.some(isUnconditionalRow)) {
+            add(own, state);
+        }
+    }
+    return faces;
+}
 
 /**
  * Every literal on every page that a player will read.
@@ -221,26 +291,46 @@ export type SurfaceTextSite = {
  * The literal is reported whether or not the widget is bound to a key, because a binding decides
  * which *words* render, not whether the widget shows any: an unresolved key falls back to exactly
  * this text.
+ *
+ * Each site carries every face its words can be drawn in - the widget's resting one and those its
+ * other states switch to (`listWidgetTextFaces`) - because a typeface a state switches to has to be
+ * able to draw the words as much as the resting one does.
+ *
+ * A component placement on the page puts on screen the words it gives its component's text
+ * parameters, drawn in the faces of each widget inside the definition that shows them; each of those
+ * is a site too, under the placement's unit (`listUIPlacementTextValues`). A value that names a key
+ * is the key's words, which are checked as keys.
  */
 export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
     const sites: SurfaceTextSite[] = [];
     for (const { surface, element } of listSurfaceElements(document)) {
-        const site = playerWordsSiteOf(element);
-        if (!site) {
-            continue;
+        for (const { value, shownBy } of listUIPlacementTextValues(document, element)) {
+            if (value.key || !value.text.trim()) {
+                continue;
+            }
+            // Every face of every widget inside the definition that shows the value, each typeface once.
+            const faces: SurfaceTextFace[] = [];
+            for (const face of shownBy.flatMap(listWidgetTextFaces)) {
+                if (!faces.some(known => (known.fontAssetId ?? "") === (face.fontAssetId ?? ""))) {
+                    faces.push(face);
+                }
+            }
+            sites.push({ surface, element, unitId: value.unitId, text: value.text, faces });
         }
-        const text = readUITextSite(element, site).text;
-        if (!text.trim()) {
-            continue;
+        const faces = listWidgetTextFaces(element);
+        for (const site of playerWordsSitesOf(element)) {
+            const text = readUITextSite(element, site).text;
+            if (!text.trim()) {
+                continue;
+            }
+            sites.push({
+                surface,
+                element,
+                unitId: uiTextUnitId(element.id, site.textProp),
+                text,
+                faces,
+            });
         }
-        const fontAssetId = readStringProp(elementProps(element), "fontAssetId").trim();
-        sites.push({
-            surface,
-            element,
-            unitId: uiTextUnitId(element.id, site.textProp),
-            text,
-            ...(fontAssetId ? { fontAssetId } : {}),
-        });
     }
     return sites;
 }
@@ -262,30 +352,49 @@ export type InterfaceTextUnitSite = {
  * Every widget on a page or in a component definition that reads its words through a translation
  * unit, in the order the pages and then the definitions are listed.
  *
- * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins over the opt-in, and
- * the opt-in alone binds the widget's own unit. An opted-in widget with a blank literal is left out, as
- * the localization panel leaves it out - there is no row for it to be translated in. Component
+ * The same precedence the game applies (`uiTextUnitBindingOf`): a named key wins, and otherwise the
+ * widget's own words are read through its own unit. Words with no letter in them are left out, as the
+ * localization panel leaves them out - they read the same in every language and have no row. Component
  * definitions are walked once each, under the definition, for the reason the Page widget rules give;
  * an instance carries none of the definition's words, so it is skipped here as it is everywhere else.
+ *
+ * A widget's own unit is not read where its words are sample text (`textSample.ts`) - a value binding
+ * decides what the game shows there, and the translation table has no row for them. Words a blueprint
+ * writes over are read through it like any others: they are the widget's default value, which the
+ * game shows, translated, until the first write.
+ *
+ * What an instance does carry is the words it gives its component's text parameters, which a widget
+ * inside the definition shows: each is read through the key it names or through the placement's own
+ * unit (the definition's, for a default it falls back to), and listed under the placement.
  */
 export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextUnitSite[] {
     const sites: InterfaceTextUnitSite[] = [];
     const read = (element: UIElement, location: LintLocation, target: SearchJumpTarget): void => {
-        const site = playerWordsSiteOf(element);
-        if (!site || getUIComponentLink(element)) {
+        for (const { value } of listUIPlacementTextValues(document, element)) {
+            const binding = uiComponentTextValueUnitBinding(value);
+            if (binding) {
+                sites.push({ element, location, target, literal: value.text, binding });
+            }
+        }
+        if (getUIComponentLink(element)) {
             return;
         }
-        const binding = uiTextUnitBindingOf(element, site);
-        if (binding) {
-            sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
+        for (const site of playerWordsSitesOf(element)) {
+            const binding = uiTextUnitBindingOf(element, site);
+            if (binding?.kind === "implicit" && uiTextSampleCauseOf(element, site)) {
+                continue;
+            }
+            if (binding) {
+                sites.push({ element, location, target, literal: readUITextSite(element, site).text, binding });
+            }
         }
     };
     for (const { surface, element } of listSurfaceElements(document)) {
-        read(element, surfaceLocation(surface, element), surfaceTarget(surface));
+        read(element, surfaceLocation(surface, element), surfaceTarget(surface, element));
     }
     for (const component of document.components ?? []) {
         for (const element of Object.values(component.elements ?? {})) {
-            read(element, componentLocation(component, element), componentTarget(component));
+            read(element, componentLocation(component, element), componentTarget(component, element));
         }
     }
     return sites;
@@ -294,86 +403,11 @@ export function listInterfaceTextUnitSites(document: UIDocument): InterfaceTextU
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;
 
-/**
- * Whether a literal is prose at all.
- *
- * One letter, in any script, is the test - which covers the three exclusions this rule owes
- * ("", "1,250", "…") with one predicate rather than three that would each miss the combinations of
- * the others ("100%", "12:30", "→"). A label with no letter in it reads the same in every language,
- * and reporting one is how a rule teaches an author that its findings are not worth reading.
- */
-function hasTranslatableWord(text: string): boolean {
-    return /\p{L}/u.test(text);
-}
-
 export function clipLiteral(text: string): string {
     const flattened = text.replace(/\s+/g, " ").trim();
     return flattened.length > TEXT_EXCERPT_MAX_CHARS
         ? `${flattened.slice(0, TEXT_EXCERPT_MAX_CHARS - 1)}…`
         : flattened;
-}
-
-/**
- * A literal on a page that no locale can ever change.
- *
- * **Silent until the project has a second language.** In a single-language project writing the words
- * straight onto the button is not a defect, it is the whole point of a text field, so a rule that
- * fired there would open with one finding per label on a project that has nothing wrong with it -
- * and the author's only move would be to switch the rule off for good, taking the day they add a
- * locale with them. `localization` is `null` until the project configures one, and a target list
- * holding only the source locale is not a second language either.
- *
- * A widget that opted in through `localizable` is bound just as firmly as one naming a key: the
- * implicit unit `ui:<elementId>.<prop>` is a row in every target locale's document. Both are
- * "translatable"; neither is reported.
- *
- * **Nor is a prop whose words come from a value binding** - a list row's field or a value blueprint.
- * The binding writes the prop before the widget draws it, so the literal is a placeholder no player
- * reads (the inspector hides it for a row field for that reason), and the words that do arrive are
- * translated where they come from: a backlog row's line is a story line, a choice row's text a
- * choice. Following this rule's advice there would break the widget, not translate it: a key or the
- * implicit unit is resolved after the binding has written the prop, so it replaces the bound words
- * in every row with the placeholder's translation. A row-field binding that resolves to nothing -
- * no list draws the element, or the list no longer declares the field - leaves the literal on
- * screen; that is `ui/list-item-field-missing`'s finding, and fixing it takes the literal away.
- */
-function runUnlocalizedText(ctx: LintContext): LintFinding[] {
-    const document = ctx.uiDocument;
-    const localization = ctx.localization;
-    if (!document || !localization) {
-        return [];
-    }
-    const secondLanguages = localization.targetLocales.filter(
-        locale => locale && locale !== localization.sourceLocale,
-    );
-    if (secondLanguages.length === 0) {
-        return [];
-    }
-    const findings: LintFinding[] = [];
-    for (const { surface, element } of listSurfaceElements(document)) {
-        const site = playerWordsSiteOf(element);
-        if (!site || getUIComponentLink(element)) {
-            continue;
-        }
-        const reading = readUITextSite(element, site);
-        if (!hasTranslatableWord(reading.text)) {
-            continue;
-        }
-        if (reading.key || reading.localizable || reading.binding !== undefined) {
-            continue;
-        }
-        const text = reading.text;
-        findings.push({
-            ruleId: "ui/unlocalized-text",
-            messageKey: "lint.rule.uiUnlocalizedText.message",
-            // The literal itself, because nothing in the location can carry it and it is the only
-            // thing that tells forty findings on one page apart.
-            messageParams: { text: clipLiteral(text) },
-            location: surfaceLocation(surface, element),
-            target: surfaceTarget(surface),
-        });
-    }
-    return findings;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,13 +504,22 @@ function collectFrameSurfaceTargets(document: UIDocument): Set<string> {
  */
 function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: ReadonlySet<string>): Set<string> {
     const opened = new Set<string>();
-    for (const element of Object.values(document.elements ?? {})) {
+    const read = (element: UIElement): void => {
         const link = getUIComponentLink(element);
         for (const value of Object.values(link?.params ?? {})) {
-            const trimmed = value.trim();
+            const trimmed = typeof value === "string" ? value.trim() : "";
             if (surfaceIds.has(trimmed)) {
                 opened.add(trimmed);
             }
+        }
+    };
+    for (const element of Object.values(document.elements ?? {})) {
+        read(element);
+    }
+    // A placement nested in another component's definition carries its params the same way.
+    for (const component of document.components ?? []) {
+        for (const element of Object.values(component.elements ?? {})) {
+            read(element);
         }
     }
     return opened;
@@ -492,15 +535,21 @@ function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: R
  * them would spend its first run warning about the title screen - which is how the reader learns to
  * skip this rule's findings.
  *
+ * Two ways in are not in the interface at all: a story's `/quit` row ends the playthrough on the
+ * page it names, and a component placed once per destination names the page in its own params. Both
+ * are read, and a page either of them names is reached.
+ *
  * Stage surfaces are not candidates at all rather than being excluded one by one: they are mounted
  * by their `mount` slot, so "who navigates here" is not a question about them.
  *
  * Silent when either document could not be read: `null` is a failed read, and answering it as "no
  * graphs in this project" would report every page but the entry one off a single unrelated failure.
+ * The same holds for a story library that was not read whole - a page only a quit row in the missing
+ * story lands on would be reported.
  */
 function runPageUnreachable(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
-    if (!document || !ctx.blueprintDocument) {
+    if (!document || !ctx.blueprintDocument || !ctx.storiesComplete) {
         return [];
     }
     const pages = (document.surfaces ?? []).filter(surface => surface.kind === "appSurface");
@@ -508,6 +557,14 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
     const entered = collectGraphSurfaceTargets(ctx, surfaceIds);
     for (const embedded of collectFrameSurfaceTargets(document)) {
         entered.add(embedded);
+    }
+    for (const named of collectComponentParamSurfaceTargets(document, surfaceIds)) {
+        entered.add(named);
+    }
+    for (const quit of listQuitRows(ctx)) {
+        if (quit.surfaceId) {
+            entered.add(quit.surfaceId);
+        }
     }
     const entrySurfaceId = resolveEntrySurfaceId(document);
     return pages
@@ -623,7 +680,9 @@ function isClickableCandidate(element: UIElement): boolean {
  */
 function runEmptyBehavior(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
-    if (!document) {
+    // The wiring lives in the blueprints. Unread is not "no graphs": answering it as that would report
+    // every button in the project off one failed read - the trap the file header names.
+    if (!document || !ctx.blueprintDocument) {
         return [];
     }
     const elementClickTargets = collectElementClickTargets(ctx);
@@ -639,7 +698,7 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
             ruleId: "ui/empty-behavior",
             messageKey: "lint.rule.uiEmptyBehavior.message",
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -686,7 +745,7 @@ function runUnknownWidget(ctx: LintContext): LintFinding[] {
             messageKey: "lint.rule.uiUnknownWidget.message",
             messageParams: { type: site.element.type },
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -726,7 +785,7 @@ function runComponentMissing(ctx: LintContext): LintFinding[] {
             ruleId: "ui/component-missing",
             messageKey: "lint.rule.uiComponentMissing.message",
             location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            target: surfaceTarget(site.surface, site.element),
         });
     }
     return findings;
@@ -858,7 +917,57 @@ function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
                 ruleId: "ui/list-item-field-missing",
                 messageKey: "lint.rule.uiListItemFieldMissing.message",
                 location: surfaceLocation(site.surface, site.element),
-                target: surfaceTarget(site.surface),
+                target: surfaceTarget(site.surface, site.element),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
+// ui/component-param-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A widget inside a component definition whose words show a parameter the component does not
+ * declare as a text parameter.
+ *
+ * Every placement then shows nothing there - a placement answers the binding, and has no words to
+ * give it - while the component's own editor goes on drawing the widget's sample words, so the
+ * definition looks whole. It arises from removing a parameter, from making it a string parameter, and
+ * from pasting the widget out of another component. A widget on a page bound to a parameter - pasted
+ * out of a component - is the same finding: no placement gives it words, and the game shows none.
+ */
+function runComponentParamMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        const site = uiTextSiteOf(element.type);
+        if (site && uiTextComponentParamOf(element, site) !== null) {
+            findings.push({
+                ruleId: "ui/component-param-missing",
+                messageKey: "lint.rule.uiComponentParamMissing.messageOutside",
+                location: surfaceLocation(surface, element),
+                target: surfaceTarget(surface, element),
+            });
+        }
+    }
+    for (const component of document.components ?? []) {
+        const textParams = new Set(getUIComponentParams(component).filter(isUIComponentTextParam).map(param => param.id));
+        for (const element of Object.values(component.elements ?? {})) {
+            const site = uiTextSiteOf(element.type);
+            const paramId = site ? uiTextComponentParamOf(element, site) : null;
+            if (paramId === null || textParams.has(paramId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/component-param-missing",
+                messageKey: "lint.rule.uiComponentParamMissing.message",
+                location: componentLocation(component, element),
+                target: componentTarget(component, element),
             });
         }
     }
@@ -939,8 +1048,9 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
         if (!element) {
             return;
         }
-        const site = playerWordsSiteOf(element);
-        const binding = site ? element.valueBindings?.[site.textProp] : undefined;
+        // A row field binds a site Studio offers a binding on; a plugin widget offers none.
+        const site = uiTextSiteOf(element.type);
+        const binding = site?.role === "words" ? element.valueBindings?.[site.textProp] : undefined;
         if (binding?.kind === "listItemField") {
             const field = findUIStructField(struct, binding.fieldId);
             if (field) {
@@ -966,7 +1076,7 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
         }
         for (const key of shownKeys) {
             const value = (item as Record<string, unknown>)[key];
-            if (typeof value === "string" && hasTranslatableWord(value)) {
+            if (typeof value === "string" && uiTextHasWords(value)) {
                 return value;
             }
         }
@@ -982,7 +1092,8 @@ function firstShownListWords(document: UIDocument, list: UIElement): string | un
  * list, with the first such word, at info severity - the words are shown as written, which is what
  * the author wrote; what the note adds is that no locale changes them.
  *
- * Silent until the project has a second language, for the reason `ui/unlocalized-text` is. A list
+ * Silent until the project has a second language: in a single-language project words written as
+ * they are shown are the whole point of the list, and nothing there is missing a translation. A list
  * fed by the engine in its stage slot (the choice, notification and NVL lists), bound to a data
  * source, or named by any graph is left out: its written content is a layout placeholder there.
  */
@@ -1016,7 +1127,7 @@ function runListTextUntranslated(ctx: LintContext): LintFinding[] {
             messageKey: "lint.rule.uiListTextUntranslated.message",
             messageParams: { text: clipLiteral(words) },
             location: surfaceLocation(surface, element),
-            target: surfaceTarget(surface),
+            target: surfaceTarget(surface, element),
         });
     }
     return findings;
@@ -1029,11 +1140,11 @@ function runListTextUntranslated(ctx: LintContext): LintFinding[] {
 /**
  * A widget whose words are read from a translation key the project does not have.
  *
- * A key removed from the registry, or brought in on a pasted element, leaves the widget naming
- * nothing: it shows its own stored words in the source language and whatever translation of the old
- * key a language file still holds in the others, and nothing in the editor says the two came apart.
- * Every place a widget names a key is checked - pages and component definitions - and each widget is
- * reported, since each is fixed on its own.
+ * The widget shows the key's name, on the canvas and in the game, as a `Get Text` of the same key
+ * does. Removing a key turns its widgets into ones holding its words, and a paste or an import does
+ * the same for a key the project lacks, so this is reached by a hand-edited document or a `.ui` file
+ * applied without `check`. Every place a widget names a key is checked - pages and component
+ * definitions - and each widget is reported, since each is fixed on its own.
  *
  * Quiet when the key registry was not read (`null`), which is not a project with no keys.
  */
@@ -1161,7 +1272,7 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
                 // and the only spelling of it the author ever typed.
                 messageParams: { action: action.name.trim() || enablement.actionId },
                 location: surfaceLocation(site.surface, site.element),
-                target: surfaceTarget(site.surface),
+                target: surfaceTarget(site.surface, site.element),
             });
         }
     }
@@ -1169,13 +1280,6 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
 }
 
 export const UI_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "ui/unlocalized-text",
-        category: "ui",
-        defaultSeverity: "warning",
-        slug: "uiUnlocalizedText",
-        run: ctx => runUnlocalizedText(ctx),
-    },
     {
         id: "ui/page-unreachable",
         category: "ui",
@@ -1235,6 +1339,16 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiListItemFieldMissing",
         run: ctx => runListItemFieldMissing(ctx),
+    },
+    {
+        id: "ui/component-param-missing",
+        category: "ui",
+        // A warning, as the missing item field is: the page is whole and every other part of the
+        // component draws; what is missing is the words one widget was meant to show, and an author
+        // half-way through reshaping a component's parameters should not have the build refused.
+        defaultSeverity: "warning",
+        slug: "uiComponentParamMissing",
+        run: ctx => runComponentParamMissing(ctx),
     },
     {
         id: "ui/gesture-answered-twice",

@@ -381,6 +381,7 @@ async function readScaffoldedLocales(projectPath: string): Promise<string[]> {
 const TEMPLATE_UI_DOCUMENT = ["editor", "ui", "uidoc.json"] as const;
 const TEMPLATE_UI_GRAPHS = ["editor", "ui", "uigraphs.json"] as const;
 const TEMPLATE_BRAND = ["editor", "brand.json"] as const;
+const TEMPLATE_LOCALIZATION_KEYS = ["editor", "localization", "keys.json"] as const;
 /** The asset records, one file per asset type, and the directory the files are sharded under. */
 const TEMPLATE_ASSETS_DIR = "assets";
 const TEMPLATE_ASSET_RECORDS = /^assets\.metadata\.([a-z]+)\.json$/;
@@ -452,7 +453,7 @@ async function readJsonInTrees(trees: readonly string[], relative: readonly stri
  * Read rather than copied: a page taken from a template into a project that already exists has to
  * be re-identified and joined to that project's own story, palette and asset library, which only the
  * workspace can do. So this hands over the template's interface document, its blueprints, its
- * palette and its asset records untouched, in the language `locale` picks the same way a scaffold
+ * palette, its named keys and its asset records untouched, in the language `locale` picks the same way a scaffold
  * picks it, and the workspace does the rest. Nothing here reads what the documents say.
  */
 export async function readProjectTemplateInterface(
@@ -481,6 +482,7 @@ export async function readProjectTemplateInterface(
         uiDocument,
         uiGraphs: await readJsonInTrees(trees, TEMPLATE_UI_GRAPHS),
         brand: await readJsonInTrees(trees, TEMPLATE_BRAND),
+        localizationKeys: await readJsonInTrees(trees, TEMPLATE_LOCALIZATION_KEYS),
         assetRecords,
     };
 }

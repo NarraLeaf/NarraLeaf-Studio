@@ -23,7 +23,7 @@ import { defaultButtonWidgetProps, type ButtonWidgetProps } from "../button/type
 export type TextInputWidgetProps = UITextInputWidgetProps &
     Omit<
         ButtonWidgetProps,
-        "label" | "localizable" | "localizationKey" | "textVerticalAlign" | "textWrapMode"
+        "label" | "localizationKey" | "textVerticalAlign" | "textWrapMode"
     >;
 
 export const defaultTextInputElementProps: TextInputWidgetProps = {

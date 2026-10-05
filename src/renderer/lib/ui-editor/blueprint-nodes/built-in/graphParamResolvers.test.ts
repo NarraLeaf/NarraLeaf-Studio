@@ -29,6 +29,7 @@ import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 import type { BlueprintNodeDef } from "../types";
 import { resolveDataPinValue, type DataPinGraph, type DataPinResolveRuntime } from "./graphParamResolvers";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
+import { GAME_LOCALE_STATE_KEY } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 
 const SENTINEL = "__nl_node_output_sentinel__";
 
@@ -361,6 +362,30 @@ describe("asset set pins", () => {
         };
 
         expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
+    });
+
+    it("records the language as read inside a value binding, only where there is a set to resolve", () => {
+        const reads: string[] = [];
+        const runtime: DataPinResolveRuntime = {
+            valueExecution: { returnValue: () => undefined, trackState: key => reads.push(key) },
+        };
+        const answered: DataPinGraph = {
+            nodes: {
+                lit: { type: "blueprint.data.stringLiteral", params: { value: SET }, assetVariants: variants },
+                consumer: { type: "nl.setImageAsset", params: {} },
+            },
+            edges: [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "consumer", port: "asset" } }],
+        };
+        const plain: DataPinGraph = {
+            nodes: { n1: { type: "nl.setImageAsset", params: { asset: SET } } },
+        };
+
+        withLocale("ja", () => {
+            resolveDataPinValue(plain, "n1", "asset", plain.nodes!.n1!.params!, undefined, 0, runtime);
+            expect(reads).toEqual([]);
+            expect(resolveDataPinValue(answered, "consumer", "asset", {}, undefined, 0, runtime)).toBe(JA_ASSET);
+            expect(reads).toEqual([GAME_LOCALE_STATE_KEY]);
+        });
     });
 });
 

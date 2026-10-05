@@ -36,6 +36,7 @@ import {
 } from "@shared/types/saveCompatibility";
 import { isReservedSaveId } from "@shared/types/saves";
 import { translateLegacyElementIds, type LegacyElementIdTable } from "./legacyElementIds";
+import { translateLegacyActionIds, type ActionIdReading, type LegacyActionIdTable } from "./legacyActionIds";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -229,6 +230,12 @@ export type SaveLoadGameSeam = {
      * the save will be applied to. Omitted, or null, the save is applied as written.
      */
     legacyElementIds?: () => LegacyElementIdTable | null;
+    /**
+     * The running story's answer for action numbers a save may hold from before every action had a
+     * stable name - see `legacyActionIds.ts`. Asked of the story the save will be applied to.
+     * Omitted, or null, the save's numbers are looked up as written.
+     */
+    legacyActionIds?: () => LegacyActionIdTable | null;
 };
 
 /** The story a save belongs to, as its anchors name it. */
@@ -714,16 +721,21 @@ export type SavePosition = {
 /**
  * The Studio ids buried in one compiled anchor.
  *
- * Both anchor shapes carry them in fixed leading positions - `studio:<story>:<scene>:<block>:…` for
- * an action and `nl:scene:<scene>` for a scene element - which is the same reading `saveAnchors.ts`
- * does on the build side. Nothing else can be read out of an anchor: the trailing fields are the
- * compiler's own counters.
+ * Every anchor shape carries them in fixed leading positions - `studio:<story>:<scene>:<block>:…` for
+ * a row's own action, `nl:action:<scene>:<block>:…` for one the compiler found inside a row (a menu,
+ * a condition, the steps of a jump; the block is empty for what a scene runs before its first row)
+ * and `nl:scene:<scene>` for a scene element - which is the same reading `saveAnchors.ts` does on the
+ * build side. Nothing else can be read out of an anchor: the trailing fields are the compiler's own
+ * counters. The second shape names no story; the host finds the scene in the library.
  */
 function parseActionAnchor(anchor: unknown): SavePosition | null {
     if (typeof anchor !== "string") {
         return null;
     }
     const parts = anchor.split(":");
+    if (parts[0] === "nl" && parts[1] === "action" && parts.length >= 4 && parts[2]) {
+        return { storyId: "", sceneId: parts[2], blockId: parts[3] || null };
+    }
     if (parts[0] !== "studio" || parts.length < 4 || !parts[1] || !parts[2]) {
         return null;
     }
@@ -938,7 +950,22 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         } catch {
             liveStoryHash = null;
         }
-        return compareSaveStory(savedGame, liveStoryHash);
+        const compared = compareSaveStory(savedGame, liveStoryHash);
+        // Naming every action changed the engine's hash of a story nobody edited, so a save written
+        // before it carries the hash of this same story under the old names. That is still this story.
+        return compared === "otherStory" && writtenUnderOldActionNames() ? "sameStory" : compared;
+    };
+    /** Whether the save's story hash is the running story's under the action numbers a build before used. */
+    const writtenUnderOldActionNames = (): boolean => {
+        const saved = readSaveStoryHash(savedGame);
+        if (!saved) {
+            return false;
+        }
+        try {
+            return game.legacyActionIds?.()?.storyHash() === saved;
+        } catch {
+            return false;
+        }
     };
     // Read again once a mount has replaced the story it was compared against.
     let origin = readOrigin();
@@ -1154,6 +1181,56 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             }
             const line = readSaveLastLine(savedGame);
             const what = translate("game.saveLoad.detail.unresolvedElement");
+            return refuse(
+                "unresolved",
+                line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,
+                {
+                    unresolvedIds: translation.unmappable,
+                    origin,
+                    ...(storyChanged || remounted ? { game: await putRunBack() } : {}),
+                },
+            );
+        }
+        restorable = translation.savedGame;
+    }
+
+    /**
+     * The save under today's names for the actions a build before numbered - a menu waiting for the
+     * player above all. Read by the same proof as the walk above: the same document, and the story's
+     * hash under the old numbers the one the save carries. A number read any other way could name
+     * any action at all, so one the stacks resume on refuses the load rather than land somewhere else.
+     */
+    let actionTable: LegacyActionIdTable | null = null;
+    try {
+        actionTable = game.legacyActionIds?.() ?? null;
+    } catch {
+        actionTable = null;
+    }
+    if (actionTable) {
+        const stamp = readSaveCompatibilityStamp(record.metadata?.compatibility);
+        const buildHash = stamp?.storyId ? options.build?.storyHashes[stamp.storyId] : undefined;
+        const sameDocument = Boolean(stamp?.storyHash && buildHash && stamp.storyHash === buildHash);
+        const savedHash = readSaveStoryHash(savedGame);
+        let liveHash: string | null = null;
+        try {
+            liveHash = game.readStoryHash();
+        } catch {
+            liveHash = null;
+        }
+        const reading: ActionIdReading = savedHash && savedHash === liveHash
+            ? "current"
+            : sameDocument && writtenUnderOldActionNames() ? "legacy" : "unknown";
+        const translation = translateLegacyActionIds(restorable, actionTable, reading);
+        if (translation.unmappable.length > 0) {
+            const rowLaunchPosition = rowLaunchSave && game.relaunch ? readSavePosition(savedGame) : null;
+            if (rowLaunchPosition) {
+                return relaunchFromSave(rowLaunchPosition, {
+                    row: "game.saveLoad.rowLaunchRelaunchedRow",
+                    scene: "game.saveLoad.rowLaunchRelaunchedScene",
+                });
+            }
+            const line = readSaveLastLine(savedGame);
+            const what = translate("game.saveLoad.detail.unresolvedAction");
             return refuse(
                 "unresolved",
                 line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,

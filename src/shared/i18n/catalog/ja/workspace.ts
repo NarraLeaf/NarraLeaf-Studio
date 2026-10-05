@@ -75,7 +75,7 @@ export const workspace = {
         table: {
             storyLabel: "原文",
             sourceUi: "画面のテキスト",
-            sourceKeys: "名前付きのキー",
+            sourceKeys: "翻訳キー",
             modeTranslate: "翻訳",
             modeReview: "確認",
             filterAll: "すべて",
@@ -96,11 +96,12 @@ export const workspace = {
             removeKey: "キーを取り除く",
             removeKeyConfirm: "{name} を取り除くか",
             removeKeyConfirmDetail: "このキーの既存の翻訳は言語ファイルに残る",
-            removeKeyUsedBy: "このキーを使っている箇所：",
+            removeKeyWidgets: "次のウィジェットは直接入力に切り替わり、このキーのテキストと翻訳を引き継ぐ：",
+            removeKeyBlueprints: "このキーを使っているブループリント：",
             removeKeyUsedByElement: "{owner} ▸ {element}",
             removeKeyUsedByBlueprint: "ブループリント「{name}」",
             removeKeyUsedByMore: "ほか {count} 箇所",
-            removeKeyUsedByAfter: "取り除いたあと、プロジェクトの検査がこれらを一つずつ報告する",
+            removeKeyUsedByAfter: "取り除いたあと、プロジェクトの検査がこれらのブループリントを一つずつ報告する",
             sourceColumn: "原文",
             targetColumn: "翻訳",
             targetPlaceholder: "翻訳する…",
@@ -218,6 +219,17 @@ export const workspace = {
             dropHint: "音声をドロップすると割り当てる",
             findPlaceholder: "セリフを検索",
         },
+    },
+    textSourceMigration: {
+        message: {
+            other: "インターフェースのテキストを更新した。{count} 個のウィジェットでテキストの出どころが変わった",
+        },
+        place: "{n}. {owner} ▸ {element}：{change}",
+        marksKept: "直接入力に変更。文字装飾を保持し、翻訳キー {key} は使わない",
+        bindingDropped: "表示されていなかったバインドを削除。翻訳キー {key} のテキストを表示",
+        missingKey: "翻訳キー {key} が存在しないため直接入力に変更。テキストと翻訳は変わらない",
+        keyDiffered: "直接入力に変更。表示していたテキストを保持し、翻訳キー {key} は使わない",
+        locate: "{n} へ移動",
     },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
     // 読み取り専用かつプラグイン無しで開き直す道。
@@ -499,7 +511,7 @@ export const workspace = {
         livePendingOne: "1 件の変更がホストの応答を待っている",
         livePendingMany: "{count} 件の変更がホストの応答を待っている",
         // セッションが何を取り上げるかを一度にまとめて示す。コントロールごとに気付かせない。
-        liveFrozenWhat: "セッション中はストーリー・キャスト・翻訳と音声・アセットライブラリ全体（ファイルそのものを含む）、そしてプロジェクト自身の表（辞書・オーディオトラック・アセットセット・変数・名前付き文字列・ビルドバリアント・DLC・パレット）が保存される。このプロジェクトの他の内容は最新の状態のまま読み取り専用になる",
+        liveFrozenWhat: "セッション中はストーリー・キャスト・翻訳と音声・アセットライブラリ全体（ファイルそのものを含む）、そしてプロジェクト自身の表（辞書・オーディオトラック・アセットセット・変数・翻訳キー・ビルドバリアント・DLC・パレット）が保存される。このプロジェクトの他の内容は最新の状態のまま読み取り専用になる",
         liveUnavailableHere: "ライブセッション中は使用できない",
         // 他の人が書いている行を一箇所にまとめる。行ごとに印を探さずに読める。
         liveClaimsLabel: "編集中の行",
@@ -739,6 +751,7 @@ export const workspace = {
                 runStatus: "実行状態",
                 projectTrust: "プロジェクトの信頼",
         studioTasks: "バックグラウンド処理",
+                problems: "問題",
                 unsavedChanges: "未保存の変更",
                 wordCount: "ストーリーの統計",
                 shortcuts: "ショートカットとマウス操作",
@@ -1465,7 +1478,7 @@ export const workspace = {
             titleBarPlaceholder: "{name} 内を検索",
             building: "検索の索引を作っている…",
             // 何も打つ前に出る。
-            idle: "シーン、キャラクター、ストーリーの文、アセット、ブループリントを検索する",
+            idle: "シーン、キャラクター、ストーリーの文、画面のテキスト、アセット、ブループリントを検索する",
             empty: "結果なし",
             more: "ほか {count} 件",
             // 絞り込みの条件。シーン内の検索バーと共通で、同じ問いが同じ意味になる。
@@ -1492,8 +1505,9 @@ export const workspace = {
                 blueprint: "ブループリント",
                 asset: "アセット",
                 storyText: "ストーリーの文",
+                uiText: "画面のテキスト",
                 variable: "変数",
-                uiTextKey: "UI のテキストキー",
+                uiTextKey: "翻訳キー",
                 blueprintNode: "ブループリントのノード",
             },
             // 同じ結果をまとめている行の末尾に付くバッジ。

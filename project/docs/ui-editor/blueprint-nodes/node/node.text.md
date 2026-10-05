@@ -10,32 +10,36 @@ Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，�
 
 下文列出的 `blueprint.text.*` 均有对应 `blueprint.element.text.*` Element 版。
 
+## 写入的文字
+
+`Set Text`、`Append Text`、`Clear Text`、`Set All Properties` 的 `text`，以及脚本对文本的写入，在游戏运行时写入的文字按写入的内容显示：在所有语言中都显示这句，优先于文本的翻译键、它自己文字的译文和它的蓝图值，直到页面重新打开。`Set All Properties` 的 `text` 不连线也不填时不写入文字。
+
 ## Get Text
 
 `blueprint.text.getText` - 获取文本内容
 
-获取当前文本内容。
+获取屏幕上正在显示的文字：写入过的文字；否则是翻译键或文本自己的文字在玩家当前语言中的文本，绑定了蓝图值或行字段时是绑定给出的文字。
 - `text` - 文本内容（传出引脚）
 
 ## Set Text
 
 `blueprint.text.setText` - 设置文本内容
 
-设置当前文本内容。
+设置当前文本内容，规则见「写入的文字」。与屏幕上的文字相同时同样算作写入。
 - `text` - 文本内容
 
 ## Append Text
 
 `blueprint.text.appendText` - 追加文本内容
 
-在当前文本末尾追加内容。
+在屏幕上正在显示的文字末尾追加内容，结果按「写入的文字」显示。
 - `text` - 要追加的文本
 
 ## Clear Text
 
 `blueprint.text.clearText` - 清空文本内容
 
-清空当前文本内容。
+清空当前文本内容，规则见「写入的文字」。
 
 ## Get Font
 

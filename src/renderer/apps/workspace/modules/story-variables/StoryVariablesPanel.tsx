@@ -29,7 +29,7 @@
  * Comments in English per convention.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { useTranslation } from "@/lib/i18n";
@@ -68,7 +68,9 @@ import type { TranslationKey } from "@shared/i18n";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentEntry } from "@shared/variables/mergedPersistentView";
 import { jumpToSearchTarget } from "../search/searchJump";
-import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
+import { storyVariableReveal, type StoryVariablesPanelPayload } from "./storyVariablesPanelId";
+import { usePanelRevealRequests } from "../search/panelRevealRequest";
+import { REVEAL_MARK_MS } from "@/apps/workspace/components/ui/useTableRowReveal";
 import {
     useVariableClaim,
     useVariableClaimHold,
@@ -362,6 +364,18 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
     const [focusedVariableId, setFocusedVariableId] = useState<string | null>(null);
 
     /**
+     * The row a jump asked for - a search hit, a project check finding - and whether it has been
+     * brought on screen yet. Marked until the mark expires, as every revealed row is.
+     */
+    const [revealed, setRevealed] = useState<{ variableId: string; token: number; scrolled: boolean } | null>(null);
+    const revealToken = useRef(0);
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    usePanelRevealRequests(storyVariableReveal, detail => {
+        revealToken.current += 1;
+        setRevealed({ variableId: detail.variableId, token: revealToken.current, scrolled: false });
+    });
+
+    /**
      * Hold the entry this panel has open, so nobody in the room writes over it.
      *
      * Held while a box on the row has focus rather than while somebody is typing: the boxes write
@@ -418,6 +432,32 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 .entries,
         [registryRows.persistent, document],
     );
+
+    // Scrolled once its row is drawn: the registry is read in an effect, so a request that arrives
+    // with the panel mounting can be a render ahead of the rows it names.
+    useEffect(() => {
+        if (!revealed || revealed.scrolled) {
+            return;
+        }
+        const row = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-variable-id]") ?? [])
+            .find(element => element.dataset.variableId === revealed.variableId);
+        if (!row) {
+            return;
+        }
+        row.scrollIntoView({ block: "center" });
+        setRevealed({ ...revealed, scrolled: true });
+    }, [revealed, savedRows, persistentRows]);
+
+    const revealedToken = revealed?.token ?? null;
+    useEffect(() => {
+        if (revealedToken === null) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setRevealed(current => (current?.token === revealedToken ? null : current));
+        }, REVEAL_MARK_MS);
+        return () => window.clearTimeout(timer);
+    }, [revealedToken]);
 
     const sceneRows: VariableRow[] = useMemo(() => {
         if (!document || !sceneId) return [];
@@ -488,28 +528,36 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
             setDefault: (id: string, value: StoryLiteralValue) => void;
             remove: (id: string) => void;
         },
-    ) =>
-        entry.source === "story" ? (
-            <VariableJumpRow
-                key={entry.storageKey}
-                name={entry.name}
-                valueType={entry.valueType}
-                onJump={() => jumpToDeclaration(entry.id)}
-            />
-        ) : (
-            <VariableRowEditor
-                key={entry.storageKey}
-                row={entry}
-                onRename={name => edit.rename(entry.id, name)}
-                onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
-                onDefault={value => edit.setDefault(entry.id, value)}
-                onDelete={() => edit.remove(entry.id)}
-                onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
-            />
-        );
+    ) => (
+        // The row a jump lands on carries its id, and the mark while it lasts - drawn outside the row,
+        // in the panel's padding, so it does not sit on the boxes' own borders.
+        <div
+            key={entry.storageKey}
+            data-variable-id={entry.id}
+            data-revealed={revealed?.variableId === entry.id ? "" : undefined}
+            className={cn("rounded-md", revealed?.variableId === entry.id && "ring-1 ring-primary")}
+        >
+            {entry.source === "story" ? (
+                <VariableJumpRow
+                    name={entry.name}
+                    valueType={entry.valueType}
+                    onJump={() => jumpToDeclaration(entry.id)}
+                />
+            ) : (
+                <VariableRowEditor
+                    row={entry}
+                    onRename={name => edit.rename(entry.id, name)}
+                    onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
+                    onDefault={value => edit.setDefault(entry.id, value)}
+                    onDelete={() => edit.remove(entry.id)}
+                    onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
+                />
+            )}
+        </div>
+    );
 
     return (
-        <div className="flex flex-col gap-4 overflow-y-auto p-3">
+        <div ref={rootRef} className="flex flex-col gap-4 overflow-y-auto p-3">
             <div className="flex flex-col gap-2">
                 <SectionHeader title={t("storyVars.saved.title")} hint={t("storyVars.saved.hint")} onAdd={addSaved} />
                 {/* An empty scope lists nothing. The + in the header above it is the action, and a

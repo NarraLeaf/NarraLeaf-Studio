@@ -78,13 +78,17 @@ and the `content.<locale>/` overlays only).
   section** (`clickSound` / `hoverSound`), not in a blueprint. A blueprint plays a sound only when
   the sound depends on something — a locked card that opens nothing, a dialog whose first answer
   acts and whose others back out — and then it calls `UI confirm cue` or `UI back cue` from the
-  Global blueprint after the check.
+  Global blueprint after the check. A key has no element to carry a sound, so a page that answers
+  one plays the cue itself: the Confirm page calls `UI back cue` when Escape backs out of a question.
 - A list that fills itself, in its own blueprint, uses the **Set List Content** that takes no
   Element input. The Log, Load and Extra lists are written that way.
 - Before **Ask Confirm**, fetch the texts last-asked first: cancel, then the answer, then the
   question. Each text's wire then runs forwards into its own input, and none crosses another.
   Where the answer is handled, read the pressed row's `index` field with **Get Item Field** rather
   than keeping the press in a Memo.
+- Escape backs out of a question: the Confirm page answers Dismiss by closing with no answer, so
+  **Show Confirm** leaves through Dismissed. Whatever a question does after Cancel, it does after
+  Dismissed too - wire both to the same nodes, or neither.
 - When both branches of an If end by doing the same thing, that thing is a function called from
   both. Wires run back together would pass under every card between them, and a copy would have
   to be kept in step.
@@ -121,7 +125,13 @@ title and from inside a game.
 - The English template is the source. The Chinese and Japanese trees are generated from it with
   `scripts/gen-skeleton-locale.mjs`; every new layer name, note and frame title needs an entry in
   `scripts/gen-skeleton-locale.zh.json` and `.ja.json`, and an entry nothing uses any more has to go.
-  Run the generator, then `--check`.
+  Run the generator, then `--check`. The generator also brings the English interface document to the
+  version Studio writes, through the step Studio runs on opening a project; a conflict in the
+  template's files is resolved by running it again, not by hand.
+- A widget's words have one source. A keyed widget holds no words of its own - its key's are shown.
+  A widget's own words with a letter in them are translated through its own unit
+  (`ui:<elementId>.<prop>`) in `zh-CN.json` and `ja.json`, which the generator promotes into the
+  Chinese and Japanese trees; sample words (under a binding, or written over by a blueprint) are not.
 - In the Chinese and Japanese notes, nodes, widgets, pages and panels are called by the names the
   interface shows in that language (the `blueprint.node.*`, `uiEditor.*` and `properties.*`
   catalogues), and elements by the names their Element cards show — never by type ids.

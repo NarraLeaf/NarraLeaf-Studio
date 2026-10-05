@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import { useRegistry } from "@/apps/workspace/registry";
-import { createBlueprintEntryEditorTab } from "./openBlueprintEditorTab";
+import { createBlueprintEntryEditorTab, showBlueprintEntryEditorTab } from "./openBlueprintEditorTab";
 
 /**
  * Listens for Dev Mode → Workspace IPC and opens the blueprint editor tab.
@@ -12,7 +12,7 @@ export function PreviewBlueprintNavigateBridge(): null {
 
     useEffect(() => {
         const token = getInterface().workspace.onBlueprintNavigateFromPreview((payload: PreviewStudioBlueprintOpenPayload) => {
-            openEditorTab(
+            showBlueprintEntryEditorTab(
                 createBlueprintEntryEditorTab({
                     blueprintId: payload.blueprintId,
                     ownerKind: payload.ownerKind,
@@ -25,6 +25,7 @@ export function PreviewBlueprintNavigateBridge(): null {
                     focusFieldId: payload.focusFieldId,
                     focusNodeId: payload.focusNodeId,
                 }),
+                openEditorTab,
             );
         });
         return () => token.cancel();

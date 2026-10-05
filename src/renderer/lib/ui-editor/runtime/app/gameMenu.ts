@@ -80,6 +80,11 @@ export type GameMenuPort = {
      * an async lookup per row would eventually produce.
      */
     localizedText: (key: string, locale: string) => string | null;
+    /**
+     * A translation unit's words in the language given - a label's own words, through the unit the
+     * publishing plugin offered them under - or null when that language has none.
+     */
+    localizedUnitText?: (unitId: string, locale: string) => string | null;
     listTextLanguages: () => readonly GameMenuLanguageOption[];
     getTextLanguage: () => Promise<string>;
     setTextLanguage: (code: string) => Promise<void>;
@@ -161,10 +166,14 @@ async function readMenuState(port: GameMenuPort): Promise<MenuState> {
  *
  * The key is the answer and the typed text is the net: a key the build does not carry - removed
  * since the menu was written, or never translated - falls through to the author's own wording
- * rather than leaving a blank the player cannot even name when reporting it.
+ * rather than leaving a blank the player cannot even name when reporting it. Words typed directly are
+ * translated through their own unit (`label.words`) when the language has a translation of them.
  */
 function resolveLabel(label: GameMenuLabel, state: MenuState, port: GameMenuPort): string {
-    const translated = label.key ? port.localizedText(label.key, state.textLanguage) : null;
+    if (label.key) {
+        return port.localizedText(label.key, state.textLanguage) ?? label.text;
+    }
+    const translated = label.words ? port.localizedUnitText?.(label.words, state.textLanguage) ?? null : null;
     return translated ?? label.text;
 }
 

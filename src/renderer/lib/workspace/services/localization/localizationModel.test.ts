@@ -11,7 +11,9 @@ import {
     extractCharacterTranslationRows,
     extractSceneTranslationRows,
     extractStoryTranslationRows,
+    extractUiTranslationRows,
 } from "./localizationModel";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 
 function block(partial: Partial<StoryBlock> & Pick<StoryBlock, "id" | "kind" | "payload">): StoryBlock {
     return {
@@ -271,5 +273,98 @@ describe("buildTranslationExchangeRows", () => {
         const rows = buildTranslationExchangeRows(units, undefined, "pending");
         expect(rows).toHaveLength(units.length);
         expect(rows.every(row => row.target === "" && row.status === "")).toBe(true);
+    });
+});
+
+/**
+ * The interface half of the translation table. Sample words - under a value binding - have no row: no
+ * player reads them and no package carries them, so a translation of them would be work that never
+ * shows. The words a blueprint writes over do have one: they are the element's default value, which
+ * the game shows until the first write, so the table reads no graphs to decide it.
+ */
+describe("extractUiTranslationRows", () => {
+    function text(id: string, props: Record<string, unknown>, valueBindings?: UIElement["valueBindings"]): UIElement {
+        return {
+            id,
+            type: "nl.text",
+            name: id,
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 } as UIElement["layout"],
+            props,
+            ...(valueBindings ? { valueBindings } : {}),
+        };
+    }
+
+    const document = {
+        surfaces: [],
+        elements: {
+            title: text("title", { text: "Your Game" }),
+            nametag: text("nametag", { text: "Narra" }, {
+                text: { kind: "blueprintValue", blueprintId: "bp", valueType: "string" },
+            }),
+            // Set Text replaces the score on a click, and the slot's graph writes the place name.
+            score: text("score", { text: "Score: 0" }),
+            place: text("place", { text: "The corridor" }),
+            speaker: text("speaker", { text: "Aoi" }, { text: { kind: "listItemField", fieldId: "speaker" } }),
+        },
+    } as unknown as UIDocument;
+
+    it("lists the words a player reads, the words a blueprint writes over among them, and none of the sample words", () => {
+        expect(extractUiTranslationRows(document).map(row => [row.unitId, row.sourceText])).toEqual([
+            ["ui:title.text", "Your Game"],
+            ["ui:score.text", "Score: 0"],
+            ["ui:place.text", "The corridor"],
+        ]);
+    });
+
+    describe("a component's text parameter", () => {
+        function placement(id: string, link: Record<string, unknown>): UIElement {
+            return {
+                id,
+                type: "nl.container",
+                name: `Nav ${id}`,
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 10, height: 10 } as UIElement["layout"],
+                extra: { componentLink: { componentId: "nav", linked: true, ...link } },
+            };
+        }
+        const withParams = {
+            surfaces: [{ id: "page", name: "Title", kind: "appSurface", rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", parentId: null, childrenIds: ["p1", "p2", "p3", "p4", "p5", "p6"], layout: {} },
+                p1: placement("p1", { params: { label: "Start" } }),
+                p2: placement("p2", { params: { label: "Continue" } }),
+                p3: placement("p3", { paramKeys: { label: "nav.title" } }),
+                p4: placement("p4", {}),
+                p5: placement("p5", {}),
+                p6: placement("p6", { params: { label: "03" } }),
+            },
+            components: [
+                {
+                    id: "nav",
+                    name: "Nav item",
+                    rootElementId: "nav-root",
+                    params: [
+                        { id: "label", name: "Label", type: "text", defaultValue: "Item" },
+                        { id: "hint", name: "Hint", type: "text", defaultValue: "Shown nowhere" },
+                    ],
+                    elements: {
+                        "nav-root": { id: "nav-root", type: "nl.container", parentId: null, childrenIds: ["nav-label"], layout: {} },
+                        "nav-label": text("nav-label", { text: "Sample" }, { text: { kind: "componentParam", paramId: "label" } }),
+                    },
+                },
+            ],
+        } as unknown as UIDocument;
+
+        it("lists each written value once as the placement's unit, a default once as the component's, and no sample", () => {
+            const rows = extractUiTranslationRows(withParams);
+            expect(rows.map(row => [row.unitId, row.sourceText, row.groupName, row.elementName])).toEqual([
+                ["ui:p1.param.label", "Start", "Title", "Nav p1 › Label"],
+                ["ui:p2.param.label", "Continue", "Title", "Nav p2 › Label"],
+                ["ui:nav.param.label", "Item", "Nav item", "Nav item › Label"],
+            ]);
+        });
     });
 });

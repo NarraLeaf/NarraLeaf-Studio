@@ -56,6 +56,7 @@ export const blueprint = {
         goTo: "跳到 {target}",
         goToNth: "跳到 {target}（{n}）",
         goToConnected: "跳到连接的节点",
+        name: "从 {from} 到 {to} 的连线",
     },
     crossProject: {
         pasted: {
@@ -157,7 +158,7 @@ export const blueprint = {
             noRuntime: "节点“{node}”：类型“{type}”没有运行时",
             inputMissing: "“{node}”的“{pin}”没有连接任何东西",
             stepLimit: "“{head}”连续执行 {steps} 步未等待，已在“{node}”处中止",
-            stepLimitGlobal: "全局蓝图的“{head}”连续执行 {steps} 步未等待，已在“{node}”处中止",
+            stepLimitGlobal: "应用逻辑的“{head}”连续执行 {steps} 步未等待，已在“{node}”处中止",
             unknownType: "节点“{node}”：未知类型“{type}”，其插件可能已卸载或停用",
             variableIdInvalid: "节点“{node}”：选择变量",
             persistentVariableIdInvalid: "节点“{node}”：选择持久变量",
@@ -582,7 +583,7 @@ export const blueprint = {
     },
     category: {
         app: "应用",
-        backlog: "回顾",
+        backlog: "记录",
         button: "按钮",
         component: "组件",
         container: "容器",
@@ -1461,6 +1462,7 @@ export const blueprint = {
         toggle: "切换",
         toggleDialogDisplay: "切换对话框显示",
         toggleSwitch: "切换开关",
+        translationKeyText: "翻译键文本",
         trim: "去除首尾空白",
         trimEnd: "去除尾部空白",
         trimStart: "去除首部空白",
@@ -1501,6 +1503,7 @@ export const blueprint = {
         getTotalPlaytime: "获取累计游玩时长",
     },
     nodeDescription: {
+        getComponentParam: "当前放置处为所选参数设置的值；未设置时为参数的默认值。使用翻译键的「文字」参数得到键名，其文字由「翻译键文本」取得",
         compareEqual: "A 与 B 类型相同且值相同时为真。数字 1 与文本“1”不相等",
         compareNotEqual: "A 与 B 的值或类型不同时为真。数字 1 与文本“1”视为不同",
         compareGreaterThan: "A 大于 B 时为真。两边按数字比较；任一边无法读作数字时结果为假",
@@ -1515,7 +1518,11 @@ export const blueprint = {
         gameReady: "游戏准备就绪时运行，早于任何故事开始，也早于第一个界面显示；界面会等它执行完。先于「应用启动」运行，开始或读取游戏时可能再次运行",
         goBack: "关闭当前页面，回到它下面的页面；已在最底层的页面上时不执行任何操作",
         replacePage: "打开页面以代替当前页面，并关闭当前页面；「返回上一页」与页面为「无」的「前往页面」都不会回到该页面",
-        isGameOverlay: "所在的页面、叠加页面或游戏 UI 显示在进行中的游戏之上时为真。在全局蓝图中，有页面或模态叠加页面覆盖剧情画面时为真",
+        isGameOverlay: "所在的页面、叠加页面或游戏 UI 显示在进行中的游戏之上时为真。在应用逻辑中，有页面或模态叠加页面覆盖剧情画面时为真",
+        localizationGetText: "获取翻译键在玩家当前语言中的文本；该语言没有译文时获取源文本。不存在的键得到键名本身。「翻译键文本」结果相同，并且可用于蓝图值与函数",
+        translationKeyText: "翻译键在玩家当前语言中的文本；该语言没有译文时为源文本。不存在的键得到键名本身。与「获取文本」结果相同，并且可用于蓝图值与函数。显示它的蓝图值会在玩家切换语言时更新",
+        format: "把模板中的占位符替换为值：{0}、{1} 等取数组的各项，{name} 取对象中同名的字段；没有对应值的占位符替换为空。翻译过的模板可取自「翻译键文本」",
+        formatText: "把文本中的 {0}、{1} 等替换为值列表的各项。「格式化」作用相同，还能用对象填写 {name}，并且可用于蓝图值与函数",
     },
     live: {
         nodeClaimed: "{name} 正在编辑该节点",

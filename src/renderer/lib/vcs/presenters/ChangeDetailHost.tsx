@@ -5,7 +5,7 @@ import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
 import { useTranslation } from "@/lib/i18n";
 import { documentNameOf, NO_DOCUMENT_NAMES, renderDocumentName } from "../documentName";
 import { readableStoragePath } from "../identifierDisplay";
-import { changesAssetGroup, nameAssetFields, useAssetFolderNames } from "../assetFolderNames";
+import { assetTopLevelName, changesAssetGroup, nameAssetFields, useAssetFolderNames } from "../assetFolderNames";
 import type { ComparisonSides } from "./comparisonSide";
 import { presenterFor } from "./registry";
 // Imported for the registration inside them, which is the only thing that puts a presenter in
@@ -94,13 +94,17 @@ export function ChangeDetailHost({
     // and a presenter that forgot would put the id back in front of the author.
     const movesGroup = entry.documentKind === "assets-metadata" && changesAssetGroup(change ? [change] : entry.diff.changes);
     const folders = useAssetFolderNames(sides ?? null, movesGroup);
+    // Where an asset with no group is, in the panel's words: the top of its category.
+    const topLevel = movesGroup ? assetTopLevelName(entry.path, t) : undefined;
     const namedEntry = useMemo<DocumentDiffEntry>(
-        () => (movesGroup ? { ...entry, diff: { ...entry.diff, changes: nameAssetFields(entry.diff.changes, t, folders) } } : entry),
-        [entry, movesGroup, folders, t],
+        () => (movesGroup
+            ? { ...entry, diff: { ...entry.diff, changes: nameAssetFields(entry.diff.changes, t, folders, topLevel) } }
+            : entry),
+        [entry, movesGroup, folders, t, topLevel],
     );
     const namedChange = useMemo(
-        () => (movesGroup && change !== undefined ? nameAssetFields([change], t, folders)[0] : change),
-        [change, movesGroup, folders, t],
+        () => (movesGroup && change !== undefined ? nameAssetFields([change], t, folders, topLevel)[0] : change),
+        [change, movesGroup, folders, t, topLevel],
     );
 
     return (

@@ -1398,7 +1398,7 @@ export const BLUEPRINT_NETWORK_PARAM_METHOD = "networkMethod";
 /** Methods that carry a request body; the `body` pin is ignored on the others. */
 export const BLUEPRINT_NETWORK_METHODS_WITH_BODY: readonly BlueprintNetworkMethod[] = ["POST", "PUT", "PATCH"];
 
-// Localization nodes. Every getter here is latent and publishes its result through
+// Localization nodes. Every getter here but one is latent and publishes its result through
 // `execute()`'s `outputValues`, so each one also has to be listed on the read side,
 // in `resolveSelfOutput` in `graphParamResolvers.ts`.
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE = "blueprint.localization.getCurrentLanguage" as const;
@@ -1407,6 +1407,11 @@ export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT = "blueprint.localization
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_HAS_TEXT = "blueprint.localization.hasText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT = "blueprint.localization.formatText" as const;
 export const BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES = "blueprint.localization.getAvailableLanguages" as const;
+/**
+ * The pure one: `Get Text` without execution pins, which is what lets a Blueprint Value or a function
+ * show a translated word. Computed on read in `graphParamResolvers.ts` rather than published.
+ */
+export const BLUEPRINT_NODE_TYPE_LOCALIZATION_KEY_TEXT = "blueprint.localization.keyText" as const;
 
 // Voice nodes. Dub language is a separate player choice from subtitle language, hence a family of
 // its own rather than more localization nodes. Same rule as above: every getter is latent, so each

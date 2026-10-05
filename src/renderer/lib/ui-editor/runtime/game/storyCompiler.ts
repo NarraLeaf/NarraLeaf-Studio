@@ -1460,7 +1460,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             }
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
-        nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
+        // The scene's last naming pass: the seeds above, and anything a row's own pass could not see.
+        nlrScene.action(nameSceneActions(ctx, [...seeds, ...statements]) as unknown as Parameters<Scene["action"]>[0]);
         sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds, videos: ctx.videos };
     }
 
@@ -1876,7 +1877,7 @@ async function buildLaunchEntryScene(params: {
         }
     }
 
-    launchScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+    launchScene.action(nameSceneActions(ctx, statements) as unknown as Parameters<Scene["action"]>[0]);
     return launchScene;
 }
 
@@ -2142,7 +2143,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         }
     }
 
-    previewScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
+    previewScene.action(nameSceneActions(ctx, statements) as unknown as Parameters<Scene["action"]>[0]);
     nlrStory.entry(previewScene);
 
     return {
@@ -2908,7 +2909,15 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
     }
     // A row that compiled to nothing still gets its injection: a marker block IS that case, and it is
     // the one carrying the pass's own before/after.
-    return [...injection.before, ...own, ...injection.after];
+    //
+    // Named after the row it wraps, once the row itself has been: a plugin's actions take the row's
+    // numbers after the row's own, so installing a plugin cannot rename what the row already had.
+    // Not bound, so the play head does not step onto the row before the row has begun.
+    return [
+        ...nameRowInternals(ctx, injection.before, blockId) as NlrStatement[],
+        ...own,
+        ...nameRowInternals(ctx, injection.after, blockId) as NlrStatement[],
+    ];
 }
 
 async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
@@ -4949,8 +4958,11 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
             // ever looked at - and "did they pick it" is the entire reason this record exists.
             // It goes ahead of the option's authored rows so a `goto` in the first row cannot skip
             // past it, and it survives an empty option (the branch is then just this one statement).
+            //
+            // Named after the option rather than left to the menu row's pass, so what an option
+            // records does not depend on how many options come before it.
             action: [
-                markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id),
+                nameRowInternals(ctx, markStoryVisitedStatement(ctx.visitedPersistent, STORY_VISITED_OPTIONS_KEY, option.id), option.id),
                 ...await compileBlockList(ctx, option.childrenIds),
             ] as any,
             config: {
@@ -7612,6 +7624,16 @@ async function resolveAssetUrlCached(input: {
     return url;
 }
 
+/**
+ * Name a row's actions from the row, and hand back the statement the scene should run.
+ *
+ * Two passes, and the order between them is load-bearing. The first names what a row's statement
+ * lists as its own actions - `studio:<story>:<scene>:<row>:…`, the ids every save written so far
+ * carries - and it is left exactly as it has always run, because changing which actions it counts
+ * would rename the ones after them and strand those saves. The second names everything the first
+ * never reached (see {@link nameRowInternals}), and the statement that comes back is the one whose
+ * actions those names are on.
+ */
 function recordStatement(
     ctx: SceneCompileContext,
     statement: NlrStatement,
@@ -7630,7 +7652,145 @@ function recordStatement(
             ...(audioAssetId ? { audioAssetId } : {}),
         });
     }
+    return nameRowInternals(ctx, statement, block.id, { bind: true });
+}
+
+/**
+ * The second naming pass: every action a statement reaches that nothing has named yet, named after
+ * the row it belongs to.
+ *
+ * Three kinds of action escaped {@link statementToActions}, and each left the engine to number it by
+ * its place in a walk of the whole story - the same failure stable ids exist to end, because a save
+ * resuming by `a-31` resumes on whatever is thirty-first today:
+ *
+ *  - **What a container builds when it is taken.** A menu, a condition and a script hand the engine
+ *    a chain that becomes its action only when a scene or a branch takes it in (`fromChained`). A
+ *    menu waits for the player, so a save written while one is open names it; the action after any
+ *    of them is where a branch returns to, so a save written inside the branch names that too.
+ *  - **What the engine builds inside a row.** A jump's leaving and arriving - unmounting the scene,
+ *    mounting the next one, its transition - runs inside a group the row's statement holds, and
+ *    several of those steps wait (for a fade, for the next scene's first frame), which is exactly
+ *    when an autosave can land.
+ *  - **What the compiler adds around rows** - an option's pick being recorded, a plugin's injection,
+ *    a scene's opening bookkeeping - which no row's statement lists at all.
+ *
+ * So the statement is first turned into the actions the engine would have made of it (the same
+ * `fromChained` call, made once, here), and then walked the way the engine walks: anything unnamed is
+ * named `nl:action:<scene>:<row>:<type>:<n>` and looked inside; anything already named belongs to a
+ * row that named it and is left alone, unless the caller asks for everything (a scene's last pass).
+ * `<n>` counts that row's unnamed actions of that type, so an edit anywhere else cannot move it.
+ *
+ * Ids in this shape were all positional before this pass existed. Reading a save written then
+ * depends on that (see `legacyActionIds.ts`), so nothing named here may ever take a `studio:` id.
+ */
+function nameRowInternals(
+    ctx: SceneCompileContext,
+    statement: NlrStatement,
+    anchorBlockId: string | null,
+    options: { bind?: boolean; reachInsideNamed?: boolean } = {},
+): NlrStatement {
+    const settled = constructStatement(statement);
+    const seen = new Set<NlrAction>();
+    const queue: { action: NlrAction; top: boolean }[] = statementToActions(settled).map(action => ({ action, top: true }));
+    while (queue.length > 0) {
+        const { action, top } = queue.shift()!;
+        if (seen.has(action)) {
+            continue;
+        }
+        seen.add(action);
+        if (DevTools.getStaticId(action) == null) {
+            const staticId = lateActionId(ctx, anchorBlockId, action.type);
+            setStableActionId(action, staticId);
+            if (options.bind && anchorBlockId) {
+                // No text and no clip: those say which line or which recording an action IS, and an
+                // action found inside a row is neither, whatever row it was found in.
+                ctx.actionIdBindings.push({ action, staticId, blockId: anchorBlockId });
+            }
+        } else if (!top && !options.reachInsideNamed) {
+            continue;
+        }
+        for (const next of actionsInside(ctx, action)) {
+            if (!seen.has(next)) {
+                queue.push({ action: next, top: false });
+            }
+        }
+    }
+    return settled;
+}
+
+/**
+ * A scene's statements, with every action in them named - the call made last, on what is about to
+ * become the scene's action list.
+ *
+ * Rows have named their own by now. What is left is what no row owns: the bookkeeping a scene runs
+ * on entry (its visit being recorded, its local variables seeded, a row launch's stage being put in
+ * place), which is named under the scene with an empty row. Unlike a row's pass this one looks
+ * inside everything, named or not, so nothing a row's pass could not see is left to the engine.
+ */
+function nameSceneActions(ctx: SceneCompileContext, statements: NlrStatement[]): NlrStatement[] {
+    // One entry per statement still, each now the actions it stands for: the scene takes either.
+    const constructed = statements.map(statement => constructStatement(statement));
+    nameRowInternals(ctx, constructed, null, { reachInsideNamed: true });
+    return constructed;
+}
+
+/** The prefix every id {@link nameRowInternals} gives carries, and no other action id does. */
+export const LATE_ACTION_ID_PREFIX = "nl:action:";
+
+/**
+ * `nl:action:<scene>:<row>:<engine action type>:<n>`, with `<row>` empty for what a scene runs before
+ * its first row. Counted on the compile's own per-row counter under a key no row id can take, so a
+ * row compiled twice (a row launch compiles its tail again) still gets ids nothing else has.
+ */
+function lateActionId(ctx: SceneCompileContext, anchorBlockId: string | null, type: string): string {
+    const name = `${LATE_ACTION_ID_PREFIX}${ctx.scene.id}:${anchorBlockId ?? ""}:${type}`;
+    return `${name}:${ctx.nextActionIndex(name)}`;
+}
+
+/**
+ * A statement as the engine will run it: every chain turned into its actions by the chain's own
+ * `fromChained`, exactly as a scene or a branch does when it takes one in.
+ *
+ * Doing it here rather than leaving it to the engine changes nothing about what runs - it is the
+ * same call, made once, on the same chain - but it makes the actions exist while there is still a
+ * row to name them after. For most chains the call returns the actions the chain already listed;
+ * for a menu, a condition and a script it is the only place their action is ever made.
+ */
+function constructStatement(statement: NlrStatement): NlrStatement {
+    if (Array.isArray(statement)) {
+        return statement.flatMap(item => {
+            const constructed = constructStatement(item);
+            return Array.isArray(constructed) ? constructed : [constructed];
+        });
+    }
+    if (isChainLike(statement)) {
+        const fromChained = (statement as NlrChainLike & { fromChained?: (chain: unknown) => unknown }).fromChained;
+        if (typeof fromChained === "function") {
+            return constructStatement(fromChained.call(statement, statement));
+        }
+    }
     return statement;
+}
+
+/**
+ * What the engine's own walk of the story steps into from this action - `getFutureActions`, as
+ * `Scene.assignActionId` calls it - except across a jump or a call.
+ *
+ * Those two lead into another scene, and asking for that would construct the scene's root in the
+ * middle of a compile. Another scene's actions are named by that scene's own compile anyway, so the
+ * walk takes only what comes after them in this one.
+ */
+function actionsInside(ctx: SceneCompileContext, action: NlrAction): NlrAction[] {
+    const walkable = action as unknown as {
+        type: string;
+        contentNode?: { getChild(): { action?: NlrAction } | null };
+        getFutureActions(story: unknown, options: { allowFutureScene: boolean }): NlrAction[];
+    };
+    if (walkable.type === "scene:jumpTo" || walkable.type === "scene:callTo") {
+        const next = walkable.contentNode?.getChild()?.action;
+        return next ? [next] : [];
+    }
+    return walkable.getFutureActions(ctx.nlrStory, { allowFutureScene: true }) ?? [];
 }
 
 function statementToActions(statement: NlrStatement): NlrAction[] {

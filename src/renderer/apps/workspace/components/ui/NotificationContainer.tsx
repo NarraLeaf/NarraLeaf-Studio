@@ -198,7 +198,7 @@ function NotificationItem({
                 )}
 
                 {notification.actions && notification.actions.length > 0 && (
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                         {notification.actions.map((action, index) => (
                             <Button
                                 key={index}
@@ -207,7 +207,9 @@ function NotificationItem({
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     action.onClick();
-                                    onClose();
+                                    if (!action.keepOpen) {
+                                        onClose();
+                                    }
                                 }}
                             >
                                 {action.label}

@@ -89,6 +89,12 @@ export const properties = {
         remove: "移除参数",
         namePlaceholder: "名称",
         defaultPlaceholder: "默认值",
+        type: "类型",
+        typeString: "字符串",
+        typeText: "文字",
+        bindLabel: "参数",
+        bindNone: "不绑定参数",
+        bindMissing: "缺失的参数",
     },
     binding: {
         notReady: "该控件的蓝图尚未就绪",

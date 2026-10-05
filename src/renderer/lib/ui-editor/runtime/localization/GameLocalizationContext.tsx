@@ -11,7 +11,13 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import { resolveAssetVariantMember, type AssetVariantCarrier } from "@shared/types/assetSet";
-import { resolveUITextWords, type UITextWordsInput } from "@shared/types/ui-editor/textSource";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import {
+    resolveUITextWords,
+    withUITextSitesResolved,
+    type UITextSite,
+    type UITextWordsInput,
+} from "@shared/types/ui-editor/textSource";
 import {
     getDesignTimeLocalizationKeys,
     subscribeDesignTimeLocalizationKeys,
@@ -57,6 +63,38 @@ export function useLocalizedWidgetText(input: LocalizedWidgetTextInput): string 
     );
     return resolveUITextWords(
         input,
+        runtime ? { kind: "game", bundle: runtime.bundle, locale } : { kind: "canvas", keys: designTimeKeys },
+    );
+}
+
+/**
+ * The element with the words each of `sites` shows in the current locale written into its site's
+ * prop (`withUITextSitesResolved`) - how a plugin's widget is drawn with its declared words: the host
+ * resolves them, in the game and on the canvas alike, and the plugin's renderer reads the prop.
+ * Re-renders when the player's language changes; on the canvas it follows the key registry the editor
+ * publishes, as {@link useLocalizedWidgetText} does.
+ */
+export function useLocalizedWidgetSites(element: UIElement, sites: readonly UITextSite[]): UIElement {
+    const runtime = useContext(GameLocalizationContext);
+    const readLocale = () => (sites.length > 0 ? runtime?.getLocale() ?? "" : "");
+    // The same answer for a render with no DOM (a static render of a page, as the loader's tests do):
+    // there is nothing to hydrate against, and the words are the player's either way.
+    const locale = useSyncExternalStore(
+        sites.length > 0 ? (runtime?.subscribe ?? noopSubscribe) : noopSubscribe,
+        readLocale,
+        readLocale,
+    );
+    const designTimeKeys = useSyncExternalStore(
+        !runtime && sites.length > 0 ? subscribeDesignTimeLocalizationKeys : noopSubscribe,
+        getDesignTimeLocalizationKeys,
+        getDesignTimeLocalizationKeys,
+    );
+    if (sites.length === 0) {
+        return element;
+    }
+    return withUITextSitesResolved(
+        element,
+        sites,
         runtime ? { kind: "game", bundle: runtime.bundle, locale } : { kind: "canvas", keys: designTimeKeys },
     );
 }

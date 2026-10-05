@@ -1,10 +1,11 @@
 /**
  * Menu Bar studio entry.
  *
- * Registers one thing - the side panel the author builds the bar in - and enrols its store in the
- * pass that replaces the project's documents (a restored version, a version view, a thaw), for the
- * reason the Gallery store is enrolled in it: the menu is versioned project content, and a store
- * that kept the pre-restore copy in memory would write it back on the next edit.
+ * Registers the side panel the author builds the bar in, offers the labels the author writes directly
+ * for translation (so they reach the project's translation table like words on the interface), and
+ * enrols its store in the pass that replaces the project's documents (a restored version, a version
+ * view, a thaw), for the reason the Gallery store is enrolled in it: the menu is versioned project
+ * content, and a store that kept the pre-restore copy in memory would write it back on the next edit.
  *
  * There is no editor tab. A menu bar is a short ordered list with one row selected at a time, and
  * everything it needs fits the panel - a full tab would be the same controls with more space
@@ -15,6 +16,7 @@
 
 import { Menu } from "lucide-react";
 import { PanelPosition, definePlugin } from "narraleaf-studio/plugin";
+import { menuBarWords } from "./document";
 import { MENU_BAR_MESSAGES } from "./messages";
 import { MenuBarPanel } from "./MenuBarPanel";
 import { createMenuBarStore } from "./store";
@@ -33,6 +35,11 @@ export default definePlugin({
 
         const unregisterReloader = app.services.workspace.registerReloader(() => store.reload());
 
+        const unregisterWords = app.services.localization.registerWords({
+            list: () => menuBarWords(store.getData()),
+            subscribe: listener => store.subscribe(listener),
+        });
+
         const unregisterPanel = app.services.ui.panels.register({
             id: PANEL_ID,
             get title() {
@@ -48,6 +55,7 @@ export default definePlugin({
         return () => {
             unregisterPanel();
             unregisterReloader();
+            unregisterWords();
         };
     },
 });

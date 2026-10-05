@@ -9,7 +9,8 @@ import type {
     PropertyEditorTab,
     SectionFieldDefinition,
 } from "@/apps/workspace/modules/properties/framework/types";
-import type { InspectorContext, UIInspectorData, UIWidgetModule } from "./types";
+import type { InspectorContext, UIInspectorData, UIWidgetDefaultWords, UIWidgetModule } from "./types";
+import { INTERFACE_DEFAULT_WORDS } from "./defaultWords";
 
 /**
  * Where an inserted field goes among its new siblings.
@@ -56,9 +57,10 @@ export type WidgetModuleExtension = {
     logicApi?: WidgetLogicApi;
     /**
      * Rewrites the inherited default element. Receives the parent's, already retyped to this
-     * widget type, so a specialisation that only changes a size or a colour patches one field.
+     * widget type, so a specialisation that only changes a size or a colour patches one field, and
+     * the words a player reads are written in (`UIWidgetModule.createDefaultElement`).
      */
-    defaultElement?: (inherited: Partial<UIElement>) => Partial<UIElement>;
+    defaultElement?: (inherited: Partial<UIElement>, words: UIWidgetDefaultWords) => Partial<UIElement>;
     /** Declarative edits to the inherited inspector. Ignored when `createInspector` is given. */
     inspector?: (context: InspectorContext) => WidgetInspectorOverrides | undefined;
 } & Partial<
@@ -228,9 +230,9 @@ export function extendWidgetModule(parent: UIWidgetModule, extension: WidgetModu
         );
     }
 
-    const createDefaultElement = (): Partial<UIElement> => {
-        const inherited = mergeDefaultElement(parent.createDefaultElement(), extension.type, extension.displayName());
-        return extension.defaultElement ? extension.defaultElement(inherited) : inherited;
+    const createDefaultElement = (words: UIWidgetDefaultWords = INTERFACE_DEFAULT_WORDS): Partial<UIElement> => {
+        const inherited = mergeDefaultElement(parent.createDefaultElement(words), extension.type, extension.displayName());
+        return extension.defaultElement ? extension.defaultElement(inherited, words) : inherited;
     };
 
     const createInspector = extension.createInspector

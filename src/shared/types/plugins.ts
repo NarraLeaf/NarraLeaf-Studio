@@ -377,6 +377,41 @@ export type PluginContributes = {
      * install - and the list shows them attributed to this plugin rather than quietly making room.
      */
     network?: string[];
+    /**
+     * The props of a contributed widget that hold words a player reads, by widget type.
+     *
+     * Each type named here must also be in {@link widgets}. A declared prop is treated as Studio's own
+     * text and button labels are: the properties panel offers its words written directly or read
+     * from a translation key, the canvas draws a key's words, the words go into the project's
+     * translation table and exports, the project checks report a missing translation or key, and
+     * the glyph check reads them. In the game the widget's renderer is handed the words already in
+     * the player's language, in the prop it declared - it never resolves a key itself.
+     *
+     * Declared in the manifest rather than at registration because both entries need it - the
+     * studio entry's widget is edited by it and the runtime entry's is drawn by it - and a
+     * declaration only one of them made would be the half that drifts.
+     */
+    widgetText?: Record<string, PluginWidgetTextContribution[]>;
+};
+
+/**
+ * One prop of a contributed widget whose value is words a player reads.
+ *
+ * `keyProp` is the prop the widget's translation key is kept in when the author reads the words from
+ * one. It defaults to `<prop>LocalizationKey`, and it is the host's to write: the widget never reads it
+ * to draw, because the words in `prop` already come from the key when there is one.
+ */
+export type PluginWidgetTextContribution = {
+    /** The prop holding the words. */
+    prop: string;
+    /** The prop the translation key is kept in; `<prop>LocalizationKey` when not declared. */
+    keyProp?: string;
+    /** What the properties panel calls the words. The prop name when not declared. */
+    label?: string;
+    /** `label` per editor locale, matched exactly as `localized` names are. */
+    localized?: Record<string, string>;
+    /** Whether the words may run over several lines; one line when not declared. */
+    multiline?: boolean;
 };
 
 /**

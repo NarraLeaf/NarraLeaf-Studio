@@ -29,6 +29,11 @@ export interface NotificationAction {
     label: string;
     onClick: () => void;
     primary?: boolean;
+    /**
+     * The notice stays open after this action runs. For a notice that lists several places with one
+     * action each, where taking the author to one place must leave the way to the others.
+     */
+    keepOpen?: boolean;
 }
 
 /**

@@ -3,10 +3,11 @@ import { translate } from "@/lib/i18n";
 import { PanelPosition } from "../../registry/types";
 import type { PanelModule } from "../types";
 import { StoryPanel } from "./panel/StoryPanel";
+import { STORY_PANEL_ID } from "./panel/storyPanelReveal";
 
 export const storyPanelModule: PanelModule = {
     metadata: {
-        id: "narraleaf-studio:story",
+        id: STORY_PANEL_ID,
         // Resolved lazily on read (module registration runs after i18n init).
         titleKey: "placeholders.moduleTitles.story",
         get title() {

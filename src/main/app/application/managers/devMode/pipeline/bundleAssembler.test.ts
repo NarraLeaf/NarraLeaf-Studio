@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_LANGUAGE_CHANGE_CONFIGURATION } from "@shared/types/localization";
@@ -1343,5 +1344,146 @@ describe("bundleAssembler asset set refusals", () => {
             location: "The corridor",
             variant: "main",
         }));
+    });
+});
+
+/**
+ * Sample text never ships; the words a blueprint writes over do.
+ *
+ * The words a text holds under a value blueprint are what the canvas draws while a page is laid out.
+ * A package is where that promise is kept: the interface document it carries has them emptied, and a
+ * translation a language file still holds for them stays behind with them. The words a player reads
+ * ship as written - among them the words a blueprint's Set Text replaces, which are the element's
+ * default value and show, translated, until the first write lands.
+ */
+describe("bundleAssembler sample text", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createSampleProject(): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-sample-bundle-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({
+                name: "Test",
+                identifier: "test.project",
+                metadata: {},
+                app: {
+                    localization: {
+                        sourceLocale: "en",
+                        locales: [
+                            { code: "en", displayName: "English" },
+                            { code: "zh-CN", displayName: "简体中文" },
+                        ],
+                    },
+                },
+            } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await mkdir(path.join(projectPath, "editor", "story"), { recursive: true });
+        await mkdir(path.join(projectPath, "editor", "localization"), { recursive: true });
+        const layout = { x: 0, y: 0, width: 100, height: 20 };
+        const text = (id: string, props: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+            id, type: "nl.text", name: id, parentId: null, childrenIds: [], layout, props, ...extra,
+        });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                id: "doc",
+                name: "UI",
+                surfaces: [],
+                elements: {
+                    // A value blueprint answers the name tag; its own words are a sample.
+                    nametag: text("nametag", { text: "SAMPLE-NAMETAG" }, {
+                        valueBindings: { text: { kind: "blueprintValue", blueprintId: "bp-value", valueType: "string" } },
+                    }),
+                    title: text("title", { text: "Your Game" }),
+                },
+                components: [{
+                    id: "slot",
+                    name: "Save slot",
+                    rootElementId: "place",
+                    // The component's own graph writes the place name over this; until it does, these
+                    // words are what the slot shows.
+                    elements: { place: text("place", { text: "No place yet" }) },
+                }],
+            }),
+            "utf-8",
+        );
+        const owner = { kind: "componentWidgetMain" as const, componentId: "slot", elementId: "place" };
+        const slotBlueprint: Blueprint = {
+            id: "bp-slot",
+            name: "Save slot",
+            owner,
+            graphs: {
+                events: {
+                    init: {
+                        id: "init",
+                        graph: {
+                            nodes: {
+                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                                write: { id: "write", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT, params: { text: "The corridor" } },
+                            },
+                            edges: [{ from: { nodeId: "head", port: "next" }, to: { nodeId: "write", port: "in" } }],
+                        },
+                    },
+                },
+                functions: {},
+            },
+        };
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: {
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                    blueprints: { [slotBlueprint.id]: slotBlueprint },
+                    ownerRecords: { [encodeBlueprintOwnerKey(owner)]: { blueprintId: slotBlueprint.id } },
+                },
+            }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "localization", "zh-CN.json"),
+            JSON.stringify({
+                schemaVersion: 1,
+                locale: "zh-CN",
+                units: {
+                    // Left over from when the name tag's own words were translated.
+                    "ui:nametag.text": { target: "SAMPLE-TRANSLATED", sourceHash: "fnv1a:1", status: "translated" },
+                    "ui:title.text": { target: "你的游戏", sourceHash: "fnv1a:2", status: "translated" },
+                    "ui:place.text": { target: "尚无地点", sourceHash: "fnv1a:3", status: "translated" },
+                },
+            }),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    it("carries no sample words and no translation of them, and every word a player reads with its translation", async () => {
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath: await createSampleProject(),
+            bundleId: "b",
+            revision: 1,
+        });
+
+        expect(JSON.stringify(bundle)).not.toMatch(/SAMPLE-/);
+        expect(bundle.ui.uidoc.elements.nametag.props).toEqual({ text: "" });
+        // The binding is untouched: it is what the game shows there.
+        expect(bundle.ui.uidoc.elements.nametag.valueBindings?.text).toMatchObject({ kind: "blueprintValue" });
+        expect(bundle.ui.uidoc.elements.title.props).toEqual({ text: "Your Game" });
+        // Written over by the slot's graph, and shown until then: the words and their translation ship.
+        expect(bundle.ui.uidoc.components?.[0].elements.place.props).toEqual({ text: "No place yet" });
+        expect(bundle.localization?.tables["zh-CN"]).toEqual({ "ui:title.text": "你的游戏", "ui:place.text": "尚无地点" });
     });
 });

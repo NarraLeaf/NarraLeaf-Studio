@@ -34,7 +34,7 @@ import {
     // to "where does this graph start" would put a warning on graphs the editor calls complete.
     isBlueprintGraphEntryNode,
 } from "../../workspace/services/ui-editor/blueprint/graphLiveness";
-import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
+import { blueprintGraphJumpTarget, blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import { createAssetNameDescriber } from "../../workspace/services/references/assetNameCatalog";
 import { extractStoryVariableWrites, findAssetNameGaps } from "../../workspace/services/references/assetNameGaps";
 import { assetNameGapMessage } from "../../workspace/services/references/assetNameGapText";
@@ -510,7 +510,8 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
                 blueprintName: site.blueprintName,
                 graphId: site.graphId,
             },
-            target: entries[0] ? blueprintNodeJumpTarget(site, entries[0].id) : undefined,
+            // The head that runs nothing, or - a layer with no nodes at all - the layer itself.
+            target: entries[0] ? blueprintNodeJumpTarget(site, entries[0].id) : blueprintGraphJumpTarget(site),
         });
     }
     return findings;
@@ -770,7 +771,9 @@ function runAssembledAssetName(ctx: LintContext): LintFinding[] {
             }
             : sink.surfaceId && sink.surfaceName
                 ? { kind: "surface", surfaceId: sink.surfaceId, surfaceName: sink.surfaceName, elementId: sink.elementId, elementName: sink.elementName }
-                : { kind: "project" };
+                : sink.componentId && sink.componentName
+                    ? { kind: "component", componentId: sink.componentId, componentName: sink.componentName, elementId: sink.elementId, elementName: sink.elementName }
+                    : { kind: "project" };
         const target = assetNameGapTarget(gap);
         findings.push({
             ruleId: "blueprint/assembled-asset-name",

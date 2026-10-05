@@ -20,6 +20,7 @@ function declarationOf(module: UIWidgetModule, ownerPluginId: string): Contribut
         logicApi: module.logicApi,
         acceptsChildren: module.acceptsChildren === true,
         ...(module.partSlots && module.partSlots.length > 0 ? { partSlots: module.partSlots } : {}),
+        ...(module.textSites && module.textSites.length > 0 ? { textSites: module.textSites } : {}),
     };
 }
 

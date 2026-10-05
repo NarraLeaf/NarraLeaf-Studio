@@ -38,8 +38,11 @@ export type BrandLinkReference = {
      * translated word for `style.backgroundColor`.
      */
     where: string;
-    /** The same site, structured - what a caller navigates or groups by. */
-    location: { surfaceId?: string; elementId?: string; characterId?: string; propPath: string };
+    /**
+     * The same site, structured - what a caller navigates or groups by. A widget inside a component
+     * definition carries the definition's id instead of a page's: that is the editor it is drawn in.
+     */
+    location: { surfaceId?: string; componentId?: string; elementId?: string; characterId?: string; propPath: string };
 };
 
 /** Joins the breadcrumb segments of {@link BrandLinkReference.where}. */
@@ -59,6 +62,7 @@ type ReferenceSite = {
     /** Breadcrumb segments, outermost first. */
     trail: readonly string[];
     surfaceId?: string;
+    componentId?: string;
     elementId?: string;
     characterId?: string;
 };
@@ -137,6 +141,7 @@ function pushReferences(node: unknown, basePath: string, site: ReferenceSite, ou
             where: [...site.trail, propPath].filter(Boolean).join(BRAND_REFERENCE_SEPARATOR),
             location: {
                 ...(site.surfaceId ? { surfaceId: site.surfaceId } : {}),
+                ...(site.componentId ? { componentId: site.componentId } : {}),
                 ...(site.elementId ? { elementId: site.elementId } : {}),
                 ...(site.characterId ? { characterId: site.characterId } : {}),
                 propPath,
@@ -199,6 +204,32 @@ function claimSubtree(
     }
 }
 
+/**
+ * The page an element no root reaches is still filed under, when its parent chain leads to one: an
+ * element whose parent lists it nowhere in `childrenIds` is drawn by nothing, but its `parentId`
+ * still says which page the author put it on. Bounded by the elements' own count, so a ring of
+ * parents ends.
+ */
+function ownerByParent(
+    elementId: string,
+    elements: Record<string, unknown>,
+    owners: ReadonlyMap<string, { id: string; label: string }>,
+): { id: string; label: string } | undefined {
+    let current = elements[elementId];
+    for (let step = 0; step < Object.keys(elements).length && isRecord(current); step += 1) {
+        const parentId = text(current.parentId);
+        if (!parentId) {
+            return undefined;
+        }
+        const owner = owners.get(parentId);
+        if (owner) {
+            return owner;
+        }
+        current = elements[parentId];
+    }
+    return undefined;
+}
+
 function collectFromUiDocument(raw: unknown, out: BrandLinkReference[]): void {
     if (!isRecord(raw)) {
         return;
@@ -228,7 +259,7 @@ function collectFromUiDocument(raw: unknown, out: BrandLinkReference[]): void {
         if (!isRecord(entry)) {
             continue;
         }
-        const owner = ownerByElementId.get(elementId);
+        const owner = ownerByElementId.get(elementId) ?? ownerByParent(elementId, elements, ownerByElementId);
         const label = elementLabel(entry, elementId);
         pushReferences(entry, "", {
             // An element no surface reaches is still reported - it is still a reference, and an
@@ -253,8 +284,13 @@ function collectFromUiDocument(raw: unknown, out: BrandLinkReference[]): void {
                 continue;
             }
             // No surfaceId: a component is not a surface, and pretending it were would hand the lint
-            // report a jump target that opens the wrong editor.
-            pushReferences(element, "", { trail: [label, elementLabel(element, elementId)], elementId }, out);
+            // report a jump target that opens the wrong editor. Its own id instead, which opens its own.
+            const componentId = text(entry.id);
+            pushReferences(element, "", {
+                trail: [label, elementLabel(element, elementId)],
+                ...(componentId ? { componentId } : {}),
+                elementId,
+            }, out);
         }
     }
 }

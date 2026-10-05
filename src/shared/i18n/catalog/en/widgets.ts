@@ -72,14 +72,22 @@ export const widgets = {
         hint: "Shown in the editor only. The game shows the story's current line.",
         bindingNoEffect: "This binding has no effect in the {slot} slot.",
         removeBinding: "Remove",
+        hintBlueprintValue: "Shown in the editor only. The game shows the Blueprint Value's result.",
+        hintComponentParam: "Shown while editing the component only. Each placement shows the value it sets for the parameter.",
+    },
+    textWriters: {
+        title: "Written in the game by",
+        entry: "{blueprint} › {node}",
+        count: "×{count}",
+        defaultValue: "Default value",
+        defaultValueHint: "The game shows this text until one of the blueprints below writes to it.",
     },
     localization: {
         direct: "Direct",
         translationKey: "Translation key",
-        noSourceLanguage: "The project has no source language",
         none: "None",
         createKey: "Create new key…",
-        createKeyTitle: "New localization key",
+        createKeyTitle: "New translation key",
         keyName: "Key name",
         keyNamePlaceholder: "menu.start…",
         keyNameHint: "Letters, digits, and dots/underscores/hyphens between them.",
@@ -188,11 +196,9 @@ export const widgets = {
         sectionColor: "Color",
         sectionBehavior: "Behavior",
         interactionDisabled: "Interaction disabled",
-        localizeLabel: "Localize label",
     },
     text: {
         title: "Text",
-        localizeText: "Localize text",
     },
     /**
      * The marks a label's text carries, set over the characters selected in the box above them.

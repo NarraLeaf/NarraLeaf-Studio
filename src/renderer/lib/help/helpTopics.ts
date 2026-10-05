@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import { en } from "@shared/i18n/catalog/en";
 
 /**
  * The help topic registry - the one list both windows read.
@@ -20,6 +21,9 @@ export const HELP_SECTIONS = [
     "quality",
     "version",
     "ship",
+    // One topic per project check rule, last: they are what a finding's `?` opens, and the browser
+    // lists them for reading ahead rather than as a place to start.
+    "checks",
 ] as const;
 
 export type HelpSectionId = (typeof HELP_SECTIONS)[number];
@@ -104,7 +108,21 @@ export const HELP_TOPIC_IDS = [
     "plugins",
 ] as const;
 
-export type HelpTopicId = (typeof HELP_TOPIC_IDS)[number];
+/** A topic written in the `help` namespace and listed above. */
+export type StaticHelpTopicId = (typeof HELP_TOPIC_IDS)[number];
+
+/**
+ * The topic about one project check rule: `lintRule.<slug>`, the slug the rule's strings are filed
+ * under (`lint.rule.<slug>`).
+ *
+ * Not listed by hand, unlike every other topic: there is one per rule, the rule list is closed and
+ * tested elsewhere, and a second hand-kept list of seventy-odd ids would be the one that falls
+ * behind. A rule's topic exists when its catalogue entry carries `help`, and the lint registry test
+ * fails for a rule whose entry does not.
+ */
+export type LintRuleHelpTopicId = `lintRule.${string}`;
+
+export type HelpTopicId = StaticHelpTopicId | LintRuleHelpTopicId;
 
 export interface HelpTopic {
     id: HelpTopicId;
@@ -576,7 +594,27 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     },
 ];
 
-const TOPICS_BY_ID = new Map<string, HelpTopic>(HELP_TOPICS.map(topic => [topic.id, topic]));
+const LINT_RULE_TOPIC_PREFIX = "lintRule.";
+
+/** The topic id for the rule whose strings are filed under `lint.rule.<slug>`. */
+export function lintRuleHelpTopicId(slug: string): LintRuleHelpTopicId {
+    return `${LINT_RULE_TOPIC_PREFIX}${slug}`;
+}
+
+/**
+ * The rule topics, in the order the lint catalogue lists the rules - which is category order, so the
+ * browser reads assets, then stories, then blueprints, as the settings page does.
+ *
+ * Read from the English catalogue because it is the source every other language is checked against.
+ */
+export const LINT_RULE_HELP_TOPICS: readonly HelpTopic[] = Object.entries(en.lint.rule as Record<string, object>)
+    .filter(([, strings]) => typeof (strings as { help?: unknown }).help === "string")
+    .map(([slug]) => ({ id: lintRuleHelpTopicId(slug), section: "checks" as const, related: ["lint"] as const }));
+
+/** Every topic the browser lists: the written ones, then one per check rule. */
+export const ALL_HELP_TOPICS: readonly HelpTopic[] = [...HELP_TOPICS, ...LINT_RULE_HELP_TOPICS];
+
+const TOPICS_BY_ID = new Map<string, HelpTopic>(ALL_HELP_TOPICS.map(topic => [topic.id, topic]));
 
 export function getHelpTopic(id: string | null | undefined): HelpTopic | undefined {
     return id ? TOPICS_BY_ID.get(id) : undefined;
@@ -586,12 +624,20 @@ export function isHelpTopicId(id: string): id is HelpTopicId {
     return TOPICS_BY_ID.has(id);
 }
 
+/** The slug a rule topic is about, or null for a written topic. */
+function lintRuleSlugOf(id: HelpTopicId): string | null {
+    return id.startsWith(LINT_RULE_TOPIC_PREFIX) ? id.slice(LINT_RULE_TOPIC_PREFIX.length) : null;
+}
+
+/** A rule topic is titled with the rule's own name, the one every finding and the settings row show. */
 export function helpTitleKey(id: HelpTopicId): TranslationKey {
-    return `help.topics.${id}.title` as TranslationKey;
+    const slug = lintRuleSlugOf(id);
+    return (slug ? `lint.rule.${slug}.title` : `help.topics.${id}.title`) as TranslationKey;
 }
 
 export function helpBodyKey(id: HelpTopicId): TranslationKey {
-    return `help.topics.${id}.body` as TranslationKey;
+    const slug = lintRuleSlugOf(id);
+    return (slug ? `lint.rule.${slug}.help` : `help.topics.${id}.body`) as TranslationKey;
 }
 
 export function helpSectionKey(section: HelpSectionId): TranslationKey {
@@ -602,7 +648,7 @@ export function helpSectionKey(section: HelpSectionId): TranslationKey {
 export function helpTopicsBySection(): Array<{ section: HelpSectionId; topics: HelpTopic[] }> {
     return HELP_SECTIONS.map(section => ({
         section,
-        topics: HELP_TOPICS.filter(topic => topic.section === section),
+        topics: ALL_HELP_TOPICS.filter(topic => topic.section === section),
     })).filter(group => group.topics.length > 0);
 }
 

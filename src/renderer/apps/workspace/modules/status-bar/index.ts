@@ -13,6 +13,7 @@ import {
     ZoomEntry,
 } from "./entries";
 import { TeamStatusEntry } from "../team";
+import { ProblemsStatusEntry } from "../lint/ProblemsStatusEntry";
 import {
     TextEncodingEntry,
     TextFileNameEntry,
@@ -59,6 +60,15 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.projectTrust",
         alignment: StatusBarAlignment.Left,
         component: DistrustedProjectEntry,
+    },
+    {
+        // Outboard of the cells that come and go with runs and tasks: whether the project has
+        // problems is a standing property of it, like its trust, and must not shift sideways as a
+        // build starts beside it.
+        id: "narraleaf-studio:status-bar/problems",
+        labelKey: "workspace.shell.statusBar.entries.problems",
+        alignment: StatusBarAlignment.Left,
+        component: ProblemsStatusEntry,
     },
     {
         id: "narraleaf-studio:status-bar/run-status",

@@ -177,6 +177,7 @@ export type AssetNameSink =
         surfaceId: string | null;
         surfaceName: string | null;
         /** The component definition the widget is in; null on a page. */
+        componentId: string | null;
         componentName: string | null;
         /** The value blueprint the binding reads, when it reads one rather than a row field. */
         blueprintId: string | null;
@@ -660,6 +661,7 @@ interface ElementPlace {
     pool: Pick<UIDocument, "elements">;
     surfaceId: string | null;
     surfaceName: string | null;
+    componentId: string | null;
     componentName: string | null;
 }
 
@@ -708,6 +710,7 @@ class AssetNameWalk {
                 pool: ui,
                 surfaceId: surface?.id ?? null,
                 surfaceName: surface?.name ?? null,
+                componentId: null,
                 componentName: null,
             });
         }
@@ -718,6 +721,7 @@ class AssetNameWalk {
                     pool: component,
                     surfaceId: null,
                     surfaceName: null,
+                    componentId: component.id,
                     componentName: component.name,
                 });
             }
@@ -1284,6 +1288,7 @@ class AssetNameWalk {
                         propPath,
                         surfaceId: place.surfaceId,
                         surfaceName: place.surfaceName,
+                        componentId: place.componentId,
                         componentName: place.componentName,
                         blueprintId: reads ? binding.blueprintId : null,
                         ownerKey: reads ? ownerKeyByBlueprintId.get(binding.blueprintId) ?? null : null,

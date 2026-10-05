@@ -163,6 +163,30 @@ describe("resolveGameMenu", () => {
         expect(itemsOf(model, 0)[0]).toMatchObject({ label: "Settings" });
     });
 
+    it("translates words written directly through their own unit, and shows them as written without one", async () => {
+        const spec: GameMenuSpec = {
+            menus: [{
+                label: { key: null, text: "Game", words: "plugin:narraleaf.menu-bar/menu-game.label" },
+                items: [
+                    {
+                        kind: "action",
+                        label: { key: null, text: "Next", words: "plugin:narraleaf.menu-bar/item-next.label" },
+                        action: { type: "next" },
+                    },
+                    // A key still wins over words beside it.
+                    { kind: "action", label: { key: "menu.file", text: "Back", words: "plugin:x/y" }, action: { type: "historyUndo" } },
+                ],
+            }],
+        };
+        const port = createPort({
+            localizedUnitText: (unitId, locale) =>
+                unitId === "plugin:narraleaf.menu-bar/menu-game.label" && locale === "ja" ? "ゲーム" : null,
+        });
+        const { model } = await resolveGameMenu(spec, port);
+        expect(model.menus[0]?.label).toBe("ゲーム");
+        expect(itemsOf(model, 0).map(item => ("label" in item ? item.label : null))).toEqual(["Next", "ファイル"]);
+    });
+
     it("marks the game's own Quit for the shell, so macOS can drop the duplicate", async () => {
         const { model } = await resolveGameMenu(SPEC, createPort());
         expect(itemsOf(model, 0)[2]).toMatchObject({ kind: "command", role: "quit" });

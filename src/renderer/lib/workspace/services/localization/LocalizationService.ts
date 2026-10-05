@@ -170,7 +170,6 @@ export class LocalizationService extends Service<LocalizationService> implements
         // key pickers, blueprint dynamic options) read it via getKeysIfLoaded().
         void this.loadKeys().catch(() => undefined);
         // The canvas draws a keyed text or button from the registry and edits it in place through it.
-        this.events.on("configChanged", () => this.publishDesignTimeKeys());
         setDesignTimeLocalizationKeyWriter((name, sourceText) => {
             const existing = this.keysDocument?.keys[name];
             this.setKey(name, { ...existing, sourceText });
@@ -188,21 +187,15 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     /**
-     * Hand the registry to the canvas, as key name → source text.
+     * Hand the registry to the canvas, as key name → source text, once it is read.
      *
-     * Withdrawn while the project has no source language, because a build carries no keys then and
-     * the game shows every widget's own text; the canvas follows it there too.
+     * Whether or not the project has a source language: a build carries the keys either way
+     * (`keysOnlyLocalization`), and the canvas draws what the game draws.
      */
     private publishDesignTimeKeys(): void {
-        let hasSourceLocale = false;
-        try {
-            hasSourceLocale = Boolean(this.getConfiguration().sourceLocale);
-        } catch {
-            hasSourceLocale = false;
-        }
         const document = this.keysDocument;
         setDesignTimeLocalizationKeys(
-            hasSourceLocale && document
+            document
                 ? Object.fromEntries(Object.entries(document.keys).map(([name, key]) => [name, key.sourceText]))
                 : null,
         );
@@ -519,6 +512,31 @@ export class LocalizationService extends Service<LocalizationService> implements
         this.scheduleAutoSave();
         this.events.emit("documentChanged", { locale, document: updated });
         return updated;
+    }
+
+    /**
+     * Write and remove whole units in one language's library, as they arrive.
+     *
+     * For the edits a change to the interface document carries with it - the translations an
+     * element's words keep when they stop coming from a key, the leftover translation of words that
+     * were never translated - which are part of that change rather than an edit anybody made in the
+     * table. Each unit is stored exactly as it arrives, `sourceHash` included, like
+     * {@link adoptUnits}; unlike it, an existing unit is replaced. The language has to be loaded.
+     */
+    public applyUnitEdits(locale: string, edit: { set: Readonly<Record<string, LocalizationUnit>>; remove: readonly string[] }): void {
+        const document = this.requireLoadedDocument(locale);
+        const entries: { unitId: string; unit: LocalizationUnit | null }[] = [
+            ...edit.remove.filter(unitId => document.units[unitId] && !(unitId in edit.set)).map(unitId => ({ unitId, unit: null })),
+            ...Object.entries(edit.set).map(([unitId, unit]) => ({ unitId, unit: { ...unit } })),
+        ];
+        if (entries.length === 0) {
+            return;
+        }
+        // One gesture, one operation - see `applyImportedRows`.
+        if (this.opSink?.handle({ op: "set-translations", locale, units: entries })) {
+            return;
+        }
+        this.writeUnits(locale, document, entries);
     }
 
     public async flushPendingChanges(): Promise<void> {

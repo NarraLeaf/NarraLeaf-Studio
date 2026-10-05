@@ -71,6 +71,11 @@ import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
 import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
 import {
+    MIRROR_ELECTRON_BUILDER_BINARIES_URL,
+    MIRROR_ELECTRON_URL,
+    MIRROR_ZIG_URL,
+} from "@shared/constants/buildMirrors";
+import {
     EDITOR_LINE_NUMBERS_DEFAULT,
     EDITOR_LINE_NUMBERS_KEY,
     EDITOR_SOFT_WRAP_DEFAULT,
@@ -1244,20 +1249,23 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Mirror for downloading Electron.",
         descriptionKey: "settings.items.electronMirror.description",
         defaultValue: "",
-        // Official or typed, with no mirror in between: the two registries above have one
-        // community mirror each that we can name, and there is no equivalent for these binaries
-        // that Studio can vouch for. An address offered by name reads as endorsed.
-        options: [OFFICIAL_SOURCE_VALUE],
+        // An address offered by name reads as endorsed, so each build mirror below names one only
+        // where Studio can say why it is safe to - see the comment on each constant in
+        // buildMirrors.ts. "No mirror" stays the default: the mirror is for the networks the
+        // official host serves badly, not a better source for everyone.
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_ELECTRON_URL],
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+            [MIRROR_ELECTRON_URL]: "settings.source.chinaMirror",
         },
     },
     {
-        // Read by the build worker (winCodeSignCache.binariesMirror), ahead of the two
-        // environment variables it already honored. A second field rather than a mode of
-        // the one above because the URL layouts differ - the comment in GameBuildManager
-        // spelled out why one cannot be synthesized from the other, and until now the
-        // answer was that a Studio user simply had no way to set it.
+        // Read by the build worker, ahead of the environment variables electron-builder honours:
+        // Studio's own fetches go through winCodeSignCache.binariesMirror, and electron-builder's
+        // (7-Zip, NSIS, the AppImage toolset) are pointed at it by withBinariesMirrorEnv around the
+        // packaging loop. A second field rather than a mode of the one above because the URL
+        // layouts differ - the comment in GameBuildManager spells out why one cannot be
+        // synthesized from the other.
         key: "build.electronBuilderBinariesMirror",
         category: "network",
         scope: SettingScope.Global,
@@ -1267,9 +1275,10 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         descriptionKey: "settings.items.electronBuilderBinariesMirror.description",
         defaultValue: "",
-        options: [OFFICIAL_SOURCE_VALUE],
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_ELECTRON_BUILDER_BINARIES_URL],
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+            [MIRROR_ELECTRON_BUILDER_BINARIES_URL]: "settings.source.chinaMirror",
         },
     },
     {
@@ -1285,9 +1294,10 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Mirror for the compiler toolchain a build downloads.",
         descriptionKey: "settings.items.zigMirror.description",
         defaultValue: "",
-        options: [OFFICIAL_SOURCE_VALUE],
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_ZIG_URL],
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+            [MIRROR_ZIG_URL]: "settings.source.chinaMirror",
         },
     },
     {

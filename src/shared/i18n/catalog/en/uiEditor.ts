@@ -44,8 +44,8 @@ export const uiEditor = {
         createGameUi: "Create Game UI",
         globalSubtitle: "Global",
         blueprintType: "Blueprint",
-        openGlobalBlueprint: "Open global blueprint",
-        globalBlueprintUnavailable: "Global blueprint unavailable",
+        openGlobalBlueprint: "Open App logic",
+        globalBlueprintUnavailable: "App logic unavailable",
         openSurface: "Open {label}",
         renameSurface: "Rename {label}",
         duplicateSurface: "Duplicate {label}",
@@ -180,6 +180,7 @@ export const uiEditor = {
         widgetRenderFailed: "Widget failed to draw",
         wordsFromRowField: "These words come from the list row field “{field}”.",
         wordsFromBlueprintValue: "These words come from the blueprint value “{name}”.",
+        wordsFromComponentParam: "These words come from the component parameter “{param}”, set on each placement.",
     },
     editor: {
         componentNotFound: "Component not found",

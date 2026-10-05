@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { findAssetNameGaps } from "./assetNameGaps";
+import { findAssetNameGaps, type AssetNameGap } from "./assetNameGaps";
 import {
+    assetNameGapTarget,
     assetNameGapToIndexGap,
     buildReferenceIndex,
     extractBlueprintAssetReferences,
@@ -218,6 +219,11 @@ describe("extractStoryAnimationAssetReferences", () => {
     it("reports nothing for an animation with no preview set", () => {
         expect(extractStoryAnimationAssetReferences(animation({}))).toEqual([]);
     });
+
+    it("opens the motion's own editor, where both previews are picked", () => {
+        const [reference] = extractStoryAnimationAssetReferences(animation({ previewAssetId: "preview-1" }));
+        expect(reference.target).toEqual({ kind: "storyMotion", animationId: "anim-1" });
+    });
 });
 
 describe("extractBlueprintAssetReferences", () => {
@@ -302,6 +308,40 @@ describe("extractUIDocumentAssetReferences", () => {
             components,
         } as unknown as UIDocument;
     }
+
+    it("opens a widget's picture on its page, the widget selected", () => {
+        // Walked down from the page's root - and, for a widget its parent no longer lists, up its
+        // parent chain to the page the author put it on.
+        const root = { ...uiElement("root", "nl.root", {}), childrenIds: ["art"] } as UIElement;
+        const art = { ...uiElement("art", "nl.image", { imageFill: { mode: "cover", assetId: "img-1" } }), parentId: "root" } as UIElement;
+        const stray = { ...uiElement("stray", "nl.image", { imageFill: { mode: "cover", assetId: "img-2" } }), parentId: "root" } as UIElement;
+        const document = {
+            ...doc([root, art, stray]),
+            surfaces: [{ id: "page-1", name: "Title", kind: "appSurface", rootElementId: "root" }],
+        } as unknown as UIDocument;
+
+        const references = uiReferences(document);
+        expect(references.find(reference => reference.assetId === "img-1")?.target)
+            .toEqual({ kind: "uiSurface", surfaceId: "page-1", elementId: "art" });
+        expect(references.find(reference => reference.assetId === "img-2")?.target)
+            .toEqual({ kind: "uiSurface", surfaceId: "page-1", elementId: "stray" });
+    });
+
+    it("opens a picture inside a component on the definition, the widget selected", () => {
+        const references = uiReferences(doc([], [{
+            id: "card",
+            name: "Card",
+            rootElementId: "face",
+            elements: { face: uiElement("face", "nl.image", { imageFill: { mode: "cover", assetId: "img-3" } }) },
+        }] as unknown as UIDocument["components"]));
+
+        expect(references[0].target).toEqual({ kind: "uiComponent", componentId: "card", elementId: "face" });
+    });
+
+    it("leaves a widget no page draws without a place to open", () => {
+        const references = uiReferences(doc([uiElement("lost", "nl.image", { imageFill: { mode: "cover", assetId: "img-4" } })]));
+        expect(references[0].target).toBeUndefined();
+    });
 
     it("finds an image fill nested under scrollbar chrome", () => {
         const references = uiReferences(
@@ -478,6 +518,8 @@ describe("extractVoiceAssetReferences", () => {
             kind: "voice",
             label: "text-1",
             detail: "ja",
+            // The line's row in that language's voice table, which is where a take is linked.
+            target: { kind: "voiceLine", locale: "ja", unitId: "text-1" },
         });
     });
 });
@@ -498,6 +540,9 @@ describe("extractCharacterAssetReferences", () => {
 
         expect(references.map(reference => reference.assetId).sort()).toEqual(["happy-1", "thumb-1"]);
         expect(references.find(reference => reference.assetId === "happy-1")?.detail).toBe("Happy");
+        // Every picture is chosen in the character's own editor.
+        expect(references.map(reference => reference.target))
+            .toEqual([{ kind: "character", characterId: "c1" }, { kind: "character", characterId: "c1" }]);
     });
 
     it("keeps a layered character's per-tag images apart", () => {
@@ -784,7 +829,13 @@ describe("blueprints this walk cannot read", () => {
 
         expect(extraction.references).toEqual([]);
         expect(extraction.gaps).toEqual([
-            { reason: "blueprintProgramNotWalked", slice: "blueprint", location: "Title Logic" },
+            {
+                reason: "blueprintProgramNotWalked",
+                slice: "blueprint",
+                location: "Title Logic",
+                // Its owner is known, so the gap opens the blueprint - the script is in there.
+                target: { kind: "blueprint", blueprintId: "bp-1", ownerKey: "globalMain" },
+            },
         ]);
     });
 
@@ -883,5 +934,37 @@ describe("referenceGapsAffecting", () => {
         );
 
         expect(extraction.gaps[0].affects).toEqual(["image"]);
+    });
+});
+
+describe("assetNameGapTarget", () => {
+    /** A picture bound to a list row's field: no value blueprint, so the widget itself is the place. */
+    function rowBinding(place: { surfaceId: string | null; componentId: string | null }): AssetNameGap {
+        return {
+            assetKind: "image",
+            sink: {
+                kind: "binding",
+                elementId: "row-art",
+                elementName: "Row art",
+                propPath: "imageFill.assetId",
+                surfaceId: place.surfaceId,
+                surfaceName: place.surfaceId ? "Extra" : null,
+                componentId: place.componentId,
+                componentName: place.componentId ? "Card" : null,
+                blueprintId: null,
+                ownerKey: null,
+            },
+            origin: { kind: "listSource", elementId: "list", elementName: "Grid" },
+        };
+    }
+
+    it("selects the widget on its page", () => {
+        expect(assetNameGapTarget(rowBinding({ surfaceId: "page", componentId: null })))
+            .toEqual({ kind: "uiSurface", surfaceId: "page", elementId: "row-art" });
+    });
+
+    it("selects the widget in its component definition, which had no place before", () => {
+        expect(assetNameGapTarget(rowBinding({ surfaceId: null, componentId: "card" })))
+            .toEqual({ kind: "uiComponent", componentId: "card", elementId: "row-art" });
     });
 });

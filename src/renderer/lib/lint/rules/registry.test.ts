@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import { en } from "@shared/i18n/catalog/en";
 import { zh } from "@shared/i18n/catalog/zh";
+import { ja } from "@shared/i18n/catalog/ja";
 import { LINT_CATEGORY_ORDER, LINT_RULELESS_IDS, deriveLintRuleSlug, type LintRuleId } from "../types";
 import { LINT_RULES, LINT_RULES_BY_CATEGORY, getLintRule } from "./index";
 
@@ -25,8 +26,6 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "assets/unreadable",
     "assets/oversized",
     "assets/group-incomplete",
-    "portability/asset-name",
-    "portability/case-collision",
     "portability/media-format",
     "portability/vfx-alpha",
     "network/fetch-disallowed",
@@ -62,7 +61,6 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "blueprint/dlc-entrance-unguarded",
     "blueprint/unknown-node",
     "blueprint/assembled-asset-name",
-    "ui/unlocalized-text",
     "ui/page-unreachable",
     "ui/empty-behavior",
     "ui/unknown-widget",
@@ -70,6 +68,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "ui/frame-target-missing",
     "ui/frame-loop",
     "ui/list-item-field-missing",
+    "ui/component-param-missing",
     "ui/gesture-answered-twice",
     "ui/list-text-untranslated",
     "ui/localization-key-missing",
@@ -98,11 +97,12 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
 
 const EN_KEYS = flattenCatalog(en);
 const ZH_KEYS = flattenCatalog(zh);
+const JA_KEYS = flattenCatalog(ja);
 
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(74);
+        expect(LINT_RULES).toHaveLength(72);
     });
 
     it("gives every rule a unique id", () => {
@@ -128,11 +128,14 @@ describe("lint rule registry", () => {
         }
     });
 
-    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS]] as const) {
-        it(`translates every rule's title, description and message in ${locale}`, () => {
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
+        it(`translates every rule's title, description, message and help in ${locale}`, () => {
             const missing: string[] = [];
             for (const rule of LINT_RULES) {
-                for (const leaf of ["title", "description", "message"]) {
+                // `help` is the rule's topic - what it found, what that does to the game, and how
+                // to fix it - which every finding's `?` opens. A rule without one is a finding with
+                // nothing behind its question mark.
+                for (const leaf of ["title", "description", "message", "help"]) {
                     const key = `lint.rule.${rule.slug}.${leaf}`;
                     if (!keys.get(key)) {
                         missing.push(key);
@@ -171,7 +174,7 @@ describe("lint rule registry", () => {
         }
     });
 
-    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS]] as const) {
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
         it(`names every id no rule owns in ${locale}`, () => {
             for (const id of LINT_RULELESS_IDS) {
                 const slug = deriveLintRuleSlug(id);
@@ -180,7 +183,34 @@ describe("lint rule registry", () => {
                 // which names which end of the schema ladder the document fell off.
                 expect(keys.get(`lint.rule.${slug}.title`), `lint.rule.${slug}.title`).toBeTruthy();
                 expect(keys.get(`lint.rule.${slug}.description`), `lint.rule.${slug}.description`).toBeTruthy();
+                expect(keys.get(`lint.rule.${slug}.help`), `lint.rule.${slug}.help`).toBeTruthy();
             }
+        });
+    }
+
+    for (const [locale, keys] of [["en", EN_KEYS], ["zh", ZH_KEYS], ["ja", JA_KEYS]] as const) {
+        it(`labels every rule option and every choice of one in ${locale}`, () => {
+            // The settings page renders an option's row from `lint.settings.option<Key>` and falls
+            // back to the bare key, so a missing label shows `maxMegabytes` to the author.
+            const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+            const missing: string[] = [];
+            for (const rule of LINT_RULES) {
+                for (const [key, spec] of Object.entries(rule.options ?? {})) {
+                    const label = `lint.settings.option${capitalize(key)}`;
+                    if (!keys.get(label)) {
+                        missing.push(label);
+                    }
+                    if (spec.kind === "enum") {
+                        for (const choice of spec.values) {
+                            const choiceKey = `lint.settings.${key}${capitalize(choice)}`;
+                            if (!keys.get(choiceKey)) {
+                                missing.push(choiceKey);
+                            }
+                        }
+                    }
+                }
+            }
+            expect(missing).toEqual([]);
         });
     }
 

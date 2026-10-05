@@ -32,6 +32,9 @@ import { useStoryScriptIo } from "../script/useStoryScriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
 import { narralangUiEnabled } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
+import { usePanelRevealRequests } from "../../search/panelRevealRequest";
+import { REVEAL_MARK_MS } from "@/apps/workspace/components/ui/useTableRowReveal";
+import { storyPanelReveal } from "./storyPanelReveal";
 import {
     buildOutlineRows,
     isOutlineDropAllowed,
@@ -321,6 +324,43 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             cancelled = true;
         };
     }, [storyService, selectedStoryId, uiService]);
+
+    /**
+     * A jump to a story's own entry: the list opened, the story selected, its row brought on screen
+     * and marked. Called after the panel state is restored and the library read, so the selection a
+     * jump asks for is not overwritten by the one the panel last had.
+     */
+    const [revealedStory, setRevealedStory] = useState<{ storyId: string; token: number; scrolled: boolean } | null>(null);
+    const revealToken = useRef(0);
+    const panelRootRef = useRef<HTMLDivElement | null>(null);
+    usePanelRevealRequests(storyPanelReveal, ({ storyId }) => {
+        setRootOpenItems(prev => (prev.includes("stories") ? prev : [...prev, "stories"]));
+        setSelectedStoryId(storyId);
+        revealToken.current += 1;
+        setRevealedStory({ storyId, token: revealToken.current, scrolled: false });
+    });
+    useEffect(() => {
+        if (!revealedStory || revealedStory.scrolled) {
+            return;
+        }
+        const row = Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>("[data-story-entry-id]") ?? [])
+            .find(element => element.dataset.storyEntryId === revealedStory.storyId);
+        if (!row) {
+            return;
+        }
+        row.scrollIntoView({ block: "center" });
+        setRevealedStory({ ...revealedStory, scrolled: true });
+    }, [revealedStory, stories, rootOpenItems]);
+    const revealedStoryToken = revealedStory?.token ?? null;
+    useEffect(() => {
+        if (revealedStoryToken === null) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setRevealedStory(current => (current?.token === revealedStoryToken ? null : current));
+        }, REVEAL_MARK_MS);
+        return () => window.clearTimeout(timer);
+    }, [revealedStoryToken]);
 
     /**
      * A story the panel has not shown before opens with every chapter expanded: an outline that
@@ -950,7 +990,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     }, [document, selectedStoryId]);
 
     return (
-        <div className="flex h-full min-h-0 flex-col" data-panel-id={panelId}>
+        <div ref={panelRootRef} className="flex h-full min-h-0 flex-col" data-panel-id={panelId}>
             {/*
               * A row that accepts a drop stops the event here, so anything that reaches this
               * container is a place no row would take - including the empty space below the last
@@ -1003,9 +1043,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     return (
                                         <div
                                             key={entry.id}
+                                            data-story-entry-id={entry.id}
+                                            data-revealed={revealedStory?.storyId === entry.id ? "" : undefined}
                                             className={`group/story flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill ${
                                                 selected ? "border-l-2 border-primary bg-primary/20" : ""
-                                            }`}
+                                            } ${revealedStory?.storyId === entry.id ? "ring-1 ring-inset ring-primary" : ""}`}
                                             onClick={() => setSelectedStoryId(entry.id)}
                                             onContextMenu={event => handleOpenStoryMenu(event, entry)}
                                         >

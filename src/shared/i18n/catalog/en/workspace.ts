@@ -86,7 +86,7 @@ export const workspace = {
         table: {
             storyLabel: "Source",
             sourceUi: "Interface text",
-            sourceKeys: "Named keys",
+            sourceKeys: "Translation keys",
             modeTranslate: "Translate",
             modeReview: "Review",
             filterAll: "All",
@@ -107,11 +107,12 @@ export const workspace = {
             removeKey: "Remove key",
             removeKeyConfirm: "Remove {name}?",
             removeKeyConfirmDetail: "Existing translations of this key stay in the language files.",
-            removeKeyUsedBy: "Used by:",
+            removeKeyWidgets: "These widgets keep the key's words and translations as their own:",
+            removeKeyBlueprints: "Blueprints that use the key:",
             removeKeyUsedByElement: "{owner} ▸ {element}",
             removeKeyUsedByBlueprint: "Blueprint “{name}”",
             removeKeyUsedByMore: "and {count} more",
-            removeKeyUsedByAfter: "Once the key is removed, the project check reports each of them.",
+            removeKeyUsedByAfter: "Once the key is removed, the project check reports each of these blueprints.",
             sourceColumn: "Source",
             targetColumn: "Translation",
             targetPlaceholder: "Translate…",
@@ -241,6 +242,20 @@ export const workspace = {
             dropHint: "Drop audio to assign",
             findPlaceholder: "Find in lines",
         },
+    },
+    // The one notice after a project's interface document is upgraded to v13: the widgets whose
+    // source of words changed in a way the inspector shows, each with a button to it.
+    textSourceMigration: {
+        message: {
+            one: "Interface text was upgraded. The words of {count} widget now come from a different source.",
+            other: "Interface text was upgraded. The words of {count} widgets now come from a different source.",
+        },
+        place: "{n}. {owner} ▸ {element}: {change}",
+        marksKept: "now Direct, keeping its marks, and no longer uses the key {key}",
+        bindingDropped: "a binding that never showed was removed, and the key {key} shows",
+        missingKey: "the key {key} does not exist, so it is now Direct, with the same words and translations",
+        keyDiffered: "now Direct, keeping the words it showed, and no longer uses the key {key}",
+        locate: "Locate {n}",
     },
     // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
     // load, or loads wrong.
@@ -560,7 +575,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the named strings, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the translation keys, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -819,6 +834,7 @@ export const workspace = {
                 runStatus: "Run status",
                 projectTrust: "Project trust",
         studioTasks: "Background work",
+                problems: "Problems",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
                 shortcuts: "Shortcuts and mouse actions",
@@ -1709,7 +1725,7 @@ export const workspace = {
             building: "Building search index…",
             // Shown before anything is typed. "Building" and "no results" both had a line; this
             // state fell through to an empty list and rendered a blank panel.
-            idle: "Search scenes, characters, story text, assets and blueprints.",
+            idle: "Search scenes, characters, story text, interface text, assets and blueprints.",
             empty: "No results",
             more: "{count} more",
             // Refined matching, shared with the scene find bar so the same query means one thing.
@@ -1739,8 +1755,9 @@ export const workspace = {
                 blueprint: "Blueprints",
                 asset: "Assets",
                 storyText: "Story Text",
+                uiText: "Interface Text",
                 variable: "Variables",
-                uiTextKey: "UI Text Keys",
+                uiTextKey: "Translation Keys",
                 blueprintNode: "Blueprint Nodes",
             },
             // Trailing badge on a result row standing in for several identical ones.

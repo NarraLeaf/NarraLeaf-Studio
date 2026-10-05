@@ -26,6 +26,8 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { normalizeUIInputActionLibrary, normalizeUISurfaceActionEnablements } from "@shared/types/ui-editor/inputAction";
 import { UI_IMAGE_ELEMENT_TYPE, foldLegacyImageProps } from "@shared/types/ui-editor/legacyImageProps";
+import { readUITextSite, uiTextSiteOf } from "@shared/types/ui-editor/textSource";
+import { LEGACY_UI_TEXT_UNIT_PROP } from "@shared/types/ui-editor/textSourceMigration";
 import { normalizeFlowChildLayouts } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 
 const document = JSON.parse(
@@ -49,6 +51,28 @@ describe("the shipped starter template opens without being rewritten", () => {
         // A lower version migrates on open, and the migration is a save. Every project made from
         // this template would start life with an uncommitted change to a file nobody had opened.
         expect(document.schemaVersion).toBe(UI_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("keeps one source of words per widget, as the v13 step leaves a document", () => {
+        // Below v13 a load runs the text step, which writes the document and the translation files.
+        // The generator settles the English content through the same step, so this holds of all three.
+        const unsettled: string[] = [];
+        for (const pool of pools) {
+            for (const element of Object.values(pool.elements ?? {})) {
+                const site = uiTextSiteOf(element.type);
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                if (!site) {
+                    continue;
+                }
+                if (props[LEGACY_UI_TEXT_UNIT_PROP] !== undefined) {
+                    unsettled.push(`${pool.label}: ${element.name || element.id} carries ${LEGACY_UI_TEXT_UNIT_PROP}`);
+                }
+                if (readUITextSite(element, site).key && props[site.textProp] !== undefined) {
+                    unsettled.push(`${pool.label}: ${element.name || element.id} holds words beside its key`);
+                }
+            }
+        }
+        expect(unsettled).toEqual([]);
     });
 
     it("has no image left in the shape that came before imageFill", () => {

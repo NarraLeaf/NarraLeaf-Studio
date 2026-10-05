@@ -19,11 +19,11 @@ export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(Tex
     type: DIALOG_SENTENCE_TYPE,
     displayName: () => translate("widgets.defaults.dialog.name"),
     icon: MessageSquareText,
-    defaultElement: inherited =>
+    defaultElement: (inherited, words) =>
         patchTextWidgetDefaultElement(inherited, {
             layout: { width: 560, height: 72 },
             props: {
-                text: translate("widgets.defaults.dialog.text"),
+                text: words.t("widgets.defaults.dialog.text"),
                 fontSize: 24,
                 color: "#f8fafc",
                 fontWeight: "normal",

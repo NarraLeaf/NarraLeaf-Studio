@@ -1,8 +1,9 @@
 /** `storyInspector` - the per-action-type inspector in the story scene editor. */
 export const storyInspector = {
-    // The disclosure that hides this line's translation/voice unit id. The id itself is a uuid, so
-    // the label names what it is FOR rather than what it is.
-    textId: "Localization key",
+    // The disclosure that hides this line's translation/voice unit id. It carries the name of the
+    // `unit_id` column the translation and recording-script exports show it under, which is where an
+    // author meets it; a translation key is a different thing and has its own name.
+    textId: "Unit ID",
     advanced: "Advanced",
     advancedParams: "Advanced params",
     noVariablesDeclared: "No variables declared",

@@ -89,6 +89,12 @@ export const properties = {
         remove: "パラメータを削除",
         namePlaceholder: "名前",
         defaultPlaceholder: "初期値",
+        type: "型",
+        typeString: "文字列",
+        typeText: "テキスト",
+        bindLabel: "パラメータ",
+        bindNone: "パラメータなし",
+        bindMissing: "見つからないパラメータ",
     },
     binding: {
         notReady: "このコントロールのブループリントがまだ用意できていない",

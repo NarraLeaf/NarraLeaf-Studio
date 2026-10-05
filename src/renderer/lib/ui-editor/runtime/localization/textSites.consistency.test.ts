@@ -1,14 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
-import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import {
+    UI_TEXT_SITES,
+    uiTextSiteOf,
+    uiTextSitesFromPluginDeclaration,
+    uiTextSitesOf,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
+import { registerContributedWidgetSource, type ContributedWidgetDeclaration } from "@shared/types/ui-editor/contributedWidgets";
 import { WIDGET_TYPE_PARENTS } from "@shared/types/ui-editor/widgetInheritance";
-import { keepWordsOnWidgets } from "@/apps/workspace/modules/ui-editor/panel/templates/starterTitlePage";
-import { createTestLintContext } from "@/lib/lint/testContext";
-import { listInterfaceTextUnitSites, listSurfaceTextSites, UI_LINT_RULES } from "@/lib/lint/rules/ui";
+import { settleIncomingUITextSources } from "@shared/types/ui-editor/textSourceMigration";
+import { listInterfaceTextUnitSites, listSurfaceTextSites } from "@/lib/lint/rules/ui";
 import { describeWidget } from "@/lib/ui-cli/catalog";
 import {
     listBindableValueTargets,
@@ -17,6 +23,7 @@ import {
 import { isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { extractUiTranslationRows } from "@/lib/workspace/services/localization/localizationModel";
+import { extractUITextEntries, type UITextExtractionInput } from "@/lib/workspace/services/search/sources/uiTextSource";
 
 /**
  * Every reader of interface text answers from the one table (`textSites.ts`).
@@ -28,7 +35,28 @@ import { extractUiTranslationRows } from "@/lib/workspace/services/localization/
  * hard-coded beside the table, a prop name the table does not list) reports a site the table does not
  * know, and this fails - which is the point: the alternative is another copy of the rules, and copies
  * that drifted are how a word came to read one way on the canvas and another in the game.
+ *
+ * A plugin's widget is on the page too, declaring two of its props as words the way a manifest does
+ * (`contributes.widgetText`), one with its own key prop and one with the default: every reader that
+ * walks a page's words has to find exactly those, and the readers only Studio's own widgets answer
+ * (typing in place, value bindings) have to find nothing on it.
  */
+
+/** A plugin widget, as its manifest declares it, answered behind the table as a loaded plugin's would be. */
+const PLUGIN_TYPE = "probe.plugin.badge";
+const PLUGIN_DECLARATION: ContributedWidgetDeclaration = {
+    type: PLUGIN_TYPE,
+    ownerPluginId: "probe.plugin",
+    textSites: uiTextSitesFromPluginDeclaration(PLUGIN_TYPE, [
+        { prop: "caption", keyProp: "captionKey" },
+        { prop: "hint", keyProp: "hintLocalizationKey" },
+    ]),
+};
+const removePluginSource = registerContributedWidgetSource({
+    get: type => (type === PLUGIN_TYPE ? PLUGIN_DECLARATION : undefined),
+    list: () => [PLUGIN_DECLARATION],
+});
+afterAll(removePluginSource);
 
 /** Props that might hold words on some widget, beyond each widget's own string defaults. */
 const CANDIDATE_TEXT_PROPS = ["text", "label", "placeholder", "title", "caption", "value", "hint", "tooltip", "alt"];
@@ -40,11 +68,15 @@ const CANDIDATE_KEY_PROPS = [
     "textLocalizationKey",
     "titleLocalizationKey",
     "valueLocalizationKey",
+    "captionKey",
+    "hintLocalizationKey",
 ];
 
 /** Every built-in widget type, specialisations included. */
-const WIDGET_TYPES = [...new Set([...BuiltinWidgetModules.map(module => module.type), ...Object.keys(WIDGET_TYPE_PARENTS)])]
+const BUILTIN_WIDGET_TYPES = [...new Set([...BuiltinWidgetModules.map(module => module.type), ...Object.keys(WIDGET_TYPE_PARENTS)])]
     .filter(type => type !== "nl.root");
+/** And the plugin's. */
+const WIDGET_TYPES = [...BUILTIN_WIDGET_TYPES, PLUGIN_TYPE];
 
 function defaultStringProps(type: string): string[] {
     const module = BuiltinWidgetModules.find(candidate => candidate.type === type);
@@ -69,7 +101,7 @@ function probeKey(keyProp: string): string {
     return `probe.${keyProp}`;
 }
 
-type ProbeShape = { keys: boolean; localizable: boolean };
+type ProbeShape = { keys: boolean };
 
 function probeElement(type: string, index: number, shape: ProbeShape): UIElement {
     const props: Record<string, unknown> = {};
@@ -80,9 +112,6 @@ function probeElement(type: string, index: number, shape: ProbeShape): UIElement
         for (const keyProp of CANDIDATE_KEY_PROPS) {
             props[keyProp] = probeKey(keyProp);
         }
-    }
-    if (shape.localizable) {
-        props.localizable = true;
     }
     return {
         id: `probe-${index}`,
@@ -110,34 +139,52 @@ function probeDocument(shape: ProbeShape): UIDocument {
     } as unknown as UIDocument;
 }
 
-const PLAIN = probeDocument({ keys: false, localizable: false });
-const KEYED = probeDocument({ keys: true, localizable: false });
-const OPTED_IN = probeDocument({ keys: false, localizable: true });
+const PLAIN = probeDocument({ keys: false });
+const KEYED = probeDocument({ keys: true });
 
 function typeOf(document: UIDocument, elementId: string): string {
     return document.elements[elementId]?.type ?? "?";
 }
 
-/** `type.prop` for every built-in type whose site answers yes to `select`, read through inheritance. */
+/**
+ * `type.prop` for every site that answers yes to `select`: each built-in type's, read through
+ * inheritance, and each the plugin's widget declares.
+ */
 function expectedSites(select: (site: UITextSite) => string | undefined): string[] {
     const out: string[] = [];
     for (const type of WIDGET_TYPES) {
-        const site = uiTextSiteOf(type);
-        const prop = site ? select(site) : undefined;
-        if (prop) {
-            out.push(`${type}.${prop}`);
+        for (const site of uiTextSitesOf(type)) {
+            const prop = select(site);
+            if (prop) {
+                out.push(`${type}.${prop}`);
+            }
         }
     }
     return out.sort();
 }
 
 const words = (site: UITextSite) => (site.role === "words" ? site.textProp : undefined);
+
+const SEARCH_INPUT: UITextExtractionInput = {
+    keys: {},
+    labels: { sample: "Sample text", widgetName: element => element.type },
+};
 const sorted = (values: Iterable<string>) => [...new Set(values)].sort();
 
 describe("interface text sites", () => {
     it("declares one site per widget type", () => {
         const types = UI_TEXT_SITES.map(site => site.widgetType);
         expect(new Set(types).size).toBe(types.length);
+    });
+
+    it("answers a plugin widget with the sites its manifest declares, and a built-in widget with its one", () => {
+        expect(uiTextSitesOf(PLUGIN_TYPE).map(site => [site.textProp, site.keyProp, site.role, site.valueBinding])).toEqual([
+            ["caption", "captionKey", "words", "none"],
+            ["hint", "hintLocalizationKey", "words", "none"],
+        ]);
+        expect(uiTextSiteOf(PLUGIN_TYPE)).toBeUndefined();
+        expect(uiTextSitesOf("nl.button")).toEqual([uiTextSiteOf("nl.button")]);
+        expect(uiTextSitesOf("probe.plugin.unloaded")).toEqual([]);
     });
 
     it("lint walks exactly the sites a player reads (listSurfaceTextSites)", () => {
@@ -155,40 +202,40 @@ describe("interface text sites", () => {
         expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" ? site.keyProp : undefined)));
     });
 
-    it("lint reads an element's own unit only where the table gives the site one", () => {
-        const found = listInterfaceTextUnitSites(OPTED_IN).map(site =>
+    it("lint reads an element's own words through its own unit on exactly the sites a player reads", () => {
+        const found = listInterfaceTextUnitSites(PLAIN).map(site =>
             site.binding.kind === "implicit"
                 ? `${site.element.type}.${site.binding.unitId.split(".").pop()}`
                 : `${site.element.type}.(not a unit)`,
         );
-        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" && site.unitProp ? site.textProp : undefined)));
-    });
-
-    it("ui/unlocalized-text reports exactly the sites a player reads", async () => {
-        const unlocalized = UI_LINT_RULES.find(rule => rule.id === "ui/unlocalized-text");
-        const findings = await unlocalized!.run(
-            createTestLintContext({
-                uiDocument: PLAIN,
-                localization: { sourceLocale: "en", targetLocales: ["zh"], documents: new Map() },
-            }),
-            {},
-        );
-        const found = findings.map(finding => {
-            const location = finding.location as { elementId?: string };
-            const literal = String(finding.messageParams?.text ?? "");
-            return `${typeOf(PLAIN, location.elementId ?? "")}.${literal.slice("Probe words in ".length)}`;
-        });
         expect(sorted(found)).toEqual(expectedSites(words));
     });
 
-    it("the localization panel lists an element's own unit only where the table gives the site one", () => {
-        const found = extractUiTranslationRows(OPTED_IN).map(row => `${typeOf(OPTED_IN, row.elementId)}.${row.prop}`);
-        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" && site.unitProp ? site.textProp : undefined)));
+    it("the localization panel lists an element's own words on exactly the sites a player reads", () => {
+        const found = extractUiTranslationRows(PLAIN).map(row => `${typeOf(PLAIN, row.elementId)}.${row.prop}`);
+        expect(sorted(found)).toEqual(expectedSites(words));
     });
 
-    it("the page a template hands a project drops exactly the table's key props", () => {
-        const elements = Object.values(structuredClone(KEYED).elements);
-        keepWordsOnWidgets(elements);
+    it("project search finds words on exactly the table's sites, sample sites included (extractUITextEntries)", () => {
+        const found = extractUITextEntries(PLAIN, SEARCH_INPUT).map(entry => {
+            const [elementId, prop] = entry.id.slice("uitext:".length).split(".");
+            return `${typeOf(PLAIN, elementId)}.${prop}`;
+        });
+        expect(sorted(found)).toEqual(expectedSites(site => site.textProp));
+    });
+
+    it("project search reads each site's key from the table's key prop", () => {
+        const keys = Object.fromEntries(CANDIDATE_KEY_PROPS.map(keyProp => [probeKey(keyProp), `Key words of ${keyProp}`]));
+        const found = extractUITextEntries(KEYED, { ...SEARCH_INPUT, keys })
+            .filter(entry => entry.text.startsWith("Key words of "))
+            .map(entry => `${typeOf(KEYED, entry.id.slice("uitext:".length).split(".")[0])}.${entry.text.slice("Key words of ".length)}`);
+        expect(sorted(found)).toEqual(expectedSites(site => (site.role === "words" ? site.keyProp : undefined)));
+    });
+
+    it("elements arriving in a project that lacks their keys drop exactly the table's key props", () => {
+        const elements = Object.values(
+            settleIncomingUITextSources(structuredClone(KEYED).elements, { hasKey: () => false }).table,
+        );
         const found: string[] = [];
         for (const element of elements) {
             for (const keyProp of CANDIDATE_KEY_PROPS) {
@@ -201,7 +248,7 @@ describe("interface text sites", () => {
     });
 
     it("the canvas types in place exactly where the table says", () => {
-        const found = WIDGET_TYPES.filter(type => isInlineTextEditableElement(probeElement(type, 0, { keys: false, localizable: false })));
+        const found = WIDGET_TYPES.filter(type => isInlineTextEditableElement(probeElement(type, 0, { keys: false })));
         expect(sorted(found.map(type => `${type}.${uiTextSiteOf(type)?.textProp}`))).toEqual(
             expectedSites(site => (site.typedOnCanvas ? site.textProp : undefined)),
         );
@@ -215,7 +262,7 @@ describe("interface text sites", () => {
         const item = Object.fromEntries(CANDIDATE_TEXT_PROPS.map(prop => [prop, `Bound ${prop}`]));
         const found: string[] = [];
         WIDGET_TYPES.forEach((type, index) => {
-            const element = probeElement(type, index, { keys: false, localizable: false });
+            const element = probeElement(type, index, { keys: false });
             element.valueBindings = Object.fromEntries(
                 CANDIDATE_TEXT_PROPS.map(prop => [prop, { kind: "listItemField" as const, fieldId: `f-${prop}` }]),
             );
@@ -235,6 +282,29 @@ describe("interface text sites", () => {
         expect(sorted(found)).toEqual(expectedSites(site => (site.valueBinding !== "none" ? site.textProp : undefined)));
     });
 
+    it("a component's text parameter shows words exactly where the table takes a binding a player reads", () => {
+        const found: string[] = [];
+        WIDGET_TYPES.forEach((type, index) => {
+            const element = probeElement(type, index, { keys: false });
+            element.valueBindings = Object.fromEntries(
+                CANDIDATE_TEXT_PROPS.map(prop => [prop, { kind: "componentParam" as const, paramId: `p-${prop}` }]),
+            );
+            const texts = Object.fromEntries(CANDIDATE_TEXT_PROPS.map(prop => [
+                `p-${prop}`,
+                { origin: "placement" as const, text: `Given ${prop}`, key: "", unitId: `ui:placement.param.p-${prop}` },
+            ]));
+            const merged = mergeElementWithBlueprintValues(element, MAIN_APP_SURFACE_ID, null, null, "", texts);
+            for (const prop of CANDIDATE_TEXT_PROPS) {
+                if ((merged.props as Record<string, unknown>)[prop] === `Given ${prop}`) {
+                    found.push(`${type}.${prop}`);
+                }
+            }
+        });
+        expect(sorted(found)).toEqual(
+            expectedSites(site => (site.role === "words" && site.valueBinding !== "none" ? site.textProp : undefined)),
+        );
+    });
+
     it("the interface CLI offers to bind words exactly where the table does", () => {
         const found = listBindableValueTargets()
             .filter(target => target.valueType === "string" && CANDIDATE_TEXT_PROPS.includes(target.propPath))
@@ -244,8 +314,8 @@ describe("interface text sites", () => {
     });
 
     it("the interface CLI notes a key only where the table gives the site one", () => {
-        const keyed = WIDGET_TYPES.filter(type => (describeWidget(type)?.notes ?? []).some(note => note.includes("is read from that translation key")));
-        const expected = WIDGET_TYPES.filter(type => {
+        const keyed = BUILTIN_WIDGET_TYPES.filter(type => (describeWidget(type)?.notes ?? []).some(note => note.includes("is read from that translation key")));
+        const expected = BUILTIN_WIDGET_TYPES.filter(type => {
             const site = uiTextSiteOf(type);
             return site?.role === "words" && Boolean(site.keyProp) && site.canvasDrawsKey;
         });

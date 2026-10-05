@@ -3,7 +3,7 @@ import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import type { FontCoverage } from "@shared/typography/fontCoverage";
 import type { LocalizationDocument } from "@shared/types/localization";
 import type { UIDocument } from "@shared/types/ui-editor/document";
-import { AssetType } from "../../workspace/services/assets/assetTypes";
+import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { LintAssetEntry, LintContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintFinding, LintRuleId } from "../types";
@@ -168,10 +168,11 @@ describe("typography/glyph-coverage", () => {
         expect(findings).toEqual([{
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnreadable",
-            // The library's name, not the asset id: these findings are filed under the project, so
-            // the locator column prints nothing and this is all the author gets to identify it by.
+            // The library's name, not the asset id.
             messageParams: { font: "Wrecked Serif" },
-            location: { kind: "project" },
+            // Filed under the font, and opened on its row in the library, where it is replaced.
+            location: { kind: "asset", assetId: "broken", assetName: "Wrecked Serif" },
+            target: { kind: "asset", assetId: "broken", assetType: "font" },
         }]);
     });
 
@@ -194,7 +195,8 @@ describe("typography/glyph-coverage", () => {
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable",
             messageParams: { font: "MS Gothic.ttc", format: "ttc" },
-            location: { kind: "project" },
+            location: { kind: "asset", assetId: "collection", assetName: "MS Gothic.ttc" },
+            target: { kind: "asset", assetId: "collection", assetType: "font" },
         });
         // The Latin face still answers for the rest, so the kana is still reported.
         expect(findings[1]!.messageParams).toMatchObject({ character: "こ" });
@@ -211,6 +213,8 @@ describe("typography/glyph-coverage", () => {
         expect(findings.at(-1)).toMatchObject({
             messageKey: "lint.rule.typographyGlyphCoverage.messageMore",
             messageParams: { count: 5 },
+            // That many missing says the font is not for this language: the font list is the answer.
+            target: { kind: "projectPage", page: "design", part: "fonts" },
         });
     });
 });
@@ -354,6 +358,94 @@ describe("typography/glyph-coverage / languages", () => {
     });
 });
 
+describe("typography/glyph-coverage / a widget's states", () => {
+    /** A page holding one text whose resting state draws in `resting` and whose other states draw in theirs. */
+    function pageWith(text: string, resting: string, states: { name: string; rows: unknown[] }[]): UIDocument {
+        return {
+            surfaces: [{ id: "s1", name: "Main Menu", rootElementId: "root" }],
+            elements: {
+                root: { id: "root", type: "nl.root", childrenIds: ["label"] },
+                label: {
+                    id: "label",
+                    type: "nl.text",
+                    name: "Greeting",
+                    childrenIds: [],
+                    props: {
+                        text,
+                        fontAssetId: resting,
+                        appearance: {
+                            defaultVariantId: "default",
+                            variants: [
+                                { id: "default", name: "Default", propertyGroups: [{ key: "fontAssetId", rows: [{ value: resting }] }] },
+                                ...states.map((state, index) => ({
+                                    id: `state-${index}`,
+                                    name: state.name,
+                                    propertyGroups: [{ key: "fontAssetId", rows: state.rows }],
+                                })),
+                            ],
+                        },
+                    },
+                },
+            },
+        } as unknown as UIDocument;
+    }
+
+    function contextFor(uiDocument: UIDocument): LintContext {
+        return createTestLintContext({ uiDocument, io: ioWith({ latin: LATIN, kana: KANA }) as LintContext["io"] });
+    }
+
+    it("checks the font each state draws in, and names the state whose font alone cannot draw a character", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const findings = await runRule("typography/glyph-coverage", contextFor(pageWith("Hiこ", "kana", [
+            { name: "Selected", rows: [{ value: "latin" }] },
+        ])));
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]!.messageKey).toBe("lint.rule.typographyGlyphCoverage.messageInState");
+        expect(findings[0]!.messageParams).toEqual({ character: "こ", count: 1, state: "Selected" });
+        expect(findings[0]!.location).toMatchObject({ kind: "surface", elementId: "label" });
+    });
+
+    it("says nothing while every state draws in a font that has the character", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        expect(await runRule("typography/glyph-coverage", contextFor(pageWith("Hiこ", "kana", [
+            { name: "Selected", rows: [{ value: "kana" }] },
+            // Only hovered: wherever the row does not apply the state draws the widget's own font.
+            { name: "Lit", rows: [{ value: "kana", conditions: { hovered: true } }] },
+        ])))).toEqual([]);
+    });
+
+    it("reads a state's conditional row as a face it can be drawn in", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const findings = await runRule("typography/glyph-coverage", contextFor(pageWith("Hiこ", "kana", [
+            { name: "Lit", rows: [{ value: "latin", conditions: { hovered: true } }] },
+        ])));
+        expect(findings.map(finding => finding.messageParams?.state)).toEqual(["Lit"]);
+    });
+
+    it("reports a character the resting face cannot draw for the widget, without a state", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const findings = await runRule("typography/glyph-coverage", contextFor(pageWith("こ", "latin", [
+            { name: "Selected", rows: [{ value: "latin" }] },
+        ])));
+        expect(findings).toHaveLength(1);
+        expect(findings[0]!.messageKey).toBe("lint.rule.typographyGlyphCoverage.message");
+        expect(findings[0]!.messageParams).toEqual({ character: "こ", count: 1 });
+    });
+
+    it("names the language and the state together in a project with languages", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const ctx = createTestLintContext({
+            uiDocument: pageWith("Hiこ", "kana", [{ name: "Selected", rows: [{ value: "latin" }] }]),
+            localization: { sourceLocale: "ja", targetLocales: [], documents: new Map() },
+            io: ioWith({ latin: LATIN, kana: KANA }) as LintContext["io"],
+        });
+        const findings = await runRule("typography/glyph-coverage", ctx);
+        expect(findings[0]!.messageKey).toBe("lint.rule.typographyGlyphCoverage.messageInLanguageInState");
+        expect(findings[0]!.messageParams).toMatchObject({ character: "こ", language: "ja", state: "Selected" });
+    });
+});
+
 describe("typography/locale-no-font", () => {
     const withLanguages = (io: Partial<LintContext["io"]> = {}): LintContext => createTestLintContext({
         localization: {
@@ -384,6 +476,8 @@ describe("typography/locale-no-font", () => {
             messageKey: "lint.rule.typographyLocaleNoFont.message",
             messageParams: { language: "en" },
             location: { kind: "project" },
+            // Project ▸ Design, at the font stack, where each font's languages are chosen.
+            target: { kind: "projectPage", page: "design", part: "fonts" },
         }]);
     });
 

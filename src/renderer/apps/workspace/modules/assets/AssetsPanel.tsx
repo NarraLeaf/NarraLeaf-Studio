@@ -4,7 +4,7 @@ import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboa
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
-import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, categoryOfAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ShortcutContextMenu } from "../../components/ui/ShortcutContextMenu";
@@ -34,8 +34,8 @@ import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions
 import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
 import { AssetsPanelContext, type AssetSetRevealState } from './AssetsPanelContext';
-import { ASSET_SET_REVEAL_EVENT, consumeAssetSetReveal, type AssetSetRevealRequest } from "./assetSetReveal";
-import { planAssetSetReveal } from "./state/assetSetRevealPlan";
+import { ASSET_SET_REVEAL_EVENT, consumeAssetSetReveal, type AssetRevealSubject, type AssetSetRevealRequest } from "./assetSetReveal";
+import { planAssetReveal, planAssetSetReveal } from "./state/assetSetRevealPlan";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -438,7 +438,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     
     // No library is handed in: what a shift range covers is the rows the view below is drawing, and
     // the view publishes those through `publishRowOrder`.
-    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, handleSelectAll, publishRowOrder } = useMultiSelection({
+    const { selectedItems, setSelectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, handleSelectAll, publishRowOrder } = useMultiSelection({
         onSelectionChange: (selection) => {
             if(selection.size === 1) {
                 setFocusedItemId(Array.from(selection)[0]);
@@ -633,14 +633,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * The request arrives on mount - revealing a hidden panel is what mounts it - and at that moment
      * the library is still being read, so nothing can be opened yet.
      */
-    const [pendingRevealSetId, setPendingRevealSetId] = useState<string | null>(null);
+    const [pendingReveal, setPendingReveal] = useState<AssetRevealSubject | null>(null);
     const [assetSetReveal, setAssetSetReveal] = useState<AssetSetRevealState | null>(null);
     const revealNonce = useRef(0);
 
     useEffect(() => {
         const requested = consumeAssetSetReveal(panelId);
         if (requested) {
-            setPendingRevealSetId(requested);
+            setPendingReveal(requested);
         }
         const onRequest = (event: Event) => {
             const detail = (event as CustomEvent<AssetSetRevealRequest>).detail;
@@ -650,24 +650,38 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             // Spend the slot as well: this panel was already mounted, so the copy left for the next
             // mount would open folders in a panel the author opens later for something else.
             consumeAssetSetReveal(panelId);
-            setPendingRevealSetId(detail.setId);
+            setPendingReveal(detail.subject);
         };
         window.addEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
         return () => window.removeEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
     }, [panelId]);
 
     useEffect(() => {
-        if (!pendingRevealSetId || !hasLoaded) {
+        if (!pendingReveal || !hasLoaded) {
             return;
         }
-        // One attempt, against a loaded library. A set that is not there went away between the click
-        // and this render, and holding the request would open folders under the author later.
-        setPendingRevealSetId(null);
-        const plan = planAssetSetReveal({
-            setId: pendingRevealSetId,
-            placements: resolvedAssetSets,
-            groups: Object.values(groups).flat(),
-        });
+        // One attempt, against a loaded library. A set or a file that is not there went away between
+        // the click and this render, and holding the request would open folders under the author later.
+        setPendingReveal(null);
+        const revealedAsset = pendingReveal.kind === "asset"
+            ? ASSET_CATEGORY_ORDER.flatMap(category => assets[category]).find(asset => asset.id === pendingReveal.id) ?? null
+            : null;
+        if (pendingReveal.kind === "asset" && !revealedAsset) {
+            return;
+        }
+        const plan = revealedAsset
+            ? planAssetReveal({
+                asset: revealedAsset,
+                category: categoryOfAssetType(revealedAsset.type),
+                holders: resolvedAssetSets,
+                placements: resolvedAssetSets,
+                groups: Object.values(groups).flat(),
+            })
+            : planAssetSetReveal({
+                setId: pendingReveal.id,
+                placements: resolvedAssetSets,
+                groups: Object.values(groups).flat(),
+            });
         if (!plan) {
             return;
         }
@@ -697,17 +711,34 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         // The overview is the one view with no row to land on. Nothing else about the author's view
         // is touched - a tree stays a tree, a grid stays a grid.
         setViewMode(prev => (prev === "overview" ? "list" : prev));
-        const entry = findSet(pendingRevealSetId);
-        if (entry) {
-            handleAssetSetSelect(entry);
+        if (revealedAsset) {
+            // A file is a row a search can hide, unlike a set: the jump stands the library where the
+            // file is filed, as the browser always does.
+            if (isNarrowed) {
+                clearSearch();
+                setActiveFilters([]);
+            }
+            const key = assetSelectionKey(revealedAsset.id, false);
+            setSelectedItems(new Set([key]));
+            setFocusedItemId(key);
+            context?.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: revealedAsset });
+        } else {
+            const entry = findSet(pendingReveal.id);
+            if (entry) {
+                handleAssetSetSelect(entry);
+            }
         }
         revealNonce.current += 1;
         setAssetSetReveal({
-            setId: pendingRevealSetId,
+            setId: revealedAsset ? null : pendingReveal.id,
+            ...(revealedAsset ? { assetId: revealedAsset.id } : {}),
             ancestorSetIds: plan.ancestorSetIds,
             nonce: revealNonce.current,
         });
-    }, [clearSearch, findSet, groups, handleAssetSetSelect, hasLoaded, isBrowser, pendingRevealSetId, resolvedAssetSets]);
+    }, [
+        assets, clearSearch, context, findSet, groups, handleAssetSetSelect, hasLoaded, isBrowser, isNarrowed,
+        pendingReveal, resolvedAssetSets, setFocusedItemId, setSelectedItems,
+    ]);
 
     /**
      * The mark goes away on its own: it says "here", and a ring that stays says "wrong" - the same

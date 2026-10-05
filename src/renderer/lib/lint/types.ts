@@ -104,8 +104,6 @@ export type LintRuleId =
     | "assets/unreadable"
     | "assets/oversized"
     | "assets/group-incomplete"
-    | "portability/asset-name"
-    | "portability/case-collision"
     | "portability/media-format"
     | "portability/vfx-alpha"
     | "network/fetch-disallowed"
@@ -141,7 +139,6 @@ export type LintRuleId =
     | "blueprint/dlc-entrance-unguarded"
     | "blueprint/unknown-node"
     | "blueprint/assembled-asset-name"
-    | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
     | "ui/unknown-widget"
@@ -149,6 +146,7 @@ export type LintRuleId =
     | "ui/frame-target-missing"
     | "ui/frame-loop"
     | "ui/list-item-field-missing"
+    | "ui/component-param-missing"
     | "ui/gesture-answered-twice"
     | "ui/list-text-untranslated"
     | "ui/localization-key-missing"
@@ -300,6 +298,11 @@ export type LintReport = {
     rulesRun: LintRuleId[];
     /** Rules configured `off`, plus anything left unrun when the sweep was cancelled. */
     skipped: LintRuleId[];
+    /**
+     * How long each rule that ran took, in milliseconds. What says which rule a slow sweep is slow
+     * in; absent on a report put together by hand.
+     */
+    durations?: Partial<Record<LintRuleId, number>>;
 };
 
 /**

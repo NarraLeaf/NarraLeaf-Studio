@@ -40,8 +40,8 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 ## Button
 
 `nl.button` 提供：
-- `blueprint.button.getLabel` / `blueprint.element.button.getLabel` - 读取按钮文本
-- `blueprint.button.setLabel` / `blueprint.element.button.setLabel` - 设置按钮文本
+- `blueprint.button.getLabel` / `blueprint.element.button.getLabel` - 读取按钮屏幕上正在显示的文本，规则与 Text 的 `Get Text` 相同
+- `blueprint.button.setLabel` / `blueprint.element.button.setLabel` - 设置按钮文本，按 Text 的「写入的文字」显示：所有语言中都显示这句，优先于翻译键、译文与蓝图值，直到页面重新打开
 - `blueprint.button.setPointer` / `blueprint.element.button.setPointer` - 设置按钮默认指针形态。卡片字段 `Pointer` 使用和按钮 Appearance 检视器 Mouse 区相同的带图标下拉框，可选 `Auto`、`Default`、`Pointer`、`Text`、`Move`、`Grab`、`Grabbing`、`Crosshair`、`Help`、`Wait`、`Progress`、`Not allowed`。`Auto` 会在运行时按按钮是否可点击解析为常规点击指针或默认指针；禁用按钮仍由渲染器显示 `not-allowed`
 - Common Visible / Enabled
 - Variant 使用 Displayable `Set Variant`

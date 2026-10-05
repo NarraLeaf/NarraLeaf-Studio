@@ -6,6 +6,8 @@ import { Share2, Unlink } from "lucide-react";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
+import { useHoverFollowsCanvas } from "./useHoverFollowsCanvas";
+import { isPlainSelectionPress, pressLandsOnClippedSelection } from "./clippedSelectionDrag";
 import { useTranslation } from "@/lib/i18n";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -318,6 +320,8 @@ export function UIEditorInteractionLayer({
             root.removeEventListener("focusout", focusOut, true);
         };
     }, [containerRef, widgetRuntimeStore]);
+
+    useHoverFollowsCanvas(containerRef, widgetRuntimeStore, viewport, documentRevision);
 
     // Resolve DOM nodes after commit: querySelector during render cannot see widgets inserted in the same commit.
     const [selectedTargets, setSelectedTargets] = useState<HTMLElement[]>([]);
@@ -666,21 +670,6 @@ export function UIEditorInteractionLayer({
 
     const transformEnabled = isSurfaceGestureEnabled("transform", readOnly);
 
-    const handleSelectionDragStart = useCallback(
-        (e: any) => {
-            const eventTarget = e.inputEvent?.target as Element | null;
-            if (isMoveableControlTarget(eventTarget)) {
-                return false;
-            }
-            // Yielding a drag that starts inside the selection exists only so Moveable can move it.
-            // With no transform to hand it to, keep Selecto: dragging there marquees like anywhere else
-            // instead of doing nothing at all.
-            if (transformEnabled && isTargetInsideSelection(eventTarget)) {
-                return false;
-            }
-        },
-        [isMoveableControlTarget, isTargetInsideSelection, transformEnabled],
-    );
     const panState = useRef<{
         active: boolean;
         startX: number;
@@ -700,26 +689,6 @@ export function UIEditorInteractionLayer({
     const insertSnapEnabled = useCallback(() => stateService.getSmartSnapEnabled(), [stateService]);
     const insertSnapSuspended = useCallback(() => altKeyRef.current, []);
     const transformSnapSuspended = useCallback(() => altKeyRef.current, []);
-
-    useSurfaceInteractionEvents({
-        surfaceElement,
-        surfaceId,
-        surface,
-        tool,
-        viewport,
-        selectionData,
-        clientToSurfaceCoords,
-        setInsertPreview,
-        insertPreviewRef,
-        insertStateRef: insertState,
-        panStateRef: panState,
-        documentService,
-        stateService,
-        uiService,
-        insertSnapEnabled,
-        insertSnapSuspended,
-        readOnly,
-    });
 
     const transformController = useTransformController({
         documentService,
@@ -755,6 +724,73 @@ export function UIEditorInteractionLayer({
             .sort((a, b) => b.priority - a.priority);
         return candidates[0] ?? transformController;
     }, [imageCropController, transformController]);
+
+    // A press inside the selection's frame where a clipping container hides the element (see
+    // `pressLandsOnClippedSelection`). The canvas's pointerdown would select whatever the press hit
+    // and Selecto would start a marquee; Moveable takes it instead, and a press released without
+    // moving is still the click it would have been (`useSurfaceInteractionEvents`).
+    const selectionDraggable =
+        transformEnabled && activeController.id === "transform" && activeController.moveableProps.draggable === true;
+    const activeTargets = activeController.targets;
+    const pressDragsClippedSelection = useCallback(
+        (event: MouseEvent | PointerEvent) => {
+            const moveable = moveableRef.current;
+            if (!selectionDraggable || !moveable || !isPlainSelectionPress(event)) {
+                return false;
+            }
+            const point = { x: event.clientX, y: event.clientY };
+            return pressLandsOnClippedSelection({
+                point,
+                targets: activeTargets,
+                insideFrame: moveable.hitTest({ left: point.x, top: point.y, width: 1, height: 1 }) > 0,
+                elementsAtPoint: document.elementsFromPoint(point.x, point.y),
+            });
+        },
+        [activeTargets, selectionDraggable],
+    );
+
+    useSurfaceInteractionEvents({
+        surfaceElement,
+        surfaceId,
+        surface,
+        tool,
+        viewport,
+        selectionData,
+        clientToSurfaceCoords,
+        setInsertPreview,
+        insertPreviewRef,
+        insertStateRef: insertState,
+        panStateRef: panState,
+        documentService,
+        stateService,
+        uiService,
+        insertSnapEnabled,
+        insertSnapSuspended,
+        readOnly,
+        pressDragsClippedSelection,
+    });
+
+    const handleSelectionDragStart = useCallback(
+        (e: any) => {
+            const input = e.inputEvent as MouseEvent | undefined;
+            const eventTarget = input?.target as Element | null;
+            if (isMoveableControlTarget(eventTarget)) {
+                return false;
+            }
+            // Yielding a drag that starts inside the selection exists only so Moveable can move it.
+            // With no transform to hand it to, keep Selecto: dragging there marquees like anywhere else
+            // instead of doing nothing at all.
+            if (transformEnabled && isTargetInsideSelection(eventTarget)) {
+                return false;
+            }
+            // Here Moveable would not start on its own: the press hit what is behind the element.
+            if (input && pressDragsClippedSelection(input)) {
+                moveableRef.current?.dragStart(input);
+                return false;
+            }
+        },
+        [isMoveableControlTarget, isTargetInsideSelection, pressDragsClippedSelection, transformEnabled],
+    );
 
     const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
     const imageCropEnabled = isSurfaceGestureEnabled("imageCrop", readOnly);

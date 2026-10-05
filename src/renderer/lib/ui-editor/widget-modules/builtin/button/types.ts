@@ -18,9 +18,11 @@ export type ButtonWidgetProps = {
      * which is what keeps the drawing of a plain button exactly what it was.
      */
     rich?: UITextRun[];
-    /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.label`. */
-    localizable?: boolean;
-    /** Named localization key reference; takes precedence over the implicit unit. */
+    /**
+     * Named localization key reference. A keyed button holds no label of its own: the key's words
+     * are shown, and the button's own label, when it has one, is translated through
+     * `ui:<elementId>.label`.
+     */
     localizationKey?: string;
     fontSize: number;
     color: string;

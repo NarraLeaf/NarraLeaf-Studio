@@ -440,6 +440,9 @@ function FontStackGroup({ service }: { service: BrandService | null }) {
         <SettingsGroup
             title={t("project.group.typography")}
             description={t("brand.fonts.description")}
+            // What a project check about the fonts lands on: `typography/locale-no-font`, and the
+            // count of characters no font can draw.
+            part="fonts"
             trailing={multilingual ? (
                 <Select
                     size="sm"

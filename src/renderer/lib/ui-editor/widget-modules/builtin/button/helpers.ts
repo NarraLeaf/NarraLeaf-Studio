@@ -37,8 +37,8 @@ export const BUTTON_SITE = requireUITextSite("nl.button");
  * The source a stored button's `label` is read from - derived, not stored, in the order the game
  * resolves it (`uiTextSourceOf`): a key wins over the button's own label and over a Blueprint Value.
  */
-export function buttonLabelSourceOf(element: UIElement, keysApply: boolean): UITextSource | null {
-    return uiTextSourceOf(element, BUTTON_SITE, keysApply);
+export function buttonLabelSourceOf(element: UIElement): UITextSource | null {
+    return uiTextSourceOf(element, BUTTON_SITE);
 }
 
 /** The props patch that writes a button's label from a box that holds plain text; see `textValuePatch`. */

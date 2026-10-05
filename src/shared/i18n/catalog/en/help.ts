@@ -19,6 +19,7 @@ export const help = {
         quality: "Checks",
         version: "Versions",
         ship: "Shipping",
+        checks: "Check rules",
     },
     /** Chrome shared by the popover and the browser. */
     ui: {
@@ -118,10 +119,12 @@ export const help = {
             title: "Search",
             body:
                 "The Search panel and the search box in the title bar search the whole project: the names of "
-                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, UI text "
-                + "keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
+                + "scenes, stories, characters, screens, blueprints, assets and variables, and story text, interface "
+                + "text, translation keys and blueprint nodes. Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
+                + "- Interface text is searched in the project's source language. Selecting it opens the page or "
+                + "component with the widget selected. Sample text is marked Sample text after its place.\n"
                 + "- The Search panel can replace story text across the whole project.\n"
                 + "- In the title bar's search box, a query that starts with > finds commands by name.\n"
                 + "- Quick Open opens scenes, characters, screens, assets and blueprints by name.",
@@ -220,7 +223,7 @@ export const help = {
                 + "\n"
                 + "- A bare name is a variable in scope. Prefix it with scene., saved. or persistent. to choose "
                 + "the scope.\n"
-                + "- visited reports whether a scene or a label has been reached.\n"
+                + "- visited reports whether a scene has been reached, and picked whether a choice option has been chosen.\n"
                 + "- A condition must be a test that evaluates to true or false.",
         },
         storyScript: {
@@ -496,6 +499,14 @@ export const help = {
                 + "back. The import reports how many lines it applied, how many were unchanged and how many it "
                 + "could not match.\n"
                 + "- Export and import are in the language row's More menu.\n"
+                + "- In an exported file, a translation key's row names the pages and components that use the key.\n"
+                + "- Words written directly on an interface widget are translated like a line: each widget's own "
+                + "words have a row in the translation table, except words made only of digits and symbols, and "
+                + "sample text.\n"
+                + "- A translation key is words shared by every widget that names it. They show its words whether "
+                + "or not the project has a source language, and the key is translated once.\n"
+                + "- Removing a key, or bringing in widgets that use a key the project does not have, gives those "
+                + "widgets the key's words and translations as their own.\n"
                 + "- Changing language during a game restarts it and returns the player to the line they "
                 + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",
@@ -522,7 +533,9 @@ export const help = {
                 + "Studio reads the font file and fills the limit in if the font states which language "
                 + "it was made for; it leaves it empty otherwise.\n"
                 + "- The project check reports characters the script uses that no font in the list can "
-                + "draw, for each language.",
+                + "draw, for each language.\n"
+                + "- A widget is checked in the font of each of its states. A character only one state's font "
+                + "cannot draw is reported with the state's name.",
         },
         inputActions: {
             title: "Input actions",
@@ -620,7 +633,13 @@ export const help = {
                 + "- The library states how many placements each component has.\n"
                 + "- Selecting a placement marks its component in the library.\n"
                 + "- After a component is deleted, its placements show as missing until they are replaced or "
-                + "unlinked.",
+                + "unlinked.\n"
+                + "- Parameters are declared on the component and set on each placement. A String parameter is "
+                + "read by the component's blueprints with Get Component Param.\n"
+                + "- A Text parameter holds words a player reads. Inside the component, a text or a button picks it "
+                + "under Parameter, and each placement shows its own words on the canvas and in the game, written "
+                + "directly or from a translation key. Words written directly on a placement are translated as that "
+                + "placement's own, one row each in the translation table.",
         },
         blueprints: {
             title: "Blueprints",
@@ -681,7 +700,21 @@ export const help = {
                 + "- A Blueprint Value reads the variables of its page and of App logic directly. Other variables "
                 + "are read through Call Fn.\n"
                 + "- When a variable the Blueprint Value read is written, the widget shows the new value.\n"
-                + "- A widget inside a list row can also show one field of that row, chosen under Field.",
+                + "- Translation Key Text gives a translation key's text in the player's language, and Format fills "
+                + "values into it. When the player changes language, the widget shows the new language.\n"
+                + "- A widget inside a list row can also show one field of that row, chosen under Field.\n"
+                + "- A widget inside a component can show one of the component's Text parameters, chosen under "
+                + "Parameter. Its own words are then sample text, drawn only while the component is edited.\n"
+                + "- Under a Blueprint Value, a field of a list row or a Text parameter of a component, the widget's "
+                + "own words are sample text. They are drawn in the editor only, are not part of the built game and "
+                + "are not translated.\n"
+                + "- A widget whose words a blueprint writes while the game runs, with Set Text, Clear Text or Set "
+                + "Label, lists those blueprints under its text. Its own words are the default value, which the game "
+                + "shows in the player's language until the first write. Append Text adds to the words on screen.\n"
+                + "- Words a blueprint writes while the game runs are shown as written, in every language, ahead of "
+                + "a translation key and a Blueprint Value, until the page is opened again. Get Text and Get Label "
+                + "read the words on screen.\n"
+                + "- Writes made by a script layer are not listed.",
         },
         networkNodes: {
             title: "Network requests",
@@ -715,11 +748,12 @@ export const help = {
         lint: {
             title: "Project checks",
             body:
-                "Checks read the whole project and report what will not run: references to assets that no longer "
-                + "exist, jumps to labels that were never declared, rows the compiler will not accept, media "
-                + "formats the chosen platform cannot play.\n"
+                "Checks read the whole project and report what will not run: references to assets that no longer exist, jumps to labels that were never declared, rows the compiler will not accept, media formats the chosen platform cannot play.\n"
                 + "\n"
-                + "- Every finding states where it came from, and selecting it opens that place.\n"
+                + "The Problems panel lists the findings and updates them shortly after each edit. The status bar shows how many errors and warnings there are.\n"
+                + "\n"
+                + "- Selecting a finding opens the place it is about. Its ? opens the rule: what it found and how to fix it.\n"
+                + "- Check Project reads every file again, including assets changed outside Studio.\n"
                 + "- Running the checks modifies nothing.",
         },
         tests: {

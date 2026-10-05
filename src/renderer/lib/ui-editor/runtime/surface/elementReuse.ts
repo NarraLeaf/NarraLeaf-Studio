@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 
 /**
@@ -189,4 +190,23 @@ export function componentParamsKey(params: Record<string, string> | null): strin
         .sort()
         .map(key => `${key}\u0000${params[key]}`)
         .join("\u0001");
+}
+
+/**
+ * What a placement gives its component's text parameters, as one comparable value - rebuilt on every
+ * pass like the params, and as small. Null (not drawn inside a placement) and an empty record (a
+ * placement of a component with none) differ: a binding inside a placement shows nothing for a
+ * parameter it lacks, and outside one shows the element's own words.
+ */
+export function componentTextsKey(texts: UIComponentTextValues | null): string {
+    if (!texts) {
+        return "";
+    }
+    const entries = Object.keys(texts)
+        .sort()
+        .map(key => {
+            const value = texts[key]!;
+            return [key, value.origin, value.text, value.key, value.unitId].join("\u0000");
+        });
+    return `texts\u0002${entries.join("\u0001")}`;
 }

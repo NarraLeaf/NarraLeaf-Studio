@@ -13,7 +13,15 @@ import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
-import { UI_TEXT_SITES, uiTextSiteOf, type UITextSite } from "@shared/types/ui-editor/textSource";
+import { withUIComponentTextValue, type UIComponentTextValues } from "@shared/types/ui-editor/componentTextParams";
+import {
+    UI_TEXT_SITES,
+    readUITextSite,
+    uiTextRuntimeOriginOf,
+    uiTextSiteOf,
+    withUITextRuntimeWords,
+    type UITextSite,
+} from "@shared/types/ui-editor/textSource";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
@@ -210,14 +218,24 @@ type SupportedValueTarget = {
     valueType: UIElementValueBindingValueType;
     normalize?: (value: unknown, element: UIElement) => unknown;
     write?: (element: UIElement, value: unknown) => UIElement;
+    /** The text site, when the target is a widget's words. */
+    site?: UITextSite;
 };
 
 /**
  * A widget's words as a value target: the string a binding resolves to, written to the prop that
- * holds them. Which widgets' words take a binding is the text-site table's answer (`textSites.ts`).
+ * holds them, marked as bound so the widget shows it as the binding gave it rather than through the
+ * element's own unit (`withUITextRuntimeWords`). Which widgets' words take a binding is the text-site
+ * table's answer (`textSites.ts`).
  */
 function textValueTarget(site: UITextSite): SupportedValueTarget {
-    return { elementType: site.widgetType, propPath: site.textProp, valueType: "string" };
+    return {
+        elementType: site.widgetType,
+        propPath: site.textProp,
+        valueType: "string",
+        site,
+        write: (element, value) => withUITextRuntimeWords(element, site, value, "bound"),
+    };
 }
 
 /** Every bindable prop that is not a widget's words, matched through widget inheritance. */
@@ -665,12 +683,18 @@ function resolveListItemFieldValue(
  */
 const LAYOUT_VISIBLE_BINDING_PATH = "layout.visible";
 
+/**
+ * `componentTexts` is what the placement being drawn gives its component's text parameters
+ * (`resolveUIComponentTextParams`), or null where the element is not drawn inside a placement - the
+ * component's own editor, a page.
+ */
 export function mergeElementWithBlueprintValues(
     element: UIElement,
     surfaceId: string,
     valueRuntime: BlueprintValueRuntimeStore | null,
     listItemScope: UIListItemScope | null = null,
     instanceKey = "",
+    componentTexts: UIComponentTextValues | null = null,
 ): UIElement {
     const bindings = element.valueBindings;
     if (!bindings) {
@@ -694,11 +718,29 @@ export function mergeElementWithBlueprintValues(
         if (!binding) {
             continue;
         }
+        // Words written at run time win over the binding until the page is drawn afresh, so the
+        // binding is not asked for them meanwhile.
+        if (target.site && uiTextRuntimeOriginOf(element) === "written") {
+            continue;
+        }
         if (binding.kind === "listItemField") {
             const field = resolveListItemFieldValue(binding, target, listItemScope);
             if (field.resolved) {
                 out = writeTargetValue(out, target, target.normalize ? target.normalize(field.value, out) : field.value);
             }
+            continue;
+        }
+        if (binding.kind === "componentParam") {
+            // Read off the placement, like a row's field: no graph, so the editing canvas draws each
+            // placement with its own words. Only a player's words take one, and a key the element
+            // names itself wins, as it does over every binding. Inside a placement the placement
+            // answers even for a parameter it does not have - with nothing - so the canvas never shows
+            // sample words the game does not; outside one (the component's own editor) the element's
+            // own words are drawn, as sample text.
+            if (!target.site || target.site.role !== "words" || !componentTexts || readUITextSite(element, target.site).key) {
+                continue;
+            }
+            out = withUIComponentTextValue(out, target.site, componentTexts[binding.paramId]);
             continue;
         }
         if (!valueRuntime || binding.valueType !== target.valueType) {

@@ -208,7 +208,11 @@ export function BlueprintLayerPreview({
             className={`relative ${resolvedHeight} w-full overflow-hidden rounded-md border border-edge bg-surface-canvas`}
         >
             <ReactFlowProvider>
+                {/* A picture of the graph and nothing to operate, so it is kept out of the accessibility
+                    tree: React Flow names each wire `Edge from <id> to <id>`, which would read node
+                    ids out of a thumbnail whose card already says which blueprint it is. */}
                 <ReactFlow
+                    aria-hidden
                     key={flowKey}
                     id={flowId}
                     nodes={nodes}
