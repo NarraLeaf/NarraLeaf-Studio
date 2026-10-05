@@ -25,12 +25,29 @@ import {
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { uiEditorAlign, type UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
+import {
+    UI_EDITOR_NUDGE_LARGE_STEP,
+    UI_EDITOR_NUDGE_STEP,
+    uiEditorNudge,
+} from "@/lib/ui-editor/commands/uiEditorNudge";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { openFloatingLayerCount } from "@/lib/components/layout/floatingLayer";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { UI_EDITOR_WRITABLE, type UIEditorReadOnly } from "./readOnlyInteraction";
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
+}
+
+/**
+ * Whether the bare arrow keys are free for the canvas.
+ *
+ * Not while a field has focus (a number box steps its own value, a text field moves its caret), and
+ * not while any popover, menu or dialog is open: the arrows walk its list, and the canvas behind it
+ * is not what the author is pointing them at.
+ */
+function areArrowKeysFreeForCanvas(): boolean {
+    return !isTypingInField() && openFloatingLayerCount(document) === 0;
 }
 
 function getUiSelection(stateService: UIEditorStateService, surfaceId: string): UIElementSelection | null {
@@ -305,6 +322,38 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         undoOverride,
     ]);
 
+    // The arrow keys move the selection: one design pixel a press, ten with Shift. A set of their own
+    // because they are live under a narrower condition than the rest (see `areArrowKeysFreeForCanvas`).
+    const nudgeKeybindings = useMemo<KeybindingDefinition[]>(() => {
+        if (!surfaceId) {
+            return [];
+        }
+        const nudge = (dx: number, dy: number) => () => {
+            if (readOnlyActive || !documentService || !stateService) {
+                return;
+            }
+            // An image being cropped, or text being edited in place, on this canvas has the keys; the
+            // element's frame stays where it is until that ends.
+            if (stateService.getInteractionOverride()?.surfaceId === surfaceId) {
+                return;
+            }
+            uiEditorNudge(documentService, surfaceId, getUiSelection(stateService, surfaceId), dx, dy);
+        };
+        const step = UI_EDITOR_NUDGE_STEP;
+        const large = UI_EDITOR_NUDGE_LARGE_STEP;
+        // Literal ids and keys, for the reason the align bindings above spell theirs out.
+        return [
+            { id: "nudge-left", key: "arrowleft", handler: nudge(-step, 0) },
+            { id: "nudge-right", key: "arrowright", handler: nudge(step, 0) },
+            { id: "nudge-up", key: "arrowup", handler: nudge(0, -step) },
+            { id: "nudge-down", key: "arrowdown", handler: nudge(0, step) },
+            { id: "nudge-left-large", key: "shift+arrowleft", handler: nudge(-large, 0) },
+            { id: "nudge-right-large", key: "shift+arrowright", handler: nudge(large, 0) },
+            { id: "nudge-up-large", key: "shift+arrowup", handler: nudge(0, -large) },
+            { id: "nudge-down-large", key: "shift+arrowdown", handler: nudge(0, large) },
+        ];
+    }, [surfaceId, documentService, stateService, readOnlyActive]);
+
     const escapeHandler = useCallback(() => {
         if (!stateService || !surfaceId) {
             return;
@@ -335,6 +384,14 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         keybindings,
         enabled: enabled && Boolean(surfaceId && documentService && localBlueprint && historyService && stateService),
         when: and(whenEditorFocused(tabId), fromGetter(() => !isTypingInField())),
+        idPrefix: `ui-surface-editor-${tabId}`,
+        catalogPrefix: "ui-editor.",
+    });
+
+    useKeybindings({
+        keybindings: nudgeKeybindings,
+        enabled: enabled && Boolean(surfaceId && documentService && stateService),
+        when: and(whenEditorFocused(tabId), fromGetter(areArrowKeysFreeForCanvas)),
         idPrefix: `ui-surface-editor-${tabId}`,
         catalogPrefix: "ui-editor.",
     });
