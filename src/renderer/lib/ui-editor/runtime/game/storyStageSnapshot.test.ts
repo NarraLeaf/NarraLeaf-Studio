@@ -3,7 +3,7 @@ import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/typ
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
-import { computeStoryStageSnapshot } from "./storyStageSnapshot";
+import { computeStoryStageSnapshot, resolveTakenConditionBranch } from "./storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     // v6: the scene variable is a declaration ROW in the block tree, not a registry entry.
@@ -841,5 +841,57 @@ describe("computeStoryStageSnapshot and disabled rows", () => {
         const result = snapshot(document, "target");
         expect(result.background).toBeNull();
         expect(result.diagnostics.map(entry => entry.message)).toEqual([]);
+    });
+});
+
+describe("resolveTakenConditionBranch", () => {
+    const flagIsTrue = { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isTrue" };
+    const setFlag = (id: string, parentId: string | null = null) =>
+        block(id, "action", { action: "setVariable", target: { scope: "scene", variableId: "flag" }, value: true }, parentId);
+    const condition = {
+        condition: block("condition", "control", { control: "condition" }, null, ["if-branch", "else-branch"]),
+        "if-branch": block("if-branch", "control", { control: "conditionBranch", branch: "if", condition: flagIsTrue }, "condition", ["in-if"]),
+        "in-if": say("in-if", "if-branch"),
+        "else-branch": block("else-branch", "control", { control: "conditionBranch", branch: "else" }, "condition", ["in-else"]),
+        "in-else": say("in-else", "else-branch"),
+    };
+    const taken = (document: StoryDocument, via: string | null = null) =>
+        resolveTakenConditionBranch({ document, sceneId: "scene-1", conditionBlockId: "condition", via });
+
+    it("decides the arm from the state play reaches the condition with", () => {
+        expect(taken(baseDocument({ set: setFlag("set"), ...condition }, ["set", "condition"]))).toBe("if-branch");
+        expect(taken(baseDocument({ ...condition }, ["condition"]))).toBe("else-branch");
+    });
+
+    it("passes over a disabled arm, and answers null when no arm is taken", () => {
+        const disabledIf = baseDocument({
+            set: setFlag("set"),
+            ...condition,
+            "if-branch": { ...condition["if-branch"], disabled: true },
+        }, ["set", "condition"]);
+        expect(taken(disabledIf)).toBe("else-branch");
+
+        const noElse = baseDocument({
+            ...condition,
+            condition: block("condition", "control", { control: "condition" }, null, ["if-branch"]),
+        }, ["condition"]);
+        expect(taken(noElse)).toBeNull();
+    });
+
+    it("carries the assignments of the option the walk comes from", () => {
+        const document = baseDocument({
+            menu: block("menu", "nodeAction", { action: "choice" }, null, ["opt-a", "opt-b"]),
+            "opt-a": block("opt-a", "nodeAction", { action: "choiceOption", text: { textId: "ta", value: "A", role: "choiceText" } }, "menu", ["line-a", "set-a"]),
+            "line-a": say("line-a", "opt-a"),
+            "set-a": setFlag("set-a", "opt-a"),
+            "opt-b": block("opt-b", "nodeAction", { action: "choiceOption", text: { textId: "tb", value: "B", role: "choiceText" } }, "menu", ["line-b"]),
+            "line-b": say("line-b", "opt-b"),
+            ...condition,
+        }, ["menu", "condition"]);
+        // From the top no option is taken, so the flag keeps its default.
+        expect(taken(document)).toBe("else-branch");
+        // Stepping on from inside option A, play has been through A's assignment.
+        expect(taken(document, "line-a")).toBe("if-branch");
+        expect(taken(document, "line-b")).toBe("else-branch");
     });
 });

@@ -31,6 +31,7 @@ export const uiEditor = {
         nvl: "全屏小说模式的对白历史",
     },
     panel: {
+        interfaces: "界面",
         interfaceType: "界面类型",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
