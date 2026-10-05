@@ -107,37 +107,38 @@ not yours to label, nor to drive.
 ## Verifying a change
 
 ```sh
-yarn lint                      # tsc over the five projects; it does not run the project linter
-yarn test                      # vitest
-node scripts/style-ratchet.mjs # the design-system debt gate, and not part of yarn lint
-node project/build/build-runtime.js --dev   # ~3s; the one gate the three above cannot see
+node scripts/verify.mjs            # everything CI's verify gate checks; about four minutes
+node scripts/verify.mjs --checks   # all of it but the test suite; under a minute
+node scripts/verify.mjs --tests    # only the test suite
 ```
 
-The fourth is not optional if you touched anything under `src/renderer/lib/ui-editor/` or anything
-those files import. The game runtime bundles part of the Studio renderer and refuses most of the
-rest, and that refusal lives in an esbuild plugin - so an import the runtime may not have is green
-under tsc, green under vitest, and breaks every game build, preview and test run. It has reached
-`develop` that way.
+This is the list CI runs - its checks job calls the same file - so a green run here is the gate
+itself rather than an approximation of it: the five typechecks, oxlint, the style ratchet, the script
+and plugin API declarations, the starter-template translations, the runtime bundle, then the whole
+vitest suite. It works as it stands from a git worktree (`yarn verify` is the same thing from the
+main checkout): every tool is resolved by path from the checkout's own `node_modules`.
 
-Some failures are the environment rather than the change: a handful of `src/main` and `src/runtime`
-tests need POSIX paths, elevation or an `unzip` on PATH and fail on Windows regardless. Compare
-against a clean checkout before calling one a regression, and run it the same way both times - a few
-of them only fail in a full run. A test that times out at exactly 5000ms is usually the load rather
-than the change; the ones that walk the whole source tree do it under a full run and pass on their
-own.
+The runtime bundle is the check a narrower run forgets, and it matters whenever you touched anything
+under `src/renderer/lib/ui-editor/` or anything those files import. The game runtime bundles part of
+the Studio renderer and refuses most of the rest, and that refusal lives in an esbuild plugin - so an
+import the runtime may not have is green under tsc, green under vitest, and breaks every game build,
+preview and test run. It has reached `develop` that way.
 
-**None of the `yarn` lines work from a git worktree of this repository.** Yarn walks up to the main
-checkout, finds a package the worktree is not a declared workspace of, and exits on a usage error
-having run nothing - `The nearest package directory ... doesn't seem to be part of the project
-declared in ...`. It exits non-zero, so it cannot be mistaken for a pass, but the gate has not run.
-The scripts are thin, so run what they run:
+A clean tree passes on Windows with nothing to explain away. A file that fails in the full run is run
+again on its own, and one that then passes is listed as load-sensitive rather than failed: a few
+tests (the ones that walk the whole source tree, frame-by-frame weather, flag reachability) take
+seconds alone and can overrun vitest's 5-second timeout on a saturated machine. For the same reason,
+do not run two full suites at once - each turns the other's slow tests red. What only CI sees:
+anything Linux decides differently (path spelling, file watching), and the Android SDK oracle, which
+runs here only when `ANDROID_HOME` names an SDK.
 
-```sh
-for p in shared main renderer runtime builtin-plugins; do npx tsc --project src/$p/tsconfig.json --noEmit; done
-npx vitest run
-node scripts/style-ratchet.mjs                        # already direct, works anywhere
-node project/build/build-{runtime,main,apps,builtin-plugins}.js --dev   # what `yarn build:dev` runs
-```
+**None of the `yarn` script lines work from a git worktree of this repository.** Yarn walks up to the
+main checkout, finds a package the worktree is not a declared workspace of, and exits on a usage
+error having run nothing - `The nearest package directory ... doesn't seem to be part of the project
+declared in ...`. It exits non-zero, so it cannot be mistaken for a pass, but nothing has run. Call
+the scripts with node instead; a dev build, for one, is
+`node project/build/build-{runtime,main,apps,builtin-plugins}.js --dev`, which is what `yarn build:dev`
+runs.
 
 Dependencies come from the main checkout rather than from an install of their own: link
 `node_modules` in (a junction on Windows, a symlink elsewhere) and every tool above reads it
