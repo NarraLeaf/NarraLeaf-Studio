@@ -1,4 +1,5 @@
 import { collectCutPoints } from "@shared/story/appTagFold";
+import { createLintBreather } from "../breather";
 import {
     reachableSceneIds,
     blueprintDocumentGraphCarriers,
@@ -1389,8 +1390,15 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         category: "story",
         defaultSeverity: "warning",
         slug: "storyBackgroundUnchanged",
-        run(ctx) {
+        /**
+         * Asynchronous so it can take breathers: each snapshot below is a walk of the scene, and a
+         * 20,000-row project measured 114 of them at about 15ms each - a second and a half in one
+         * piece, every time the project checks ran after a pause in editing. Between walks the rule
+         * gives the window a turn whenever a slice has run out (see `breather.ts`).
+         */
+        async run(ctx) {
             const findings: LintFinding[] = [];
+            const breather = createLintBreather();
             for (const { entry, scene } of eachScene(ctx)) {
                 /**
                  * Every background that could be on screen anywhere in this scene, as the walk goes
@@ -1427,6 +1435,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     if (!couldAlreadyBeShowing || transitionVisibleMs(block.payload.transition) <= 0) {
                         continue;
                     }
+                    await breather.breathe();
                     // No cast: this rule reads the background and nothing else, and a character's
                     // entrance defaults cannot reach a background prop.
                     const snapshot = computeStoryStageSnapshot({
