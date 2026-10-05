@@ -18,6 +18,19 @@ export {
     unionAxisAlignedRects,
 } from "./snapMath";
 export { snapResizeLayoutInSurface } from "./resizeSnap";
+export {
+    DEFAULT_UI_EDITOR_GRID_SPACING,
+    MAX_UI_EDITOR_GRID_SPACING,
+    MIN_UI_EDITOR_GRID_SPACING,
+    computeGridScreenLines,
+    nearestGridPoint,
+    nearestGridValue,
+    normalizeUiEditorGridSpacing,
+    parseUiEditorGridSpacing,
+    resolveGridDisplayStep,
+    resolveGridTranslate,
+    snapResizeEdgeToGrid,
+} from "./gridSnap";
 
 import type { SnapGuideLine } from "./types";
 

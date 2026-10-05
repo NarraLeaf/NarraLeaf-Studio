@@ -44,6 +44,7 @@ import {
     useViewportTransform,
     useSmartSnapEnabled,
     useSmartSnapDetailSettings,
+    useGridSpacing,
     usePreviewAspectId,
     usePreviewSafeAreaId,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
@@ -64,6 +65,7 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { SurfaceGridOverlay } from "@/apps/workspace/modules/ui-editor/editors/SurfaceGridOverlay";
 import { SurfaceAlignTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceAlignMenu";
 import { SurfacePreviewFramesTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { SurfacePreviewFramesReadout } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesReadout";
@@ -152,6 +154,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
+    const gridSpacing = useGridSpacing(stateService);
     const previewAspectId = usePreviewAspectId(stateService);
     const previewSafeAreaId = usePreviewSafeAreaId(stateService);
     // What the shells lock to, which is what decides which edge a device inset lands on.
@@ -771,7 +774,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             >
                                 <Magnet className="h-4 w-4" />
                             </SurfaceEditorToolbarSegButton>
-                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
+                            <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} gridSpacing={gridSpacing} />
                         </SurfaceEditorToolbarButtonGroup>
                         <SurfaceAlignTrigger
                             surfaceId={surface.id}
@@ -868,6 +871,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                                 />
                             ) : null}
                         </div>
+                        {/* Shown while it acts: smart snap on with Grid among its targets. Outside the
+                            transformed node so the lines stay one device pixel wide at any zoom. */}
+                        {smartSnapEnabled && smartSnapDetail.snapGrid ? (
+                            <SurfaceGridOverlay designSize={surface.designSize} spacing={gridSpacing} viewport={viewport} />
+                        ) : null}
                         {/* Outside the transformed node on purpose - this one is text. */}
                         {isComponentEdit ? null : (
                             <SurfacePreviewFramesReadout

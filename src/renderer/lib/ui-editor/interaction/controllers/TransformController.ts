@@ -63,6 +63,8 @@ export function useTransformController(config: TransformControllerConfig): Inter
             setGuides: (guides: ActiveSnapGuides | null) => config.stateService.setSnapGuides(guides),
             getExcludedElementIds: () => new Set(config.snapExcludedElementIds ?? config.selectionIds),
             getDetailSettings: () => config.stateService.getSmartSnapDetailSettings(),
+            getGridSpacing: () =>
+                config.stateService.getSmartSnapDetailSettings().snapGrid ? config.stateService.getGridSpacing() : null,
         }),
         [
             config.selectionIds,

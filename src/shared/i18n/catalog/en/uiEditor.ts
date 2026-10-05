@@ -219,6 +219,8 @@ export const uiEditor = {
         canvasLayout: "Canvas layout (edges & center)",
         elementBorders: "Element borders (edge to edge)",
         elementLayout: "Element layout (centers)",
+        grid: "Grid",
+        gridSize: "Grid size",
     },
     contextMenu: {
         pasteIntoContainer: "Paste into container",

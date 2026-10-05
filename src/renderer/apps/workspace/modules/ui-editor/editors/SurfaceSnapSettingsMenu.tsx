@@ -1,29 +1,61 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
+import { Input } from "@/lib/components/elements/Input";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
+import { parseUiEditorGridSpacing } from "@/lib/ui-editor/snapping/gridSnap";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { SurfaceEditorToolbarSegButton, SurfaceEditorToolbarSegSlot } from "./SurfaceEditorToolbarButtonGroup";
-import { SurfaceToolbarPopoverPanel, useSurfaceToolbarPopover } from "./SurfaceEditorToolbarPopover";
+import { SurfaceToolbarPopoverPanel, SurfaceToolbarPopoverSection, useSurfaceToolbarPopover } from "./SurfaceEditorToolbarPopover";
 
 type Props = {
     stateService: UIEditorStateService;
     detail: SmartSnapDetailSettings;
+    /** The project's grid spacing in design pixels, shown and edited in the panel. */
+    gridSpacing: number;
 };
 
 /**
- * Dropdown trigger + panel for per-category smart snap toggles.
+ * Dropdown trigger + panel for per-category smart snap toggles, and the grid's spacing.
+ *
+ * The spacing is a section of its own rather than part of the Grid row, and stays editable with Grid
+ * unticked: the snap-to-grid key uses it whether or not grid snapping is on.
  */
-export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
+export function SurfaceSnapSettingsTrigger({ stateService, detail, gridSpacing }: Props) {
     const { t } = useTranslation();
     const popover = useSurfaceToolbarPopover(detail);
+    const [spacingDraft, setSpacingDraft] = useState(String(gridSpacing));
+
+    // The box shows the project's spacing whenever the panel is opened, and follows it while open.
+    useEffect(() => {
+        if (popover.open) {
+            setSpacingDraft(String(gridSpacing));
+        }
+    }, [gridSpacing, popover.open]);
 
     const patch = useCallback(
         (partial: Partial<SmartSnapDetailSettings>) => {
             stateService.patchSmartSnapDetailSettings(partial);
         },
         [stateService],
+    );
+
+    /** `close` only on Enter; blur applies without dismissing the panel. Anything unusable puts the spacing back. */
+    const commitSpacing = useCallback(
+        (close: boolean) => {
+            const parsed = parseUiEditorGridSpacing(spacingDraft);
+            if (parsed === null) {
+                setSpacingDraft(String(gridSpacing));
+            } else {
+                stateService.setGridSpacing(parsed);
+                setSpacingDraft(String(parsed));
+            }
+            if (close) {
+                popover.close();
+            }
+        },
+        [gridSpacing, popover, spacingDraft, stateService],
     );
 
     return (
@@ -67,7 +99,37 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     >
                         {t("uiEditor.snap.elementLayout")}
                     </Checkbox>
+                    <Checkbox
+                        className="px-3 py-1.5 text-fg hover:bg-fill-subtle"
+                        checked={detail.snapGrid}
+                        onCheckedChange={() => patch({ snapGrid: !stateService.getSmartSnapDetailSettings().snapGrid })}
+                    >
+                        {t("uiEditor.snap.grid")}
+                    </Checkbox>
                 </div>
+                <SurfaceToolbarPopoverSection label={t("uiEditor.snap.gridSize")}>
+                    <div className="flex items-center gap-1.5 px-3 pb-1 pt-0.5">
+                        <div className="min-w-0 flex-1">
+                            <Input
+                                size="sm"
+                                fullWidth
+                                inputMode="numeric"
+                                className="tabular-nums"
+                                aria-label={t("uiEditor.snap.gridSize")}
+                                value={spacingDraft}
+                                onChange={event => setSpacingDraft(event.target.value)}
+                                onKeyDown={event => {
+                                    if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        commitSpacing(true);
+                                    }
+                                }}
+                                onBlur={() => commitSpacing(false)}
+                            />
+                        </div>
+                        <span className="shrink-0 text-xs text-fg-subtle">px</span>
+                    </div>
+                </SurfaceToolbarPopoverSection>
             </SurfaceToolbarPopoverPanel>
         </>
     );

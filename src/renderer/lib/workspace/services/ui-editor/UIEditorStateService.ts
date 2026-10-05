@@ -17,6 +17,9 @@ import {
 import type { UITool } from "../../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
+import { DEFAULT_UI_EDITOR_GRID_SPACING, normalizeUiEditorGridSpacing } from "../../../ui-editor/snapping/gridSnap";
+import type { PanelStateService } from "../core/PanelStateService";
+import { readUiEditorGridSpacing, writeUiEditorGridSpacing } from "./uiEditorGridPreference";
 import {
     isSafeAreaPresetId,
     isSurfacePreviewAspectPresetId,
@@ -82,6 +85,9 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private smartSnapEnabled = true;
     private smartSnapDetail: SmartSnapDetailSettings = { ...DEFAULT_SMART_SNAP_DETAIL_SETTINGS };
     private snapGuides: ActiveSnapGuides | null = null;
+    /** Per-project editor preference, kept in the project's panel state store (`uiEditorGridPreference.ts`). */
+    private gridSpacing = DEFAULT_UI_EDITOR_GRID_SPACING;
+    private panelStateService: PanelStateService | null = null;
 
     /** Pure view state: screen-ratio preview frame preset id, `null` = off. Never touches the UIDocument. */
     private previewAspectId: string | null = null;
@@ -92,7 +98,12 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         const uiService = ctx.services.get<UIService>(Services.UI);
         const uidocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
         const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        await depend([uiService, uidocumentService, globalSettings]);
+        // The project's own editor state, for the grid spacing. Every workspace registers it; a
+        // context without one keeps the spacing for the session only.
+        const panelState = ctx.services.get<PanelStateService>(Services.PanelState) ?? null;
+        await depend([uiService, uidocumentService, globalSettings, ...(panelState ? [panelState] : [])]);
+        this.panelStateService = panelState;
+        this.gridSpacing = readUiEditorGridSpacing(panelState);
 
         this.uiStore = uiService.getStore();
         this.documentService = uidocumentService;
@@ -440,6 +451,24 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         });
     }
 
+    public getGridSpacing(): number {
+        return this.gridSpacing;
+    }
+
+    /**
+     * Sets this project's grid spacing. A value that is not a whole number of design pixels in range
+     * is ignored. Editor state only: the UI document, its history and its dirty flag are untouched.
+     */
+    public setGridSpacing(spacing: number): void {
+        const next = normalizeUiEditorGridSpacing(spacing);
+        if (next == null || next === this.gridSpacing) {
+            return;
+        }
+        this.gridSpacing = next;
+        this.events.emit("gridSpacingChanged", next);
+        writeUiEditorGridSpacing(this.panelStateService, next);
+    }
+
     public getPreviewAspectId(): string | null {
         return this.previewAspectId;
     }
@@ -679,6 +708,7 @@ function normalizeSmartSnapDetailSettings(raw: unknown): SmartSnapDetailSettings
         snapElementLayout: typeof o.snapElementLayout === "boolean" ? o.snapElementLayout : d.snapElementLayout,
         snapElementBorder: typeof o.snapElementBorder === "boolean" ? o.snapElementBorder : d.snapElementBorder,
         snapCanvasLayout: typeof o.snapCanvasLayout === "boolean" ? o.snapCanvasLayout : d.snapCanvasLayout,
+        snapGrid: typeof o.snapGrid === "boolean" ? o.snapGrid : d.snapGrid,
     };
 }
 
@@ -686,6 +716,7 @@ function areSmartSnapDetailSettingsEqual(a: SmartSnapDetailSettings, b: SmartSna
     return (
         a.snapElementLayout === b.snapElementLayout &&
         a.snapElementBorder === b.snapElementBorder &&
-        a.snapCanvasLayout === b.snapCanvasLayout
+        a.snapCanvasLayout === b.snapCanvasLayout &&
+        a.snapGrid === b.snapGrid
     );
 }
