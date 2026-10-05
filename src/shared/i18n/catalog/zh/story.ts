@@ -320,6 +320,9 @@ export const story = {
             forkCondition: "条件",
             fallsThrough: "继续",
             fallsThroughTitle: "此分支自身没有跳转，流程会继续执行分叉之后的内容",
+            // 含有 /结局 行的分支：故事在这里结束，不再回到场景里继续。
+            ends: "结局",
+            endsTitle: "故事在此分支结束：{names}",
             forkCount: {
                 other: "{count} 个分支",
             },

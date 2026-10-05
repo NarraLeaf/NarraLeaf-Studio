@@ -414,6 +414,9 @@ export const story = {
             // through too, and so does one that simply plays a line and rejoins the scene.
             fallsThrough: "continues",
             fallsThroughTitle: "No jump of its own; the scene continues past the fork",
+            // An arm holding an /ending row: the story stops there instead of rejoining the scene.
+            ends: "ends",
+            endsTitle: "The story ends in this branch: {names}",
             forkCount: {
                 one: "{count} branch",
                 other: "{count} branches",

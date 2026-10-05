@@ -342,6 +342,9 @@ export const story = {
             // ただ 1 行喋ってシーンに戻る枝も素通りする。
             fallsThrough: "続く",
             fallsThroughTitle: "自分では飛ばない。分かれ目の先へシーンが続く",
+            // /ending 行を持つ分岐。ストーリーはここで終わり、シーンには戻らない。
+            ends: "エンディング",
+            endsTitle: "この分岐でストーリーが終わる：{names}",
             forkCount: {
                 other: "{count} 本の枝",
             },
