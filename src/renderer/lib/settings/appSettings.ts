@@ -67,7 +67,7 @@ import { DASHBOARD_OPEN_DEFAULT_KEY } from "@shared/constants/dashboard";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
-import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
+import { DOWNLOAD_REWRITES_KEY, USE_SYSTEM_PROXY_KEY } from "@shared/types/downloadSource";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
 import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
 import {
@@ -1189,6 +1189,20 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.keybindings.label",
         description: "",
         defaultValue: null,
+    },
+    {
+        // Read by the main process (downloadProxy) on every Studio download. Off is
+        // direct, as today. On, those downloads follow this computer's proxy. There is
+        // no address to type: the operating system already has one.
+        key: USE_SYSTEM_PROXY_KEY,
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Use this computer's proxy",
+        labelKey: "settings.items.useSystemProxy.label",
+        description: "When on, Studio downloads use the proxy this computer already uses. When off, they connect directly.",
+        descriptionKey: "settings.items.useSystemProxy.description",
+        defaultValue: false,
     },
     {
         // Read by the main process (pluginRegistryClient.resolveRegistryUrl) when the

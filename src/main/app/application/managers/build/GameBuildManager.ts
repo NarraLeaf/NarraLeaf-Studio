@@ -177,6 +177,7 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { envForDownloadWorker } from "../downloadProxy";
 import { DownloadTaskBridge } from "../tasks/downloadTasks";
 import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
@@ -3382,7 +3383,7 @@ export class GameBuildManager {
         return unpackedPath;
     }
 
-    private runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
+    private async runWorker(session: BuildSession, config: GameBuildWorkerConfig): Promise<string[]> {
         // The build.electronMirror setting drives only the large Electron dist
         // download (via electronDownload.mirror in the config). The separate
         // NSIS/AppImage/7za toolchain download reads ELECTRON_BUILDER_BINARIES_MIRROR,
@@ -3391,6 +3392,7 @@ export class GameBuildManager {
         // which travels in the config and which the worker turns into that variable
         // around packaging (withBinariesMirrorEnv); with the setting empty, whatever
         // the host's environment says is inherited here and used as before.
+        const downloadEnv = await envForDownloadWorker(process.env);
         return new Promise<string[]>((resolve, reject) => {
             if (session.cancelled) {
                 reject(new Error("Build cancelled"));
@@ -3413,7 +3415,7 @@ export class GameBuildManager {
                 // exported one, so this assignment cannot override a host that has deliberately
                 // pointed every electron-builder on it somewhere shared.
                 env: {
-                    ...process.env,
+                    ...downloadEnv,
                     ELECTRON_BUILDER_CACHE: electronBuilderCacheRoot(this.app.getCacheRootDir()),
                 },
             });

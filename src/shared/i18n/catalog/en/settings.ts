@@ -266,6 +266,11 @@ export const settings = {
         downloadRewrites: {
             label: "Download address rewrites",
         },
+        useSystemProxy: {
+            label: "Use this computer's proxy",
+            description:
+                "When on, Studio downloads use the proxy this computer already uses. When off, they connect directly.",
+        },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
             description: "Where the plugin store looks for its index.",
